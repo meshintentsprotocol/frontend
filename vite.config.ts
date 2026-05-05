@@ -22,9 +22,6 @@ export default defineConfig({
     resolve: {
         alias: {
             "@": path.resolve(__dirname, "./src"),
-            "@bch-intents/sdk-xmr-swap": path.resolve(__dirname, "../bch-intents-sdk/packages/sdk-xmr-swap/src/index.ts"),
-            "@bch-intents/sdk-contracts": path.resolve(__dirname, "../bch-intents-sdk/packages/sdk-contracts/src/index.ts"),
-            "vite-plugin-node-polyfills/shims/buffer": path.resolve(__dirname, "node_modules/vite-plugin-node-polyfills/shims/buffer/index.js")
         },
     },
     server: {
