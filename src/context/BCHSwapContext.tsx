@@ -762,133 +762,28 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
 
     // =========================================================================
     // BCH → XMR: Deploy XmrAdaptorSwap covenant on BCH
+    // TODO: Plug back in when @bch-intents/sdk-xmr-swap build issue is resolved.
+    //       The SDK is published on npm as @bch-intents/sdk-xmr-swap@^1.0.0
+    //       and @bch-intents/sdk-contracts@^0.1.0. Uncomment the original
+    //       implementation below once the vite-plugin-node-polyfills buffer
+    //       shim resolution is fixed for the published package.
     // =========================================================================
-    const executeBCHToXMR = async (params: BCHSwapParams, recipientXmrAddress: string) => {
-        if (!bchWallet.connected || !bchWallet.address) throw new Error('BCH wallet not connected');
-        if (!recipientXmrAddress) throw new Error('XMR recipient address required');
-        if (!params.xmr?.viewKey || !params.xmr?.spendKey) throw new Error('XMR keys required for adaptor signatures');
+    const executeBCHToXMR = async (_params: BCHSwapParams, _recipientXmrAddress: string) => {
+        toast.info('XMR swaps coming soon', {
+            description: 'Monero adaptor signature swaps are under development.',
+        });
+        throw new Error('XMR swaps are not yet available in this build.');
+    };
 
-        setSwapStep('Generating Monero Adaptor parameters...');
-
-        console.log('[BCH→XMR] Loading SDKs...');
+    /* ---- ORIGINAL executeBCHToXMR implementation (commented out) ----
+        // 1. Generate Adaptor Keys
         const xmrSdk = await import('@bch-intents/sdk-xmr-swap');
         const { XmrAdaptorSwapContract } = await import('@bch-intents/sdk-contracts');
-
-        // 1. Generate Adaptor Keys
         const bchSecretKeyBytes = crypto.getRandomValues(new Uint8Array(32));
         const bchSecretKey = Array.from(bchSecretKeyBytes).map(b => b.toString(16).padStart(2, '0')).join('');
         const bchPublicKey = xmrSdk.getPublicKey(bchSecretKeyBytes);
-
-        const xmrSpendKeyParams = xmrSdk.deriveSpendKeyParam(
-            params.xmr.viewKey,
-            params.xmr.spendKey
-        );
-
-        const viewTag = xmrSdk.generateViewTag(params.xmr.viewKey, bchPublicKey);
-        const timelock = Math.floor(Date.now() / 1000) + 7200; // 2 hours
-
-        setSwapStep('Connecting to Relayer...');
-        let relayerBchAddress = '';
-        try {
-            const healthRes = await axios.get(`${BCH_SOLANA_RELAYER_URL}/health`);
-            relayerBchAddress = healthRes.data.pubkeys?.bch || 'bchtest:qzufsn0wtcmc4lhc3s3trhl0nxn6dgkpmgvzngkxl7';
-        } catch {
-            relayerBchAddress = 'bchtest:qzufsn0wtcmc4lhc3s3trhl0nxn6dgkpmgvzngkxl7';
-        }
-
-        setSwapStep('Deploying Monero Adaptor Covenant...');
-
-        const { cashAddressToLockingBytecode } = await import('@bitauth/libauth');
-        const derivePkh = (address: string): Uint8Array => {
-            const result = cashAddressToLockingBytecode(address);
-            if (typeof result === 'string') throw new Error(`Invalid BCH address`);
-            return result.bytecode.slice(3, 23);
-        };
-
-        const userPkh = derivePkh(bchWallet.address);
-        const relayerPkh = derivePkh(relayerBchAddress);
-
-        // Compute the expected Y adaptor point
-        const yPointObj = xmrSdk.computeExpectedAdaptorPoint(
-            xmrSpendKeyParams,
-            bchPublicKey,
-            params.xmr.viewKey
-        );
-
-        // Need the Y coordinate for the x-only representation inside the contract
-        const yCoord = yPointObj.yCoord;
-
-        const contract = new XmrAdaptorSwapContract('chipnet');
-        await contract.initialize(
-            userPkh,
-            relayerPkh,
-            Buffer.from(bchPublicKey),
-            Buffer.from(yCoord),
-            BigInt(timelock)
-        );
-
-        const contractAddress = contract.getAddress();
-        console.log(`[BCH→XMR] Covenant Address: ${contractAddress}`);
-
-        setSwapStep(`Sending ${params.sellAmount} BCH to Covenant...`);
-        const amountSats = Math.floor(params.sellAmount * 1e8);
-        const wif = bchWallet.getWIF();
-        if (!wif) throw new Error('WIF not available');
-
-        const { TestNetWallet } = await import('mainnet-js');
-        const wallet = await TestNetWallet.fromWIF(wif);
-
-        const tx = await wallet.send([{
-            cashaddr: contractAddress,
-            value: amountSats,
-            unit: 'sat',
-        } as any]);
-
-        const fundTxId = tx.txId as string;
-        toast.success('BCH locked in Adaptor Covenant!', { description: `Tx: ${fundTxId.slice(0, 16)}...` });
-
-        setSwapStep('Notifying Relayer...');
-        try {
-            const response = await axios.post(`${BCH_SOLANA_RELAYER_URL}/swap/bch-to-xmr`, {
-                makerAddress: bchWallet.address,
-                recipientAddress: recipientXmrAddress,
-                sellAmount: amountSats.toString(),
-                buyAmount: Math.floor(params.buyAmount * 1e12).toString(), // XMR piconeros
-                bchPublicKey: Buffer.from(bchPublicKey).toString('hex'),
-                bchContractAddress: contractAddress,
-                viewTag: Buffer.from(viewTag).toString('hex'),
-            });
-
-            const intent = response.data.intent;
-            const order: BCHOrder = {
-                id: intent?.id || `bch_xmr_${Date.now()}`,
-                swapType: 'bch-to-xmr',
-                orderType: params.orderType,
-                sellToken: params.sellToken,
-                buyToken: params.buyToken,
-                sellAmount: params.sellAmount,
-                buyAmount: params.buyAmount,
-                status: 'pending',
-                contractAddress: contractAddress,
-                txid: fundTxId,
-                intentId: intent?.id,
-                explorerUrl: `https://chipnet.chaingraph.cash/tx/${fundTxId}`,
-                createdAt: Date.now(),
-                claimData: {
-                    bchContractAddress: contractAddress,
-                    direction: 'BCH_TO_XMR',
-                    xmrSpendKeyParam: Buffer.from(xmrSpendKeyParams).toString('hex'), // Store locally to decrypt XMR later
-                    secret: bchSecretKey // The BCH private key used for the public key
-                },
-            };
-
-            saveOrder(order);
-            setSwapStep('');
-            toast.success('XMR swap initiated!', { description: 'The relayer is processing your Monero.' });
-        } catch (e: any) {
-            throw new Error(`Relayer error: ${e.response?.data?.error || e.message}`);
-        }
-    };
+        // ... full implementation preserved in git history
+    ---- END ORIGINAL ---- */
 
     // =========================================================================
     // XMR → BCH: Request XMR Deposit Address
