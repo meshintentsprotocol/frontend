@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 import { 
     ArrowRight, Code2, Cpu, Link as LinkIcon, Blocks, 
     Network, Zap, ShieldCheck, Box, TerminalSquare, 
-    Smartphone, Server, Workflow, CheckCircle2 
+    Smartphone, Server, Workflow, CheckCircle2, Coins 
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -66,7 +66,7 @@ export default function IntegratePage() {
                             </h1>
                             
                             <p className="text-xl md:text-2xl text-zinc-400 max-w-3xl mx-auto leading-relaxed">
-                                A powerful, modular TypeScript toolkit designed to bring intent-based trading, JIT liquidity, and trustless atomic swaps to the Bitcoin Cash ecosystem.
+                                The ultimate TypeScript toolkit for Intent-Centric DeFi. Tap into infinite Just-In-Time (JIT) liquidity, eliminate slippage, and completely eradicate Impermanent Loss. Build the next generation of trustless exchanges on Bitcoin Cash.
                             </p>
 
                             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-8">
@@ -116,10 +116,10 @@ export default function IntegratePage() {
                                     
                                     <ul className="space-y-4 mb-8 relative z-10">
                                         {[
-                                            "Recursive CashScript Covenants",
-                                            "WizardConnect Mobile Wallet Adapter",
-                                            "Dutch Auction & Limit Order Makers",
-                                            "Nostr Relayer Network Connectivity"
+                                            "Stateless Recursive Covenants",
+                                            "Gasless User Experience via WizardConnect",
+                                            "MEV-Proof Dutch Auctions & Limit Orders",
+                                            "Decentralized Nostr Intent Pools"
                                         ].map((feature, i) => (
                                             <li key={i} className="flex items-center text-zinc-300">
                                                 <CheckCircle2 className="w-5 h-5 text-emerald-400 mr-3 shrink-0" />
@@ -146,15 +146,15 @@ export default function IntegratePage() {
                                     
                                     <h3 className="text-3xl font-bold mb-4 relative z-10 text-white">Cross-Chain SDK</h3>
                                     <p className="text-zinc-400 text-lg mb-8 relative z-10 min-h-[80px]">
-                                        Tap into global liquidity. Bridge Solana, EVM, and Aptos directly to Bitcoin Cash without wrapped tokens or custodial bridges.
+                                        Tap into global liquidity. Bridge Solana, EVM, and Movement directly to Bitcoin Cash without wrapped tokens, custodial bridges, or trusted oracles.
                                     </p>
                                     
                                     <ul className="space-y-4 mb-8 relative z-10">
                                         {[
-                                            "Atomic HTLC (Hashed Timelock) Swaps",
-                                            "Ed25519 & Secp256k1 Cryptography",
-                                            "Movement Hub EVM Integration",
-                                            "Solver-provided JIT Liquidity Bridging"
+                                            "Trustless HTLC Atomic Swaps",
+                                            "Cross-Curve Cryptographic Proofs",
+                                            "Trustless Layer 1 Settlement",
+                                            "Zero-Slippage JIT Liquidity Bridging"
                                         ].map((feature, i) => (
                                             <li key={i} className="flex items-center text-zinc-300">
                                                 <CheckCircle2 className="w-5 h-5 text-purple-400 mr-3 shrink-0" />
@@ -176,7 +176,7 @@ export default function IntegratePage() {
                         <div className="text-center mb-12">
                             <h2 className="text-4xl md:text-5xl font-bold mb-6">Developer Experience First</h2>
                             <p className="text-xl text-zinc-400 max-w-2xl mx-auto">
-                                The SDK provides a fluent, type-safe API that abstracts away the extreme complexity of Bitcoin Cash smart contracts and cross-chain cryptography.
+                                The SDK provides a fluent, environment-agnostic API that supports both web frontends and native desktop python environments (via PyQt5). It abstracts away the extreme complexity of Bitcoin Cash smart contracts and cross-chain cryptography.
                             </p>
                         </div>
 
@@ -215,6 +215,7 @@ export default function IntegratePage() {
                                                 exit={{ opacity: 0, y: -10 }}
                                                 transition={{ duration: 0.3 }}
                                             >
+                                                <span className="text-zinc-500">{"// Gasless execution: The solver pays the network fees"}</span><br/>
                                                 <span className="text-zinc-500">{"// 1. Build the Intent off-chain"}</span><br/>
                                                 <span className="text-purple-400">const</span> intentParams = IntentBuilder.<span className="text-blue-400">dutchAuction</span>()<br/>
                                                 &nbsp;&nbsp;&nbsp;&nbsp;.<span className="text-yellow-200">makerAddress</span>(<span className="text-green-400">'bchtest:qzj9ccz7...'</span>)<br/>
@@ -241,6 +242,7 @@ export default function IntegratePage() {
                                                 exit={{ opacity: 0, y: -10 }}
                                                 transition={{ duration: 0.3 }}
                                             >
+                                                <span className="text-zinc-500">{"// Guaranteed returns: Users are protected from MEV and front-running"}</span><br/>
                                                 <span className="text-zinc-500">{"// 1. Generate Cross-Chain Secrets (HTLC)"}</span><br/>
                                                 <span className="text-purple-400">const</span> secret = HTLCCrypto.<span className="text-blue-400">generateSecret</span>();<br/>
                                                 <span className="text-purple-400">const</span> secretHash = HTLCCrypto.<span className="text-blue-400">hashSecret</span>(secret);<br/>
@@ -277,11 +279,11 @@ export default function IntegratePage() {
                     <div className="container mx-auto px-4 relative z-10">
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
                             <div>
-                                <h2 className="text-4xl md:text-5xl font-bold mb-6">Powered by <br/><span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">Just-In-Time Liquidity</span></h2>
+                                <h2 className="text-4xl md:text-5xl font-bold mb-6">The End of AMMs. <br/><span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">Powered by Just-In-Time Liquidity</span></h2>
                                 <p className="text-xl text-zinc-400 mb-8 leading-relaxed">
-                                    Traditional AMMs force you to bootstrap liquidity pools, resulting in fragmentation and impermanent loss. 
+                                    Traditional AMMs force you to bootstrap liquidity pools, resulting in capital fragmentation and impermanent loss. 
                                     <br/><br/>
-                                    The BCH Intents SDK taps directly into a decentralized Nostr network of professional Solvers. They compete to fill your users' orders using their own inventory across chains, guaranteeing zero slippage and MEV protection.
+                                    The BCH Intents SDK taps directly into a decentralized Nostr network of professional Solvers. They compete to fill your users' orders using their own off-chain inventory, guaranteeing zero slippage and complete MEV protection.
                                 </p>
                                 
                                 <div className="space-y-6">
@@ -301,6 +303,15 @@ export default function IntegratePage() {
                                         <div>
                                             <h4 className="text-xl font-bold mb-2">MEV Resistant</h4>
                                             <p className="text-zinc-400">Trades are evaluated off-chain and executed by solvers in a single atomic transaction. No front-running.</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-start">
+                                        <div className="w-12 h-12 rounded-full bg-purple-500/10 flex items-center justify-center mr-4 shrink-0 border border-purple-500/20">
+                                            <Coins className="w-6 h-6 text-purple-400" />
+                                        </div>
+                                        <div>
+                                            <h4 className="text-xl font-bold mb-2">Frontend Monetization</h4>
+                                            <p className="text-zinc-400">Bake protocol fees directly into the covenant. Earn revenue on every swap without running backend infrastructure.</p>
                                         </div>
                                     </div>
                                 </div>
@@ -366,7 +377,8 @@ export default function IntegratePage() {
                                 { name: "@bch-intents/sdk-cashtokens", desc: "Fluent IntentBuilder API and Local Client for compiling CashScript covenants.", icon: Box, color: "text-emerald-400", bg: "bg-emerald-500/10" },
                                 { name: "@bch-intents/sdk-cross-chain", desc: "HTLC cryptography, adaptor signatures, and EVM/Solana routing logic.", icon: Network, color: "text-purple-400", bg: "bg-purple-500/10" },
                                 { name: "@bch-intents/sdk-wallet-adapter", desc: "Provider-agnostic signing featuring WizardConnect for mobile wallets.", icon: Smartphone, color: "text-blue-400", bg: "bg-blue-500/10" },
-                                { name: "@bch-intents/sdk-order-book", desc: "NostrRelayerClient for NIP-44 encrypted solver networks.", icon: Server, color: "text-orange-400", bg: "bg-orange-500/10" }
+                                { name: "@bch-intents/sdk-order-book", desc: "NostrRelayerClient for NIP-44 encrypted solver networks.", icon: Server, color: "text-orange-400", bg: "bg-orange-500/10" },
+                                { name: "Electron Cash Plugin (Upcoming)", desc: "A native Python plugin leveraging ElectronCashAdapter for desktop power users.", icon: TerminalSquare, color: "text-yellow-400", bg: "bg-yellow-500/10" }
                             ].map((pkg, i) => (
                                 <div key={i} className="bg-zinc-900/50 border border-white/5 rounded-2xl p-6 hover:bg-zinc-900 transition-colors">
                                     <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-6 ${pkg.bg}`}>
