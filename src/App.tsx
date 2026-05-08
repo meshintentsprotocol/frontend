@@ -16,6 +16,7 @@ import PortfolioPage from './pages/PortfolioPage';
 import ProPage from "./pages/ProPage"
 import { MonitorPage } from "./pages/MonitorPage"
 import { SolverPage } from "./pages/SolverPage"
+import { AnalyticsTracker } from "@/components/common/AnalyticsTracker"
 
 import TermsOfService from '@/pages/TermsOfService';
 import PrivacyPolicy from '@/pages/PrivacyPolicy';
@@ -38,6 +39,7 @@ function App() {
 
     return (
         <Router>
+            <AnalyticsTracker />
             <div className="flex min-h-screen flex-col bg-background font-sans antialiased">
                 <SolanaWalletProvider>
                     <SwapProvider>
