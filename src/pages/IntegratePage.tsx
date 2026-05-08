@@ -117,7 +117,7 @@ export default function IntegratePage() {
                                     <ul className="space-y-4 mb-8 relative z-10">
                                         {[
                                             "Stateless Recursive Covenants",
-                                            "Gasless User Experience via WizardConnect",
+                                            "User Experience via Electron Wallet & WizardConnect",
                                             "MEV-Proof Dutch Auctions & Limit Orders",
                                             "Decentralized Nostr Intent Pools"
                                         ].map((feature, i) => (
