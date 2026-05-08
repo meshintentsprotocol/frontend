@@ -22,13 +22,16 @@ export function AnimatedTradeButton({
     const [hovering, setHovering] = useState(false);
 
     return (
-        <Link
-            ref={btnRef}
-            to="/trade"
-            onClick={onClick}
+        <a
+            ref={btnRef as any}
+            href="#"
+            onClick={(e) => {
+                e.preventDefault();
+                if (onClick) onClick();
+            }}
             onMouseEnter={() => setHovering(true)}
             onMouseLeave={() => setHovering(false)}
-            className={cn("relative group block cursor-pointer select-none", className)}
+            className={cn("relative group block cursor-default select-none", className)}
         >
             {/* ── 1. Outer soft ambient glow ── */}
             <div
@@ -95,7 +98,7 @@ export function AnimatedTradeButton({
                             : "text-white/90"
                     )}
                 >
-                    {isLg ? "TRADE NOW" : "TRADE"}
+                    {isLg ? "COMING SOON" : "COMING SOON"}
                 </span>
 
                 {/* Right arrow that slides in on hover */}
@@ -119,6 +122,6 @@ export function AnimatedTradeButton({
                     <polyline points="12 5 19 12 12 19" />
                 </svg>
             </div>
-        </Link>
+        </a>
     );
 }

@@ -1,7 +1,7 @@
 import { Toaster } from "@/components/ui/sonner"
 import { useLanguage } from "@/context/language-provider"
 import { useWallet } from "@/context/wallet-provider"
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom"
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom"
 import { SwapProvider } from "./context/SwapContext"
 import { CrossChainProvider } from "./context/CrossChainContext"
 import { OraclePage } from "./pages/OraclePage"
@@ -47,106 +47,20 @@ function App() {
                                     <Routes>
                                         <Route path="/" element={<LandingPage />} />
                                         <Route path="/home" element={<LandingPage />} />
-                                        <Route path="/swap" element={
-                                            <div className="flex flex-col min-h-screen">
-                                                <Header />
-                                                <main className="flex-1 container mx-auto p-8 mt-20">
-                                                    <SwapPage />
-                                                </main>
-                                            </div>
-                                        } />
-                                        <Route path="/orders" element={
-                                            <div className="flex flex-col min-h-screen">
-                                                <Header />
-                                                <main className="flex-1 container mx-auto p-8 mt-20">
-                                                    <OrdersPage />
-                                                </main>
-                                            </div>
-                                        } />
-                                        <Route path="/explore" element={
-                                            <div className="flex flex-col min-h-screen">
-                                                <Header />
-                                                <main className="flex-1 w-full mt-20">
-                                                    <ExplorePage />
-                                                </main>
-                                            </div>
-                                        } />
+                                        <Route path="/swap" element={<Navigate to="/" replace />} />
+                                        <Route path="/orders" element={<Navigate to="/" replace />} />
+                                        <Route path="/explore" element={<Navigate to="/" replace />} />
                                         <Route path="/ecosystem" element={<EcosystemPage />} />
                                         <Route path="/integrate" element={<IntegratePage />} />
-                                        <Route path="/portfolio" element={
-                                            <div className="flex flex-col min-h-screen">
-                                                <Header />
-                                                <main className="flex-1 w-full mt-20">
-                                                    <PortfolioPage />
-                                                </main>
-                                            </div>
-                                        } />
-                                        <Route path="/resolver" element={
-                                            <div className="flex flex-col min-h-screen">
-                                                <Header />
-                                                <main className="flex-1 container mx-auto p-8 mt-20">
-                                                    <ResolverPage />
-                                                </main>
-                                            </div>
-                                        } />
-                                        <Route path="/monitor" element={
-                                            <div className="flex flex-col min-h-screen">
-                                                <Header />
-                                                <main className="flex-1 container mx-auto p-4 md:p-8 mt-20 max-w-[1400px]">
-                                                    <MonitorPage />
-                                                </main>
-                                            </div>
-                                        } />
-                                        {/* Solver page — hidden from menu */}
-                                        <Route path="/solver" element={
-                                            <div className="flex flex-col min-h-screen">
-                                                <Header />
-                                                <main className="flex-1 container mx-auto p-4 md:p-8 mt-20 max-w-[1400px]">
-                                                    <SolverPage />
-                                                </main>
-                                            </div>
-                                        } />
-                                        <Route path="/oracle" element={
-                                            <div className="flex flex-col min-h-screen">
-                                                <Header />
-                                                <main className="flex-1 container mx-auto p-8 mt-20">
-                                                    <OraclePage />
-                                                </main>
-                                            </div>
-                                        } />
-                                        <Route path="/crossswap" element={
-                                            <div className="flex flex-col min-h-screen">
-                                                <Header />
-                                                <main className="flex-1 container mx-auto p-8 mt-20">
-                                                    <CrossChainPage />
-                                                </main>
-                                            </div>
-                                        } />
-                                        <Route path="/crossorders" element={
-                                            <div className="flex flex-col min-h-screen">
-                                                <Header />
-                                                <main className="flex-1 container mx-auto p-8 mt-20">
-                                                    <CrossOrders />
-                                                </main>
-                                            </div>
-                                        } />
-                                        <Route path="/pro" element={
-                                            <div className="flex flex-col min-h-screen">
-                                                <Header />
-                                                <ProPage />
-                                            </div>
-                                        } />
-
-                                        <Route path="/trade" element={
-                                            <BCHSwapProvider>
-                                                <div className="flex flex-col min-h-screen">
-                                                    <Header />
-                                                    <main className="flex-1 container mx-auto p-8 mt-20">
-                                                        <BchSwapPage />
-                                                    </main>
-                                                </div>
-                                            </BCHSwapProvider>
-                                        } />
+                                        <Route path="/portfolio" element={<Navigate to="/" replace />} />
+                                        <Route path="/resolver" element={<Navigate to="/" replace />} />
+                                        <Route path="/monitor" element={<Navigate to="/" replace />} />
+                                        <Route path="/solver" element={<Navigate to="/" replace />} />
+                                        <Route path="/oracle" element={<Navigate to="/" replace />} />
+                                        <Route path="/crossswap" element={<Navigate to="/" replace />} />
+                                        <Route path="/crossorders" element={<Navigate to="/" replace />} />
+                                        <Route path="/pro" element={<Navigate to="/" replace />} />
+                                        <Route path="/trade" element={<Navigate to="/" replace />} />
 
                                         <Route path="/terms" element={<TermsOfService />} />
                                         <Route path="/privacy" element={<PrivacyPolicy />} />

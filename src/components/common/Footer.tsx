@@ -16,34 +16,28 @@ import { motion } from 'framer-motion';
 
 const footerLinks = {
     protocol: [
-        { label: 'Swap', href: '/trade' },
-        { label: 'Oracle', href: '/oracle' },
-        { label: 'Resolver', href: '/resolver' },
+        { label: 'Swap (Coming Soon)', href: '#' },
+        { label: 'Oracle (Coming Soon)', href: '#' },
+        { label: 'Explorer (Coming Soon)', href: '#' },
     ],
     resources: [
-        { label: 'Documentation', href: 'https://bch-intents-docs.vercel.app/', external: true },
+        { label: 'Documentation', href: 'https://docs.intentsprotocol.xyz/', external: true },
         { label: 'GitHub', href: 'https://github.com/Intents-Swaps', external: true },
-        { label: 'Knowledge Base', href: '/kb' },
-        { label: 'API Reference', href: '#' },
+        { label: 'API Reference', href: 'https://docs.intentsprotocol.xyz/', external: true },
     ],
-    company: [
-        { label: 'About', href: '#' },
-        { label: 'Blog', href: '#' },
-        { label: 'Privacy Policy', href: '/privacy' },
-        { label: 'Terms of Service', href: '/terms' },
-    ],
+
 };
 
 const socialLinks = [
     {
         icon: Twitter,
-        href: 'https://x.com/intents_swap',
+        href: 'https://x.com/bchintents',
         label: 'Twitter',
         color: 'hover:bg-blue-500/10 hover:text-blue-500'
     },
     {
         icon: BookOpen,
-        href: 'https://bch-intents-docs.vercel.app/',
+        href: 'https://docs.intentsprotocol.xyz/',
         label: 'Docs',
         color: 'hover:bg-green-500/10 hover:text-green-500'
     },
@@ -122,8 +116,8 @@ export function Footer() {
                             </Link>
 
                             <p className="text-muted-foreground max-w-sm leading-relaxed">
-                                The fastest intent-based swap protocol bridging Bitcoin Cash and Solana.
-                                Gasless, secure, and cross-chain ready.
+                                The permissionless intent protocol for Bitcoin Cash.
+                                Stateless covenants, native asset bridging, and atomic execution.
                             </p>
 
                             {/* Social Links */}
@@ -173,16 +167,7 @@ export function Footer() {
                             </ul>
                         </div>
 
-                        <div>
-                            <h4 className="font-bold mb-4 text-foreground">Company</h4>
-                            <ul className="space-y-3">
-                                {footerLinks.company.map((link) => (
-                                    <li key={link.label}>
-                                        <FooterLink {...link} />
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
+
                     </div>
                 </div>
 

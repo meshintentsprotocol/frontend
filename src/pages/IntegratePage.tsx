@@ -74,7 +74,7 @@ export default function IntegratePage() {
                                     Start Building
                                     <ArrowRight className="ml-2 w-5 h-5" />
                                 </Button>
-                                <Button size="lg" variant="outline" className="h-14 px-8 text-lg font-bold rounded-full border-white/20 bg-white/5 hover:bg-white/10 backdrop-blur-md w-full sm:w-auto text-white">
+                                <Button size="lg" variant="outline" className="h-14 px-8 text-lg font-bold rounded-full border-white/20 bg-white/5 hover:bg-white/10 backdrop-blur-md w-full sm:w-auto text-white" onClick={() => window.open('https://docs.intentsprotocol.xyz/', '_blank')}>
                                     Read Documentation
                                 </Button>
                             </div>
@@ -380,51 +380,6 @@ export default function IntegratePage() {
                     </div>
                 </section>
 
-                {/* 6. WHAT YOU CAN BUILD */}
-                <section className="relative py-24 bg-zinc-950 border-t border-white/5">
-                    <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-10 mix-blend-overlay"></div>
-                    
-                    <div className="container mx-auto px-4 relative z-10">
-                        <div className="text-center mb-16">
-                            <h2 className="text-3xl md:text-5xl font-bold mb-4">What You Can Build</h2>
-                            <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-                                The Intents SDK is the engine for next-generation Bitcoin Cash applications.
-                            </p>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <motion.div whileHover={{ y: -5 }} className="glass-subtle rounded-3xl p-8 group">
-                                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500/20 to-blue-700/20 border border-blue-500/30 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-                                    <TerminalSquare className="w-6 h-6 text-blue-400" />
-                                </div>
-                                <h3 className="text-2xl font-bold mb-4">Telegram Bots</h3>
-                                <p className="text-muted-foreground">
-                                    Build instant-execution trading bots right inside Telegram. Let users sign intents via WalletConnect without leaving the chat app.
-                                </p>
-                            </motion.div>
-
-                            <motion.div whileHover={{ y: -5 }} className="glass-subtle rounded-3xl p-8 group">
-                                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-orange-500/20 to-red-500/20 border border-orange-500/30 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-                                    <Workflow className="w-6 h-6 text-orange-400" />
-                                </div>
-                                <h3 className="text-2xl font-bold mb-4">DEX Aggregators</h3>
-                                <p className="text-muted-foreground">
-                                    Provide trustless EVM to BCH bridging directly in your decentralized exchange. Access our network of solvers to fill orders with zero slippage.
-                                </p>
-                            </motion.div>
-
-                            <motion.div whileHover={{ y: -5 }} className="glass-subtle rounded-3xl p-8 group">
-                                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-teal-700/20 border border-emerald-500/30 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
-                                    <Cpu className="w-6 h-6 text-emerald-400" />
-                                </div>
-                                <h3 className="text-2xl font-bold mb-4">Stablecoin Payments</h3>
-                                <p className="text-muted-foreground">
-                                    Integrate native BCH stablecoins (MUSD/PUSD) seamlessly into merchant applications using our CashToken intent escrows.
-                                </p>
-                            </motion.div>
-                        </div>
-                    </div>
-                </section>
 
                 {/* 7. CTA */}
                 <section className="relative py-32 bg-[#050505] overflow-hidden">
@@ -433,11 +388,11 @@ export default function IntegratePage() {
                     <div className="container mx-auto px-4 relative z-10 text-center">
                         <h2 className="text-5xl md:text-6xl font-black mb-8">Ready to Build?</h2>
                         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                            <Button size="lg" className="h-14 px-8 text-lg font-bold rounded-full bg-primary text-black hover:bg-primary/90 w-full sm:w-auto glow-primary">
+                            <Button size="lg" className="h-14 px-8 text-lg font-bold rounded-full bg-primary text-black hover:bg-primary/90 w-full sm:w-auto glow-primary" onClick={() => window.open('https://docs.intentsprotocol.xyz/', '_blank')}>
                                 Read the GitBook Docs
                                 <ArrowRight className="ml-2 w-5 h-5" />
                             </Button>
-                            <Button size="lg" variant="outline" className="h-14 px-8 text-lg font-bold rounded-full border-white/20 hover:bg-white/5 w-full sm:w-auto">
+                            <Button size="lg" variant="outline" className="h-14 px-8 text-lg font-bold rounded-full border-white/20 hover:bg-white/5 w-full sm:w-auto" onClick={() => window.open('https://github.com/Intents-Swaps', '_blank')}>
                                 View GitHub Repository
                             </Button>
                         </div>

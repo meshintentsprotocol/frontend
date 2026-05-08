@@ -67,7 +67,7 @@ export function DutchAuctionCard({ className }: DutchAuctionCardProps) {
             <div className="flex items-center justify-between mb-4">
                 <div>
                     <h3 className="text-xl md:text-2xl font-bold mb-1">Dutch Auction</h3>
-                    <p className="text-muted-foreground text-sm">Fair price, every time</p>
+                    <p className="text-muted-foreground text-sm">Solvers compete. You win.</p>
                 </div>
                 <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center">
                     <TrendingDown className="w-5 h-5 text-amber-500" />

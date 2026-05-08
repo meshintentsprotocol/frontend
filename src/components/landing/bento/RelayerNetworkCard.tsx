@@ -59,30 +59,29 @@ export function RelayerNetworkCard({ className }: RelayerNetworkCardProps) {
                     </div>
                     <span className="tag-teal">
                         <Sparkles className="w-3 h-3" />
-                        Relayer Network
+                        Solver Network
                     </span>
                 </div>
 
                 {/* Title */}
                 <h3 className="text-2xl md:text-3xl font-bold mb-2">
                     <span className="text-gradient-teal">
-                        Relayer Network.
+                        Solver Network
                     </span>
                 </h3>
 
                 {/* Description */}
                 <p className="text-muted-foreground mb-6 leading-relaxed">
-                    Join our network of resolvers — compete to fill cross-chain intents across BCH,
-                    Solana, and Movement using just-in-time liquidity.
+                    Run a Solver bot and earn spread profit by filling Dutch Auctions. Source liquidity from your own wallet, Cauldron DEX, or cross-chain. No bonding. No staking. Permissionless.
                 </p>
 
                 {/* CTA Button */}
-                <Link to="/resolver" className="mt-auto">
+                <Link to="/solver" className="mt-auto">
                     <Button
                         variant="outline"
                         className="rounded-full gap-2 group border-teal-500/30 hover:border-teal-500/50 hover:bg-teal-500/5"
                     >
-                        Start building
+                        Become a Solver
                         <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                     </Button>
                 </Link>

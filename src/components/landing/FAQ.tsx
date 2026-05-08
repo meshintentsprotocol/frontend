@@ -18,15 +18,15 @@ import { Plus, Minus, ChevronDown, ChevronUp } from 'lucide-react';
 const FAQ_DATA = [
     {
         question: "What is BCH Intents?",
-        answer: "BCH Intents is a cross-chain swap protocol that connects Bitcoin Cash (BCH) with Solana and Movement — without bridges or wrapped tokens. Instead of routing through a DEX, you express what you want to trade and professional resolvers compete to fill your order at the best price, using just-in-time liquidity from their own wallets."
+        answer: "BCH Intents is a cross-chain swap protocol that connects Bitcoin Cash (BCH) with Solana, EVM chains, and Movement — without bridges or wrapped tokens. Instead of routing through a DEX, you express what you want to trade and professional Solvers compete to fill your order at the best price, using just-in-time liquidity from their own wallets."
     },
     {
         question: "Do I need gas to place or cancel a swap?",
-        answer: "No — placing an intent is gasless. You sign a message with your wallet, which is free. The resolver who fills your order pays the on-chain gas on your behalf. The only exception: if you have a BCH-side limit order already broadcast on-chain as a UTXO, cancelling it requires a small on-chain spend back to your own wallet."
+        answer: "No — placing an intent is gasless. You sign a message with your wallet, which is free. The Solver who fills your order pays the on-chain gas on your behalf. The only exception: if you have a BCH-side limit order already broadcast on-chain as a UTXO, cancelling it requires a small on-chain spend back to your own wallet."
     },
     {
         question: "How does the Dutch Auction guarantee me a fair price?",
-        answer: "When you submit a swap, a Dutch Auction starts: the price begins slightly above market and decays linearly over time. Resolvers race to fill your order — if they wait too long a competitor takes it, so they're incentivised to fill as quickly as possible. That competition means you receive at or near the real market price, with no MEV and essentially zero slippage."
+        answer: "When you submit a swap, a Dutch Auction starts: the price begins slightly above market and decays linearly over time. Solvers race to fill your order — if they wait too long a competitor takes it, so they're incentivised to fill as quickly as possible. That competition means you receive at or near the real market price, with no MEV and essentially zero slippage."
     },
     {
         question: "Is this a bridge? Are my tokens wrapped?",
@@ -34,23 +34,23 @@ const FAQ_DATA = [
     },
     {
         question: "Which chains are currently supported?",
-        answer: "BCH Intents supports Bitcoin Cash (BCH), Solana, and Movement (Move VM). BCH and Solana are target chains settled via HTLC. We are live on testnet and expanding to mainnet."
+        answer: "The Intents SDK supports 8+ chains including Bitcoin Cash (BCH), Solana, Ethereum, Monero, and Movement (Move VM). The protocol is blockchain-agnostic, enabling integration with any chain that supports basic hash time-locks or signature verification."
     },
     {
         question: "How do cross-chain swaps actually work?",
-        answer: "When you swap BCH → SOL: (1) your BCH is locked in a CashScript HTLC contract using a secret hash. (2) A resolver locks the equivalent SOL for you on Solana using the same hash. (3) You reveal your secret to claim the SOL. (4) The resolver uses that revealed secret to claim the BCH. Every step is verified on-chain — neither side can cheat."
+        answer: "When you swap BCH → SOL: (1) your BCH is locked in a CashScript HTLC contract using a secret hash. (2) A Solver locks the equivalent SOL for you on Solana using the same hash. (3) You reveal your secret to claim the SOL. (4) The Solver uses that revealed secret to claim the BCH. Every step is verified on-chain — neither side can cheat."
     },
     {
-        question: "What is a Resolver?",
-        answer: "Resolvers (also called solvers) are professional market makers who run software to watch the intent orderbook and fill swaps. They source liquidity from their own wallets or DEXs like Cauldron on BCH. They take on price risk in exchange for the spread, which means you get execution without waiting for a counterparty and without fragmented liquidity pools."
+        question: "What is a Solver?",
+        answer: "Solvers are professional market makers who run software to watch the decentralized Nostr intent pool and fill swaps. They source just-in-time liquidity from their own wallets or external DEXs. They take on price risk in exchange for the spread, meaning you get instant execution without waiting for a counterparty and without fragmented liquidity pools."
     },
     {
         question: "What happens if a swap doesn't complete?",
-        answer: "Nothing is lost. HTLCs include a time-lock: if the resolver fails to complete the swap within the agreed window, both sides automatically expire and you can reclaim your funds. The protocol is atomic — it either fully settles across all chains involved, or fully refunds. There is no partial state where one side is stuck."
+        answer: "Nothing is lost. HTLCs include a time-lock: if the Solver fails to complete the swap within the agreed window, both sides automatically expire and you can reclaim your funds. The protocol is atomic — it either fully settles across all chains involved, or fully refunds. There is no partial state where one side is stuck."
     },
     {
-        question: "How do I become a Resolver?",
-        answer: "Resolvers join a reputation-based registry. If you are a market maker, trading firm, or developer interested in running a resolver node and earning fees by filling cross-chain intents, reach out to the BCH Intents team or check the developer documentation."
+        question: "How do I become a Solver?",
+        answer: "The Solver network is completely permissionless—no staking or bonding required. If you are a market maker, trading firm, or developer interested in running a Solver node to earn covenant-enforced fees by filling intents, you can integrate the SDK today. Check our GitHub and Developer Documentation to start building."
     }
 ];
 

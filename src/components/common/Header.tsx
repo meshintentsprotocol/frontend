@@ -146,7 +146,7 @@ export function Header() {
                                         </DropdownMenuItem>
                                     ))}
                                     <DropdownMenuItem asChild className="focus:bg-white/5 focus:text-primary cursor-pointer">
-                                        <a href="https://bch-intents-docs.vercel.app/" target="_blank" rel="noopener noreferrer" className="w-full">Docs</a>
+                                        <a href="https://docs.intentsprotocol.xyz/" target="_blank" rel="noopener noreferrer" className="w-full">Docs</a>
                                     </DropdownMenuItem>
                                 </DropdownMenuContent>
                             </DropdownMenu>
@@ -179,7 +179,7 @@ export function Header() {
                                 )
                             ))}
                             <a
-                                href="https://bch-intents-docs.vercel.app/"
+                                href="https://docs.intentsprotocol.xyz/"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="text-[15px] font-semibold text-zinc-300 transition-all duration-300 hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)] relative group py-2"
@@ -211,10 +211,10 @@ export function Header() {
                 {/* Right Section: Social Icons for Landing OR Actions for App */}
                 {isLandingPage ? (
                     <div className="hidden md:flex items-center gap-3 shrink-0">
-                        <a href="https://x.com/intents_swap" target="_blank" rel="noopener noreferrer" className="glass-subtle w-10 h-10 flex items-center justify-center rounded-2xl text-zinc-400 hover:text-emerald-400 border border-white/5 hover:border-emerald-500/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] transition-all duration-300 group hover:-translate-y-1">
+                        <a href="https://x.com/bchintents" target="_blank" rel="noopener noreferrer" className="glass-subtle w-10 h-10 flex items-center justify-center rounded-2xl text-zinc-400 hover:text-emerald-400 border border-white/5 hover:border-emerald-500/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] transition-all duration-300 group hover:-translate-y-1">
                             <XIcon />
                         </a>
-                        <a href="https://bch-intents-docs.vercel.app/" target="_blank" rel="noopener noreferrer" className="glass-subtle w-10 h-10 flex items-center justify-center rounded-2xl text-zinc-400 hover:text-emerald-400 border border-white/5 hover:border-emerald-500/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] transition-all duration-300 group hover:-translate-y-1">
+                        <a href="https://docs.intentsprotocol.xyz/" target="_blank" rel="noopener noreferrer" className="glass-subtle w-10 h-10 flex items-center justify-center rounded-2xl text-zinc-400 hover:text-emerald-400 border border-white/5 hover:border-emerald-500/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] transition-all duration-300 group hover:-translate-y-1">
                             <BookOpen className="w-4 h-4" />
                         </a>
                         <a href="https://medium.com/@bchintents" target="_blank" rel="noopener noreferrer" className="glass-subtle w-10 h-10 flex items-center justify-center rounded-2xl text-zinc-400 hover:text-emerald-400 border border-white/5 hover:border-emerald-500/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] transition-all duration-300 group hover:-translate-y-1">
@@ -305,7 +305,7 @@ export function Header() {
                                             )
                                         ))}
                                         <a
-                                            href="https://bch-intents-docs.vercel.app/"
+                                            href="https://docs.intentsprotocol.xyz/"
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             onClick={() => setIsOpen(false)}
@@ -352,7 +352,7 @@ export function Header() {
                                             )
                                         ))}
                                         <a
-                                            href="https://bch-intents-docs.vercel.app/"
+                                            href="https://docs.intentsprotocol.xyz/"
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             onClick={() => setIsOpen(false)}
@@ -405,10 +405,10 @@ export function Header() {
 
                             {isLandingPage && (
                                 <div className="pt-8 border-t border-white/10 flex gap-4 justify-center">
-                                    <a href="https://x.com/intents_swap" target="_blank" rel="noopener noreferrer" className="glass-subtle w-12 h-12 flex items-center justify-center rounded-2xl text-zinc-400 hover:text-emerald-400 border border-white/5 hover:border-emerald-500/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] transition-all duration-300 group hover:-translate-y-1">
+                                    <a href="https://x.com/bchintents" target="_blank" rel="noopener noreferrer" className="glass-subtle w-12 h-12 flex items-center justify-center rounded-2xl text-zinc-400 hover:text-emerald-400 border border-white/5 hover:border-emerald-500/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] transition-all duration-300 group hover:-translate-y-1">
                                         <XIcon />
                                     </a>
-                                    <a href="https://bch-intents-docs.vercel.app/" target="_blank" rel="noopener noreferrer" className="glass-subtle w-12 h-12 flex items-center justify-center rounded-2xl text-zinc-400 hover:text-emerald-400 border border-white/5 hover:border-emerald-500/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] transition-all duration-300 group hover:-translate-y-1">
+                                    <a href="https://docs.intentsprotocol.xyz/" target="_blank" rel="noopener noreferrer" className="glass-subtle w-12 h-12 flex items-center justify-center rounded-2xl text-zinc-400 hover:text-emerald-400 border border-white/5 hover:border-emerald-500/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] transition-all duration-300 group hover:-translate-y-1">
                                         <BookOpen className="w-5 h-5" />
                                     </a>
                                     <a href="https://medium.com/@bchintents" target="_blank" rel="noopener noreferrer" className="glass-subtle w-12 h-12 flex items-center justify-center rounded-2xl text-zinc-400 hover:text-emerald-400 border border-white/5 hover:border-emerald-500/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] transition-all duration-300 group hover:-translate-y-1">

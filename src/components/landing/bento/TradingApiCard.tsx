@@ -40,18 +40,18 @@ export function TradingApiCard({ className }: TradingApiCardProps) {
             {/* Title */}
             <h3 className="text-2xl md:text-3xl font-bold mb-2">
                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-500 to-primary">
-                    The Ultimate Intent API
+                    Build with the SDK
                 </span>
             </h3>
 
             {/* Description */}
             <p className="text-muted-foreground mb-4 leading-relaxed">
-                Enable lightning-fast, zero-slippage swaps for your users. Integrate our unified API to route BCH, Solana, and Movement liquidity instantly.
+                Integrate intent-based swaps into your wallet or DEX with 3 lines of code. Covenant-enforced fees guarantee you revenue on every fill.
             </p>
 
             {/* CTA Button */}
             <a
-                href="https://bch-intents-docs.vercel.app/"
+                href="https://docs.intentsprotocol.xyz/"
                 target="_blank"
                 rel="noopener noreferrer"
             >
@@ -59,7 +59,7 @@ export function TradingApiCard({ className }: TradingApiCardProps) {
                     variant="outline"
                     className="rounded-full gap-2 group border-emerald-500/30 hover:border-emerald-500/50 hover:bg-emerald-500/5"
                 >
-                    Integrate the API
+                    Integrate the SDK
                     <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                 </Button>
             </a>
@@ -80,37 +80,64 @@ export function TradingApiCard({ className }: TradingApiCardProps) {
                             <div className="w-3 h-3 rounded-full bg-red-500/80" />
                             <div className="w-3 h-3 rounded-full bg-yellow-500/80" />
                             <div className="w-3 h-3 rounded-full bg-green-500/80" />
-                            <span className="ml-2 text-zinc-500">intent-swap-v4-sdk</span>
+                            <span className="ml-2 text-zinc-500">intent-builder.ts</span>
                         </div>
 
                         <pre className="text-zinc-400 overflow-x-auto">
                             <code>
                                 <span className="text-cyan-400">import</span>{' '}
-                                <span className="text-zinc-200">{'{ IntentSwap }'}</span>{' '}
+                                <span className="text-zinc-200">{'{ IntentBuilder }'}</span>{' '}
                                 <span className="text-cyan-400">from</span>{' '}
-                                <span className="text-green-400">'@intent/sdk'</span>;{'\n\n'}
+                                <span className="text-green-400">'@bch-intents/sdk-cashtokens'</span>;{'\n\n'}
                                 <span className="text-cyan-400">const</span>{' '}
-                                <span className="text-zinc-200">quote</span>{' '}
+                                <span className="text-zinc-200">params</span>{' '}
                                 <span className="text-zinc-500">=</span>{' '}
-                                <span className="text-cyan-400">await</span>{' '}
-                                <span className="text-teal-400">intent</span>
+                                <span className="text-zinc-200">IntentBuilder</span>
                                 <span className="text-zinc-500">.</span>
-                                <span className="text-yellow-400">getQuote</span>
+                                <span className="text-yellow-400">dutchAuction</span>
+                                <span className="text-zinc-500">()</span>{'\n'}
+                                {'    '}
+                                <span className="text-zinc-500">.</span>
+                                <span className="text-yellow-400">sellToken</span>
                                 <span className="text-zinc-500">(</span>
-                                <span className="text-zinc-500">{'{'}</span>{'\n'}
-                                {'  '}<span className="text-zinc-200">sellToken</span>
-                                <span className="text-zinc-500">:</span>{' '}
-                                <span className="text-green-400">"MOVE"</span>
-                                <span className="text-zinc-500">,</span>{'\n'}
-                                {'  '}<span className="text-zinc-200">buyToken</span>
-                                <span className="text-zinc-500">:</span>{' '}
-                                <span className="text-green-400">"USDC"</span>
-                                <span className="text-zinc-500">,</span>{'\n'}
-                                {'  '}<span className="text-zinc-200">amount</span>
-                                <span className="text-zinc-500">:</span>{' '}
-                                <span className="text-emerald-400">"1000"</span>{'\n'}
-                                <span className="text-zinc-500">{'}'}</span>
-                                <span className="text-zinc-500">)</span>;
+                                <span className="text-green-400">'BCH'</span>
+                                <span className="text-zinc-500">)</span>{'\n'}
+                                {'    '}
+                                <span className="text-zinc-500">.</span>
+                                <span className="text-yellow-400">buyToken</span>
+                                <span className="text-zinc-500">(</span>
+                                <span className="text-zinc-200">tokenCategory</span>
+                                <span className="text-zinc-500">)</span>{'\n'}
+                                {'    '}
+                                <span className="text-zinc-500">.</span>
+                                <span className="text-yellow-400">sellAmount</span>
+                                <span className="text-zinc-500">(</span>
+                                <span className="text-emerald-400">10000n</span>
+                                <span className="text-zinc-500">)</span>{'\n'}
+                                {'    '}
+                                <span className="text-zinc-500">.</span>
+                                <span className="text-yellow-400">startBuyAmount</span>
+                                <span className="text-zinc-500">(</span>
+                                <span className="text-emerald-400">500n</span>
+                                <span className="text-zinc-500">)</span>{'\n'}
+                                {'    '}
+                                <span className="text-zinc-500">.</span>
+                                <span className="text-yellow-400">endBuyAmount</span>
+                                <span className="text-zinc-500">(</span>
+                                <span className="text-emerald-400">400n</span>
+                                <span className="text-zinc-500">)</span>{'\n'}
+                                {'    '}
+                                <span className="text-zinc-500">.</span>
+                                <span className="text-yellow-400">withFrontendFee</span>
+                                <span className="text-zinc-500">(</span>
+                                <span className="text-emerald-400">0.005</span>
+                                <span className="text-zinc-500">,</span>{' '}
+                                <span className="text-zinc-200">feeAddress</span>
+                                <span className="text-zinc-500">)</span>{'\n'}
+                                {'    '}
+                                <span className="text-zinc-500">.</span>
+                                <span className="text-yellow-400">build</span>
+                                <span className="text-zinc-500">()</span>;
                             </code>
                         </pre>
                     </div>

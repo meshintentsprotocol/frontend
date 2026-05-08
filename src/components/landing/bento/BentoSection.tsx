@@ -42,11 +42,12 @@ export function BentoSection({ className }: BentoSectionProps) {
                     className="text-center mb-16"
                 >
                     <h2 className="text-4xl md:text-5xl font-bold tracking-tight mb-4">
-                        Built for all the ways you{' '}
-                        <span className="text-gradient-primary">swap</span>
+                        The{' '}
+                        <span className="text-gradient-primary">Intent-Based</span>{' '}
+                        Architecture
                     </h2>
                     <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-                        The most powerful trading infrastructure across chains
+                        Stateless covenants. Solver competition. Atomic settlement.
                     </p>
                 </motion.div>
 

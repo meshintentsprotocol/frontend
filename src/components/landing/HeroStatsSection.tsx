@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
-import { ArrowRight, Activity, Zap, Layers, BarChart3 } from 'lucide-react';
+import { ArrowRight, Activity, Layers, ShieldCheck, Code2, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { AnimatedTradeButton } from '@/components/ui/animated-trade-button';
@@ -8,32 +8,32 @@ import { AnimatedTradeButton } from '@/components/ui/animated-trade-button';
 // Stats Data
 const STATS = [
     {
-        label: "24h Volume",
-        value: "$6.6B",
-        change: "+12.5%",
+        label: "Chains Live",
+        value: "8+",
+        sub: "BCH SOL ETH XMR more..",
         color: "text-emerald-400",
-        icon: <BarChart3 className="w-4 h-4 text-emerald-400" />
+        icon: <Layers className="w-4 h-4 text-emerald-400" />
     },
     {
-        label: "Active Resolvers",
-        value: "42",
-        sub: "Live Now",
+        label: "Discovery",
+        value: "P2P",
+        sub: "Nostr Intent Pool",
         color: "text-emerald-300",
         icon: <Activity className="w-4 h-4 text-emerald-300" />
     },
     {
-        label: "Avg Fill Time",
-        value: "~230ms",
-        sub: "Lightning Fast",
-        color: "text-amber-400",
-        icon: <Zap className="w-4 h-4 text-amber-400" />
+        label: "Settlement",
+        value: "Atomic",
+        sub: "All-or-Nothing",
+        color: "text-cyan-400",
+        icon: <ShieldCheck className="w-4 h-4 text-cyan-400" />
     },
     {
-        label: "Total Value Locked",
-        value: "$2.5B",
-        sub: "Across 3 Chains",
+        label: "SDK Packages",
+        value: "6",
+        sub: "Published on NPM",
         color: "text-teal-400",
-        icon: <Layers className="w-4 h-4 text-teal-400" />
+        icon: <Code2 className="w-4 h-4 text-teal-400" />
     }
 ];
 
@@ -80,17 +80,16 @@ export function HeroStatsSection() {
 
                         {/* Taglines */}
                         <p className="text-xl font-medium text-muted-foreground/80 max-w-lg">
-                            No bridges. No wrapping. No hassle. <br />
-                            <span className="text-white">Built for all the ways you swap.</span>
+                            Sign your intent. Solvers compete. You get the best price. <br />
                         </p>
 
                         {/* Description Paragraphs */}
                         <div className="space-y-6 max-w-xl text-lg text-muted-foreground leading-relaxed border-l-2 border-white/10 pl-6">
                             <p>
-                                <strong className="text-white">BCH Intents</strong> delivers every piece of the onchain economy in one platform.
+                                <strong className="text-white">BCH Intents</strong> is a permissionless swap protocol powered by CashScript covenants and a competitive network of professional Solvers.
                             </p>
                             <p>
-                                Get no-fees trading, proven security, and deep liquidity, all backed by a competitive network of professional resolvers.
+                                Express what you want to trade — across BCH, Solana, Movement, and more — and let Dutch Auction price discovery guarantee you the best execution.
                             </p>
                         </div>
 
@@ -167,9 +166,6 @@ export function HeroStatsSection() {
                                         </div>
                                         {stat.sub && (
                                             <span className="text-[10px] font-mono text-white/40 uppercase tracking-[0.2em] font-semibold">{stat.sub}</span>
-                                        )}
-                                        {stat.change && (
-                                            <span className="text-xs font-bold text-green-400 bg-green-400/10 px-2 py-1 rounded-full">{stat.change}</span>
                                         )}
                                     </div>
 

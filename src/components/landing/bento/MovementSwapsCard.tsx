@@ -18,16 +18,22 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 // Tokens for the swap animation — CashToken + Cross-Chain swaps
 const SWAP_PAIRS = [
+    // CashToken: BCH → PUSD (primary showcase)
+    {
+        from: { icon: 'https://bitcoincash.org/img/green/bitcoin-cash-circle.svg', ticker: 'BCH' },
+        to: { icon: '/logos/paryonlog.svg', ticker: 'PUSD' },
+        type: 'CashToken',
+    },
+    // CashToken: PUSD → BCH (reverse)
+    {
+        from: { icon: '/logos/paryonlog.svg', ticker: 'PUSD' },
+        to: { icon: 'https://bitcoincash.org/img/green/bitcoin-cash-circle.svg', ticker: 'BCH' },
+        type: 'CashToken',
+    },
     // Cross-chain: SOL → BCH
     {
         from: { icon: '/assets/solanaLogo.png', ticker: 'SOL' },
         to: { icon: 'https://bitcoincash.org/img/green/bitcoin-cash-circle.svg', ticker: 'BCH' },
-        type: 'Cross-Chain',
-    },
-    // Cross-chain: MOVE → MUSD
-    {
-        from: { icon: 'https://raw.githubusercontent.com/kitelabs-io/mvmt-tokens/main/logos/MOVE.png', ticker: 'MOVE' },
-        to: { icon: 'https://electroncash.org/images/logosForEcosystem/square/moria.png', ticker: 'MUSD' },
         type: 'Cross-Chain',
     },
     // Cross-chain: USDC → BCH
@@ -36,22 +42,16 @@ const SWAP_PAIRS = [
         to: { icon: 'https://bitcoincash.org/img/green/bitcoin-cash-circle.svg', ticker: 'BCH' },
         type: 'Cross-Chain',
     },
-    // CashToken: MUSD → BCH (same-chain)
-    {
-        from: { icon: 'https://electroncash.org/images/logosForEcosystem/square/moria.png', ticker: 'MUSD' },
-        to: { icon: 'https://bitcoincash.org/img/green/bitcoin-cash-circle.svg', ticker: 'BCH' },
-        type: 'CashToken',
-    },
     // CashToken: BCH → MUSD (same-chain)
     {
         from: { icon: 'https://bitcoincash.org/img/green/bitcoin-cash-circle.svg', ticker: 'BCH' },
         to: { icon: 'https://electroncash.org/images/logosForEcosystem/square/moria.png', ticker: 'MUSD' },
         type: 'CashToken',
     },
-    // Cross-chain: SOL → MUSD
+    // Cross-chain: SOL → PUSD
     {
         from: { icon: '/assets/solanaLogo.png', ticker: 'SOL' },
-        to: { icon: 'https://electroncash.org/images/logosForEcosystem/square/moria.png', ticker: 'MUSD' },
+        to: { icon: '/logos/paryonlog.svg', ticker: 'PUSD' },
         type: 'Cross-Chain',
     },
 ];
