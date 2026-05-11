@@ -1,9 +1,11 @@
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { ArrowRight, Activity, Layers, ShieldCheck, Code2, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { AnimatedTradeButton } from '@/components/ui/animated-trade-button';
+import { WaitlistModal } from '@/components/landing/WaitlistModal';
 
 // Stats Data
 const STATS = [
@@ -38,6 +40,30 @@ const STATS = [
 ];
 
 export function HeroStatsSection() {
+    const [waitlistOpen, setWaitlistOpen] = useState(false);
+    const [initialSuccess, setInitialSuccess] = useState<{ message: string } | null>(null);
+    const [searchParams, setSearchParams] = useSearchParams();
+
+    // Detect X OAuth callback in URL
+    useEffect(() => {
+        const waitlistStatus = searchParams.get('waitlist');
+        const handle = searchParams.get('handle');
+
+        if (waitlistStatus === 'success' && handle) {
+            setInitialSuccess({ message: handle });
+            setWaitlistOpen(true);
+            // Clean the URL
+            searchParams.delete('waitlist');
+            searchParams.delete('handle');
+            setSearchParams(searchParams, { replace: true });
+        } else if (waitlistStatus === 'error') {
+            setWaitlistOpen(true);
+            searchParams.delete('waitlist');
+            searchParams.delete('msg');
+            setSearchParams(searchParams, { replace: true });
+        }
+    }, []);
+
     return (
         <section className="relative min-h-[90vh] flex items-center pt-28 pb-20 overflow-hidden">
             {/* Background Effects */}
@@ -95,7 +121,7 @@ export function HeroStatsSection() {
 
                         {/* CTA */}
                         <div className="pt-4 flex flex-col sm:flex-row items-center gap-4">
-                            <AnimatedTradeButton size="lg" className="w-full sm:w-auto" />
+                            <AnimatedTradeButton size="lg" className="w-full sm:w-auto" onClick={() => setWaitlistOpen(true)} />
 
                             <Button asChild size="lg" variant="outline" className="w-full sm:w-auto rounded-xl h-14 px-8 text-lg font-bold border-white/20 hover:bg-white/10 transition-all text-white backdrop-blur-sm shadow-[0_0_20px_-5px_rgba(255,255,255,0.1)]">
                                 <Link to="/ecosystem">
@@ -103,9 +129,9 @@ export function HeroStatsSection() {
                                 </Link>
                             </Button>
 
-                            <Button asChild size="lg" className="w-full sm:w-auto rounded-xl h-14 px-8 text-lg font-bold bg-white text-black hover:bg-white/90 transition-all shadow-[0_0_20px_-5px_rgba(255,255,255,0.3)]">
+                            <Button asChild size="lg" className="group/build w-full sm:w-auto rounded-xl h-14 px-8 text-lg font-bold bg-gradient-to-r from-emerald-500 to-emerald-600 text-white hover:from-emerald-400 hover:to-emerald-500 transition-all duration-500 animate-[buildPulse_3.5s_ease-in-out_infinite] border border-emerald-400/30">
                                 <Link to="/integrate">
-                                    Build <Zap className="ml-2 w-5 h-5 opacity-70 text-black" />
+                                    Build <Zap className="ml-2 w-5 h-5 text-white drop-shadow-[0_0_6px_rgba(255,255,255,0.7)] animate-[breatheGlow_3s_ease-in-out_infinite]" />
                                 </Link>
                             </Button>
                         </div>
@@ -177,6 +203,16 @@ export function HeroStatsSection() {
                     </motion.div>
                 </div>
             </div>
+
+            {/* Waitlist Modal */}
+            <WaitlistModal
+                isOpen={waitlistOpen}
+                onClose={() => {
+                    setWaitlistOpen(false);
+                    setInitialSuccess(null);
+                }}
+                initialSuccess={initialSuccess}
+            />
         </section>
     );
 }

@@ -75,8 +75,8 @@ export function AnimatedTradeButton({
                     className={cn(
                         "relative z-10 transition-all duration-300",
                         hovering
-                            ? "text-emerald-400 drop-shadow-[0_0_8px_rgba(16,185,129,0.6)]"
-                            : "text-emerald-500"
+                            ? "text-emerald-300 drop-shadow-[0_0_12px_rgba(16,185,129,1)] drop-shadow-[0_0_24px_rgba(16,185,129,0.7)]"
+                            : "text-emerald-400 drop-shadow-[0_0_8px_rgba(16,185,129,0.9)]"
                     )}
                 >
                     <path
@@ -98,7 +98,7 @@ export function AnimatedTradeButton({
                             : "text-white/90"
                     )}
                 >
-                    {isLg ? "COMING SOON" : "COMING SOON"}
+                    {isLg ? "JOIN WAITLIST" : "JOIN WAITLIST"}
                 </span>
 
                 {/* Right arrow that slides in on hover */}
