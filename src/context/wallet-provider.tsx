@@ -39,7 +39,12 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
                 if (savedWalletName && detectedWallet.name === savedWalletName) {
                     console.log('Restoring saved wallet session:', savedWalletName);
 
-                    // We previously avoided this for Nightly, but user requested persistence
+                    // Skip auto-connect for Nightly as it causes unwanted popups on load
+                    if (detectedWallet.name === 'Nightly') {
+                        console.log('Skipping auto-connect for Nightly to prevent popups on load');
+                        return;
+                    }
+
                     try {
                         setConnecting(true);
                         const response = await connectWallet(detectedWallet);
