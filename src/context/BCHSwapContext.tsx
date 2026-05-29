@@ -1,14 +1,26 @@
-import { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, useRef, ReactNode } from 'react';
 import { notifyToast as toast } from '@/lib/notify-toast';
 import { useBCHWallet } from './BCHWalletProvider';
-import { useWallet as useSolanaWallet, useConnection } from '@solana/wallet-adapter-react';
-import { PublicKey, SystemProgram } from '@solana/web3.js';
+import { useWDK } from '@/context/WDKProvider';
+import { useConnection } from '@solana/wallet-adapter-react';
+import { Keypair, PublicKey, SystemProgram, Transaction } from '@solana/web3.js';
 import { BCHSwapParams, BCHSwapType, BCHOrder } from '@/types';
-import { BCH_SOLANA_RELAYER_URL, CASHTOKEN_RELAYER_URL } from '@/lib/config';
+import { BCH_SOLANA_RELAYER_URL, CASHTOKEN_RELAYER_URL, CASHTOKEN_RELAYER_MAINNET_URL, SOL_BCH_ZK_SERVER_URL, SOL_BCH_ZK_SERVER_MAINNET_URL } from '@/lib/config';
 import axios from 'axios';
 import * as anchor from '@coral-xyz/anchor';
 import { getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, getAccount } from '@solana/spl-token';
 import idl from '@/lib/intent_swap_idl.json';
+import {
+    getStarkCovenantAddress,
+    createEVMToBCHIntent,
+    createBCHToEVMIntent,
+    getOrder as getETHOrder,
+    getSolverInfo,
+    toWei,
+    getRefundBCH,
+    postRefundBCH,
+} from '@/lib/bscBchApi';
+import { createStarkEscrow, getEvmConfig } from '@/lib/intentHTLC';
 
 // Lazy-loaded imports for CashScript (large bundle)
 let cashscriptModule: any = null;
@@ -22,8 +34,8 @@ const getCashScript = async () => {
 // ============================================================================
 // Constants
 // ============================================================================
-const BCH_ORDERS_KEY = 'bch_orders';
-const SOLANA_PROGRAM_ID = '5JAWumq5L4B8WrpF3CFox36SZ2bJF4xQvskLksmHRgs2';
+const getOrdersKey = (network: string) => `bch_orders_${network}`;
+const SOLANA_PROGRAM_ID = 'G3F8TFjuxCAkTv8zZcPLJWmeAabTx7pasgmePcJa4pEL';
 
 // ============================================================================
 // Context Type
@@ -35,6 +47,7 @@ interface BCHSwapContextType {
     completedOrders: BCHOrder[];
     executeSwap: (params: BCHSwapParams, recipientAddress: string) => Promise<void>;
     claimOrder: (orderId: string) => Promise<void>;
+    requestRefund: (orderId: string) => Promise<void>;
     refreshOrders: () => Promise<void>;
     detectSwapType: (sellChain?: string, buyChain?: string) => BCHSwapType;
 }
@@ -46,35 +59,70 @@ export const BCHSwapContext = createContext<BCHSwapContextType | undefined>(unde
 // ============================================================================
 export function BCHSwapProvider({ children }: { children: ReactNode }) {
     const bchWallet = useBCHWallet();
-    const solanaWallet = useSolanaWallet();
+    const wdk = useWDK();
     const { connection: solanaConnection } = useConnection();
+
+    // Build a wallet-adapter-compatible signer from the WDK Solana keypair.
+    // This replaces the external Solana wallet adapter for all signing operations.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const solanaWallet: any = (() => {
+        if (!wdk.solanaSigner?.secretKey || !wdk.solanaAddress) return null;
+        const keypair = Keypair.fromSecretKey(wdk.solanaSigner.secretKey);
+        const publicKey = new PublicKey(wdk.solanaAddress);
+        return {
+            publicKey,
+            signTransaction: async (tx: any) => { tx.partialSign(keypair); return tx; },
+            signAllTransactions: async (txs: any[]) => txs.map(tx => { tx.partialSign(keypair); return tx; }),
+            sendTransaction: async (tx: any, connection: any) => {
+                if (!tx.recentBlockhash) {
+                    tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+                }
+                if (!tx.feePayer) tx.feePayer = publicKey;
+                tx.sign(keypair);
+                return connection.sendRawTransaction(tx.serialize());
+            },
+        };
+    })();
+
+    // Mutable refs so stale useCallback closures always read current wallet state
+    const wdkRef = useRef(wdk);
+    wdkRef.current = wdk;
+    const bchWalletRef = useRef(bchWallet);
+    bchWalletRef.current = bchWallet;
+    const solanaWalletRef = useRef(solanaWallet);
+    solanaWalletRef.current = solanaWallet;
     const [isLoading, setIsLoading] = useState(false);
     const [swapStep, setSwapStep] = useState('');
     const [pendingOrders, setPendingOrders] = useState<BCHOrder[]>([]);
     const [completedOrders, setCompletedOrders] = useState<BCHOrder[]>([]);
 
-    // Load orders from localStorage on init
+    // Load orders from localStorage — keyed per network so mainnet/chipnet stay separate
     useEffect(() => {
         try {
-            const saved = localStorage.getItem(BCH_ORDERS_KEY);
+            const key = getOrdersKey(wdk.bchNetwork);
+            const saved = localStorage.getItem(key);
             if (saved) {
                 const all: BCHOrder[] = JSON.parse(saved);
                 setPendingOrders(all.filter(o => o.status === 'pending' || o.status === 'claimable'));
                 setCompletedOrders(all.filter(o => o.status !== 'pending' && o.status !== 'claimable'));
+            } else {
+                setPendingOrders([]);
+                setCompletedOrders([]);
             }
         } catch { /* ignore */ }
-    }, []);
+    }, [wdk.bchNetwork]);
 
     // =========================================================================
     // Helpers
     // =========================================================================
     const saveOrder = (order: BCHOrder) => {
         try {
-            const saved = localStorage.getItem(BCH_ORDERS_KEY);
+            const key = getOrdersKey(wdkRef.current.bchNetwork);
+            const saved = localStorage.getItem(key);
             const all: BCHOrder[] = saved ? JSON.parse(saved) : [];
             all.unshift(order);
             if (all.length > 50) all.pop();
-            localStorage.setItem(BCH_ORDERS_KEY, JSON.stringify(all));
+            localStorage.setItem(key, JSON.stringify(all));
             if (order.status === 'pending') {
                 setPendingOrders(prev => [order, ...prev]);
             } else {
@@ -100,432 +148,404 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
         if (sellChain === 'movement' && buyChain === 'bch') return 'mov-to-bch';
         if (sellChain === 'bch' && buyChain === 'xmr') return 'bch-to-xmr';
         if (sellChain === 'xmr' && buyChain === 'bch') return 'xmr-to-bch';
+        if (sellChain === 'eth' && buyChain === 'bch') return 'eth-to-bch';
+        if (sellChain === 'bch' && buyChain === 'eth') return 'bch-to-eth';
         return 'same-chain';
     }, []);
 
     // =========================================================================
-    // BCH → Solana: Deploy CrossChainHTLC covenant on BCH, notify relayer
+    // BCH → Solana: ZK-only path via sol-bch-zk-server (no HTLC)
+    //   1. POST /swap/bch-to-sol — solver pre-signs SOL tx, returns bchCovenantAddr
+    //   2. Fund P2SH32 covenant via TransactionBuilder + raw lockingBytecode
+    //   3. Relayer detects funding, broadcasts SOL tx, generates FRI proof, claims BCH
     // =========================================================================
     const executeBCHToSolana = async (params: BCHSwapParams, recipientSolAddress: string) => {
-        if (!bchWallet.connected || !bchWallet.address) {
-            throw new Error('Connect your BCH wallet first');
-        }
-        if (!recipientSolAddress) {
-            throw new Error('Solana recipient address required');
+        const currentBchWallet = bchWalletRef.current;
+        if (!currentBchWallet.address) throw new Error('Connect your BCH wallet first');
+        if (!recipientSolAddress) throw new Error('Solana recipient address required');
+
+        const wif = currentBchWallet.getWIF();
+        if (!wif) throw new Error('Cannot sign: WIF not available — please reconnect your BCH wallet');
+
+        const isMainnet = wdkRef.current.bchNetwork === 'mainnet';
+        const lamports = Math.floor(params.buyAmount * Math.pow(10, params.buyToken.decimals || 9));
+
+        // CashToken → SOL when the BCH-side token carries a CashToken category id.
+        // Native BCH otherwise. For a CashToken covenant the swapped value lives
+        // in bchToken.amount, but the covenant UTXO still needs enough BCH to
+        // cover the solver's FRI claim fee (~5000 sats) — fund it with
+        // COVENANT_FUND_SATS, not bare token-dust.
+        const bchToken = params.sellToken.categoryId
+            ? {
+                category: params.sellToken.categoryId,
+                amount:   String(Math.floor(params.sellAmount * Math.pow(10, params.sellToken.decimals || 0))),
+            }
+            : undefined;
+        const TOKEN_DUST = 1000;          // dust for a plain token-change output
+        const COVENANT_FUND_SATS = 8000;  // sats the covenant UTXO carries (≥ FRI claim fee + dust)
+        const sats = bchToken ? COVENANT_FUND_SATS : Math.floor(params.sellAmount * 1e8);
+
+        // Solana leg delivers USDC (SPL) when the buy token is a non-SOL
+        // Solana token; the solver handles the SPL transfer server-side.
+        const buyTokenMint = (params.buyToken.chain === 'solana'
+            && params.buyToken.symbol !== 'SOL'
+            && params.buyToken.address)
+            ? params.buyToken.address
+            : undefined;
+
+        // 1. Create intent — solver pre-signs the Solana payment (~1-2s, live devnet)
+        const buyLabel = buyTokenMint ? params.buyToken.symbol : 'SOL';
+        setSwapStep(`Creating ZK swap intent (${bchToken ? 'CashToken' : 'BCH'} → ${buyLabel})...`);
+
+        const payload = {
+            makerAddress:     currentBchWallet.address,
+            recipientAddress: recipientSolAddress,
+            sellAmount:       String(sats),
+            buyAmount:        String(lamports),
+            sourceTimelock:   Math.floor(Date.now() / 1000) + 3600,
+            ...(bchToken ? { bchToken } : {}),
+            ...(buyTokenMint ? { buyToken: buyTokenMint } : {}),
+        };
+        console.log('[BCH→SOL ZK] Payload:', payload);
+
+        // Client-side pre-flight — tell the user which specific field is missing
+        for (const [k, v] of Object.entries(payload)) {
+            if (!v) throw new Error(`Missing required field for ZK swap: ${k}`);
         }
 
-        setSwapStep('Generating hashlock...');
-        const { secretHex, hashlockHex, hashlockArray } = await generateHashlock();
-        localStorage.setItem(`bch_secret_${hashlockHex}`, secretHex);
+        const zkUrl = isMainnet ? SOL_BCH_ZK_SERVER_MAINNET_URL : SOL_BCH_ZK_SERVER_URL;
+        const networkQuery = isMainnet ? '?network=mainnet' : '';
 
-        // 1. Get relayer's BCH address from /health or /orders
-        setSwapStep('Connecting to relayer...');
-        let relayerBCHAddress = '';
+        let covenantAddr: string;
+        let covenantTokenAddr: string;
+        let intentId: string;
         try {
-            const ordersRes = await axios.get(`${BCH_SOLANA_RELAYER_URL}/orders`);
-            const anyIntent = [...(ordersRes.data.active || []), ...(ordersRes.data.completed || [])];
-
-            // Look through all intents for a valid BCH cashaddr
-            // takerAddress in BCH_TO_SOL is a Solana pubkey, NOT what we need.
-            // makerAddress in BCH_TO_SOL would be a BCH address.
-            // takerAddress in SOL_TO_BCH would be a BCH address.
-            for (const intent of anyIntent) {
-                // Check takerAddress and makerAddress for BCH format (contains ':')
-                const candidates = [intent.takerAddress, intent.makerAddress, intent.recipientAddress].filter(Boolean);
-                const bchAddr = candidates.find((addr: string) => addr.includes(':') && (addr.startsWith('bchtest:') || addr.startsWith('bitcoincash:')));
-                if (bchAddr && bchAddr !== bchWallet.address) {
-                    relayerBCHAddress = bchAddr;
-                    console.log('[BCH→SOL] Found relayer BCH address from orders:', relayerBCHAddress);
-                    break;
-                }
+            const { data } = await axios.post(`${zkUrl}/swap/bch-to-sol${networkQuery}`, payload);
+            const intent = data.intent;
+            if (!intent?.id || !intent?.bchCovenantAddr) {
+                throw new Error('ZK server did not return covenant address');
             }
-
-            if (!relayerBCHAddress) {
-                console.log('[BCH→SOL] No relayer BCH address found in orders, using self as recipient placeholder');
-                toast.info('Relayer BCH address not found. Using direct transfer mode.');
-            }
-        } catch (e) {
-            console.error('Failed to reach relayer:', e);
-            throw new Error('BCH-Solana relayer is unreachable');
+            covenantAddr      = intent.bchCovenantAddr;
+            covenantTokenAddr = intent.bchCovenantTokenAddr || intent.bchCovenantAddr;
+            intentId          = intent.id;
+            console.log('[BCH→SOL ZK] Covenant:', covenantAddr, bchToken ? `(token: ${covenantTokenAddr})` : '');
+        } catch (e: any) {
+            throw new Error(`ZK server error: ${e.response?.data?.error || e.message}`);
         }
 
-        // 2. Deploy CrossChainHTLC covenant on BCH
-        setSwapStep('Deploying HTLC covenant on BCH...');
-        let contractAddress: string;
+        // 2. Fund the P2SH32 covenant. Native BCH funds the plain address; a
+        //    CashToken covenant funds the token-aware address with a token rider.
+        setSwapStep(`Funding ${bchToken ? 'CashToken' : 'BCH'} ZK covenant...`);
         let fundTxId: string;
-        let timelock: bigint;
-
         try {
-            console.log('[BCH→SOL] Step 2a: Loading CashScript...');
-            const { Contract, ElectrumNetworkProvider, SignatureTemplate } = await getCashScript();
-            console.log('[BCH→SOL] Step 2b: Loading HTLC artifact...');
-            const artifact = (await import('@/lib/CrossChainHTLC.json')).default;
-            console.log('[BCH→SOL] Artifact loaded:', artifact.contractName);
+            const { TransactionBuilder, ElectrumNetworkProvider, SignatureTemplate } = await getCashScript();
+            const provider = new ElectrumNetworkProvider(isMainnet ? 'mainnet' : 'chipnet');
+            const allUtxos = await provider.getUtxos(currentBchWallet.address!);
+            const sigTemplate = new SignatureTemplate(wif);
+            const fee = 1000n;
+            const builder = new TransactionBuilder({ provider });
 
-            // Get user's PKH (20 bytes from address)
-            console.log('[BCH→SOL] Step 2c: Loading libauth...');
-            const { cashAddressToLockingBytecode } = await import('@bitauth/libauth');
-
-            const derivePkh = (address: string): Uint8Array => {
-                console.log('[BCH→SOL] derivePkh for:', address);
-                const result = cashAddressToLockingBytecode(address);
-                if (typeof result === 'string') throw new Error(result);
-                const bytecode = result.bytecode;
-                console.log('[BCH→SOL] Locking bytecode length:', bytecode.length, 'bytes:', Array.from(bytecode.slice(0, 5)).map(b => b.toString(16)));
-                // P2PKH: 76 a9 14 <20-byte-hash> 88 ac
-                if (bytecode.length === 25 && bytecode[0] === 0x76 && bytecode[1] === 0xa9 && bytecode[2] === 0x14) {
-                    return bytecode.slice(3, 23);
-                }
-                throw new Error(`Not a standard P2PKH address (bytecode length=${bytecode.length}, prefix=${bytecode[0]?.toString(16)})`);
-            };
-
-            console.log('[BCH→SOL] Step 2d: Deriving user PKH from:', bchWallet.address);
-            const userPkh = derivePkh(bchWallet.address);
-            console.log('[BCH→SOL] User PKH:', Array.from(userPkh).map(b => b.toString(16).padStart(2, '0')).join(''));
-
-            let recipientPkh: Uint8Array;
-            if (relayerBCHAddress) {
-                console.log('[BCH→SOL] Deriving relayer PKH from:', relayerBCHAddress);
-                recipientPkh = derivePkh(relayerBCHAddress);
+            if (!bchToken) {
+                // ── Native-BCH covenant ─────────────────────────────────────
+                const { cashAddressToLockingBytecode } = await import('@bitauth/libauth');
+                const lockResult = cashAddressToLockingBytecode(covenantAddr);
+                if (typeof lockResult === 'string') throw new Error(`Invalid covenant address: ${lockResult}`);
+                const bchUtxos = allUtxos.filter((u: any) => !u.token);
+                if (!bchUtxos.length) throw new Error('No plain BCH UTXOs available — fund your wallet or consolidate UTXOs first');
+                const amountSats = BigInt(sats);
+                const totalInput = bchUtxos.reduce((acc: bigint, u: any) => acc + u.satoshis, 0n);
+                const change = totalInput - amountSats - fee;
+                if (change < 0n) throw new Error('Insufficient BCH balance');
+                builder.addInputs(bchUtxos, sigTemplate.unlockP2PKH());
+                builder.addOutput({ to: lockResult.bytecode, amount: amountSats });
+                if (change >= 546n) builder.addOutput({ to: currentBchWallet.address!, amount: change });
             } else {
-                console.log('[BCH→SOL] No relayer address, using user PKH as recipient');
-                recipientPkh = userPkh;
+                // ── CashToken covenant ──────────────────────────────────────
+                const dust = BigInt(TOKEN_DUST);
+                const tokAmount = BigInt(bchToken.amount);
+                const tokenUtxos = allUtxos.filter(
+                    (u: any) => u.token && u.token.category === bchToken.category && !u.token.nft,
+                ).sort((a: any, b: any) => Number(BigInt(b.token.amount) - BigInt(a.token.amount)));
+                const bchUtxos = allUtxos.filter((u: any) => !u.token)
+                    .sort((a: any, b: any) => Number(b.satoshis - a.satoshis));
+
+                const selected: any[] = [];
+                let tokAcc = 0n, satAcc = 0n;
+                for (const u of tokenUtxos) {
+                    selected.push(u); tokAcc += BigInt(u.token.amount); satAcc += u.satoshis;
+                    if (tokAcc >= tokAmount) break;
+                }
+                if (tokAcc < tokAmount) throw new Error(`Insufficient ${params.sellToken.symbol} balance`);
+                const tokenChange = tokAcc - tokAmount;
+                const covenantSats = BigInt(sats);   // COVENANT_FUND_SATS — covers the solver's FRI claim fee
+                const satsNeeded = covenantSats + (tokenChange > 0n ? dust : 0n) + fee;
+                for (const u of bchUtxos) {
+                    if (satAcc >= satsNeeded) break;
+                    selected.push(u); satAcc += u.satoshis;
+                }
+                if (satAcc < satsNeeded) throw new Error('Insufficient BCH balance to cover token covenant fees');
+
+                // Token change must return to a token-aware address — convert
+                // the user's plain cashaddr to its p2pkhWithTokens form.
+                const { cashAddressToLockingBytecode, lockingBytecodeToCashAddress } = await import('@bitauth/libauth');
+                const selfDecoded = cashAddressToLockingBytecode(currentBchWallet.address!);
+                if (typeof selfDecoded === 'string') throw new Error(`Invalid wallet address: ${selfDecoded}`);
+                const selfTokenAddr = lockingBytecodeToCashAddress({
+                    bytecode: selfDecoded.bytecode,
+                    prefix: (isMainnet ? 'bitcoincash' : 'bchtest') as any,
+                    tokenSupport: true,
+                });
+                if (typeof selfTokenAddr === 'string') throw new Error(`Cannot derive token address: ${selfTokenAddr}`);
+
+                builder.addInputs(selected, sigTemplate.unlockP2PKH());
+                builder.addOutput({
+                    to: covenantTokenAddr,
+                    amount: covenantSats,
+                    token: { category: bchToken.category, amount: tokAmount },
+                });
+                let bchChange = satAcc - covenantSats - fee;
+                if (tokenChange > 0n) {
+                    builder.addOutput({
+                        to: selfTokenAddr.address,
+                        amount: dust,
+                        token: { category: bchToken.category, amount: tokenChange },
+                    });
+                    bchChange -= dust;
+                }
+                if (bchChange >= 546n) builder.addOutput({ to: currentBchWallet.address!, amount: bchChange });
             }
 
-            timelock = BigInt(Math.floor(Date.now() / 1000) + 7200);
-            console.log('[BCH→SOL] Step 2e: Instantiating contract with timelock:', timelock.toString());
-
-            const provider = new ElectrumNetworkProvider('chipnet');
-            const contract = new Contract(
-                artifact,
-                [userPkh, recipientPkh, hashlockArray, timelock],
-                { provider }
-            );
-
-            contractAddress = contract.address;
-            console.log('[BCH→SOL] ✅ CrossChainHTLC address:', contractAddress);
-
-            // 3. Fund the contract from browser wallet
-            setSwapStep('Signing BCH transaction...');
-            const wif = bchWallet.getWIF();
-            console.log('[BCH→SOL] Step 3: WIF available:', !!wif);
-            if (!wif) {
-                throw new Error('Cannot sign: WIF not available (Cashonize signing not yet supported for HTLC deployment)');
-            }
-
-            const { TestNetWallet } = await import('mainnet-js');
-            const wallet = await TestNetWallet.fromWIF(wif);
-            console.log('[BCH→SOL] Browser wallet address:', (wallet as any).cashaddr);
-
-            const amountSats = Math.floor(params.sellAmount * 1e8);
-            console.log('[BCH→SOL] Sending', amountSats, 'sats to HTLC...');
-
-            setSwapStep(`Sending ${params.sellAmount} BCH to HTLC...`);
-            const tx = await wallet.send([{
-                cashaddr: contractAddress,
-                value: amountSats,
-                unit: 'sat'
-            } as any]);
-
-            fundTxId = tx.txId as string;
-            console.log('[BCH→SOL] ✅ HTLC funded:', fundTxId);
-            toast.success('BCH locked in HTLC covenant!', {
-                description: `Tx: ${fundTxId.slice(0, 16)}...`
-            });
-
+            const tx = await builder.send();
+            fundTxId = tx.txid;
+            console.log('[BCH→SOL ZK] Covenant funded:', fundTxId);
+            toast.success(`${bchToken ? params.sellToken.symbol : 'BCH'} locked in ZK covenant!`, { description: `Tx: ${fundTxId.slice(0, 16)}...` });
         } catch (e: any) {
-            console.error('[BCH→SOL] ❌ HTLC deployment failed:');
-            console.error('[BCH→SOL] Error message:', e.message);
-            console.error('[BCH→SOL] Error stack:', e.stack);
-            console.error('[BCH→SOL] Full error:', e);
-            throw new Error(`Failed to deploy BCH HTLC: ${e.message}`);
+            throw new Error(`Failed to fund BCH covenant: ${e.message}`);
         }
 
-        // 4. Notify relayer
-        setSwapStep('Notifying relayer...');
-        try {
-            const isBuyNativeSol = !params.buyToken.address || params.buyToken.address === 'So11111111111111111111111111111111111111112';
-            const buyBaseUnits = Math.floor(params.buyAmount * Math.pow(10, params.buyToken.decimals || 9));
+        const order: BCHOrder = {
+            id:               intentId,
+            swapType:         'bch-to-sol',
+            orderType:        params.orderType,
+            sellToken:        params.sellToken,
+            buyToken:         params.buyToken,
+            sellAmount:       params.sellAmount,
+            buyAmount:        params.buyAmount,
+            status:           'pending',
+            contractAddress:  covenantAddr,
+            txid:             fundTxId,
+            intentId,
+            explorerUrl: isMainnet
+                ? `https://blockchair.com/bitcoin-cash/transaction/${fundTxId}`
+                : `https://chipnet.chaingraph.cash/tx/${fundTxId}`,
+            createdAt:   Date.now(),
+            claimData:   { direction: 'BCH_TO_SOL' },
+        };
 
-            const response = await axios.post(`${BCH_SOLANA_RELAYER_URL}/swap/bch-to-solana`, {
-                makerAddress: bchWallet.address,
-                recipientAddress: recipientSolAddress,
-                sellAmount: Math.floor(params.sellAmount * 1e8).toString(), // satoshis
-                buyToken: isBuyNativeSol ? undefined : params.buyToken.address,
-                buyAmount: buyBaseUnits.toString(), // base units (lamports or USDC micros)
-                hashlock: hashlockHex,
-                sourceTimelock: Number(timelock),
-                bchContractAddress: contractAddress,
-            });
-
-            const intent = response.data.intent;
-
-            const order: BCHOrder = {
-                id: intent?.id || `bch_sol_${Date.now()}`,
-                swapType: 'bch-to-sol',
-                orderType: params.orderType,
-                sellToken: params.sellToken,
-                buyToken: params.buyToken,
-                sellAmount: params.sellAmount,
-                buyAmount: params.buyAmount,
-                status: 'pending',
-                contractAddress: contractAddress,
-                txid: fundTxId,
-                intentId: intent?.id,
-                explorerUrl: `https://chipnet.chaingraph.cash/tx/${fundTxId}`,
-                createdAt: Date.now(),
-                claimData: {
-                    hashlock: hashlockHex,
-                    secret: secretHex,
-                    bchContractAddress: contractAddress,
-                    solanaEscrowPda: intent?.solanaEscrowPda,
-                    direction: 'BCH_TO_SOL',
-                },
-            };
-
-            saveOrder(order);
-            setSwapStep('');
-            toast.success('Cross-chain swap initiated!', {
-                description: 'The relayer will fill your order on Solana.'
-            });
-
-        } catch (e: any) {
-            console.error('Relayer notification failed:', e);
-            throw new Error(`Relayer error: ${e.response?.data?.error || e.message}`);
-        }
+        saveOrder(order);
+        setSwapStep('');
+        toast.success('ZK swap initiated!', {
+            description: 'The solver will deliver SOL and claim your BCH covenant automatically via FRI proof.',
+        });
     };
 
     // =========================================================================
-    // Solana → BCH: Create Solana escrow via Anchor, notify relayer
+    // Solana → BCH: Trustless ZK path via Solana FRI escrow
+    //   1. POST /swap/sol-to-bch — solver pre-signs BCH tx, returns FRI escrow PDA
+    //   2. User calls lock_sol_fri — SOL locked on-chain in Solana FRI escrow
+    //   3. Solver detects funding, broadcasts BCH tx, generates FRI proof, claims SOL
     // =========================================================================
     const executeSolanaToBCH = async (params: BCHSwapParams, recipientBCHAddress: string) => {
-        if (!solanaWallet.publicKey || !solanaWallet.signTransaction) {
-            throw new Error('Connect your Solana wallet first');
-        }
-        if (!recipientBCHAddress) {
-            throw new Error('BCH recipient address required');
-        }
+        const sw = solanaWalletRef.current;
+        if (!sw?.publicKey) throw new Error('Connect your WDK wallet first');
+        if (!recipientBCHAddress) throw new Error('BCH recipient address required');
 
-        setSwapStep('Generating hashlock...');
-        const { secretHex, hashlockHex, hashlockArray } = await generateHashlock();
-        localStorage.setItem(`bch_secret_${hashlockHex}`, secretHex);
+        const lamports = Math.floor(params.sellAmount * Math.pow(10, params.sellToken.decimals || 9));
 
-        // 1. Get relayer's Solana address
-        setSwapStep('Connecting to relayer...');
-        let relayerSolAddress = '';
-        try {
-            const healthRes = await axios.get(`${BCH_SOLANA_RELAYER_URL}/health`);
-            if (healthRes.data?.pubkeys?.solana) {
-                relayerSolAddress = healthRes.data.pubkeys.solana;
-                console.log('[SOL→BCH] Got relayer Solana address from /health:', relayerSolAddress);
+        // USDC → * when the Solana-side sell token is a non-SOL Solana token.
+        // The user then locks USDC via lock_token_fri instead of lock_sol_fri.
+        const sellTokenMint = (params.sellToken.chain === 'solana'
+            && params.sellToken.symbol !== 'SOL'
+            && params.sellToken.address)
+            ? params.sellToken.address
+            : undefined;
+
+        // SOL → CashToken when the BCH-side token carries a CashToken category.
+        // The solver delivers the token; the BCH leg only moves token-dust sats.
+        const bchToken = params.buyToken.categoryId
+            ? {
+                category: params.buyToken.categoryId,
+                amount:   String(Math.floor(params.buyAmount * Math.pow(10, params.buyToken.decimals || 0))),
             }
+            : undefined;
+        const sats = bchToken ? 1000 : Math.floor(params.buyAmount * 1e8);
+        const isMainnet = wdkRef.current.bchNetwork === 'mainnet';
 
-            if (!relayerSolAddress) {
-                console.log('[SOL→BCH] No relayer Solana address in /health, falling back to self');
-                toast.info('Using direct SOL transfer to relayer');
+        // A CashToken can only be delivered to a token-aware address — convert
+        // the user's plain cashaddr to its p2pkhWithTokens form when needed.
+        let deliveryAddress = recipientBCHAddress;
+        if (bchToken) {
+            const { cashAddressToLockingBytecode, lockingBytecodeToCashAddress } = await import('@bitauth/libauth');
+            const decoded = cashAddressToLockingBytecode(recipientBCHAddress);
+            if (typeof decoded === 'string') throw new Error(`Invalid BCH recipient address: ${decoded}`);
+            const tokenAddr = lockingBytecodeToCashAddress({
+                bytecode: decoded.bytecode,
+                prefix: (isMainnet ? 'bitcoincash' : 'bchtest') as any,
+                tokenSupport: true,
+            });
+            if (typeof tokenAddr === 'string') throw new Error(`Cannot derive token address: ${tokenAddr}`);
+            deliveryAddress = tokenAddr.address;
+        }
+        const zkUrl = isMainnet ? SOL_BCH_ZK_SERVER_MAINNET_URL : SOL_BCH_ZK_SERVER_URL;
+        const networkQuery = isMainnet ? '?network=mainnet' : '';
+
+        // 1. Create intent — server pre-signs BCH payment and returns FRI escrow info
+        setSwapStep('Creating ZK swap intent (server pre-signing BCH delivery)...');
+        let escrowPDA: string;
+        let bchTxSigHash: string;
+        let programHash: string;
+        let taker: string;
+        let intentId: string;
+        let intentTimelock: number;
+        let resolvedProgramId: string = SOLANA_PROGRAM_ID;
+        try {
+            const { data } = await axios.post(`${zkUrl}/swap/sol-to-bch${networkQuery}`, {
+                makerAddress:     sw.publicKey.toBase58(),
+                recipientAddress: deliveryAddress,
+                sellAmount:       String(lamports),
+                buyAmount:        String(sats),
+                sourceTimelock:   Math.floor(Date.now() / 1000) + 3600,
+                ...(bchToken ? { bchToken } : {}),
+                ...(sellTokenMint ? { sellToken: sellTokenMint } : {}),
+            });
+            if (!data.escrow?.pda || !data.intent?.id) {
+                throw new Error('ZK server did not return FRI escrow info');
             }
-        } catch (e) {
-            console.error('Failed to reach relayer health:', e);
-            throw new Error('BCH-Solana relayer is unreachable');
+            escrowPDA      = data.escrow.pda;
+            bchTxSigHash   = data.escrow.bchTxSigHash;
+            programHash    = data.escrow.programHash;
+            taker          = data.escrow.taker;
+            intentId       = data.intent.id;
+            intentTimelock = data.escrow.timelock || Math.floor(Date.now() / 1000) + 3600;
+            // Server returns the program ID for the active network (devnet/mainnet) so the
+            // frontend doesn't need to hardcode it per environment.
+            if (data.escrow.programId) resolvedProgramId = data.escrow.programId;
+            console.log('[SOL→BCH ZK] FRI escrow PDA:', escrowPDA);
+            console.log('[SOL→BCH ZK] bchTxSigHash:', bchTxSigHash);
+            console.log('[SOL→BCH ZK] programId:', resolvedProgramId);
+        } catch (e: any) {
+            throw new Error(`ZK server error: ${e.response?.data?.error || e.message}`);
         }
 
-        const isNativeSol = !params.sellToken.address || params.sellToken.address === 'So11111111111111111111111111111111111111112';
-        const tokenMintPubkey = new PublicKey(isNativeSol ? 'So11111111111111111111111111111111111111112' : params.sellToken.address!);
-        const amountBaseUnits = Math.floor(params.sellAmount * Math.pow(10, params.sellToken.decimals || 9));
-
-        const programId = new PublicKey(SOLANA_PROGRAM_ID);
-        const hashBuf = Buffer.from(hashlockArray);
-
-        // 2. Derive escrow PDA
-        // Seeds: ["escrow", maker, hashlock]
-        const [escrowPda] = PublicKey.findProgramAddressSync(
-            [
-                Buffer.from("escrow"),
-                solanaWallet.publicKey.toBuffer(),
-                hashBuf
-            ],
-            programId
-        );
-
-        // Derive vault PDA
-        const [vaultPda] = PublicKey.findProgramAddressSync(
-            [Buffer.from("vault"), escrowPda.toBuffer()],
-            programId
-        );
-
-        // 3. Create Solana escrow via Anchor
-        setSwapStep('Creating Solana escrow...');
-        let escrowTx: string;
-
+        // 2. Lock funds in the Solana FRI escrow.
+        //    Native SOL → lock_sol_fri;  USDC (SPL) → lock_token_fri.
+        const lockKind = sellTokenMint ? 'USDC' : 'SOL';
+        setSwapStep(`Locking ${lockKind} in Solana FRI escrow...`);
+        let lockTxSig: string;
         try {
-            console.log('[SOL→BCH] Step 3a: Loading spl-token...');
-            const {
-                getAssociatedTokenAddress,
-                createSyncNativeInstruction,
-                createAssociatedTokenAccountIdempotentInstruction,
-            } = await import('@solana/spl-token');
+            const programId    = new PublicKey(resolvedProgramId);
+            const takerPubkey  = new PublicKey(taker);
+            const escrowPubkey = new PublicKey(escrowPDA);
 
-            console.log('[SOL→BCH] Step 3b: Loading IDL...');
-            const idl = (await import('@/lib/intent_swap_idl.json')).default;
-            console.log('[SOL→BCH] IDL loaded, program:', (idl as any).address || (idl as any).metadata?.name);
+            // Anchor discriminator = sha256("global:<ix_name>")[0..8]
+            const ixName = sellTokenMint ? 'global:lock_token_fri' : 'global:lock_sol_fri';
+            const hashBuf  = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(ixName) as unknown as BufferSource);
+            const discriminator = new Uint8Array(hashBuf).slice(0, 8);
 
-            console.log('[SOL→BCH] Step 3c: Creating Anchor provider...');
-            console.log('[SOL→BCH]   Solana publicKey:', solanaWallet.publicKey.toBase58());
-            console.log('[SOL→BCH]   signTransaction:', typeof solanaWallet.signTransaction);
-            console.log('[SOL→BCH]   RPC endpoint:', (solanaConnection as any)?.rpcEndpoint || 'unknown');
+            // Borsh-serialize instruction args (identical for SOL + token locks)
+            const timelockBuf = Buffer.alloc(8); timelockBuf.writeBigInt64LE(BigInt(intentTimelock));
+            const amountBuf   = Buffer.alloc(8); amountBuf.writeBigUInt64LE(BigInt(lamports));
+            const ixData = Buffer.concat([
+                Buffer.from(discriminator),
+                Buffer.from(bchTxSigHash, 'hex'),
+                Buffer.from(programHash, 'hex'),
+                timelockBuf,
+                amountBuf,
+            ]);
 
-            const provider = new anchor.AnchorProvider(
-                solanaConnection as any,
-                {
-                    publicKey: solanaWallet.publicKey,
-                    signTransaction: solanaWallet.signTransaction,
-                    signAllTransactions: solanaWallet.signAllTransactions!,
-                } as any,
-                { preflightCommitment: 'confirmed' }
-            );
-
-            const program = new anchor.Program(idl as any, provider);
-            console.log('[SOL→BCH] Program ID:', program.programId.toBase58());
-
-            console.log('[SOL→BCH] Step 3d: Getting Token account for mint:', tokenMintPubkey.toBase58());
-            const makerTokenAccount = await getAssociatedTokenAddress(
-                tokenMintPubkey,
-                solanaWallet.publicKey
-            );
-            console.log('[SOL→BCH] Maker ATA:', makerTokenAccount.toBase58());
-
-            const takerPubkey = relayerSolAddress
-                ? new PublicKey(relayerSolAddress)
-                : solanaWallet.publicKey;
-            console.log('[SOL→BCH] Taker (relayer):', takerPubkey.toBase58());
-
-            const timelock = new anchor.BN(Math.floor(Date.now() / 1000) + 7200);
-            const amount = new anchor.BN(amountBaseUnits);
-            console.log('[SOL→BCH] Amount:', amountBaseUnits, 'base units, Timelock:', timelock.toString());
-            console.log('[SOL→BCH] Escrow PDA:', escrowPda.toBase58());
-            console.log('[SOL→BCH] Vault PDA:', vaultPda.toBase58());
-            console.log('[SOL→BCH] Hashlock (hex):', hashlockHex);
-
-            let wrapIxs: any[] = [];
-
-            if (isNativeSol) {
-                setSwapStep('Wrapping SOL and signing transaction...');
-                const createAtaIx = createAssociatedTokenAccountIdempotentInstruction(
-                    solanaWallet.publicKey,   // payer
-                    makerTokenAccount,        // ATA address
-                    solanaWallet.publicKey,   // owner
-                    tokenMintPubkey,          // mint (WSOL)
-                );
-                wrapIxs = [
-                    createAtaIx,
-                    SystemProgram.transfer({
-                        fromPubkey: solanaWallet.publicKey,
-                        toPubkey: makerTokenAccount,
-                        lamports: BigInt(amountBaseUnits),
-                    }),
-                    createSyncNativeInstruction(makerTokenAccount),
-                ];
-                console.log('[SOL→BCH] Step 3e: Creating WSOL ATA + wrapping SOL...');
+            let ix: anchor.web3.TransactionInstruction;
+            if (!sellTokenMint) {
+                ix = new anchor.web3.TransactionInstruction({
+                    programId,
+                    keys: [
+                        { pubkey: sw.publicKey,            isSigner: true,  isWritable: true  },
+                        { pubkey: takerPubkey,             isSigner: false, isWritable: false },
+                        { pubkey: escrowPubkey,            isSigner: false, isWritable: true  },
+                        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+                    ],
+                    data: ixData,
+                });
             } else {
-                setSwapStep('Approving token and signing transaction...');
-                console.log('[SOL→BCH] Step 3e: Using existing SPL token ATA...');
+                // lock_token_fri — accounts per the intent_swap IDL.
+                const { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID } = await import('@solana/spl-token');
+                const { SYSVAR_RENT_PUBKEY } = await import('@solana/web3.js');
+                const mint            = new PublicKey(sellTokenMint);
+                const makerTokenAcct  = getAssociatedTokenAddressSync(mint, sw.publicKey);
+                const [friVault]      = PublicKey.findProgramAddressSync(
+                    [new TextEncoder().encode('fri_vault'), escrowPubkey.toBuffer()], programId,
+                );
+                ix = new anchor.web3.TransactionInstruction({
+                    programId,
+                    keys: [
+                        { pubkey: sw.publicKey,            isSigner: true,  isWritable: true  },
+                        { pubkey: takerPubkey,             isSigner: false, isWritable: false },
+                        { pubkey: mint,                    isSigner: false, isWritable: false },
+                        { pubkey: escrowPubkey,            isSigner: false, isWritable: true  },
+                        { pubkey: makerTokenAcct,          isSigner: false, isWritable: true  },
+                        { pubkey: friVault,                isSigner: false, isWritable: true  },
+                        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+                        { pubkey: TOKEN_PROGRAM_ID,        isSigner: false, isWritable: false },
+                        { pubkey: SYSVAR_RENT_PUBKEY,      isSigner: false, isWritable: false },
+                    ],
+                    data: ixData,
+                });
             }
 
-            const programAny: any = program;
-            escrowTx = await programAny.methods
-                .initialize(
-                    [...hashBuf],
-                    timelock,
-                    amount
-                )
-                .preInstructions(wrapIxs)
-                .accounts({
-                    maker: solanaWallet.publicKey,
-                    taker: takerPubkey,
-                    tokenMint: tokenMintPubkey,
-                    escrow: escrowPda,
-                    makerTokenAccount: makerTokenAccount,
-                    vault: vaultPda,
-                    systemProgram: SystemProgram.programId,
-                    tokenProgram: anchor.utils.token.TOKEN_PROGRAM_ID,
-                    rent: anchor.web3.SYSVAR_RENT_PUBKEY,
-                })
-                .rpc();
-
-            console.log('[SOL→BCH] ✅ Solana escrow created:', escrowTx);
-            toast.success('SOL locked in escrow!', {
-                description: `Tx: ${escrowTx.slice(0, 16)}...`
-            });
-
+            const tx = new Transaction().add(ix);
+            lockTxSig = await sw.sendTransaction(tx, solanaConnection);
+            console.log(`[SOL→BCH ZK] ${lockKind} locked in FRI escrow:`, lockTxSig);
+            toast.success(`${lockKind} locked in FRI escrow!`, { description: `Tx: ${lockTxSig.slice(0, 16)}...` });
         } catch (e: any) {
-            console.error('[SOL→BCH] ❌ Solana escrow creation failed:');
-            console.error('[SOL→BCH] Error message:', e.message);
-            console.error('[SOL→BCH] Error stack:', e.stack);
-            if (e.logs) console.error('[SOL→BCH] Program logs:', e.logs);
-            if (e.error) console.error('[SOL→BCH] Inner error:', e.error);
-            console.error('[SOL→BCH] Full error:', e);
-            throw new Error(`Failed to create Solana escrow: ${e.message}`);
+            throw new Error(`Failed to lock ${lockKind} in FRI escrow: ${e.message}`);
         }
 
-        // 4. Notify relayer
-        setSwapStep('Notifying relayer...');
-        try {
-            const response = await axios.post(`${BCH_SOLANA_RELAYER_URL}/swap/solana-to-bch`, {
-                makerAddress: solanaWallet.publicKey.toBase58(),
-                recipientAddress: recipientBCHAddress,
-                sellToken: isNativeSol ? undefined : tokenMintPubkey.toBase58(),
-                sellAmount: amountBaseUnits.toString(),
-                buyAmount: Math.floor(params.buyAmount * 1e8).toString(), // BCH satoshis
-                hashlock: hashlockHex,
-                solanaEscrowPda: escrowPda.toBase58(),
-            });
+        const order: BCHOrder = {
+            id:              intentId,
+            swapType:        'sol-to-bch',
+            orderType:       params.orderType,
+            sellToken:       params.sellToken,
+            buyToken:        params.buyToken,
+            sellAmount:      params.sellAmount,
+            buyAmount:       params.buyAmount,
+            status:          'pending',
+            contractAddress: escrowPDA,
+            txid:            lockTxSig,
+            intentId,
+            explorerUrl: `https://explorer.solana.com/tx/${lockTxSig}?cluster=devnet`,
+            createdAt:   Date.now(),
+            claimData:   { direction: 'SOL_TO_BCH' },
+        };
 
-            const intent = response.data.intent;
-
-            const order: BCHOrder = {
-                id: intent?.id || `sol_bch_${Date.now()}`,
-                swapType: 'sol-to-bch',
-                orderType: params.orderType,
-                sellToken: params.sellToken,
-                buyToken: params.buyToken,
-                sellAmount: params.sellAmount,
-                buyAmount: params.buyAmount,
-                status: 'pending',
-                txid: escrowTx,
-                intentId: intent?.id,
-                explorerUrl: `https://explorer.solana.com/tx/${escrowTx}?cluster=devnet`,
-                createdAt: Date.now(),
-                claimData: {
-                    hashlock: hashlockHex,
-                    secret: secretHex,
-                    solanaEscrowPda: escrowPda.toBase58(),
-                    bchContractAddress: intent?.bchContractAddress,
-                    destTimelock: intent?.destTimelock,
-                    direction: 'SOL_TO_BCH',
-                },
-            };
-
-            saveOrder(order);
-            setSwapStep('');
-            toast.success('Cross-chain swap initiated!', {
-                description: 'The relayer will fill your order on BCH.'
-            });
-
-        } catch (e: any) {
-            console.error('Relayer notification failed:', e);
-            throw new Error(`Relayer error: ${e.response?.data?.error || e.message}`);
-        }
+        saveOrder(order);
+        setSwapStep('');
+        toast.success('ZK swap initiated!', {
+            description: 'SOL locked in FRI escrow. Solver will deliver BCH and claim SOL via FRI proof automatically.',
+        });
     };
 
     // =========================================================================
     // Same-chain BCH swap — Deploy CashToken covenant via relayer API
     // =========================================================================
     const executeSameChainSwap = async (params: BCHSwapParams) => {
-        if (!bchWallet.connected || !bchWallet.address) {
+        const currentBchWallet = bchWalletRef.current;
+        if (!currentBchWallet.address) {
             throw new Error('Connect your BCH wallet first');
         }
 
-        setSwapStep('Creating intent on CashToken relayer...');
+        const isMainnet = wdkRef.current.bchNetwork === 'mainnet';
+        const relayerUrl = isMainnet ? CASHTOKEN_RELAYER_MAINNET_URL : CASHTOKEN_RELAYER_URL;
+
+        setSwapStep(`Creating intent on CashToken relayer (${isMainnet ? 'mainnet' : 'chipnet'})...`);
 
         // Determine token category IDs
         const sellCategoryId = params.sellToken.categoryId || (params.sellToken.chain === 'bch' && params.sellToken.symbol !== 'BCH' ? params.sellToken.categoryId : 'BCH');
@@ -536,18 +556,162 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
         const buyBaseUnits = Math.floor(params.buyAmount * Math.pow(10, params.buyToken.decimals || 0));
 
         try {
-            const response = await axios.post(`${CASHTOKEN_RELAYER_URL}/intent/create`, {
-                makerAddress: bchWallet.address,
+            const response = await axios.post(`${relayerUrl}/intent/create`, {
+                makerAddress: currentBchWallet.address,
                 sellToken: sellCategoryId || 'BCH',
                 buyToken: buyCategoryId || 'BCH',
                 sellAmount: sellBaseUnits.toString(),
                 buyAmount: buyBaseUnits.toString(),
-                orderType: params.orderType === 'limit' ? 'limit' : 'market',
+                orderType: params.orderType === 'limit' ? 'limit' : 'dutch',
                 duration: params.duration || 3600,
                 expiryTime: params.expiryTime || Math.floor(Date.now() / 1000) + 3600,
+                network: isMainnet ? 'mainnet' : 'chipnet',
             });
 
             const data = response.data;
+
+            // 2. Fund the contract address via TransactionBuilder (avoids mainnet-js
+            //    creating a competing Electrum connection that races with existing ones)
+            setSwapStep('Signing funding transaction...');
+            let fundTxId: string;
+
+            const wif = currentBchWallet.getWIF();
+            if (!wif) throw new Error('WIF not available — please reconnect your BCH wallet');
+
+            {
+                const { TransactionBuilder, ElectrumNetworkProvider, SignatureTemplate } = await getCashScript();
+                const provider = new ElectrumNetworkProvider(isMainnet ? 'mainnet' : 'chipnet');
+
+                const allUtxos = await provider.getUtxos(currentBchWallet.address!);
+                if (!allUtxos.length) throw new Error('No BCH UTXOs found — fund your wallet first');
+
+                const sigTemplate = new SignatureTemplate(wif);
+                const builder = new TransactionBuilder({ provider });
+
+                const isTokenSell = !!sellCategoryId && sellCategoryId !== 'BCH';
+                let fee = 1000n;
+
+                if (isTokenSell) {
+                    // Token sell: pick token UTXOs of this category + BCH UTXOs for fees
+                    const tokenUtxos = allUtxos.filter((u: any) =>
+                        u.token?.category === sellCategoryId
+                    );
+                    const bchUtxos = allUtxos.filter((u: any) => !u.token);
+                    if (!tokenUtxos.length) throw new Error(`No ${sellCategoryId} token UTXOs in wallet`);
+
+                    const totalTokenIn = tokenUtxos.reduce(
+                        (s: bigint, u: any) => s + BigInt(u.token!.amount), 0n
+                    );
+                    if (totalTokenIn < BigInt(sellBaseUnits)) {
+                        throw new Error(`Insufficient token balance: have ${totalTokenIn}, need ${sellBaseUnits}`);
+                    }
+                    const totalTokenSats = tokenUtxos.reduce(
+                        (s: bigint, u: any) => s + BigInt(u.satoshis), 0n
+                    );
+
+                    builder.addInputs(tokenUtxos, sigTemplate.unlockP2PKH());
+                    // Check if token UTXOs alone cover dust + fee + token change dust
+                    let bchIn = 0n;
+                    const selectedBch: any[] = [];
+                    const baseFee = BigInt(tokenUtxos.length * 150 + 250);
+                    const baseNeed = 1000n + baseFee + 1000n;
+
+                    if (totalTokenSats < baseNeed) {
+                        // Need additional BCH inputs
+                        const sortedBch = [...bchUtxos].sort(
+                            (a: any, b: any) => Number(BigInt(b.satoshis) - BigInt(a.satoshis))
+                        );
+                        
+                        for (const u of sortedBch) {
+                            selectedBch.push(u);
+                            bchIn += BigInt(u.satoshis);
+                            const dynamicFee = BigInt((tokenUtxos.length + selectedBch.length) * 150 + 250);
+                            const needSats = 1000n + dynamicFee + 1000n;
+                            if (totalTokenSats + bchIn >= needSats) {
+                                fee = dynamicFee;
+                                break;
+                            }
+                        }
+                    } else {
+                        fee = baseFee;
+                    }
+                    
+                    const finalNeed = 1000n + fee + 1000n;
+                    if (totalTokenSats + bchIn < finalNeed) {
+                        throw new Error('Insufficient BCH for token transfer fees');
+                    }
+                    if (selectedBch.length > 0) {
+                        builder.addInputs(selectedBch, sigTemplate.unlockP2PKH());
+                    }
+
+                    // Output 0: token dust to contract
+                    builder.addOutput({
+                        to: data.tokenAddress,
+                        amount: 1000n,
+                        token: { category: sellCategoryId, amount: BigInt(sellBaseUnits) },
+                    });
+
+                    // Output 1: token change back to user (if any).
+                    // CashScript rejects token outputs to non-token addresses (q-prefix),
+                    // so the change MUST go to the token-aware z-prefix address.
+                    const tokenChange = totalTokenIn - BigInt(sellBaseUnits);
+                    let satChangeRemaining = totalTokenSats + bchIn - 1000n - fee;
+                    if (tokenChange > 0n) {
+                        const tokenChangeAddr = currentBchWallet.tokenAddress || currentBchWallet.address!;
+                        const tokenChangeSats = satChangeRemaining > 1000n ? 1000n : satChangeRemaining;
+                        builder.addOutput({
+                            to: tokenChangeAddr,
+                            amount: tokenChangeSats,
+                            token: { category: sellCategoryId, amount: tokenChange },
+                        });
+                        satChangeRemaining -= tokenChangeSats;
+                    }
+                    // Output 2: BCH change
+                    if (satChangeRemaining >= 546n) {
+                        builder.addOutput({ to: currentBchWallet.address!, amount: satChangeRemaining });
+                    }
+                } else {
+                    // BCH sell: only use plain BCH UTXOs (no tokens) to avoid burning user tokens
+                    const bchUtxos = allUtxos.filter((u: any) => !u.token);
+                    if (!bchUtxos.length) throw new Error('No plain BCH UTXOs — consolidate or fund wallet');
+
+                    const sortedBch = [...bchUtxos].sort((a: any, b: any) => Number(BigInt(b.satoshis) - BigInt(a.satoshis)));
+                    const selectedBch = [];
+                    let bchIn = 0n;
+                    
+                    for (const u of sortedBch) {
+                        selectedBch.push(u);
+                        bchIn += BigInt(u.satoshis);
+                        const dynamicFee = BigInt(selectedBch.length * 150 + 250);
+                        if (bchIn >= BigInt(sellBaseUnits) + dynamicFee) {
+                            fee = dynamicFee;
+                            break;
+                        }
+                    }
+                    
+                    if (bchIn < BigInt(sellBaseUnits) + fee) {
+                        throw new Error('Insufficient BCH balance');
+                    }
+
+                    builder.addInputs(selectedBch, sigTemplate.unlockP2PKH());
+                    builder.addOutput({ to: data.contractAddress, amount: BigInt(sellBaseUnits) });
+
+                    const change = bchIn - BigInt(sellBaseUnits) - fee;
+                    if (change >= 546n) builder.addOutput({ to: currentBchWallet.address!, amount: change });
+                }
+
+                setSwapStep(`Sending ${params.sellAmount} ${params.sellToken.symbol} to contract...`);
+                const tx = await builder.send();
+                fundTxId = tx.txid;
+                console.log('[Same-chain] Contract funded:', fundTxId);
+            }
+
+            // Fallback explorer URL if relayer doesn't provide one
+            const explorerUrl = data.explorerUrl || (data.contractAddress
+                ? (isMainnet
+                    ? `https://blockchair.com/bitcoin-cash/address/${data.contractAddress}`
+                    : `https://chipnet.chaingraph.cash/address/${data.contractAddress}`)
+                : undefined);
 
             const order: BCHOrder = {
                 id: data.intentId || `bch_${Date.now()}`,
@@ -561,8 +725,11 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 contractAddress: data.contractAddress,
                 tokenAddress: data.tokenAddress,
                 intentId: data.intentId,
-                explorerUrl: data.explorerUrl,
+                txid: fundTxId,
+                explorerUrl,
                 createdAt: Date.now(),
+                expiryTime: params.expiryTime,
+                duration: params.duration,
             };
 
             saveOrder(order);
@@ -571,9 +738,9 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 params.orderType === 'limit' ? 'Limit order created!' : 'Dutch auction created!',
                 {
                     description: `Contract: ${data.contractAddress?.slice(0, 24)}...`,
-                    action: data.explorerUrl ? {
+                    action: explorerUrl ? {
                         label: 'View on Explorer',
-                        onClick: () => window.open(data.explorerUrl, '_blank'),
+                        onClick: () => window.open(explorerUrl, '_blank'),
                     } : undefined,
                 }
             );
@@ -588,7 +755,8 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
     // BCH → Movement: Deploy CrossChainHTLC covenant on BCH, notify relayer
     // =========================================================================
     const executeBCHToMovement = async (params: BCHSwapParams, recipientMovAddress: string) => {
-        if (!bchWallet.connected || !bchWallet.address) {
+        const currentBchWallet = bchWalletRef.current;
+        if (!currentBchWallet.address) {
             throw new Error('BCH wallet not connected');
         }
 
@@ -625,11 +793,12 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
             throw new Error(`Not a standard P2PKH address`);
         };
 
-        const userPkh = derivePkh(bchWallet.address);
+        const userPkh = derivePkh(currentBchWallet.address);
         const relayerPkh = derivePkh(relayerBchAddress);
         const timelock = BigInt(Math.floor(Date.now() / 1000) + 7200);
 
-        const provider = new ElectrumNetworkProvider('chipnet');
+        const bchNet = wdkRef.current.bchNetwork === 'mainnet' ? 'mainnet' : 'chipnet';
+        const provider = new ElectrumNetworkProvider(bchNet);
         const contract = new Contract(
             artifact,
             [userPkh, relayerPkh, hashlockArray, timelock],
@@ -643,11 +812,11 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
         let fundTxId: string;
         try {
             const amountSats = Math.floor(params.sellAmount * 1e8);
-            const wif = bchWallet.getWIF();
+            const wif = currentBchWallet.getWIF();
             if (!wif) throw new Error('WIF not available — please reconnect your BCH wallet');
 
-            const { TestNetWallet } = await import('mainnet-js');
-            const wallet = await TestNetWallet.fromWIF(wif);
+            const { TestNetWallet, Wallet } = await import('mainnet-js');
+            const wallet = bchNet === 'mainnet' ? await Wallet.fromWIF(wif) : await TestNetWallet.fromWIF(wif);
 
             setSwapStep(`Sending ${params.sellAmount} BCH to HTLC...`);
             const tx = await wallet.send([{
@@ -667,7 +836,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
         setSwapStep('Notifying relayer...');
         try {
             const response = await axios.post(`${BCH_SOLANA_RELAYER_URL}/swap/bch-to-move`, {
-                makerAddress: bchWallet.address,
+                makerAddress: currentBchWallet.address,
                 recipientAddress: recipientMovAddress,
                 sellAmount: Math.floor(params.sellAmount * 1e8).toString(),
                 buyAmount: Math.floor(params.buyAmount * Math.pow(10, params.buyToken.decimals || 8)).toString(),
@@ -761,6 +930,207 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
     };
 
     // =========================================================================
+    // ETH → BCH: Create STARK escrow on Sepolia, notify bsc-bch-server (ZK, auto-complete)
+    // =========================================================================
+    const executeETHToBCH = async (params: BCHSwapParams, recipientAddress: string) => {
+        const currentWdk = wdkRef.current;
+        if (!currentWdk.isInitialized || !currentWdk.seedPhrase) throw new Error('Connect WDK wallet first');
+        if (!recipientAddress) throw new Error('BCH recipient address required');
+
+        // Derive EVM signer on-demand — handles case where session restore had an ethers init failure
+        let evmSigner: any = currentWdk.evmSigner;
+        if (!evmSigner) {
+            const { HDNodeWallet } = await import('ethers');
+            evmSigner = HDNodeWallet.fromPhrase(currentWdk.seedPhrase, undefined, "m/44'/60'/0'/0/0");
+        }
+        const makerEvmAddress: string = evmSigner.address;
+        const isMainnet = currentWdk.bchNetwork === 'mainnet';
+
+        setSwapStep('Fetching solver address...');
+        const solverInfo = await getSolverInfo(isMainnet);
+        const solverEvmAddr = solverInfo.wallets.evm.address;
+
+        const now = Math.floor(Date.now() / 1000);
+        const timelockDuration = params.orderType === 'limit' && params.expiryTime
+            ? Math.max(params.expiryTime - now, 3600)
+            : 3600;
+
+        const tokenAddress = (params.sellToken.chain === 'eth' && params.sellToken.symbol !== 'ETH' && params.sellToken.symbol !== 'BNB' && params.sellToken.address)
+            ? params.sellToken.address
+            : '0x0000000000000000000000000000000000000000';
+
+        const sellAmountWei = toWei(params.sellAmount.toString(), params.sellToken.decimals || 18);
+
+        setSwapStep(`Creating STARK escrow on ${isMainnet ? 'BSC' : 'Sepolia'}...`);
+        let starkEscrowId: string;
+        try {
+            starkEscrowId = await createStarkEscrow(
+                evmSigner,
+                solverEvmAddr,
+                timelockDuration,
+                tokenAddress,
+                sellAmountWei,
+                isMainnet,
+            );
+            toast.success('ETH locked in STARK escrow!', { description: `Escrow ID: ${starkEscrowId}` });
+        } catch (e: any) {
+            throw new Error(`STARK escrow failed: ${e.message}`);
+        }
+
+        setSwapStep('Notifying solver...');
+        try {
+            const buyAmountSats = Math.floor(params.buyAmount * 1e8).toString();
+            const evmTokenAddress = (params.sellToken.chain === 'eth' && params.sellToken.symbol !== 'ETH' && params.sellToken.symbol !== 'BNB') ? params.sellToken.address : undefined;
+
+            const { intentId } = await createEVMToBCHIntent({
+                makerAddress: makerEvmAddress,
+                recipientAddress,
+                sellAmount: sellAmountWei,
+                buyAmount: buyAmountSats,
+                evmEscrowId: starkEscrowId,
+                useStark: true,
+                evmTokenAddress,
+                expiryTime: params.orderType === 'limit' ? params.expiryTime : undefined,
+            }, isMainnet);
+
+            const order: BCHOrder = {
+                id: intentId || `eth_bch_${Date.now()}`,
+                swapType: 'eth-to-bch',
+                orderType: params.orderType,
+                sellToken: params.sellToken,
+                buyToken: params.buyToken,
+                sellAmount: params.sellAmount,
+                buyAmount: params.buyAmount,
+                status: 'pending',
+                intentId,
+                explorerUrl: `${getEvmConfig(isMainnet).explorerUrl}/address/${starkEscrowId}`,
+                createdAt: Date.now(),
+                claimData: { evmEscrowId: starkEscrowId, direction: 'ETH_TO_BCH' },
+            };
+
+            saveOrder(order);
+            setSwapStep('');
+            toast.success('ZK swap initiated!', {
+                description: `Server fills BCH and claims ${isMainnet ? 'BSC' : 'ETH'} escrow via STARK proof automatically.`,
+            });
+        } catch (e: any) {
+            throw new Error(`Solver error: ${e.message}`);
+        }
+    };
+
+    // =========================================================================
+    // BCH → ETH: Fund StarkVerifierFRIPhaseB P2SH32 covenant, notify bsc-bch-server (ZK, auto-complete)
+    // =========================================================================
+    const executeBCHToETH = async (params: BCHSwapParams, _recipientAddress: string) => {
+        const currentBchWallet = bchWalletRef.current;
+        const currentWdk = wdkRef.current;
+        if (!currentBchWallet.address) throw new Error('Connect your BCH wallet first');
+        if (!currentWdk.evmAddress) throw new Error('EVM address not available in WDK wallet');
+
+        const wif = currentBchWallet.getWIF();
+        if (!wif) throw new Error('Cannot sign: WIF not available');
+
+        const isMainnet = currentWdk.bchNetwork === 'mainnet';
+
+        // 1. Get per-user StarkVerifierFRIPhaseB covenant address (includes userPkh + timelock
+        //    in the redeemScript so the OP_ELSE refund branch is tied to this user's key)
+        setSwapStep('Fetching ZK covenant address...');
+        const covenantTimelock = Math.floor(Date.now() / 1000) + 7200; // 2 hours from now
+        const covenantInfo = await getStarkCovenantAddress(isMainnet, currentBchWallet.address!, covenantTimelock);
+        const starkCovenantAddress = covenantInfo.address;
+        console.log('[BCH→ETH] STARK covenant address:', starkCovenantAddress, 'timelock:', covenantTimelock);
+
+        // 2. Fund the P2SH32 covenant using TransactionBuilder + raw lockingBytecode
+        setSwapStep('Funding BCH ZK covenant...');
+        let fundTxId: string;
+        try {
+            const { cashAddressToLockingBytecode } = await import('@bitauth/libauth');
+            const lockResult = cashAddressToLockingBytecode(starkCovenantAddress);
+            if (typeof lockResult === 'string') throw new Error(`Invalid covenant address: ${lockResult}`);
+            const lockingBytecode = lockResult.bytecode;
+
+            const { TransactionBuilder, ElectrumNetworkProvider, SignatureTemplate } = await getCashScript();
+            const provider = new ElectrumNetworkProvider(isMainnet ? 'mainnet' : 'chipnet');
+
+            const allUtxos = await provider.getUtxos(currentBchWallet.address!);
+            const bchUtxos = allUtxos.filter((u: any) => !u.token);
+            if (!bchUtxos.length) throw new Error('No plain BCH UTXOs available — fund your wallet or consolidate UTXOs first');
+
+            const sigTemplate = new SignatureTemplate(wif);
+            const amountSats = BigInt(Math.floor(params.sellAmount * 1e8));
+            const fee = 1000n;
+            const totalInput = bchUtxos.reduce((acc: bigint, u: any) => acc + u.satoshis, 0n);
+            const change = totalInput - amountSats - fee;
+            if (change < 0n) throw new Error('Insufficient BCH balance');
+
+            const builder = new TransactionBuilder({ provider });
+            builder.addInputs(bchUtxos, sigTemplate.unlockP2PKH());
+            builder.addOutput({ to: lockingBytecode, amount: amountSats });
+            if (change >= 546n) {
+                builder.addOutput({ to: currentBchWallet.address!, amount: change });
+            }
+
+            const tx = await builder.send();
+            fundTxId = tx.txid;
+            console.log('[BCH→ETH] Covenant funded:', fundTxId);
+            toast.success('BCH locked in ZK covenant!', { description: `Tx: ${fundTxId.slice(0, 16)}...` });
+        } catch (e: any) {
+            throw new Error(`Failed to fund BCH covenant: ${e.message}`);
+        }
+
+        // 3. Notify solver
+        setSwapStep('Notifying solver...');
+        try {
+            const sellAmountSats = Math.floor(params.sellAmount * 1e8).toString();
+            const buyAmountWei = toWei(params.buyAmount.toString(), params.buyToken.decimals || 18);
+            const evmTokenAddress = (params.buyToken.chain === 'eth' && params.buyToken.symbol !== 'ETH' && params.buyToken.symbol !== 'BNB') ? params.buyToken.address : undefined;
+
+            const { intentId } = await createBCHToEVMIntent({
+                makerAddress: currentBchWallet.address!,
+                recipientAddress: currentWdk.evmAddress!,
+                sellAmount: sellAmountSats,
+                buyAmount: buyAmountWei,
+                hashlock: 'dummy',
+                timelock: covenantTimelock,
+                bchContractAddress: starkCovenantAddress,
+                evmTokenAddress,
+                expiryTime: params.orderType === 'limit' ? params.expiryTime : undefined,
+            }, isMainnet);
+
+            const order: BCHOrder = {
+                id: intentId || `bch_eth_${Date.now()}`,
+                swapType: 'bch-to-eth',
+                orderType: params.orderType,
+                sellToken: params.sellToken,
+                buyToken: params.buyToken,
+                sellAmount: params.sellAmount,
+                buyAmount: params.buyAmount,
+                status: 'pending',
+                txid: fundTxId,
+                intentId,
+                explorerUrl: isMainnet
+                    ? `https://blockchair.com/bitcoin-cash/transaction/${fundTxId}`
+                    : `https://chipnet.imaginary.cash/tx/${fundTxId}`,
+                createdAt: Date.now(),
+                claimData: {
+                    starkCovenantAddress,
+                    evmRecipient: currentWdk.evmAddress!,
+                    direction: 'BCH_TO_ETH',
+                    bchCovenantTimelock: covenantTimelock,
+                },
+            };
+
+            saveOrder(order);
+            setSwapStep('');
+            toast.success('ZK swap initiated!', {
+                description: `Server fills ${isMainnet ? 'BNB on BSC' : 'ETH on Sepolia'} and claims BCH covenant via STARK proof automatically.`,
+            });
+        } catch (e: any) {
+            throw new Error(`Solver error: ${e.message}`);
+        }
+    };
+
+    // =========================================================================
     // BCH → XMR: Deploy XmrAdaptorSwap covenant on BCH
     // TODO: Plug back in when @bch-intents/sdk-xmr-swap build issue is resolved.
     //       The SDK is published on npm as @bch-intents/sdk-xmr-swap@^1.0.0
@@ -832,18 +1202,27 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
     // Helper: Build explorer URL per chain
     // =========================================================================
     const buildExplorerUrl = (txid: string, chain: string): string => {
+        const net = wdkRef.current.bchNetwork;
         switch (chain) {
-            case 'bch': return `https://chipnet.chaingraph.cash/tx/${txid}`;
+            case 'bch': return net === 'mainnet'
+                ? `https://blockchair.com/bitcoin-cash/transaction/${txid}`
+                : `https://chipnet.chaingraph.cash/tx/${txid}`;
             case 'solana': return `https://explorer.solana.com/tx/${txid}?cluster=devnet`;
             case 'movement': return `https://explorer.movementnetwork.xyz/txn/${txid}?network=testnet`;
-            default: return `https://chipnet.chaingraph.cash/tx/${txid}`;
+            case 'eth': return net === 'mainnet'
+                ? `https://bscscan.com/tx/${txid}`
+                : `https://sepolia.etherscan.io/tx/${txid}`;
+            default: return net === 'mainnet'
+                ? `https://blockchair.com/bitcoin-cash/transaction/${txid}`
+                : `https://chipnet.chaingraph.cash/tx/${txid}`;
         }
     };
 
     const refreshOrders = useCallback(async () => {
         setIsLoading(true);
         try {
-            const saved = localStorage.getItem(BCH_ORDERS_KEY);
+            const ordersKey = getOrdersKey(wdkRef.current.bchNetwork);
+            const saved = localStorage.getItem(ordersKey);
             if (!saved) return;
 
             const all: BCHOrder[] = JSON.parse(saved);
@@ -851,28 +1230,116 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
 
             for (const order of all) {
                 if (!order.intentId) continue;
-                // Skip terminal states
-                if (['filled', 'cancelled', 'expired'].includes(order.status)) continue;
+                // Skip terminal states (refunded is terminal too — the relayer cancel() has burned the covenant)
+                if (['filled', 'cancelled', 'expired', 'refunded'].includes(order.status)) continue;
 
                 try {
-                    if (order.swapType === 'same-chain') {
-                        // Poll CashToken relayer
+                    if (order.swapType === 'eth-to-bch' || order.swapType === 'bch-to-eth') {
+                        // Poll bsc-bch-server for ETH↔BCH ZK orders — both directions auto-complete, no user claim
+                        const ethOrder = await getETHOrder(order.intentId);
+                        const s = ethOrder.status;
+                        if (s === 'COMPLETED') {
+                            order.status = 'filled';
+                            if (order.swapType === 'eth-to-bch') {
+                                // Source = ETH escrow, dest = BCH fill
+                                if (ethOrder.bchTxHash) {
+                                    order.fillTxid = ethOrder.bchTxHash;
+                                    order.destExplorerUrl = buildExplorerUrl(ethOrder.bchTxHash, 'bch');
+                                }
+                            } else {
+                                // Source = BCH covenant, dest = EVM fill
+                                if (ethOrder.evmFillTxHash) {
+                                    order.fillTxid = ethOrder.evmFillTxHash;
+                                    order.destExplorerUrl = buildExplorerUrl(ethOrder.evmFillTxHash, 'eth');
+                                }
+                            }
+                            updated = true;
+                        } else if (s === 'REFUNDED') {
+                            order.status = 'refunded';
+                            updated = true;
+                        } else if (s === 'FAILED' || s === 'EXPIRED') {
+                            order.status = 'cancelled';
+                            updated = true;
+                        }
+                        // SOURCE_LOCKED, DEST_FILLED, GENERATING_PROOF → stay pending, no action needed
+                    } else if (order.swapType === 'same-chain') {
+                        // Poll CashToken relayer — use correct network endpoint
                         if (order.status !== 'pending') continue;
-                        const res = await axios.get(`${CASHTOKEN_RELAYER_URL}/intent/${order.intentId}`);
-                        const intent = res.data;
+                        const ctNet = wdkRef.current.bchNetwork;
+                        const ctRelayerUrl = ctNet === 'mainnet' ? CASHTOKEN_RELAYER_MAINNET_URL : CASHTOKEN_RELAYER_URL;
+                        try {
+                            const res = await axios.get(`${ctRelayerUrl}/intent/${order.intentId}`);
+                            const intent = res.data;
+                            if (intent) {
+                                if (intent.status === 'filled') {
+                                    order.status = 'filled';
+                                    order.fillTxid = intent.fillTxid;
+                                    order.explorerUrl = intent.explorerUrl || (intent.fillTxid
+                                        ? buildExplorerUrl(intent.fillTxid, 'bch')
+                                        : undefined);
+                                    updated = true;
+                                } else if (intent.status === 'refunded') {
+                                    order.status = 'refunded';
+                                    if (intent.fillTxid) {
+                                        order.fillTxid = intent.fillTxid;
+                                        order.destExplorerUrl = intent.explorerUrl || buildExplorerUrl(intent.fillTxid, 'bch');
+                                    }
+                                    updated = true;
+                                } else if (intent.status === 'cancelled' || intent.status === 'expired') {
+                                    order.status = intent.status;
+                                    updated = true;
+                                }
+                            }
+                        } catch (pollErr: any) {
+                            // 404 = intent not found (relayer restarted / stale localStorage order)
+                            if (pollErr?.response?.status === 404) {
+                                order.status = 'expired';
+                                updated = true;
+                            }
+                            // Other errors (network down etc.) → silently skip this cycle
+                        }
+                    } else if (order.swapType === 'bch-to-sol' || order.swapType === 'sol-to-bch') {
+                        // ZK path — poll sol-bch-zk-server; auto-completes, no manual claim
+                        const zkServerUrl = wdkRef.current.bchNetwork === 'mainnet'
+                            ? SOL_BCH_ZK_SERVER_MAINNET_URL
+                            : SOL_BCH_ZK_SERVER_URL;
+                        const res = await axios.get(`${zkServerUrl}/intents/${order.intentId}`);
+                        const intent = res.data.intent;
                         if (intent) {
-                            if (intent.status === 'filled') {
+                            if (intent.status === 'COMPLETED') {
                                 order.status = 'filled';
-                                order.fillTxid = intent.fillTxid;
-                                order.explorerUrl = intent.explorerUrl || `https://chipnet.chaingraph.cash/tx/${intent.fillTxid}`;
+                                if (order.swapType === 'sol-to-bch' && intent.destClaimTx) {
+                                    order.fillTxid = intent.destClaimTx;
+                                    order.destExplorerUrl = buildExplorerUrl(intent.destClaimTx, 'bch');
+                                } else if (order.swapType === 'bch-to-sol' && intent.sourceLockTx) {
+                                    order.fillTxid = intent.sourceLockTx;
+                                    order.destExplorerUrl = buildExplorerUrl(intent.sourceLockTx, 'solana');
+                                }
                                 updated = true;
-                            } else if (intent.status === 'cancelled' || intent.status === 'expired') {
-                                order.status = intent.status;
+                                toast.success(`${order.sellToken?.symbol} → ${order.buyToken?.symbol} swap complete!`, {
+                                    description: order.fillTxid
+                                        ? `Delivery tx: ${order.fillTxid.slice(0, 16)}...`
+                                        : 'Tokens delivered automatically.',
+                                });
+                            } else if (intent.status === 'FAILED' || intent.status === 'REFUNDED') {
+                                order.status = intent.status === 'REFUNDED' ? 'refunded' : 'failed';
+                                // Capture refund metadata so the UI can offer the refund button
+                                order.claimData = {
+                                    ...order.claimData,
+                                    sourceTimelock: intent.bchCovenantTimelock ?? intent.sourceTimelock,
+                                    pendingRefundTx: intent.pendingRefundTx,
+                                };
                                 updated = true;
+                                if (intent.status === 'FAILED') {
+                                    toast.info(`Swap timed out — refund available`, {
+                                        description: `${order.sellToken?.symbol} can be recovered via the Refund button.`,
+                                        duration: 10000,
+                                    });
+                                }
                             }
                         }
                     } else {
-                        // Poll cross-chain relayer
+                        // Poll cross-chain relayer (HTLC path for other directions)
                         const res = await axios.get(`${BCH_SOLANA_RELAYER_URL}/intents/${order.intentId}`);
                         const intent = res.data.intent;
                         if (intent) {
@@ -889,10 +1356,9 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                                     movementEscrowId: intent.movementEscrowId || order.claimData?.movementEscrowId,
                                     destTimelock: intent.destTimelock || order.claimData?.destTimelock,
                                 };
-                                // Build destination explorer URL
-                                const destChain = order.swapType === 'bch-to-sol' ? 'solana' : 'bch';
+                                // Build destination explorer URL (HTLC path — always BCH destination here)
                                 if (intent.destFillTx) {
-                                    order.destExplorerUrl = buildExplorerUrl(intent.destFillTx, destChain);
+                                    order.destExplorerUrl = buildExplorerUrl(intent.destFillTx, 'bch');
                                 }
                                 updated = true;
 
@@ -913,22 +1379,24 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                                     order.status = 'filled';
                                     if (intent.destFillTx && !order.fillTxid) order.fillTxid = intent.destFillTx;
                                     if (intent.destClaimTx) {
-                                        const destChain = order.swapType === 'bch-to-sol' ? 'solana' : 'bch';
-                                        order.destExplorerUrl = buildExplorerUrl(intent.destClaimTx, destChain);
+                                        order.destExplorerUrl = buildExplorerUrl(intent.destClaimTx, 'bch');
                                     }
                                     updated = true;
                                 }
                             }
 
-                            if (intent.status === 'REFUNDED' || intent.status === 'FAILED') {
+                            if (intent.status === 'REFUNDED') {
+                                order.status = 'refunded';
+                                updated = true;
+                            } else if (intent.status === 'FAILED') {
                                 order.status = 'cancelled';
                                 updated = true;
                             }
                         }
                     }
                 } catch (err: any) {
-                    // If relayer returns 404, the intent doesn't exist anymore — mark as expired
-                    if (err?.response?.status === 404 && order.swapType !== 'same-chain') {
+                    // If relayer returns 404, the intent doesn't exist — mark as expired to stop polling
+                    if (err?.response?.status === 404) {
                         order.status = 'expired';
                         updated = true;
                     }
@@ -937,7 +1405,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
             }
 
             if (updated) {
-                localStorage.setItem(BCH_ORDERS_KEY, JSON.stringify(all));
+                localStorage.setItem(ordersKey, JSON.stringify(all));
                 setPendingOrders(all.filter(o => o.status === 'pending' || o.status === 'claimable'));
                 setCompletedOrders(all.filter(o => !['pending', 'claimable'].includes(o.status)));
             }
@@ -955,7 +1423,8 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
         setSwapStep('Claiming tokens...');
 
         try {
-            const saved = localStorage.getItem(BCH_ORDERS_KEY);
+            const claimKey = getOrdersKey(wdkRef.current.bchNetwork);
+            const saved = localStorage.getItem(claimKey);
             if (!saved) throw new Error('No orders found');
 
             const all: BCHOrder[] = JSON.parse(saved);
@@ -975,8 +1444,10 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 // User claims on Solana (destination)
                 setSwapStep('Claiming on Solana...');
 
-                if (!solanaWallet.publicKey || !solanaWallet.signTransaction) {
-                    throw new Error('Solana wallet not connected');
+                // Use ref so we always get the live WDK-derived signer even inside useCallback
+                const sw = solanaWalletRef.current;
+                if (!sw || !sw.publicKey || !sw.signTransaction) {
+                    throw new Error('WDK wallet not connected — Solana signer unavailable');
                 }
 
                 // Derive PDAs
@@ -1004,7 +1475,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                     new PublicKey(SOLANA_PROGRAM_ID)
                 );
 
-                const takerTokenAccount = await getAssociatedTokenAddress(tokenMint, solanaWallet.publicKey!);
+                const takerTokenAccount = await getAssociatedTokenAddress(tokenMint, sw.publicKey);
 
                 // Fetch intent from Relayer to confirm Taker identity
                 console.log('[Claim] Fetching intent data to verify Taker identity...');
@@ -1013,10 +1484,10 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
 
                 console.log('[Claim] Expected Token/Mint:', tokenMint.toBase58());
                 console.log('[Claim] Expected Taker:', expectedTaker);
-                console.log('[Claim] Connected Taker (Signing Wallet):', solanaWallet.publicKey!.toBase58());
+                console.log('[Claim] Connected Taker (Signing Wallet):', sw.publicKey.toBase58());
 
-                if (expectedTaker && expectedTaker !== solanaWallet.publicKey!.toBase58()) {
-                    throw new Error(`Wallet Mismatch! You connected ${solanaWallet.publicKey!.toBase58().slice(0, 6)}... but the escrow requires ${expectedTaker.slice(0, 6)}... to claim it.`);
+                if (expectedTaker && expectedTaker !== sw.publicKey.toBase58()) {
+                    throw new Error(`Wallet Mismatch! You connected ${sw.publicKey.toBase58().slice(0, 6)}... but the escrow requires ${expectedTaker.slice(0, 6)}... to claim it.`);
                 }
 
                 // Check if user has an ATA, if not, create it first
@@ -1027,32 +1498,30 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
 
                     const ataTx = new anchor.web3.Transaction().add(
                         createAssociatedTokenAccountInstruction(
-                            solanaWallet.publicKey!, // Payer
-                            takerTokenAccount,      // ATA
-                            solanaWallet.publicKey!, // Owner
-                            tokenMint               // Mint
+                            sw.publicKey, // Payer
+                            takerTokenAccount,
+                            sw.publicKey, // Owner
+                            tokenMint
                         )
                     );
 
                     ataTx.recentBlockhash = (await solanaConnection.getLatestBlockhash()).blockhash;
-                    ataTx.feePayer = solanaWallet.publicKey!;
+                    ataTx.feePayer = sw.publicKey;
 
-                    const ataSignature = await solanaWallet.sendTransaction(ataTx, solanaConnection);
+                    const ataSignature = await sw.sendTransaction(ataTx, solanaConnection);
                     await solanaConnection.confirmTransaction(ataSignature, 'processed');
                     console.log('[Claim] ATA Created successfully.');
                 }
 
                 const transaction = new anchor.web3.Transaction();
 
-                // Manually build instruction to avoid Anchor version mismatch IDL parsing errors
-                // The discriminator for `claim` from the IDL is [62, 198, 214, 193, 213, 159, 108, 210]
                 const CLAIM_DISCRIMINATOR = Buffer.from([62, 198, 214, 193, 213, 159, 108, 210]);
                 const data = Buffer.concat([CLAIM_DISCRIMINATOR, secretBuf]);
 
                 const ix = new anchor.web3.TransactionInstruction({
                     programId: new PublicKey(SOLANA_PROGRAM_ID),
                     keys: [
-                        { pubkey: solanaWallet.publicKey!, isSigner: true, isWritable: true },
+                        { pubkey: sw.publicKey, isSigner: true, isWritable: true },
                         { pubkey: escrowPda, isSigner: false, isWritable: true },
                         { pubkey: vaultPda, isSigner: false, isWritable: true },
                         { pubkey: takerTokenAccount, isSigner: false, isWritable: true },
@@ -1064,16 +1533,12 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 transaction.add(ix);
 
                 try {
-                    // Pre-flight simulation to catch exact errors (wallets often swallow RPC errors)
-                    // Wallets typically run their own simulation, so we just set up the transaction config
                     transaction.recentBlockhash = (await solanaConnection.getLatestBlockhash()).blockhash;
-                    transaction.feePayer = solanaWallet.publicKey!;
+                    transaction.feePayer = sw.publicKey;
 
-                    // Adjust step message depending on if ATA was just created
                     setSwapStep(accountInfo ? 'Please sign the transaction in your wallet...' : 'Please sign the claim transaction (Transaction 2 of 2)...');
 
-                    // User signs and sends transaction
-                    const signature = await solanaWallet.sendTransaction(transaction, solanaConnection);
+                    const signature = await sw.sendTransaction(transaction, solanaConnection);
                     claimTxid = signature;
 
                     setSwapStep('Waiting for confirmation...');
@@ -1132,7 +1597,8 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 if (!destTimelock) throw new Error('destTimelock missing from claim data. Cannot reconstruct HTLC contract.');
                 const timelock = BigInt(destTimelock);
 
-                const provider = new ElectrumNetworkProvider('chipnet');
+                const claimNet = wdkRef.current.bchNetwork === 'mainnet' ? 'mainnet' : 'chipnet';
+                const provider = new ElectrumNetworkProvider(claimNet);
                 const contract = new Contract(
                     artifact,
                     [makerPkh, takerPkh, hashBuf, timelock],
@@ -1212,7 +1678,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 order.destExplorerUrl = buildExplorerUrl(claimTxid, destChain);
             }
 
-            localStorage.setItem(BCH_ORDERS_KEY, JSON.stringify(all));
+            localStorage.setItem(claimKey, JSON.stringify(all));
             setPendingOrders(all.filter(o => o.status === 'pending' || o.status === 'claimable'));
             setCompletedOrders(all.filter(o => !['pending', 'claimable'].includes(o.status)));
 
@@ -1229,7 +1695,171 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
             setIsLoading(false);
             setSwapStep('');
         }
-    }, [bchWallet.connected, solanaWallet.publicKey, solanaWallet.signTransaction]);
+    }, [bchWallet.connected]);
+
+    // =========================================================================
+    // requestRefund — user-triggered refund for timed-out ZK swaps
+    //   bch-to-sol: GET /intents/:id/refund-bch → sign sighash → POST refund-bch
+    //   sol-to-bch: GET /intents/:id/refund-tx  → sign unsigned tx → submit
+    // =========================================================================
+    const requestRefund = useCallback(async (orderId: string) => {
+        setIsLoading(true);
+        setSwapStep('Preparing refund...');
+        try {
+            const key = getOrdersKey(wdkRef.current.bchNetwork);
+            const saved = localStorage.getItem(key);
+            if (!saved) throw new Error('No orders found');
+            const all: BCHOrder[] = JSON.parse(saved);
+            const order = all.find(o => o.id === orderId);
+            if (!order || !order.intentId) throw new Error('Order not found');
+
+            const zkUrl = wdkRef.current.bchNetwork === 'mainnet'
+                ? SOL_BCH_ZK_SERVER_MAINNET_URL
+                : SOL_BCH_ZK_SERVER_URL;
+            const isMainnet = wdkRef.current.bchNetwork === 'mainnet';
+
+            let refundTxid: string | undefined;
+            let refundExplorerUrl: string | undefined;
+
+            if (order.swapType === 'bch-to-sol') {
+                // ── BCH covenant refund via OP_ELSE (CLTV) branch ─────────────
+                const currentBchWallet = bchWalletRef.current;
+                if (!currentBchWallet.address) throw new Error('Connect your BCH wallet to claim the refund');
+                const wif = currentBchWallet.getWIF();
+                if (!wif) throw new Error('WIF not available — reconnect your BCH wallet');
+
+                setSwapStep('Fetching BCH refund transaction...');
+                const { data } = await axios.get(`${zkUrl}/intents/${order.intentId}/refund-bch`);
+                if (!data.timelockPassed) {
+                    const mins = Math.ceil((data.timelock - Date.now() / 1000) / 60);
+                    throw new Error(`Timelock not yet passed — available in ~${mins} min`);
+                }
+
+                // Sign the BIP143 sighash with user's BCH key via libauth secp256k1
+                const { secp256k1: sec, decodePrivateKeyWif, hexToBin, binToHex } = await import('@bitauth/libauth');
+                const wifResult = decodePrivateKeyWif(wif);
+                if (typeof wifResult === 'string') throw new Error(`Invalid WIF: ${wifResult}`);
+                const privKey = wifResult.privateKey;
+                const pubKey = sec.derivePublicKeyCompressed(privKey);
+                if (typeof pubKey === 'string') throw new Error(`Key derivation failed: ${pubKey}`);
+                const sighash = hexToBin(data.sighashHex);
+                const derSig = sec.signMessageHashDER(privKey, sighash);
+                if (typeof derSig === 'string') throw new Error(`Signing failed: ${derSig}`);
+                const userSig = new Uint8Array([...derSig, 0x41]); // SIGHASH_ALL|FORKID
+
+                setSwapStep('Broadcasting BCH refund...');
+                let refundData: any;
+                try {
+                    const res = await axios.post(
+                        `${zkUrl}/intents/${order.intentId}/refund-bch`,
+                        { userPk: binToHex(pubKey), userSig: binToHex(userSig) },
+                    );
+                    refundData = res.data;
+                } catch (postErr: any) {
+                    const serverMsg = postErr?.response?.data?.error ?? postErr.message;
+                    throw new Error(serverMsg);
+                }
+                refundTxid = refundData.txid;
+                refundExplorerUrl = isMainnet
+                    ? `https://blockchair.com/bitcoin-cash/transaction/${refundTxid}`
+                    : `https://chipnet.chaingraph.cash/tx/${refundTxid}`;
+
+            } else if (order.swapType === 'sol-to-bch') {
+                // ── Solana FRI escrow refund — sign prebuilt unsigned tx ───────
+                const sw = solanaWalletRef.current;
+                if (!sw?.publicKey) throw new Error('Connect your Solana wallet to claim the refund');
+
+                setSwapStep('Fetching Solana refund transaction...');
+                const { data } = await axios.get(`${zkUrl}/intents/${order.intentId}/refund-tx`);
+                if (!data.timelockPassed) {
+                    const mins = Math.ceil((data.timelock - Date.now() / 1000) / 60);
+                    throw new Error(`Timelock not yet passed — available in ~${mins} min`);
+                }
+
+                setSwapStep('Sign the refund in your wallet...');
+                const { Transaction } = await import('@solana/web3.js');
+                const tx = Transaction.from(Buffer.from(data.refundTx, 'base64'));
+
+                // Refresh blockhash — prebuilt tx may have a stale one
+                const { blockhash, lastValidBlockHeight } = await solanaConnection.getLatestBlockhash();
+                tx.recentBlockhash = blockhash;
+                tx.feePayer = sw.publicKey;
+
+                const signedTx = await sw.signTransaction(tx);
+                setSwapStep('Submitting Solana refund...');
+                const sig = await solanaConnection.sendRawTransaction(signedTx.serialize());
+                await solanaConnection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
+                refundTxid = sig;
+                refundExplorerUrl = `https://explorer.solana.com/tx/${sig}?cluster=${isMainnet ? 'mainnet-beta' : 'devnet'}`;
+            } else if (order.swapType === 'bch-to-eth') {
+                // ── BCH→EVM covenant refund via OP_ELSE (CLTV) branch ─────────
+                const currentBchWallet = bchWalletRef.current;
+                if (!currentBchWallet.address) throw new Error('Connect your BCH wallet to claim the refund');
+                const wif = currentBchWallet.getWIF();
+                if (!wif) throw new Error('WIF not available — reconnect your BCH wallet');
+
+                setSwapStep('Fetching BCH refund transaction...');
+                const refundInfo = await getRefundBCH(order.intentId!, isMainnet);
+                if (!refundInfo.timelockPassed) {
+                    const mins = Math.ceil((refundInfo.timelock - Date.now() / 1000) / 60);
+                    throw new Error(`Timelock not yet passed — available in ~${mins} min`);
+                }
+
+                // Sign the BIP143 sighash with user's BCH key via libauth secp256k1
+                const { secp256k1: sec, decodePrivateKeyWif, hexToBin, binToHex } = await import('@bitauth/libauth');
+                const wifResult = decodePrivateKeyWif(wif);
+                if (typeof wifResult === 'string') throw new Error(`Invalid WIF: ${wifResult}`);
+                const privKey = wifResult.privateKey;
+                const pubKey = sec.derivePublicKeyCompressed(privKey);
+                if (typeof pubKey === 'string') throw new Error(`Key derivation failed: ${pubKey}`);
+                const sighash = hexToBin(refundInfo.sighashHex);
+                const derSig = sec.signMessageHashDER(privKey, sighash);
+                if (typeof derSig === 'string') throw new Error(`Signing failed: ${derSig}`);
+                const userSig = new Uint8Array([...derSig, 0x41]); // SIGHASH_ALL|FORKID
+
+                setSwapStep('Broadcasting BCH refund...');
+                let refundData: { txid: string };
+                try {
+                    refundData = await postRefundBCH(
+                        order.intentId!,
+                        { userPk: binToHex(pubKey), userSig: binToHex(userSig) },
+                        isMainnet,
+                    );
+                } catch (postErr: any) {
+                    throw new Error(postErr.message);
+                }
+                refundTxid = refundData.txid;
+                refundExplorerUrl = isMainnet
+                    ? `https://blockchair.com/bitcoin-cash/transaction/${refundTxid}`
+                    : `https://chipnet.chaingraph.cash/tx/${refundTxid}`;
+            } else {
+                throw new Error(`Refund not available for swap type: ${order.swapType}`);
+            }
+
+            if (refundTxid) {
+                order.status = 'refunded';
+                order.fillTxid = refundTxid;
+                order.destExplorerUrl = refundExplorerUrl;
+                localStorage.setItem(key, JSON.stringify(all));
+                setPendingOrders(all.filter(o => o.status === 'pending' || o.status === 'claimable'));
+                setCompletedOrders(all.filter(o => !['pending', 'claimable'].includes(o.status)));
+
+                toast.success('Refund successful!', {
+                    description: `Tx: ${refundTxid.slice(0, 16)}...`,
+                    action: refundExplorerUrl ? {
+                        label: 'View on Explorer',
+                        onClick: () => window.open(refundExplorerUrl, '_blank'),
+                    } : undefined,
+                });
+            }
+        } catch (e: any) {
+            console.error('[requestRefund] Error:', e);
+            toast.error('Refund failed', { description: e.message });
+        } finally {
+            setIsLoading(false);
+            setSwapStep('');
+        }
+    }, [solanaConnection]);
 
     // =========================================================================
     // executeSwap — Router that dispatches to the correct swap handler
@@ -1260,6 +1890,12 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 case 'xmr-to-bch':
                     await executeXMRToBCH(params, recipientAddress);
                     break;
+                case 'eth-to-bch':
+                    await executeETHToBCH(params, recipientAddress);
+                    break;
+                case 'bch-to-eth':
+                    await executeBCHToETH(params, recipientAddress);
+                    break;
                 default:
                     throw new Error(`Unsupported swap type: ${params.swapType}`);
             }
@@ -1282,6 +1918,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 completedOrders,
                 executeSwap,
                 claimOrder,
+                requestRefund,
                 refreshOrders,
                 detectSwapType,
             }}
