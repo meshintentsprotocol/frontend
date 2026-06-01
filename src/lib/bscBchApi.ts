@@ -37,12 +37,14 @@ export interface ETHOrderStatus {
     error?: string;
 }
 
-function networkQuery(isMainnet: boolean) {
-    return isMainnet ? '?network=mainnet' : '';
-}
-
 async function request<T>(path: string, isMainnet: boolean, options?: RequestInit): Promise<T> {
-    const url = `${BSC_BCH_URL}${path}${networkQuery(isMainnet)}`;
+    // Append ?network=mainnet without clobbering any query params already on the path.
+    let fullPath = path;
+    if (isMainnet) {
+        const sep = path.includes('?') ? '&' : '?';
+        fullPath = `${path}${sep}network=mainnet`;
+    }
+    const url = `${BSC_BCH_URL}${fullPath}`;
     const res = await fetch(url, {
         headers: { 'Content-Type': 'application/json' },
         ...options,
@@ -62,7 +64,7 @@ export async function getStarkCovenantAddress(
     const params = new URLSearchParams();
     if (userAddress) params.set('userAddress', userAddress);
     if (timelock)    params.set('timelock', timelock.toString());
-    const qs = params.toString() ? `&${params.toString()}` : '';
+    const qs = params.toString() ? `?${params.toString()}` : '';
     return request<{ address: string; tokenAddress?: string; timelock?: number }>(`/stark/address${qs}`, isMainnet);
 }
 
