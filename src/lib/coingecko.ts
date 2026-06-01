@@ -21,6 +21,9 @@ const CG_ID_MAP: Record<string, string> = {
     'USDT': 'tether',
     'MOVE': 'movement', // May not exist or may be a generic placeholder on CG
     'XMR': 'monero',
+    'ETH': 'ethereum',
+    'BNB': 'binancecoin',
+    'BTC': 'bitcoin',
 };
 
 // Reusable instance with a small timeout
@@ -131,6 +134,83 @@ export function formatCompactNumber(num: number | null | undefined): string {
         maximumFractionDigits: 2
     }).format(num);
 }
+
+export interface CoinDetail {
+    id: string;
+    name: string;
+    symbol: string;
+    description: { en: string };
+    links: { homepage: string[]; blockchain_site: string[] };
+    image: { large: string; small: string; thumb: string };
+    market_data: {
+        current_price: { usd: number };
+        market_cap: { usd: number };
+        fully_diluted_valuation: { usd: number };
+        total_volume: { usd: number };
+        high_24h: { usd: number };
+        low_24h: { usd: number };
+        ath: { usd: number };
+        atl: { usd: number };
+        ath_date: { usd: string };
+        atl_date: { usd: string };
+        price_change_percentage_1h_in_currency: { usd: number };
+        price_change_percentage_24h_in_currency: { usd: number };
+        price_change_percentage_7d_in_currency: { usd: number };
+        price_change_percentage_30d_in_currency: { usd: number };
+        market_cap_rank: number;
+        circulating_supply: number;
+        total_supply: number;
+        max_supply: number | null;
+    };
+}
+
+export interface ChartPoint { time: number; price: number; }
+
+// Expose the ID map for resolving symbols
+export { CG_ID_MAP };
+
+/**
+ * Fetch full coin detail (description, links, deep market data)
+ * Cached for 5 minutes — only call on token detail page load.
+ */
+export const CoinGeckoService_extended = {
+    async getCoinDetail(cgId: string): Promise<CoinDetail | null> {
+        try {
+            const res = await cgApi.get(`/coins/${cgId}`, {
+                params: {
+                    localization: false,
+                    tickers: false,
+                    market_data: true,
+                    community_data: false,
+                    developer_data: false,
+                    sparkline: false,
+                },
+            });
+            return res.data as CoinDetail;
+        } catch (e) {
+            console.warn(`CoinGecko getCoinDetail(${cgId}) failed`, e);
+            return null;
+        }
+    },
+
+    /**
+     * Fetch OHLC-style price history for chart.
+     * days: 1 → 1D, 7 → 1W, 30 → 1M, 365 → 1Y, 'max' → ALL
+     * Granularity is auto-selected by CoinGecko based on days.
+     */
+    async getMarketChart(cgId: string, days: number | 'max'): Promise<ChartPoint[]> {
+        try {
+            const res = await cgApi.get(`/coins/${cgId}/market_chart`, {
+                params: { vs_currency: 'usd', days, interval: days === 1 ? 'hourly' : 'daily' },
+            });
+            const prices: [number, number][] = res.data.prices ?? [];
+            return prices.map(([time, price]) => ({ time, price }));
+        } catch (e) {
+            console.warn(`CoinGecko getMarketChart(${cgId}, ${days}) failed`, e);
+            return [];
+        }
+    },
+};
 
 /**
  * Helper to format standard currency amounts

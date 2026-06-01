@@ -1,330 +1,96 @@
 {
-  "address": "5JAWumq5L4B8WrpF3CFox36SZ2bJF4xQvskLksmHRgs2",
+  "address": "G3F8TFjuxCAkTv8zZcPLJWmeAabTx7pasgmePcJa4pEL",
   "metadata": {
     "name": "intent_swap",
     "version": "0.1.0",
-    "spec": "0.1.0",
-    "description": "Created with Anchor"
+    "spec": "0.1.0"
   },
   "instructions": [
     {
-      "name": "claim",
-      "docs": [
-        "Claim escrow funds by revealing the pre-image secret"
-      ],
-      "discriminator": [
-        62,
-        198,
-        214,
-        193,
-        213,
-        159,
-        108,
-        210
-      ],
-      "accounts": [
-        {
-          "name": "taker",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "escrow",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  101,
-                  115,
-                  99,
-                  114,
-                  111,
-                  119
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "escrow.maker",
-                "account": "EscrowState"
-              },
-              {
-                "kind": "account",
-                "path": "escrow.hashlock",
-                "account": "EscrowState"
-              }
-            ]
-          }
-        },
-        {
-          "name": "vault",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "escrow"
-              }
-            ]
-          }
-        },
-        {
-          "name": "taker_token_account",
-          "writable": true
-        },
-        {
-          "name": "token_program",
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-        }
-      ],
-      "args": [
-        {
-          "name": "secret",
-          "type": {
-            "array": [
-              "u8",
-              32
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "fill",
-      "docs": [
-        "Execute dynamic swap based on signed intent (Dutch Auction)"
-      ],
-      "discriminator": [
-        168,
-        96,
-        183,
-        163,
-        92,
-        10,
-        40,
-        160
-      ],
-      "accounts": [
-        {
-          "name": "taker",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "maker",
-          "writable": true
-        },
-        {
-          "name": "taker_token_account",
-          "writable": true
-        },
-        {
-          "name": "maker_token_account",
-          "writable": true
-        },
-        {
-          "name": "token_program",
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-        },
-        {
-          "name": "verify_ctx",
-          "accounts": [
-            {
-              "name": "instructions"
-            }
-          ]
-        }
-      ],
-      "args": [
-        {
-          "name": "intent",
-          "type": {
-            "defined": {
-              "name": "Intent"
-            }
-          }
-        },
-        {
-          "name": "_signature",
-          "type": {
-            "array": [
-              "u8",
-              64
-            ]
-          }
-        }
-      ]
-    },
-    {
       "name": "initialize",
-      "docs": [
-        "Initialize a new escrow with a hashlock and timelock"
-      ],
-      "discriminator": [
-        175,
-        175,
-        109,
-        31,
-        13,
-        152,
-        155,
-        237
-      ],
+      "discriminator": [175,175,109,31,13,152,155,237],
       "accounts": [
-        {
-          "name": "maker",
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "taker"
-        },
-        {
-          "name": "token_mint"
-        },
+        {"name": "maker", "writable": true, "signer": true},
+        {"name": "taker"},
+        {"name": "tokenMint"},
         {
           "name": "escrow",
           "writable": true,
           "pda": {
             "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  101,
-                  115,
-                  99,
-                  114,
-                  111,
-                  119
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "maker"
-              },
-              {
-                "kind": "arg",
-                "path": "hashlock"
-              }
+              {"kind": "const", "value": [101,115,99,114,111,119]},
+              {"kind": "account", "path": "maker"},
+              {"kind": "arg", "path": "hashlock"}
             ]
           }
         },
+        {"name": "makerTokenAccount", "writable": true},
         {
-          "name": "maker_token_account",
-          "writable": true
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {"kind": "const", "value": [118,97,117,108,116]},
+              {"kind": "account", "path": "escrow"}
+            ]
+          }
+        },
+        {"name": "systemProgram", "address": "11111111111111111111111111111111"},
+        {"name": "tokenProgram", "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"},
+        {"name": "rent", "address": "SysvarRent111111111111111111111111111111111"}
+      ],
+      "args": [
+        {"name": "hashlock", "type": {"array": ["u8", 32]}},
+        {"name": "timelock", "type": "i64"},
+        {"name": "amount", "type": "u64"}
+      ]
+    },
+    {
+      "name": "claim",
+      "discriminator": [62,198,214,193,213,159,108,210],
+      "accounts": [
+        {"name": "taker", "writable": true, "signer": true},
+        {
+          "name": "escrow",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {"kind": "const", "value": [101,115,99,114,111,119]},
+              {"kind": "account", "path": "escrow.maker"},
+              {"kind": "account", "path": "escrow.hashlock"}
+            ]
+          }
         },
         {
           "name": "vault",
           "writable": true,
           "pda": {
             "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "escrow"
-              }
+              {"kind": "const", "value": [118,97,117,108,116]},
+              {"kind": "account", "path": "escrow"}
             ]
           }
         },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        },
-        {
-          "name": "token_program",
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-        },
-        {
-          "name": "rent",
-          "address": "SysvarRent111111111111111111111111111111111"
-        }
+        {"name": "takerTokenAccount", "writable": true},
+        {"name": "tokenProgram", "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"}
       ],
       "args": [
-        {
-          "name": "hashlock",
-          "type": {
-            "array": [
-              "u8",
-              32
-            ]
-          }
-        },
-        {
-          "name": "timelock",
-          "type": "i64"
-        },
-        {
-          "name": "amount",
-          "type": "u64"
-        }
+        {"name": "secret", "type": {"array": ["u8", 32]}}
       ]
     },
     {
       "name": "refund",
-      "docs": [
-        "Refund funds to the maker after the timelock expires"
-      ],
-      "discriminator": [
-        2,
-        96,
-        183,
-        251,
-        63,
-        208,
-        46,
-        46
-      ],
+      "discriminator": [2,96,183,251,63,208,46,46],
       "accounts": [
-        {
-          "name": "maker",
-          "writable": true,
-          "signer": true
-        },
+        {"name": "maker", "writable": true, "signer": true},
         {
           "name": "escrow",
           "writable": true,
           "pda": {
             "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  101,
-                  115,
-                  99,
-                  114,
-                  111,
-                  119
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "maker"
-              },
-              {
-                "kind": "account",
-                "path": "escrow.hashlock",
-                "account": "EscrowState"
-              }
+              {"kind": "const", "value": [101,115,99,114,111,119]},
+              {"kind": "account", "path": "maker"},
+              {"kind": "account", "path": "escrow.hashlock"}
             ]
           }
         },
@@ -333,31 +99,205 @@
           "writable": true,
           "pda": {
             "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  118,
-                  97,
-                  117,
-                  108,
-                  116
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "escrow"
-              }
+              {"kind": "const", "value": [118,97,117,108,116]},
+              {"kind": "account", "path": "escrow"}
+            ]
+          }
+        },
+        {"name": "makerTokenAccount", "writable": true},
+        {"name": "tokenProgram", "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"}
+      ],
+      "args": []
+    },
+    {
+      "name": "fill",
+      "discriminator": [168,96,183,163,92,10,40,160],
+      "accounts": [
+        {"name": "taker", "writable": true, "signer": true},
+        {"name": "maker", "writable": true},
+        {"name": "takerTokenAccount", "writable": true},
+        {"name": "makerTokenAccount", "writable": true},
+        {"name": "tokenProgram", "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"},
+        {"name": "instructionsSysvar", "address": "Sysvar1nstructions1111111111111111111111111"}
+      ],
+      "args": [
+        {"name": "intent", "type": {"defined": {"name": "Intent"}}},
+        {"name": "signature", "type": {"array": ["u8", 64]}}
+      ]
+    },
+    {
+      "name": "lockSolFri",
+      "discriminator": [143,230,7,13,195,69,87,209],
+      "accounts": [
+        {"name": "maker", "writable": true, "signer": true},
+        {"name": "taker"},
+        {
+          "name": "escrow",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {"kind": "const", "value": [102,114,105,95,101,115,99,114,111,119]},
+              {"kind": "account", "path": "maker"},
+              {"kind": "arg", "path": "bchTxSigHash"}
+            ]
+          }
+        },
+        {"name": "systemProgram", "address": "11111111111111111111111111111111"}
+      ],
+      "args": [
+        {"name": "bchTxSigHash", "type": {"array": ["u8", 32]}},
+        {"name": "programHash", "type": {"array": ["u8", 32]}},
+        {"name": "timelock", "type": "i64"},
+        {"name": "amount", "type": "u64"}
+      ]
+    },
+    {
+      "name": "claimSolFri",
+      "discriminator": [150,3,114,224,96,83,225,200],
+      "accounts": [
+        {"name": "taker", "writable": true, "signer": true},
+        {"name": "maker", "writable": true},
+        {
+          "name": "escrow",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {"kind": "const", "value": [102,114,105,95,101,115,99,114,111,119]},
+              {"kind": "account", "path": "escrow.maker"},
+              {"kind": "account", "path": "escrow.bchTxSigHash"}
+            ]
+          }
+        },
+        {"name": "systemProgram", "address": "11111111111111111111111111111111"}
+      ],
+      "args": [
+        {"name": "witnessBlob", "type": {"vec": "u8"}},
+        {"name": "finalPolyBlob", "type": {"vec": "u8"}}
+      ]
+    },
+    {
+      "name": "refundSolFri",
+      "discriminator": [76,69,48,111,72,54,144,91],
+      "accounts": [
+        {"name": "maker", "writable": true, "signer": true},
+        {
+          "name": "escrow",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {"kind": "const", "value": [102,114,105,95,101,115,99,114,111,119]},
+              {"kind": "account", "path": "maker"},
+              {"kind": "account", "path": "escrow.bchTxSigHash"}
+            ]
+          }
+        },
+        {"name": "systemProgram", "address": "11111111111111111111111111111111"}
+      ],
+      "args": []
+    },
+    {
+      "name": "lockTokenFri",
+      "discriminator": [209,242,159,97,125,152,245,108],
+      "accounts": [
+        {"name": "maker", "writable": true, "signer": true},
+        {"name": "taker"},
+        {"name": "tokenMint"},
+        {
+          "name": "escrow",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {"kind": "const", "value": [102,114,105,95,101,115,99,114,111,119]},
+              {"kind": "account", "path": "maker"},
+              {"kind": "arg", "path": "bchTxSigHash"}
+            ]
+          }
+        },
+        {"name": "makerTokenAccount", "writable": true},
+        {
+          "name": "friVault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {"kind": "const", "value": [102,114,105,95,118,97,117,108,116]},
+              {"kind": "account", "path": "escrow"}
+            ]
+          }
+        },
+        {"name": "systemProgram", "address": "11111111111111111111111111111111"},
+        {"name": "tokenProgram", "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"},
+        {"name": "rent", "address": "SysvarRent111111111111111111111111111111111"}
+      ],
+      "args": [
+        {"name": "bchTxSigHash", "type": {"array": ["u8", 32]}},
+        {"name": "programHash", "type": {"array": ["u8", 32]}},
+        {"name": "timelock", "type": "i64"},
+        {"name": "amount", "type": "u64"}
+      ]
+    },
+    {
+      "name": "claimTokenFri",
+      "discriminator": [225,41,193,208,19,212,112,210],
+      "accounts": [
+        {"name": "taker", "writable": true, "signer": true},
+        {"name": "maker", "writable": true},
+        {
+          "name": "escrow",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {"kind": "const", "value": [102,114,105,95,101,115,99,114,111,119]},
+              {"kind": "account", "path": "escrow.maker"},
+              {"kind": "account", "path": "escrow.bchTxSigHash"}
             ]
           }
         },
         {
-          "name": "maker_token_account",
-          "writable": true
+          "name": "friVault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {"kind": "const", "value": [102,114,105,95,118,97,117,108,116]},
+              {"kind": "account", "path": "escrow"}
+            ]
+          }
+        },
+        {"name": "takerTokenAccount", "writable": true},
+        {"name": "tokenProgram", "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"}
+      ],
+      "args": [
+        {"name": "witnessBlob", "type": {"vec": "u8"}},
+        {"name": "finalPolyBlob", "type": {"vec": "u8"}}
+      ]
+    },
+    {
+      "name": "refundTokenFri",
+      "discriminator": [11,28,143,196,227,216,92,152],
+      "accounts": [
+        {"name": "maker", "writable": true, "signer": true},
+        {
+          "name": "escrow",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {"kind": "const", "value": [102,114,105,95,101,115,99,114,111,119]},
+              {"kind": "account", "path": "maker"},
+              {"kind": "account", "path": "escrow.bchTxSigHash"}
+            ]
+          }
         },
         {
-          "name": "token_program",
-          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
-        }
+          "name": "friVault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {"kind": "const", "value": [102,114,105,95,118,97,117,108,116]},
+              {"kind": "account", "path": "escrow"}
+            ]
+          }
+        },
+        {"name": "makerTokenAccount", "writable": true},
+        {"name": "tokenProgram", "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"}
       ],
       "args": []
     }
@@ -365,33 +305,11 @@
   "accounts": [
     {
       "name": "EscrowState",
-      "discriminator": [
-        19,
-        90,
-        148,
-        111,
-        55,
-        130,
-        229,
-        108
-      ]
-    }
-  ],
-  "errors": [
-    {
-      "code": 6000,
-      "name": "InvalidInstructionData",
-      "msg": "Invalid instruction data"
+      "discriminator": [19,90,148,111,55,130,229,108]
     },
     {
-      "code": 6001,
-      "name": "SignatureVerificationFailed",
-      "msg": "Signature verification failed"
-    },
-    {
-      "code": 6002,
-      "name": "MissingSignatureInstruction",
-      "msg": "Missing Ed25519 signature instruction"
+      "name": "FriEscrowState",
+      "discriminator": [203,136,4,1,116,49,245,197]
     }
   ],
   "types": [
@@ -400,39 +318,29 @@
       "type": {
         "kind": "struct",
         "fields": [
-          {
-            "name": "hashlock",
-            "type": {
-              "array": [
-                "u8",
-                32
-              ]
-            }
-          },
-          {
-            "name": "timelock",
-            "type": "i64"
-          },
-          {
-            "name": "maker",
-            "type": "pubkey"
-          },
-          {
-            "name": "taker",
-            "type": "pubkey"
-          },
-          {
-            "name": "token_mint",
-            "type": "pubkey"
-          },
-          {
-            "name": "amount",
-            "type": "u64"
-          },
-          {
-            "name": "bump",
-            "type": "u8"
-          }
+          {"name": "hashlock", "type": {"array": ["u8", 32]}},
+          {"name": "timelock", "type": "i64"},
+          {"name": "maker", "type": "pubkey"},
+          {"name": "taker", "type": "pubkey"},
+          {"name": "tokenMint", "type": "pubkey"},
+          {"name": "amount", "type": "u64"},
+          {"name": "bump", "type": "u8"}
+        ]
+      }
+    },
+    {
+      "name": "FriEscrowState",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {"name": "bchTxSigHash", "type": {"array": ["u8", 32]}},
+          {"name": "programHash", "type": {"array": ["u8", 32]}},
+          {"name": "timelock", "type": "i64"},
+          {"name": "maker", "type": "pubkey"},
+          {"name": "taker", "type": "pubkey"},
+          {"name": "amount", "type": "u64"},
+          {"name": "tokenMint", "type": {"option": "pubkey"}},
+          {"name": "bump", "type": "u8"}
         ]
       }
     },
@@ -441,44 +349,34 @@
       "type": {
         "kind": "struct",
         "fields": [
-          {
-            "name": "maker",
-            "type": "pubkey"
-          },
-          {
-            "name": "sell_token",
-            "type": "pubkey"
-          },
-          {
-            "name": "buy_token",
-            "type": "pubkey"
-          },
-          {
-            "name": "sell_amount",
-            "type": "u64"
-          },
-          {
-            "name": "start_amount",
-            "type": "u64"
-          },
-          {
-            "name": "end_amount",
-            "type": "u64"
-          },
-          {
-            "name": "start_time",
-            "type": "i64"
-          },
-          {
-            "name": "end_time",
-            "type": "i64"
-          },
-          {
-            "name": "nonce",
-            "type": "u64"
-          }
+          {"name": "maker", "type": "pubkey"},
+          {"name": "sellToken", "type": "pubkey"},
+          {"name": "buyToken", "type": "pubkey"},
+          {"name": "sellAmount", "type": "u64"},
+          {"name": "startAmount", "type": "u64"},
+          {"name": "endAmount", "type": "u64"},
+          {"name": "startTime", "type": "i64"},
+          {"name": "endTime", "type": "i64"},
+          {"name": "nonce", "type": "u64"}
         ]
       }
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "InvalidSecret",
+      "msg": "Invalid secret provided."
+    },
+    {
+      "code": 6001,
+      "name": "TimelockNotExpired",
+      "msg": "Timelock has not expired yet."
+    },
+    {
+      "code": 6002,
+      "name": "Unauthorized",
+      "msg": "Unauthorized."
     }
   ]
 }

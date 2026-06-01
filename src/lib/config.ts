@@ -4,6 +4,11 @@ export const INTENT_RELAYER_URL = import.meta.env.VITE_RELAYER_URL || "https://c
 export const CROSS_CHAIN_RELAYER_URL = import.meta.env.VITE_CROSS_CHAIN_RELAYER_URL || "https://cross-chain-relayer-production-a93e.up.railway.app";
 export const BCH_SOLANA_RELAYER_URL = import.meta.env.VITE_BCH_SOLANA_RELAYER_URL || "https://cross-chain-relayer-production-a93e.up.railway.app";
 export const CASHTOKEN_RELAYER_URL = import.meta.env.VITE_CASHTOKEN_RELAYER_URL || "https://cashtoken-relayer.up.railway.app";
+export const CASHTOKEN_RELAYER_MAINNET_URL = import.meta.env.VITE_CASHTOKEN_RELAYER_MAINNET_URL || "https://cashtoken-relayer-mainnet.up.railway.app";
+export const SOL_BCH_ZK_SERVER_URL         = import.meta.env.VITE_SOL_BCH_ZK_SERVER_URL          || "http://localhost:3007";
+export const SOL_BCH_ZK_SERVER_MAINNET_URL = import.meta.env.VITE_SOL_BCH_ZK_SERVER_MAINNET_URL  || "http://localhost:3007";
+export const EVM_RELAYER_URL               = import.meta.env.VITE_EVM_RELAYER_URL                || "http://localhost:3005";
+export const EVM_RELAYER_MAINNET_URL       = import.meta.env.VITE_EVM_RELAYER_MAINNET_URL        || "http://localhost:3005";
 export const SOLANA_RPC_URL = "https://devnet.helius-rpc.com/?api-key=7ceb6609-616a-4e84-ba92-5ee3d04eb5e7";
 export const BCH_NETWORK = "chipnet";
 
