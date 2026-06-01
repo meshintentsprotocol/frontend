@@ -1,12 +1,22 @@
+import { useNavigate } from 'react-router-dom';
 import { PortfolioToken } from '@/hooks/usePortfolio';
 import { formatCurrency, formatCompactNumber } from '@/lib/coingecko';
 import { cn } from '@/lib/utils';
+import { TokenChainIcon } from '@/components/common/TokenChainIcon';
+
+function tokenSlug(token: PortfolioToken): string {
+    if (token.category) return `ct-${token.category}`;
+    // Strip parenthetical network labels like " (SOL)" or " (Sepolia)"
+    const base = token.symbol.replace(/\s*\(.*\)$/, '').toUpperCase();
+    return base;
+}
 
 interface PortfolioTokensProps {
     tokens: PortfolioToken[];
 }
 
 export function PortfolioTokens({ tokens }: PortfolioTokensProps) {
+    const navigate = useNavigate();
     if (tokens.length === 0) {
         return (
             <div className="text-center py-12 text-muted-foreground bg-white/[0.02] rounded-2xl border border-white/[0.05]">
@@ -36,23 +46,14 @@ export function PortfolioTokens({ tokens }: PortfolioTokensProps) {
                         </thead>
                         <tbody className="divide-y divide-white/[0.04]">
                             {tokens.map((token) => (
-                                <tr key={token.symbol} className="hover:bg-white/[0.02] transition-colors group">
+                                <tr
+                                    key={token.category ?? token.symbol}
+                                    className="hover:bg-white/[0.02] transition-colors group cursor-pointer"
+                                    onClick={() => navigate(`/explore/tokens/${tokenSlug(token)}`)}
+                                >
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <div className="flex items-center gap-3">
-                                            <div className="relative">
-                                                <div className="h-10 w-10 rounded-full bg-white/[0.05] p-2 flex items-center justify-center">
-                                                    <img src={token.icon} alt={token.name} className="h-full w-full object-contain" />
-                                                </div>
-                                                {/* Chain indicator badge could go here if needed */}
-                                                <div className="absolute -bottom-1 -right-1 h-4 w-4 rounded-full bg-[#121212] flex items-center justify-center border border-white/10">
-                                                    <div className={cn(
-                                                        "h-2.5 w-2.5 rounded-full",
-                                                        token.chain === 'Solana' ? "bg-purple-500" :
-                                                            token.chain === 'Movement' ? "bg-emerald-500" :
-                                                                token.chain === 'Bitcoin Cash' ? "bg-green-500" : "bg-blue-500"
-                                                    )} />
-                                                </div>
-                                            </div>
+                                            <TokenChainIcon tokenIcon={token.icon} tokenName={token.name} chain={token.chain} size="lg" />
                                             <div className="flex flex-col">
                                                 <span className="font-semibold text-foreground">{token.name}</span>
                                                 <span className="text-xs text-muted-foreground">{token.symbol}</span>

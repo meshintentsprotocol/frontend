@@ -1,20 +1,19 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Wallet, Bell, LogOut, RefreshCw, Eye, EyeOff, CheckCircle2, Clock, Loader2, XCircle, ArrowRight, ExternalLink } from 'lucide-react';
-import { useBCHSwapOptional } from '@/context/BCHSwapContext';
-import { BCHOrder } from '@/types';
+import { X, Wallet, Bell, LogOut, RefreshCw, Eye, EyeOff, CheckCircle2, Clock, XCircle, KeyRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { PriceService } from '@/lib/pyth';
-import { PriceData } from '@/types';
 import { cn } from '@/lib/utils';
-import { useWallet } from '@/context/wallet-provider';
-import { useWallet as useSolanaWallet } from '@solana/wallet-adapter-react';
-import { useBCHWallet } from '@/context/BCHWalletProvider';
+import { useWDK } from '@/context/WDKProvider';
 import { WalletTokensTab } from './WalletTokensTab';
 import { WalletOrdersTab } from './WalletOrdersTab';
 import { WalletHistoryTab } from './WalletHistoryTab';
 import { WalletAddressesTab } from './WalletAddressesTab';
+import { ChangePasswordModal } from './ChangePasswordModal';
+
+import { hasStoredWallet } from '@/lib/crypto';
 import { toast } from 'sonner';
 import { usePortfolio } from '@/hooks/usePortfolio';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { Drawer, DrawerContent } from '@/components/ui/drawer';
 
 // ============================================================================
 // Wallet Popup — Multi-tab wallet panel for the navbar
@@ -27,7 +26,12 @@ type SubTab = 'tokens' | 'orders' | 'history' | 'addresses';
 // Notifications Panel — Shows captured toast/notification events
 // ============================================================================
 
-const NOTIF_STORAGE_KEY = 'intent_notifications';
+const NOTIF_BASE_KEY = 'intent_notifications';
+const getNotifKey = (network: string) => `${NOTIF_BASE_KEY}_${network}`;
+
+// Module-level network tracker — kept in sync by WalletPopup via setNotifNetwork()
+let _activeNetwork = 'chipnet';
+export function setNotifNetwork(network: string) { _activeNetwork = network; }
 
 export interface StoredNotification {
     id: string;
@@ -40,7 +44,8 @@ export interface StoredNotification {
 /** Call this alongside toast() to also store the notification for the wallet panel */
 export function pushNotification(type: StoredNotification['type'], message: string, description?: string) {
     try {
-        const raw = localStorage.getItem(NOTIF_STORAGE_KEY);
+        const key = getNotifKey(_activeNetwork);
+        const raw = localStorage.getItem(key);
         const list: StoredNotification[] = raw ? JSON.parse(raw) : [];
         list.unshift({
             id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -49,9 +54,30 @@ export function pushNotification(type: StoredNotification['type'], message: stri
             description,
             timestamp: Date.now(),
         });
-        // Keep last 50
-        localStorage.setItem(NOTIF_STORAGE_KEY, JSON.stringify(list.slice(0, 50)));
+        localStorage.setItem(key, JSON.stringify(list.slice(0, 50)));
     } catch { /* non-fatal */ }
+}
+
+// ── Unseen-notification tracking ────────────────────────────────────────────
+const getNotifSeenKey = (network: string) => `${NOTIF_BASE_KEY}_seen_${network}`;
+
+/** Mark all current notifications as seen (called while the panel is viewed). */
+export function markNotificationsSeen(network: string) {
+    try { localStorage.setItem(getNotifSeenKey(network), String(Date.now())); } catch { /* non-fatal */ }
+}
+
+/** True when there is at least one notification newer than the last view. */
+export function hasUnseenNotifications(network: string): boolean {
+    try {
+        const raw = localStorage.getItem(getNotifKey(network));
+        if (!raw) return false;
+        const list: StoredNotification[] = JSON.parse(raw);
+        if (!list.length) return false;
+        const seenAt = Number(localStorage.getItem(getNotifSeenKey(network)) || 0);
+        return list.some(n => n.timestamp > seenAt);
+    } catch {
+        return false;
+    }
 }
 
 function getTimeAgo(ts: number): string {
@@ -63,24 +89,27 @@ function getTimeAgo(ts: number): string {
 }
 
 function NotificationsPanel() {
+    const { bchNetwork } = useWDK();
     const [notifications, setNotifications] = useState<StoredNotification[]>([]);
-    const [, forceUpdate] = useState(0);
 
     useEffect(() => {
+        const key = getNotifKey(bchNetwork);
         const load = () => {
             try {
-                const raw = localStorage.getItem(NOTIF_STORAGE_KEY);
+                const raw = localStorage.getItem(key);
                 setNotifications(raw ? JSON.parse(raw) : []);
             } catch { setNotifications([]); }
+            // The panel is visible whenever this runs — keep notifications marked
+            // as seen so the navbar's unseen indicator clears.
+            markNotificationsSeen(bchNetwork);
         };
         load();
-        // Poll every 2s to catch new toasts
         const interval = setInterval(load, 2000);
         return () => clearInterval(interval);
-    }, []);
+    }, [bchNetwork]);
 
     const clearAll = () => {
-        localStorage.removeItem(NOTIF_STORAGE_KEY);
+        localStorage.removeItem(getNotifKey(bchNetwork));
         setNotifications([]);
     };
 
@@ -104,7 +133,7 @@ function NotificationsPanel() {
     }
 
     return (
-        <div className="flex-1 overflow-y-auto max-h-[400px] px-3 pb-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/10">
+        <div className="flex-1 overflow-y-auto min-h-0 px-3 pb-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/10">
             <div className="flex items-center justify-between px-1 py-2">
                 <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
                     {notifications.length} Notifications
@@ -148,40 +177,42 @@ function NotificationsPanel() {
 interface WalletPopupProps {
     open: boolean;
     onClose: () => void;
+    /** Top tab to show when opened (e.g. 'notifications' from the navbar bell). */
+    initialTab?: TopTab;
 }
 
-export function WalletPopup({ open, onClose }: WalletPopupProps) {
+export function WalletPopup({ open, onClose, initialTab }: WalletPopupProps) {
     const [topTab, setTopTab] = useState<TopTab>('wallet');
     const [subTab, setSubTab] = useState<SubTab>('tokens');
     const [balanceVisible, setBalanceVisible] = useState(true);
-    const [prices, setPrices] = useState<Record<string, PriceData>>({});
-    const [priceLoading, setPriceLoading] = useState(false);
+    const [showChangePwd, setShowChangePwd] = useState(false);
     const panelRef = useRef<HTMLDivElement>(null);
+    const isMobile = useIsMobile();
 
-    const moveWallet = useWallet();
-    const solanaWallet = useSolanaWallet();
-    const bchWallet = useBCHWallet();
+    const wdk = useWDK();
 
-    // Fetch prices
-    const fetchPrices = async () => {
-        setPriceLoading(true);
-        const data = await PriceService.getLatestPrices();
-        setPrices(data);
-        setPriceLoading(false);
-    };
+    // Keep module-level _activeNetwork in sync so pushNotification() writes to the right key
+    useEffect(() => { setNotifNetwork(wdk.bchNetwork); }, [wdk.bchNetwork]);
 
+    // Honour the requested tab whenever the popup is opened from the navbar.
     useEffect(() => {
-        if (open) {
-            fetchPrices();
-            const interval = setInterval(fetchPrices, 15000);
-            return () => clearInterval(interval);
-        }
-    }, [open]);
+        if (open && initialTab) setTopTab(initialTab);
+    }, [open, initialTab]);
+
+    // A child modal (change-password / settings) portals outside the panel, so
+    // suspend the popup's own close handlers while one is open.
+    const childModalOpen = showChangePwd;
+
+    // True while a Radix dialog (Send / Receive / token selector …) is open —
+    // those portal to <body>, so the popup must not treat clicks in them as
+    // "outside" and close itself.
+    const radixDialogOpen = () => !!document.querySelector('[role="dialog"][data-state="open"]');
 
     // Close on outside click
     useEffect(() => {
-        if (!open) return;
+        if (!open || childModalOpen) return;
         const handler = (e: MouseEvent) => {
+            if (radixDialogOpen()) return;
             if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
                 onClose();
             }
@@ -192,69 +223,51 @@ export function WalletPopup({ open, onClose }: WalletPopupProps) {
             clearTimeout(timer);
             document.removeEventListener('mousedown', handler);
         };
-    }, [open, onClose]);
+    }, [open, onClose, childModalOpen]);
 
     // Close on Escape
     useEffect(() => {
-        if (!open) return;
+        if (!open || childModalOpen) return;
         const handler = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') onClose();
+            if (e.key === 'Escape' && !radixDialogOpen()) onClose();
         };
         document.addEventListener('keydown', handler);
         return () => document.removeEventListener('keydown', handler);
-    }, [open, onClose]);
+    }, [open, onClose, childModalOpen]);
 
-    // Calculate total portfolio value using shared hook to ensure UI consistency
-    const { tokens: activeTokens, totalValue: portfolioValue, loading: portfolioLoading, refetch: refetchPortfolio } = usePortfolio();
+    // Calculate total portfolio value using shared hook to ensure UI consistency.
+    // While open, balances poll every 5s in the background (stale-while-revalidate);
+    // while closed, polling stops but the cache keeps the last-known values warm.
+    const { tokens: activeTokens, totalValue: portfolioValue, loading: portfolioLoading, isRefetching: portfolioRefetching, refetch: refetchPortfolio } = usePortfolio({ pollingMs: open ? 5000 : 0 });
 
-    const handleGlobalRefresh = async () => {
-        setPriceLoading(true);
-        await Promise.all([
-            fetchPrices(),
-            refetchPortfolio()
-        ]);
-        setPriceLoading(false);
+    // Refresh immediately when popup opens
+    useEffect(() => {
+        if (open) refetchPortfolio();
+    }, [open, refetchPortfolio]);
+
+    const handleGlobalRefresh = () => {
+        refetchPortfolio();
     };
 
-    // Disconnect all wallets
     const handleLogout = () => {
-        if (moveWallet.connected) moveWallet.disconnect();
-        if (solanaWallet.connected) solanaWallet.disconnect();
-        if (bchWallet.connected) bchWallet.disconnect();
-        toast.success('All wallets disconnected');
+        if (wdk.isInitialized) wdk.disconnect();
+        toast.success('Wallet disconnected');
         onClose();
     };
 
-    // Get shortened address for display
+    // Get shortened address for display — WDK EVM is the canonical primary handle
     const getDisplayAddress = (): string => {
-        if (moveWallet.connected && moveWallet.account?.address) {
-            const addr = moveWallet.account.address.toString();
-            return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
-        }
-        if (solanaWallet.connected && solanaWallet.publicKey) {
-            const addr = solanaWallet.publicKey.toBase58();
-            return `${addr.slice(0, 4)}...${addr.slice(-4)}`;
-        }
-        if (bchWallet.connected && bchWallet.address) {
-            return `${bchWallet.address.slice(0, 12)}...`;
-        }
-        return '';
+        const addr = wdk.evmAddress || wdk.solanaAddress || wdk.bchAddress;
+        if (!addr) return '';
+        return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
     };
 
     if (!open) return null;
 
-    return (
-        <div
-            ref={panelRef}
-            className={cn(
-                "fixed top-[80px] right-4 z-[100] w-[380px] max-h-[calc(100vh-100px)]",
-                "bg-[#0A0A0A]/95 backdrop-blur-2xl rounded-2xl border border-white/[0.08]",
-                "shadow-2xl shadow-black/50 flex flex-col",
-                "animate-in slide-in-from-top-2 fade-in duration-200"
-            )}
-        >
+    const content = (
+        <>
             {/* ─── Top Tab Bar ─── */}
-            <div className="flex items-center justify-between px-1 pt-1 pb-0 border-b border-white/[0.06]">
+            <div className="flex items-center justify-between px-1 pt-1 pb-0 border-b border-white/[0.06] shrink-0">
                 <div className="flex">
                     <button
                         onClick={() => setTopTab('wallet')}
@@ -282,6 +295,16 @@ export function WalletPopup({ open, onClose }: WalletPopupProps) {
                     </button>
                 </div>
                 <div className="flex items-center gap-1 pr-2">
+                    {wdk.isInitialized && hasStoredWallet() && (
+                        <Button
+                            variant="ghost" size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-emerald-400 hover:bg-emerald-500/10"
+                            onClick={() => { setTopTab('wallet'); setSubTab('addresses'); }}
+                            title="Addresses & Keys"
+                        >
+                            <KeyRound className="h-3.5 w-3.5" />
+                        </Button>
+                    )}
                     <Button
                         variant="ghost" size="icon"
                         className="h-7 w-7 text-muted-foreground hover:text-red-400 hover:bg-red-500/10"
@@ -290,28 +313,30 @@ export function WalletPopup({ open, onClose }: WalletPopupProps) {
                     >
                         <LogOut className="h-3.5 w-3.5" />
                     </Button>
-                    <Button
-                        variant="ghost" size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                        onClick={onClose}
-                    >
-                        <X className="h-3.5 w-3.5" />
-                    </Button>
+                    {!isMobile && (
+                        <Button
+                            variant="ghost" size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                            onClick={onClose}
+                        >
+                            <X className="h-3.5 w-3.5" />
+                        </Button>
+                    )}
                 </div>
             </div>
 
             {topTab === 'wallet' ? (
-                <>
+                <div className="flex flex-col flex-1 min-h-0">
                     {/* ─── Portfolio Value ─── */}
-                    <div className="px-4 py-4 border-b border-white/[0.06]">
+                    <div className="px-4 py-4 border-b border-white/[0.06] shrink-0">
                         <div className="flex items-center justify-between mb-1">
                             <div className="flex items-center gap-2">
                                 <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
                                     Total Portfolio Value
                                 </span>
                                 <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground hover:text-foreground"
-                                    onClick={handleGlobalRefresh} disabled={priceLoading || portfolioLoading}>
-                                    <RefreshCw className={cn("h-3 w-3", (priceLoading || portfolioLoading) && "animate-spin")} />
+                                    onClick={handleGlobalRefresh} disabled={portfolioLoading || portfolioRefetching}>
+                                    <RefreshCw className={cn("h-3 w-3", (portfolioLoading || portfolioRefetching) && "animate-spin")} />
                                 </Button>
                                 <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground hover:text-foreground"
                                     onClick={() => setBalanceVisible(v => !v)}>
@@ -324,16 +349,67 @@ export function WalletPopup({ open, onClose }: WalletPopupProps) {
                                 </span>
                             )}
                         </div>
-                        <div className="text-2xl font-bold tracking-tight">
-                            {balanceVisible
-                                ? `$${portfolioValue.toFixed(2)}`
-                                : '••••••'
-                            }
+                        {/* Amount row + network toggle */}
+                        <div className="flex items-center justify-between gap-3 mt-1">
+                            <div className="text-2xl font-bold tracking-tight">
+                                {!balanceVisible
+                                    ? '••••••'
+                                    : portfolioLoading
+                                        ? <span className="inline-block h-7 w-28 rounded-md bg-white/[0.06] animate-pulse align-middle" />
+                                        : `$${portfolioValue.toFixed(2)}`
+                                }
+                            </div>
+                            {/* Network segmented toggle */}
+                            <div
+                                role="tablist"
+                                aria-label="Network"
+                                className="relative flex h-7 items-center rounded-lg p-0.5 bg-white/[0.04] border border-white/[0.08] shrink-0"
+                            >
+                                <span
+                                    aria-hidden
+                                    className={cn(
+                                        "absolute top-0.5 bottom-0.5 w-[calc(50%-2px)] rounded-md",
+                                        "transition-[left] duration-300 ease-[cubic-bezier(0.34,1.4,0.64,1)]",
+                                        wdk.bchNetwork === 'mainnet'
+                                            ? "left-[calc(50%+1px)] bg-white/[0.1] border border-white/[0.12]"
+                                            : "left-0.5 bg-white/[0.08] border border-white/[0.1]"
+                                    )}
+                                />
+                                <button
+                                    role="tab"
+                                    aria-selected={wdk.bchNetwork !== 'mainnet'}
+                                    onClick={() => wdk.setBchNetwork('chipnet')}
+                                    className={cn(
+                                        "relative z-10 px-2.5 h-6 rounded-md text-[10px] font-semibold transition-colors duration-200",
+                                        wdk.bchNetwork !== 'mainnet' ? "text-white" : "text-zinc-500 hover:text-zinc-300"
+                                    )}
+                                >
+                                    Testnet
+                                </button>
+                                <button
+                                    role="tab"
+                                    aria-selected={wdk.bchNetwork === 'mainnet'}
+                                    onClick={() => wdk.setBchNetwork('mainnet')}
+                                    className={cn(
+                                        "relative z-10 px-2.5 h-6 rounded-md text-[10px] font-semibold transition-colors duration-200 flex items-center gap-1",
+                                        wdk.bchNetwork === 'mainnet' ? "text-white" : "text-zinc-500 hover:text-zinc-300"
+                                    )}
+                                >
+                                    {wdk.bchNetwork === 'mainnet' && (
+                                        <span className="relative flex h-1.5 w-1.5">
+                                            <span className="absolute inset-0 animate-ping rounded-full bg-emerald-400/70" />
+                                            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                                        </span>
+                                    )}
+                                    Mainnet
+                                </button>
+                            </div>
                         </div>
                     </div>
 
+
                     {/* ─── Sub Tabs ─── */}
-                    <div className="flex border-b border-white/[0.06]">
+                    <div className="flex border-b border-white/[0.06] shrink-0">
                         {(['tokens', 'orders', 'history', 'addresses'] as SubTab[]).map(tab => (
                             <button
                                 key={tab}
@@ -354,17 +430,46 @@ export function WalletPopup({ open, onClose }: WalletPopupProps) {
                     </div>
 
                     {/* ─── Tab Content ─── */}
-                    <div className="flex-1 overflow-y-auto px-3 pb-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/10 max-h-[400px]">
-                        {subTab === 'tokens' && <WalletTokensTab prices={prices} balanceVisible={balanceVisible} activeTokens={activeTokens} />}
+                    <div className="flex-1 overflow-y-auto px-3 pb-3 min-h-0" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.08) transparent' }}>
+                        {subTab === 'tokens' && <WalletTokensTab balanceVisible={balanceVisible} activeTokens={activeTokens} loading={portfolioLoading} onClose={onClose} />}
                         {subTab === 'orders' && <WalletOrdersTab />}
                         {subTab === 'history' && <WalletHistoryTab />}
-                        {subTab === 'addresses' && <WalletAddressesTab />}
+                        {subTab === 'addresses' && <WalletAddressesTab onChangePassword={() => setShowChangePwd(true)} />}
                     </div>
-                </>
+                </div>
             ) : (
                 /* ─── Notifications Tab ─── */
                 <NotificationsPanel />
             )}
+
+            <ChangePasswordModal open={showChangePwd} onClose={() => setShowChangePwd(false)} />
+        </>
+    );
+
+    if (isMobile) {
+        return (
+            <Drawer open={open} onOpenChange={(o) => !o && onClose()}>
+                <DrawerContent className="p-0 h-[85vh]">
+                    <div className="flex flex-col h-full bg-[#0A0A0A] rounded-t-[20px]">
+                        {content}
+                    </div>
+                </DrawerContent>
+            </Drawer>
+        );
+    }
+
+    return (
+        <div
+            ref={panelRef}
+            className={cn(
+                "fixed top-[80px] right-16 z-[100] w-[380px]",
+                "h-[calc(100vh-96px)]",
+                "bg-[#0A0A0A]/95 backdrop-blur-2xl rounded-2xl border border-white/[0.08]",
+                "shadow-2xl shadow-black/50 flex flex-col",
+                "animate-in slide-in-from-top-2 fade-in duration-200"
+            )}
+        >
+            {content}
         </div>
     );
 }

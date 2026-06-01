@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useBCHSwapOptional } from '@/context/BCHSwapContext';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Clock, CheckCircle2, XCircle, ExternalLink, RefreshCw, ArrowRight, Loader2 } from 'lucide-react';
+import { Clock, CheckCircle2, XCircle, ExternalLink, RefreshCw, ArrowRight, Loader2, RotateCcw } from 'lucide-react';
 import { BCHOrder } from '@/types';
 
 // ============================================================================
@@ -26,6 +26,7 @@ function OrderRow({ order }: { order: BCHOrder }) {
         filled: { icon: <CheckCircle2 className="h-3 w-3 text-emerald-400" />, badge: 'secondary', label: 'Filled' },
         cancelled: { icon: <XCircle className="h-3 w-3 text-red-400" />, badge: 'destructive', label: 'Cancelled' },
         expired: { icon: <Clock className="h-3 w-3 text-muted-foreground" />, badge: 'outline', label: 'Expired' },
+        refunded: { icon: <RotateCcw className="h-3 w-3 text-orange-400" />, badge: 'outline', label: 'Refunded' },
     };
 
     const config = statusConfig[order.status] || statusConfig.pending;
@@ -35,6 +36,8 @@ function OrderRow({ order }: { order: BCHOrder }) {
         'sol-to-bch': 'SOL → BCH',
         'bch-to-mov': 'BCH → MOVE',
         'mov-to-bch': 'MOVE → BCH',
+        'eth-to-bch': 'ETH → BCH',
+        'bch-to-eth': 'BCH → ETH',
     };
 
     const sellIcon = order.sellToken?.icon;
@@ -75,16 +78,26 @@ function OrderRow({ order }: { order: BCHOrder }) {
             </div>
             <div className="flex items-center gap-1.5 flex-shrink-0">
                 <Badge variant={config.badge} className="text-[9px] h-4 px-1.5">{config.label}</Badge>
-                {order.txid && (
-                    <a
-                        href={order.explorerUrl || `https://chipnet.chaingraph.cash/tx/${order.txid}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-muted-foreground hover:text-foreground"
-                    >
-                        <ExternalLink className="h-3 w-3" />
-                    </a>
-                )}
+                {(() => {
+                    // Refunded orders: point at the refund tx (lives on destExplorerUrl/fillTxid), not the funding tx.
+                    const explorerHref = order.status === 'refunded'
+                        ? (order.destExplorerUrl
+                            || (order.fillTxid ? `https://chipnet.chaingraph.cash/tx/${order.fillTxid}` : undefined)
+                            || order.explorerUrl)
+                        : (order.explorerUrl
+                            || (order.txid ? `https://chipnet.chaingraph.cash/tx/${order.txid}` : undefined));
+                    return explorerHref ? (
+                        <a
+                            href={explorerHref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-muted-foreground hover:text-foreground"
+                            title={order.status === 'refunded' ? 'View refund transaction' : 'View transaction'}
+                        >
+                            <ExternalLink className="h-3 w-3" />
+                        </a>
+                    ) : null;
+                })()}
             </div>
         </div>
     );

@@ -1,14 +1,18 @@
-import { useWallet } from '@/context/wallet-provider';
-import { useWallet as useSolanaWallet } from '@solana/wallet-adapter-react';
-import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+import { useState, ReactNode } from 'react';
+import { useWDK } from '@/context/WDKProvider';
 import { useBCHWallet } from '@/context/BCHWalletProvider';
 import { Button } from '@/components/ui/button';
-import { Copy, ExternalLink, Loader2, Shield, Globe, LogOut, Plug } from 'lucide-react';
+import { Copy, ExternalLink, KeyRound, Wallet, Eye, EyeOff, Check, Lock, Loader2, AlertTriangle, BookOpen } from 'lucide-react';
 import { toast } from 'sonner';
+import { decryptFromStorage, hasStoredWallet } from '@/lib/crypto';
+import { cn } from '@/lib/utils';
 
 // ============================================================================
-// Wallet Addresses Tab — Connect/disconnect wallets per chain
+// Wallet Addresses Tab — WDK-only view (Networks · Security · About)
 // ============================================================================
+
+const APP_NAME = 'BCH Intents Swap';
+const APP_VERSION = '0.1.0';
 
 function copyAddress(address: string, label: string) {
     navigator.clipboard.writeText(address);
@@ -17,172 +21,476 @@ function copyAddress(address: string, label: string) {
 
 function formatAddr(addr: string) {
     if (addr.length <= 20) return addr;
-    return `${addr.slice(0, 10)}...${addr.slice(-6)}`;
+    return `${addr.slice(0, 10)}…${addr.slice(-6)}`;
 }
 
-export function WalletAddressesTab() {
-    const moveWallet = useWallet();
-    const solanaWallet = useSolanaWallet();
-    const bchWallet = useBCHWallet();
+/** Small uppercase section divider. */
+function SectionLabel({ children }: { children: ReactNode }) {
+    return (
+        <div className="flex items-center gap-2 px-1 mb-2">
+            <span className="text-[10px] uppercase tracking-[0.14em] text-white/40 font-bold">{children}</span>
+            <span className="flex-1 h-px bg-white/[0.06]" />
+        </div>
+    );
+}
+
+// ============================================================================
+// ChainAddressRow — Polished per-chain card
+// ============================================================================
+type NetworkColor = 'emerald' | 'blue' | 'yellow' | 'purple' | 'orange';
+
+const COLOR_MAP: Record<NetworkColor, { ring: string; badge: string; text: string; glow: string }> = {
+    emerald: { ring: 'ring-emerald-500/20', badge: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/25', text: 'text-emerald-300', glow: 'shadow-emerald-500/10' },
+    blue:    { ring: 'ring-blue-500/20',    badge: 'bg-blue-500/10 text-blue-300 border-blue-500/25',         text: 'text-blue-300',    glow: 'shadow-blue-500/10' },
+    yellow:  { ring: 'ring-yellow-500/20',  badge: 'bg-yellow-500/10 text-yellow-300 border-yellow-500/25',   text: 'text-yellow-300',  glow: 'shadow-yellow-500/10' },
+    purple:  { ring: 'ring-purple-500/20',  badge: 'bg-purple-500/10 text-purple-300 border-purple-500/25',   text: 'text-purple-300',  glow: 'shadow-purple-500/10' },
+    orange:  { ring: 'ring-orange-500/20',  badge: 'bg-orange-500/10 text-orange-300 border-orange-500/25',   text: 'text-orange-300',  glow: 'shadow-orange-500/10' },
+};
+
+interface ChainAddressRowProps {
+    icon?: string;
+    iconNode?: ReactNode;
+    chainName: string;
+    networkLabel: string;
+    networkColor: NetworkColor;
+    address: string;
+    explorerUrl?: string;
+    balance?: string;
+    footer?: ReactNode;
+    onCopy: () => void;
+}
+
+function ChainAddressRow({ icon, iconNode, chainName, networkLabel, networkColor, address, explorerUrl, balance, footer, onCopy }: ChainAddressRowProps) {
+    const [copied, setCopied] = useState(false);
+    const c = COLOR_MAP[networkColor];
+
+    const handleCopy = () => {
+        onCopy();
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1200);
+    };
 
     return (
-        <div className="space-y-3 pt-2">
-            {/* Movement Chain */}
-            <div className="rounded-xl bg-white/[0.02] border border-white/[0.06] p-3 space-y-2.5">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center">
-                            <img src="https://raw.githubusercontent.com/kitelabs-io/mvmt-tokens/main/logos/MOVE.png"
-                                alt="Movement" className="h-4 w-4" />
-                        </div>
-                        <div>
-                            <span className="text-xs font-semibold">Movement</span>
-                            <div className="flex items-center gap-1">
-                                <div className={`w-1.5 h-1.5 rounded-full ${moveWallet.connected ? 'bg-emerald-400' : 'bg-muted-foreground/30'}`} />
-                                <span className="text-[9px] text-muted-foreground">
-                                    {moveWallet.connected ? 'Connected' : 'Disconnected'}
-                                </span>
-                            </div>
-                        </div>
+        <div className={cn(
+            "group relative rounded-xl bg-white/[0.02] hover:bg-white/[0.04] border border-white/[0.06] hover:border-white/[0.12] p-3 transition-all duration-200 shadow-sm hover:-translate-y-[1px] hover:shadow-md",
+            c.glow
+        )}>
+            <div className="flex items-center gap-3">
+                {/* Chain icon */}
+                <div className={cn(
+                    "h-9 w-9 rounded-xl bg-black/40 p-1.5 flex items-center justify-center flex-shrink-0 ring-1 transition-all",
+                    c.ring
+                )}>
+                    {iconNode ?? (icon && <img src={icon} alt={chainName} className="h-full w-full object-contain" />)}
+                </div>
+
+                {/* Name + network badge + address */}
+                <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                        <span className={cn("text-xs font-semibold tracking-tight", c.text)}>{chainName}</span>
+                        <span className={cn("text-[9px] font-semibold px-1.5 py-0.5 rounded border uppercase tracking-wider", c.badge)}>
+                            {networkLabel}
+                        </span>
                     </div>
-                    {moveWallet.connected ? (
-                        <Button variant="ghost" size="sm" className="h-6 text-[10px] text-red-400 hover:text-red-300 hover:bg-red-500/10"
-                            onClick={moveWallet.disconnect}>
-                            <LogOut className="h-3 w-3 mr-1" /> Disconnect
-                        </Button>
-                    ) : (
-                        <Button variant="outline" size="sm" className="h-6 text-[10px] border-yellow-500/20 text-yellow-400 hover:bg-yellow-500/10"
-                            onClick={moveWallet.connect} disabled={moveWallet.connecting}>
-                            <Plug className="h-3 w-3 mr-1" /> {moveWallet.connecting ? 'Connecting...' : 'Connect'}
-                        </Button>
+                    <div className="text-[10px] font-mono text-white/50 truncate" title={address}>
+                        {formatAddr(address)}
+                    </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center gap-0.5 flex-shrink-0">
+                    <button
+                        onClick={handleCopy}
+                        title="Copy address"
+                        className="h-7 w-7 rounded-md flex items-center justify-center text-white/40 hover:text-white hover:bg-white/[0.06] transition-all"
+                    >
+                        {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                    </button>
+                    {explorerUrl && (
+                        <a
+                            href={explorerUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="View in explorer"
+                            className="h-7 w-7 rounded-md flex items-center justify-center text-white/40 hover:text-white hover:bg-white/[0.06] transition-all"
+                        >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
                     )}
                 </div>
-                {moveWallet.connected && moveWallet.account?.address && (
-                    <div className="flex items-center gap-1.5 pl-9">
-                        <span className="text-[10px] font-mono text-muted-foreground">
-                            {formatAddr(moveWallet.account.address.toString())}
-                        </span>
-                        <button onClick={() => copyAddress(moveWallet.account!.address.toString(), 'Movement')}
-                            className="text-muted-foreground hover:text-foreground">
-                            <Copy className="h-3 w-3" />
-                        </button>
-                    </div>
-                )}
             </div>
 
-            {/* Solana Chain */}
-            <div className="rounded-xl bg-white/[0.02] border border-white/[0.06] p-3 space-y-2.5">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full bg-purple-500/10 border border-purple-500/20 flex items-center justify-center">
-                            <img src="/assets/solanaLogo.png" alt="Solana" className="h-4 w-4" />
-                        </div>
-                        <div>
-                            <span className="text-xs font-semibold">Solana</span>
-                            <div className="flex items-center gap-1">
-                                <div className={`w-1.5 h-1.5 rounded-full ${solanaWallet.connected ? 'bg-emerald-400' : 'bg-muted-foreground/30'}`} />
-                                <span className="text-[9px] text-muted-foreground">
-                                    {solanaWallet.connected ? 'Connected' : 'Disconnected'}
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                    {solanaWallet.connected ? (
-                        <Button variant="ghost" size="sm" className="h-6 text-[10px] text-red-400 hover:text-red-300 hover:bg-red-500/10"
-                            onClick={() => solanaWallet.disconnect()}>
-                            <LogOut className="h-3 w-3 mr-1" /> Disconnect
-                        </Button>
-                    ) : (
-                        <div className="scale-75 origin-right">
-                            <WalletMultiButton style={{
-                                height: '28px', fontSize: '10px', padding: '0 10px',
-                                borderRadius: '6px', background: 'transparent',
-                                border: '1px solid rgba(168,85,247,0.3)',
-                                color: '#a855f7',
-                            }} />
-                        </div>
+            {/* Balance + footer */}
+            {(balance || footer) && (
+                <div className="mt-2 pt-2 border-t border-white/[0.04] flex items-center justify-between gap-2">
+                    {balance && (
+                        <span className={cn("text-[11px] font-mono font-semibold", c.text)}>{balance}</span>
                     )}
+                    {footer && <div className="ml-auto">{footer}</div>}
                 </div>
-                {solanaWallet.connected && solanaWallet.publicKey && (
-                    <div className="flex items-center gap-1.5 pl-9">
-                        <span className="text-[10px] font-mono text-muted-foreground">
-                            {formatAddr(solanaWallet.publicKey.toBase58())}
-                        </span>
-                        <button onClick={() => copyAddress(solanaWallet.publicKey!.toBase58(), 'Solana')}
-                            className="text-muted-foreground hover:text-foreground">
-                            <Copy className="h-3 w-3" />
-                        </button>
-                    </div>
-                )}
+            )}
+        </div>
+    );
+}
+
+interface WalletAddressesTabProps {
+    /** Opens the wallet-popup's change-password modal (wired by WalletPopup). */
+    onChangePassword?: () => void;
+}
+
+export function WalletAddressesTab({ onChangePassword }: WalletAddressesTabProps) {
+    const wdk = useWDK();
+    const bchWallet = useBCHWallet();
+    const isMainnet = wdk.bchNetwork === 'mainnet';
+
+    // Password-gated seed phrase reveal
+    const [revealOpen, setRevealOpen] = useState(false);
+    const [password, setPassword] = useState('');
+    const [revealedSeed, setRevealedSeed] = useState<string | null>(null);
+    const [unlocking, setUnlocking] = useState(false);
+    const [unlockError, setUnlockError] = useState<string | null>(null);
+    const [copiedSeed, setCopiedSeed] = useState(false);
+    const hasEncrypted = hasStoredWallet();
+
+    const handleUnlock = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!password) return;
+        setUnlocking(true);
+        setUnlockError(null);
+        try {
+            const seed = await decryptFromStorage(password);
+            if (!seed) {
+                setUnlockError('Incorrect password');
+                setUnlocking(false);
+                return;
+            }
+            setRevealedSeed(seed);
+            setPassword('');
+        } catch {
+            setUnlockError('Failed to decrypt — wrong password');
+        } finally {
+            setUnlocking(false);
+        }
+    };
+
+    const closeReveal = () => {
+        setRevealOpen(false);
+        setRevealedSeed(null);
+        setPassword('');
+        setUnlockError(null);
+        setCopiedSeed(false);
+    };
+
+    const copySeed = () => {
+        if (!revealedSeed) return;
+        navigator.clipboard.writeText(revealedSeed);
+        setCopiedSeed(true);
+        toast.success('Seed phrase copied');
+        setTimeout(() => setCopiedSeed(false), 1500);
+    };
+
+    if (!wdk.isInitialized) {
+        return (
+            <div className="flex flex-col items-center justify-center py-10 text-center px-4">
+                <Wallet className="h-10 w-10 text-muted-foreground/30 mb-3" />
+                <p className="text-sm text-muted-foreground">No wallet connected</p>
+                <p className="text-[10px] text-muted-foreground/60 mt-1">
+                    Connect a WDK wallet to view addresses
+                </p>
             </div>
+        );
+    }
 
-            {/* BCH Chain */}
-            <div className="rounded-xl bg-white/[0.02] border border-white/[0.06] p-3 space-y-2.5">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
-                            <img src="/logos/bitcoin-cash-bch-logo.svg"
-                                alt="BCH" className="h-4 w-4" />
+    // Active BCH address tracks the currently-selected network (driven by the navbar toggle)
+    const activeBchAddress = isMainnet ? wdk.bchMainnetAddress : wdk.bchChipnetAddress;
+
+    const connectedChainCount = [wdk.evmAddress, activeBchAddress, wdk.solanaAddress, wdk.btcAddress]
+        .filter(Boolean).length;
+
+    return (
+        <div className="space-y-5 pt-2">
+            {/* ─── Self-custodial header — compact identity strip ─── */}
+            <div className="relative rounded-xl bg-gradient-to-br from-emerald-500/[0.06] via-emerald-500/[0.02] to-transparent border border-emerald-500/20 p-3 overflow-hidden">
+                <div className="absolute -top-10 -right-10 w-28 h-28 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
+                <div className="relative flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                        <div className="h-7 w-7 rounded-lg bg-emerald-500/15 border border-emerald-500/25 flex items-center justify-center shrink-0">
+                            <KeyRound className="h-3.5 w-3.5 text-emerald-300" />
                         </div>
-                        <div>
-                            <span className="text-xs font-semibold">Bitcoin Cash</span>
-                            <div className="flex items-center gap-1">
-                                <div className={`w-1.5 h-1.5 rounded-full ${bchWallet.connected ? 'bg-emerald-400' : 'bg-muted-foreground/30'}`} />
-                                <span className="text-[9px] text-muted-foreground">
-                                    {bchWallet.connected
-                                        ? `${bchWallet.walletMode === 'cashonize' ? 'Cashonize' : 'Browser'}`
-                                        : 'Disconnected'
-                                    }
-                                </span>
-                            </div>
+                        <div className="flex flex-col min-w-0 leading-tight">
+                            <span className="text-xs font-semibold text-emerald-300 tracking-tight">WDK Self-Custodial</span>
+                            <span className="text-[10px] text-emerald-300/50 uppercase tracking-wider">BIP-39 · {connectedChainCount} {connectedChainCount === 1 ? 'chain' : 'chains'} active</span>
                         </div>
                     </div>
-                    {bchWallet.connected ? (
-                        <Button variant="ghost" size="sm" className="h-6 text-[10px] text-red-400 hover:text-red-300 hover:bg-red-500/10"
-                            onClick={bchWallet.disconnect}>
-                            <LogOut className="h-3 w-3 mr-1" /> Disconnect
-                        </Button>
-                    ) : null}
-                </div>
-
-                {bchWallet.connected && bchWallet.address ? (
-                    <div className="space-y-1.5 pl-9">
-                        <div className="flex items-center gap-1.5">
-                            <span className="text-[10px] font-mono text-muted-foreground">
-                                {formatAddr(bchWallet.address)}
+                    {connectedChainCount > 0 && (
+                        <span className="shrink-0 inline-flex items-center gap-1 h-6 px-2 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-[10px] font-semibold text-emerald-300 uppercase tracking-wider">
+                            <span className="relative flex h-1.5 w-1.5">
+                                <span className="absolute inset-0 animate-ping rounded-full bg-emerald-400/70" />
+                                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
                             </span>
-                            <button onClick={() => copyAddress(bchWallet.address!, 'BCH')}
-                                className="text-muted-foreground hover:text-foreground">
-                                <Copy className="h-3 w-3" />
+                            Live
+                        </span>
+                    )}
+                </div>
+            </div>
+
+            {/* ═══════════════ NETWORKS ═══════════════ */}
+            <div>
+                <SectionLabel>Networks</SectionLabel>
+                <div className="space-y-2">
+                    {/* EVM */}
+                    {wdk.evmAddress && (
+                        <ChainAddressRow
+                            icon={isMainnet ? '/logos/bnb-bnb-logo.svg' : '/logos/ethereum-eth-logo.svg'}
+                            chainName={isMainnet ? 'BNB Smart Chain' : 'Ethereum'}
+                            networkLabel={isMainnet ? 'Mainnet' : 'Sepolia'}
+                            networkColor={isMainnet ? 'yellow' : 'blue'}
+                            address={wdk.evmAddress}
+                            explorerUrl={isMainnet
+                                ? `https://bscscan.com/address/${wdk.evmAddress}`
+                                : `https://sepolia.etherscan.io/address/${wdk.evmAddress}`}
+                            onCopy={() => copyAddress(wdk.evmAddress!, isMainnet ? 'BNB' : 'ETH')}
+                        />
+                    )}
+
+                    {/* BCH — single address based on active network */}
+                    {activeBchAddress && (
+                        <ChainAddressRow
+                            icon="/logos/bitcoin-cash-bch-logo.svg"
+                            chainName="Bitcoin Cash"
+                            networkLabel={isMainnet ? 'Mainnet' : 'Chipnet'}
+                            networkColor="emerald"
+                            address={activeBchAddress}
+                            explorerUrl={isMainnet
+                                ? `https://blockchair.com/bitcoin-cash/address/${activeBchAddress}`
+                                : `https://chipnet.chaingraph.cash/address/${activeBchAddress}`}
+                            onCopy={() => copyAddress(activeBchAddress, `BCH ${isMainnet ? 'Mainnet' : 'Chipnet'}`)}
+                            balance={bchWallet.connected ? `${(bchWallet.balance / 1e8).toFixed(6)} BCH` : undefined}
+                            footer={!isMainnet && (
+                                <a href="https://tbch4.googol.cash/" target="_blank" rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 transition-colors">
+                                    <ExternalLink className="h-2.5 w-2.5" /> Get Chipnet BCH (Faucet)
+                                </a>
+                            )}
+                        />
+                    )}
+
+                    {/* Solana */}
+                    {wdk.solanaAddress && (
+                        <ChainAddressRow
+                            icon="/assets/solanaLogo.png"
+                            chainName="Solana"
+                            networkLabel={isMainnet ? 'Mainnet' : 'Devnet'}
+                            networkColor="purple"
+                            address={wdk.solanaAddress}
+                            explorerUrl={isMainnet
+                                ? `https://explorer.solana.com/address/${wdk.solanaAddress}`
+                                : `https://explorer.solana.com/address/${wdk.solanaAddress}?cluster=devnet`}
+                            onCopy={() => copyAddress(wdk.solanaAddress!, 'Solana')}
+                        />
+                    )}
+
+                    {/* BTC */}
+                    {wdk.btcAddress && (
+                        <ChainAddressRow
+                            icon="/logos/bitcoin-btc-logo.svg"
+                            chainName="Bitcoin"
+                            networkLabel="Testnet"
+                            networkColor="orange"
+                            address={wdk.btcAddress}
+                            explorerUrl={`https://mempool.space/testnet/address/${wdk.btcAddress}`}
+                            onCopy={() => copyAddress(wdk.btcAddress!, 'Bitcoin')}
+                        />
+                    )}
+                </div>
+            </div>
+
+            {/* ═══════════════ SECURITY ═══════════════ */}
+            <div>
+                <SectionLabel>Security</SectionLabel>
+                <div className="space-y-2">
+                    {/* Password-gated seed phrase reveal */}
+                    {wdk.seedPhrase && (
+                        <div className="rounded-xl bg-white/[0.02] border border-white/[0.06] p-3">
+                            {!revealOpen && (
+                                <button
+                                    onClick={() => setRevealOpen(true)}
+                                    className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-semibold bg-white/[0.03] border border-white/10 text-white/60 hover:text-white/90 hover:bg-white/[0.05] transition-colors"
+                                >
+                                    <Lock className="w-3.5 h-3.5" />
+                                    Reveal Seed Phrase
+                                </button>
+                            )}
+
+                            {revealOpen && !revealedSeed && (
+                                <form onSubmit={handleUnlock} className="space-y-2">
+                                    <div className="flex items-start gap-2 text-[10px] text-yellow-400/90 bg-yellow-500/[0.06] border border-yellow-500/15 rounded-lg p-2">
+                                        <AlertTriangle className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                                        <span>Anyone with your seed phrase can drain your wallet. Never share it.</span>
+                                    </div>
+                                    {hasEncrypted ? (
+                                        <>
+                                            <label className="text-[10px] uppercase tracking-wider text-white/50 font-semibold">
+                                                Wallet password
+                                            </label>
+                                            <input
+                                                type="password"
+                                                autoFocus
+                                                value={password}
+                                                onChange={e => { setPassword(e.target.value); setUnlockError(null); }}
+                                                placeholder="Enter the password you set"
+                                                className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs font-mono text-white placeholder:text-white/30 focus:border-emerald-500/40 focus:outline-none"
+                                            />
+                                            {unlockError && (
+                                                <p className="text-[10px] text-red-400">{unlockError}</p>
+                                            )}
+                                            <div className="flex gap-2">
+                                                <Button
+                                                    type="submit"
+                                                    size="sm"
+                                                    className="flex-1 h-8 text-[11px] bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30"
+                                                    disabled={unlocking || !password}
+                                                >
+                                                    {unlocking ? <Loader2 className="w-3 h-3 animate-spin" /> : <Eye className="w-3 h-3 mr-1" />}
+                                                    {unlocking ? 'Unlocking…' : 'Reveal'}
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    className="h-8 text-[11px] text-white/60 hover:text-white"
+                                                    onClick={closeReveal}
+                                                >
+                                                    Cancel
+                                                </Button>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            <p className="text-[10px] text-white/60">
+                                                This wallet wasn't saved with a password (session-only). The seed is held in memory for this session.
+                                            </p>
+                                            <div className="flex gap-2">
+                                                <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    className="flex-1 h-8 text-[11px] bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30"
+                                                    onClick={() => setRevealedSeed(wdk.seedPhrase)}
+                                                >
+                                                    <Eye className="w-3 h-3 mr-1" /> Reveal anyway
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    className="h-8 text-[11px] text-white/60 hover:text-white"
+                                                    onClick={closeReveal}
+                                                >
+                                                    Cancel
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </form>
+                            )}
+
+                            {revealOpen && revealedSeed && (
+                                <div className="space-y-2">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-[10px] uppercase tracking-wider text-emerald-400 font-semibold">
+                                            Seed phrase
+                                        </span>
+                                        <button
+                                            onClick={closeReveal}
+                                            className="text-[10px] text-white/50 hover:text-white flex items-center gap-1"
+                                        >
+                                            <EyeOff className="w-3 h-3" /> Hide
+                                        </button>
+                                    </div>
+                                    <div className="grid grid-cols-3 gap-1 p-2.5 rounded-lg bg-red-500/[0.04] border border-red-500/15">
+                                        {revealedSeed.split(' ').map((word, i) => (
+                                            <span key={i} className="font-mono text-[10px] px-1.5 py-1 rounded bg-white/[0.04] text-white/80">
+                                                <span className="text-white/30">{i + 1}.</span> {word}
+                                            </span>
+                                        ))}
+                                    </div>
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="ghost"
+                                        className="w-full h-7 text-[10px] text-white/60 hover:text-white bg-white/[0.03] border border-white/10"
+                                        onClick={copySeed}
+                                    >
+                                        {copiedSeed
+                                            ? <><Check className="w-3 h-3 mr-1 text-emerald-400" /> Copied</>
+                                            : <><Copy className="w-3 h-3 mr-1" /> Copy seed phrase</>}
+                                    </Button>
+                                </div>
+                            )}
+
+                            <div className="mt-3 text-[10px] text-muted-foreground/60 text-center">
+                                All addresses derive from a single BIP-39 seed.
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Change password */}
+                    {hasEncrypted && onChangePassword && (
+                        <div className="rounded-xl bg-white/[0.02] border border-white/[0.06] p-3">
+                            <button
+                                onClick={onChangePassword}
+                                className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-semibold bg-white/[0.03] border border-white/10 text-white/60 hover:text-white/90 hover:bg-white/[0.05] transition-colors"
+                            >
+                                <KeyRound className="w-3.5 h-3.5" />
+                                Change Password
                             </button>
+                            <div className="mt-2 text-[10px] text-muted-foreground/60 text-center">
+                                Re-encrypts your wallet under a new password.
+                            </div>
                         </div>
-                        <div className="text-[11px] font-medium">
-                            {(bchWallet.balance / 1e8).toFixed(6)} BCH
+                    )}
+                </div>
+            </div>
+
+            {/* ═══════════════ ABOUT ═══════════════ */}
+            <div>
+                <SectionLabel>About</SectionLabel>
+                <div className="rounded-xl bg-white/[0.02] border border-white/[0.06] p-3">
+                    <div className="flex items-center gap-2.5">
+                        <div className="h-9 w-9 rounded-xl bg-black/40 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                            <img src="/assets/bchintentslogo.png" alt={APP_NAME} className="h-full w-full object-contain" />
                         </div>
-                        <a href="https://tbch4.googol.cash/" target="_blank" rel="noopener noreferrer"
-                            className="text-[9px] text-blue-400 hover:text-blue-300 flex items-center gap-1">
-                            <ExternalLink className="h-2.5 w-2.5" /> Get Chipnet BCH (Faucet)
+                        <div className="flex-1 min-w-0">
+                            <div className="text-xs font-semibold text-white tracking-tight">{APP_NAME}</div>
+                            <div className="text-[10px] text-white/40">Intent-based cross-chain swaps on Bitcoin Cash</div>
+                        </div>
+                        <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded border bg-emerald-500/10 text-emerald-300 border-emerald-500/25 uppercase tracking-wider">
+                            v{APP_VERSION}
+                        </span>
+                    </div>
+                    <div className="mt-2.5 pt-2.5 border-t border-white/[0.04] flex items-center gap-3">
+                        <a
+                            href="https://docs.intentsprotocol.xyz/"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[10px] text-white/50 hover:text-emerald-300 transition-colors"
+                        >
+                            <BookOpen className="h-3 w-3" /> Docs
+                        </a>
+                        <a
+                            href="/terms"
+                            className="inline-flex items-center gap-1 text-[10px] text-white/50 hover:text-emerald-300 transition-colors"
+                        >
+                            Terms
+                        </a>
+                        <a
+                            href="/privacy"
+                            className="inline-flex items-center gap-1 text-[10px] text-white/50 hover:text-emerald-300 transition-colors"
+                        >
+                            Privacy
                         </a>
                     </div>
-                ) : !bchWallet.connected && (
-                    <div className="space-y-1.5 pl-9">
-                        <Button variant="outline" size="sm"
-                            className="w-full h-7 text-[10px] justify-start gap-2 border-white/[0.06]"
-                            onClick={bchWallet.connectCashonize} disabled={bchWallet.connecting}>
-                            <Shield className="h-3 w-3 text-emerald-400" />
-                            <span>Cashonize (WalletConnect)</span>
-                        </Button>
-                        <Button variant="outline" size="sm"
-                            className="w-full h-7 text-[10px] justify-start gap-2 border-white/[0.06]"
-                            onClick={bchWallet.connectBrowserWallet} disabled={bchWallet.connecting}>
-                            {bchWallet.connecting
-                                ? <Loader2 className="h-3 w-3 animate-spin" />
-                                : <Globe className="h-3 w-3 text-blue-400" />
-                            }
-                            <span>Browser Wallet (Chipnet)</span>
-                        </Button>
-                    </div>
-                )}
+                </div>
             </div>
         </div>
     );
