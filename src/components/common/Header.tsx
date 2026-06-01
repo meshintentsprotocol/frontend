@@ -1,24 +1,15 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
-import { Menu, Wallet, Search, ChevronDown, BookOpen } from 'lucide-react';
+import { Drawer, DrawerContent, DrawerTrigger } from '@/components/ui/drawer';
+import { Menu, ChevronDown, BookOpen, ArrowLeftRight, ChevronRight, Compass, Wallet, Globe, Puzzle, FileText, Zap } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
 import { ConnectWalletButton } from '@/components/connect-wallet-button';
-import { WalletPopup } from '@/components/wallet/WalletPopup';
 import { TokenSearchModal } from '@/components/common/TokenSearchModal';
 import { AnimatedTradeButton } from '@/components/ui/animated-trade-button';
 import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { useWallet } from '@/context/wallet-provider';
-import { useWallet as useSolanaWallet } from '@solana/wallet-adapter-react';
-import { useBCHWallet } from '@/context/BCHWalletProvider';
-
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import { useWDK } from '@/context/WDKProvider';
 
 // Define Social Icons
 const XIcon = () => (
@@ -33,47 +24,200 @@ const MediumIcon = () => (
 );
 
 
+const APP_VERSION = '0.1.0';
+
 export function Header() {
     const [isOpen, setIsOpen] = useState(false);
-    const [walletPopupOpen, setWalletPopupOpen] = useState(false);
+    const [searchOpen, setSearchOpen] = useState(false);
     const location = useLocation();
-    const { connected } = useWallet();
-    const { connected: solConnected } = useSolanaWallet();
-    const { connected: bchConnected } = useBCHWallet();
+    const wdk = useWDK();
+    const isMainnet = wdk.bchNetwork === 'mainnet';
 
-    const anyWalletConnected = connected || solConnected || bchConnected;
+    // Listen for search open events dispatched from the wallet pill
+    useEffect(() => {
+        const handler = () => setSearchOpen(true);
+        document.addEventListener('open-token-search', handler);
+        return () => document.removeEventListener('open-token-search', handler);
+    }, []);
 
     // Determine if it's a marketing/landing page
-    const isLandingPage = ['/', '/home', '/ecosystem', '/integrate'].includes(location.pathname);
+    const isLandingPage = ['/', '/home', '/ecosystem', '/integrate', '/features'].includes(location.pathname);
 
     // Launch App Nav Items
-    const appPrimaryNavItems = [
-        { name: 'Trade', path: '/trade' },
-        { name: 'Explore', path: '/explore' },
-        { name: 'Portfolio', path: '/portfolio' },
+    const appPrimaryNavItems: { name: string; path: string; icon: LucideIcon }[] = [
+        { name: 'Trade', path: '/trade', icon: ArrowLeftRight },
+        { name: 'Explore', path: '/explore', icon: Compass },
+        { name: 'Portfolio', path: '/portfolio', icon: Wallet },
+        { name: 'Knowledge Base', path: '/kb', icon: BookOpen },
     ];
 
-    const appDropdownItems = [
-        { name: 'Oracle', path: '/oracle' },
-        { name: 'Knowledge Base', path: '/kb' },
+
+    const landingNavItems: { name: string; path: string; icon: LucideIcon }[] = [
+        { name: 'Trade', path: '/trade', icon: ArrowLeftRight },
+        { name: 'Features', path: '/features', icon: Zap },
+        { name: 'Ecosystem', path: '/ecosystem', icon: Globe },
+        { name: 'Integrate', path: '/integrate', icon: Puzzle },
     ];
 
-    if (connected) {
-        appDropdownItems.push({ name: 'Orders', path: '/orders' });
-    }
+    const renderMobileMenu = () => (
+        <Drawer open={isOpen} onOpenChange={setIsOpen}>
+            <DrawerTrigger asChild>
+                <Button variant="ghost" size="icon" className="bg-white/[0.02] border border-white/5 backdrop-blur-md hover:bg-white/10 shrink-0 h-11 w-11 rounded-xl transition-all duration-300 group hover:scale-105 active:scale-95 relative overflow-hidden">
+                    <Menu className="h-6 w-6 stroke-[2px] text-zinc-300 group-hover:text-emerald-400 transition-colors duration-300 relative z-10" />
+                    <span className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 to-transparent scale-0 group-hover:scale-100 transition-transform duration-300 rounded-xl origin-center" />
+                </Button>
+            </DrawerTrigger>
+            <DrawerContent className="px-6 pb-6">
+                <div className="flex flex-col gap-8 mt-2">
+                    {/* Mobile menu logo header */}
+                    <div className="flex items-center gap-2 pb-6 border-b border-white/10">
+                        <img
+                            src="/assets/bchintentslogo.png"
+                            alt="BCH Intents"
+                            className="w-14 h-14 object-contain -ml-1 shrink-0"
+                        />
+                        <span className="font-heading font-black text-xl tracking-tighter text-white leading-tight">
+                            {isLandingPage ? (
+                                <><span className="text-emerald-500">BCH </span>Intents Protocol</>
+                            ) : (
+                                <>BCH Intents <span className="text-emerald-500">Swap</span></>
+                            )}
+                        </span>
+                    </div>
 
-    const tradeDropdownItems = [
-        { name: 'Cash Token Swap', path: '/trade?type=market&sell=BCH&buy=BCH' },
-        { name: 'Cross-chain', path: '/trade?type=market&sell=SOL&buy=BCH' },
-        { name: 'Limit Order', path: '/trade?type=limit' },
-    ];
+                    <nav className="flex flex-col gap-2.5">
+                        {(isLandingPage ? landingNavItems : appPrimaryNavItems).map((item) => {
+                            const isActive = location.pathname === item.path;
+                            return (
+                                <Link
+                                    key={item.path}
+                                    to={item.path}
+                                    onClick={() => setIsOpen(false)}
+                                    className={cn(
+                                        "flex items-center gap-4 p-3 rounded-2xl transition-all duration-300 group hover:translate-x-1",
+                                        isActive
+                                            ? "bg-gradient-to-r from-emerald-500/10 to-transparent border border-emerald-500/20 shadow-[0_0_20px_rgba(16,185,129,0.05)]"
+                                            : "hover:bg-white/[0.03] border border-transparent hover:border-white/[0.05]"
+                                    )}
+                                >
+                                    <span className={cn(
+                                        "flex h-12 w-12 items-center justify-center rounded-xl transition-all duration-300 shrink-0",
+                                        isActive
+                                            ? "bg-emerald-500/20 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.2)]"
+                                            : "bg-[#111] text-zinc-400 border border-white/5 group-hover:bg-[#151515] group-hover:text-emerald-400 group-hover:border-emerald-500/30"
+                                    )}>
+                                        <item.icon className={cn("h-5 w-5 transition-transform duration-300", isActive ? "scale-110" : "group-hover:scale-110")} />
+                                    </span>
+                                    <span className={cn(
+                                        "flex-1 text-lg font-bold tracking-wide transition-colors",
+                                        isActive ? "text-white" : "text-zinc-400 group-hover:text-zinc-200"
+                                    )}>
+                                        {item.name}
+                                    </span>
+                                    <ChevronRight className={cn(
+                                        "h-5 w-5 transition-all duration-300",
+                                        isActive ? "text-emerald-400 opacity-100 translate-x-0" : "text-zinc-600 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:text-emerald-400 group-hover:translate-x-0"
+                                    )} />
+                                </Link>
+                            );
+                        })}
+                        {isLandingPage && (
+                            <a
+                                href="https://docs.intentsprotocol.xyz/"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={() => setIsOpen(false)}
+                                className="flex items-center gap-4 p-3 rounded-2xl transition-all duration-300 group hover:translate-x-1 hover:bg-white/[0.03] border border-transparent hover:border-white/[0.05]"
+                            >
+                                <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#111] text-zinc-400 border border-white/5 group-hover:bg-[#151515] group-hover:text-emerald-400 group-hover:border-emerald-500/30 transition-all duration-300 shrink-0">
+                                    <FileText className="h-5 w-5 transition-transform duration-300 group-hover:scale-110" />
+                                </span>
+                                <span className="flex-1 text-lg font-bold tracking-wide text-zinc-400 group-hover:text-zinc-200 transition-colors">Docs</span>
+                                <ChevronRight className="h-5 w-5 text-zinc-600 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:text-emerald-400 group-hover:translate-x-0 transition-all duration-300" />
+                            </a>
+                        )}
+                    </nav>
 
-    // Landing Page Nav Items
-    const landingNavItems = [
-        { name: 'Trade', path: '/trade' },
-        { name: 'Ecosystem', path: '/ecosystem' },
-        { name: 'Integrate', path: '/integrate' },
-    ];
+                    {!isLandingPage && (
+                        <div className="pt-6 border-t border-white/10 flex flex-col gap-3">
+                            {/* Mobile network segmented toggle */}
+                            <div
+                                role="tablist"
+                                aria-label="Network"
+                                className={cn(
+                                    "relative flex h-12 items-center w-full rounded-xl p-1 bg-[#0A0A0A]/60 backdrop-blur-xl border transition-all duration-300",
+                                    isMainnet
+                                        ? "border-emerald-500/30 shadow-[0_0_0_1px_rgba(16,185,129,0.08)_inset,0_4px_20px_-8px_rgba(16,185,129,0.4)]"
+                                        : "border-white/10"
+                                )}
+                            >
+                                <span
+                                    aria-hidden
+                                    className={cn(
+                                        "absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-lg",
+                                        "transition-[left,background-color,box-shadow] duration-300 ease-[cubic-bezier(0.34,1.4,0.64,1)]",
+                                        isMainnet
+                                            ? "left-[calc(50%+0px)] bg-gradient-to-br from-emerald-500/30 to-emerald-600/20 border border-emerald-400/40 shadow-[0_0_12px_rgba(16,185,129,0.4)]"
+                                            : "left-1 bg-white/[0.08] border border-white/10"
+                                    )}
+                                />
+                                <button
+                                    role="tab"
+                                    aria-selected={!isMainnet}
+                                    onClick={() => { wdk.setBchNetwork('chipnet'); setIsOpen(false); }}
+                                    className={cn(
+                                        "relative z-10 flex-1 h-10 rounded-lg text-sm font-semibold transition-colors duration-200 active:scale-95",
+                                        !isMainnet ? "text-white" : "text-zinc-500"
+                                    )}
+                                >
+                                    Testnet
+                                </button>
+                                <button
+                                    role="tab"
+                                    aria-selected={isMainnet}
+                                    onClick={() => { wdk.setBchNetwork('mainnet'); setIsOpen(false); }}
+                                    className={cn(
+                                        "relative z-10 flex-1 h-10 rounded-lg text-sm font-semibold transition-colors duration-200 active:scale-95 flex items-center justify-center gap-1.5",
+                                        isMainnet ? "text-emerald-300" : "text-zinc-500"
+                                    )}
+                                >
+                                    {isMainnet && (
+                                        <span className="relative flex h-2 w-2">
+                                            <span className="absolute inset-0 animate-ping rounded-full bg-emerald-400/70" />
+                                            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+                                        </span>
+                                    )}
+                                    Mainnet
+                                </button>
+                            </div>
+                            <ConnectWalletButton className="w-full h-12 rounded-xl" />
+                        </div>
+                    )}
+
+                    {/* ─── Footer: socials + version (both menus) ─── */}
+                    <div className="pt-6 border-t border-white/10 flex flex-col items-center gap-4">
+                        <div className="flex gap-3">
+                            <a href="https://x.com/bchintents" target="_blank" rel="noopener noreferrer" aria-label="X" className="glass-subtle w-11 h-11 flex items-center justify-center rounded-2xl text-zinc-400 hover:text-emerald-400 border border-white/5 hover:border-emerald-500/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] transition-all duration-300 hover:-translate-y-1">
+                                <XIcon />
+                            </a>
+                            <a href="https://docs.intentsprotocol.xyz/" target="_blank" rel="noopener noreferrer" aria-label="Docs" className="glass-subtle w-11 h-11 flex items-center justify-center rounded-2xl text-zinc-400 hover:text-emerald-400 border border-white/5 hover:border-emerald-500/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] transition-all duration-300 hover:-translate-y-1">
+                                <BookOpen className="w-5 h-5" />
+                            </a>
+                            <a href="https://medium.com/@bchintents" target="_blank" rel="noopener noreferrer" aria-label="Medium" className="glass-subtle w-11 h-11 flex items-center justify-center rounded-2xl text-zinc-400 hover:text-emerald-400 border border-white/5 hover:border-emerald-500/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] transition-all duration-300 hover:-translate-y-1">
+                                <MediumIcon />
+                            </a>
+                            <a href="#" target="_blank" rel="noopener noreferrer" aria-label="Discord" className="glass-subtle w-11 h-11 flex items-center justify-center rounded-2xl text-zinc-400 hover:text-emerald-400 border border-white/5 hover:border-emerald-500/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] transition-all duration-300 hover:-translate-y-1">
+                                <DiscordIcon />
+                            </a>
+                        </div>
+                        <div className="text-[11px] text-zinc-500 tracking-wide">
+                            BCH Intents Swap <span className="text-emerald-400/80 font-semibold">v{APP_VERSION}</span>
+                        </div>
+                    </div>
+                </div>
+            </DrawerContent>
+        </Drawer>
+    );
 
     return (
         <header className="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-[#050505]/70 backdrop-blur-xl supports-[backdrop-filter]:bg-[#050505]/60 transition-all duration-300">
@@ -84,99 +228,78 @@ export function Header() {
             )}>
 
                 {/* Left Section: Logo (& Nav optionally for App) */}
-                <div className="flex items-center gap-8 lg:gap-12 shrink-0">
+                <div className="flex items-center gap-0 md:gap-8 lg:gap-12 shrink-0">
                     {/* Logo - On landing pages it redirects to home, on app pages it redirects to trade or home, let's keep it to home */}
                     <Link to="/" className="flex items-center group shrink-0">
                         <img
                             src="/assets/bchintentslogo.png"
-                            alt="BCH Intents Protocol Logo"
-                            className="w-20 h-20 -ml-2 -mr-4 object-contain transition-transform group-hover:scale-110 duration-300"
+                            alt={isLandingPage ? "BCH Intents Protocol Logo" : "BCH Intents Swap Logo"}
+                            className="w-20 h-20 -ml-2 md:-ml-2 md:-mr-4 object-contain transition-transform group-hover:scale-110 duration-300"
                         />
-                        <span className="font-heading font-black text-2xl tracking-tighter hidden sm:block text-white drop-shadow-sm group-hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.3)] transition-all">
-                            <span className="text-emerald-500 group-hover:text-emerald-400 transition-colors">BCH </span>
-                            <span>
-                                Intents Protocol
-                            </span>
+                        <span className="font-heading font-black text-2xl tracking-tighter hidden lg:block text-white drop-shadow-sm group-hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.3)] transition-all">
+                            {isLandingPage ? (
+                                <>
+                                    <span className="text-emerald-500 group-hover:text-emerald-400 transition-colors">BCH </span>
+                                    <span>Intents Protocol</span>
+                                </>
+                            ) : (
+                                <>
+                                    <span>BCH Intents </span>
+                                    <span className="text-emerald-500 group-hover:text-emerald-400 transition-colors">Swap</span>
+                                </>
+                            )}
                         </span>
                     </Link>
 
+                    {/* Mobile Menu Trigger (next to logo on DApp side) */}
+                    {!isLandingPage && (
+                        <div className="flex lg:hidden ml-[-4px] md:ml-[-24px] z-10 relative">
+                            {renderMobileMenu()}
+                        </div>
+                    )}
+
                     {/* App Desktop Nav (Only shown if NOT landing page) */}
                     {!isLandingPage && (
-                        <nav className="hidden md:flex items-center gap-6 xl:gap-8">
+                        <nav className="hidden lg:flex items-center gap-6 xl:gap-8">
                             {appPrimaryNavItems.map((item) => (
-                                item.name === 'Trade' ? (
-                                    <DropdownMenu key={item.path}>
-                                        <DropdownMenuTrigger className="flex items-center gap-1 text-sm font-medium transition-all duration-200 hover:text-primary relative group py-2 text-primary focus:outline-none">
-                                            {item.name} <ChevronDown className="h-4 w-4 transition-transform duration-200 data-[state=open]:rotate-180" />
-                                            <span className="absolute bottom-0 left-0 w-full h-[2px] bg-primary scale-x-100 origin-left" />
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent align="start" className="bg-[#0A0A0A]/95 backdrop-blur-xl border-white/10 text-foreground">
-                                            {tradeDropdownItems.map((dropdownItem) => (
-                                                <DropdownMenuItem key={dropdownItem.path} asChild className="focus:bg-white/5 focus:text-primary cursor-pointer">
-                                                    <Link to={dropdownItem.path} className="w-full">{dropdownItem.name}</Link>
-                                                </DropdownMenuItem>
-                                            ))}
-                                        </DropdownMenuContent>
-                                    </DropdownMenu>
-                                ) : (
-                                    <Link
-                                        key={item.path}
-                                        to={item.path}
-                                        className={cn(
-                                            "text-[15px] font-semibold transition-all duration-300 hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)] relative group py-2",
-                                            location.pathname === item.path ? "text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]" : "text-zinc-300"
-                                        )}
-                                    >
-                                        {item.name}
-                                        <span className={cn(
-                                            "absolute bottom-0 left-0 w-full h-[2px] bg-emerald-400 scale-x-0 transition-transform duration-300 group-hover:scale-x-100 origin-left shadow-[0_0_8px_rgba(52,211,153,0.8)]",
-                                            location.pathname === item.path && "scale-x-100"
-                                        )} />
-                                    </Link>
-                                )
+                                <Link
+                                    key={item.path}
+                                    to={item.path}
+                                    className={cn(
+                                        "text-[15px] font-semibold transition-all duration-300 hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)] relative group py-2",
+                                        location.pathname === item.path ? "text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]" : "text-zinc-300"
+                                    )}
+                                >
+                                    {item.name}
+                                    <span className={cn(
+                                        "absolute bottom-0 left-0 w-full h-[2px] bg-emerald-400 scale-x-0 transition-transform duration-300 group-hover:scale-x-100 origin-left shadow-[0_0_8px_rgba(52,211,153,0.8)]",
+                                        location.pathname === item.path && "scale-x-100"
+                                    )} />
+                                </Link>
                             ))}
-                            <DropdownMenu>
-                                <DropdownMenuTrigger className="flex items-center gap-1 text-sm font-medium text-muted-foreground/80 hover:text-primary transition-colors focus:outline-none data-[state=open]:text-primary">
-                                    More <ChevronDown className="h-4 w-4 transition-transform duration-200 data-[state=open]:rotate-180" />
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="start" className="bg-[#0A0A0A]/95 backdrop-blur-xl border-white/10 text-foreground">
-                                    {appDropdownItems.map((item) => (
-                                        <DropdownMenuItem key={item.path} asChild className="focus:bg-white/5 focus:text-primary cursor-pointer">
-                                            <Link to={item.path} className="w-full">{item.name}</Link>
-                                        </DropdownMenuItem>
-                                    ))}
-                                    <DropdownMenuItem asChild className="focus:bg-white/5 focus:text-primary cursor-pointer">
-                                        <a href="https://docs.intentsprotocol.xyz/" target="_blank" rel="noopener noreferrer" className="w-full">Docs</a>
-                                    </DropdownMenuItem>
-                                </DropdownMenuContent>
-                            </DropdownMenu>
                         </nav>
                     )}
                 </div>
 
                 {/* Middle Section: Centered Nav for Landing OR Search Bar for App */}
                 {isLandingPage ? (
-                    <div className="hidden md:flex flex-1 justify-center px-4">
+                    <div className="hidden lg:flex flex-1 justify-center px-4">
                         <nav className="flex items-center gap-6 xl:gap-8">
                             {landingNavItems.map((item) => (
-                                item.name === 'Trade' ? (
-                                    <AnimatedTradeButton key={item.path} />
-                                ) : (
-                                    <Link
-                                        key={item.path}
-                                        to={item.path}
-                                        className={cn(
-                                            "text-[15px] font-semibold transition-all duration-300 hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)] relative group py-2",
-                                            location.pathname === item.path ? "text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]" : "text-zinc-300"
-                                        )}
-                                    >
-                                        {item.name}
-                                        <span className={cn(
-                                            "absolute bottom-0 left-0 w-full h-[2px] bg-emerald-400 scale-x-0 transition-transform duration-300 group-hover:scale-x-100 origin-left shadow-[0_0_8px_rgba(52,211,153,0.8)]",
-                                            location.pathname === item.path && "scale-x-100"
-                                        )} />
-                                    </Link>
-                                )
+                                <Link
+                                    key={item.path}
+                                    to={item.path}
+                                    className={cn(
+                                        "text-[15px] font-semibold transition-all duration-300 hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)] relative group py-2",
+                                        location.pathname === item.path ? "text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]" : "text-zinc-300"
+                                    )}
+                                >
+                                    {item.name}
+                                    <span className={cn(
+                                        "absolute bottom-0 left-0 w-full h-[2px] bg-emerald-400 scale-x-0 transition-transform duration-300 group-hover:scale-x-100 origin-left shadow-[0_0_8px_rgba(52,211,153,0.8)]",
+                                        location.pathname === item.path && "scale-x-100"
+                                    )} />
+                                </Link>
                             ))}
                             <a
                                 href="https://docs.intentsprotocol.xyz/"
@@ -190,27 +313,14 @@ export function Header() {
                         </nav>
                     </div>
                 ) : (
-                    <div className="hidden md:flex flex-1 max-w-md justify-center px-4">
-                        <TokenSearchModal>
-                            <Button
-                                variant="outline"
-                                className="w-full bg-[#0A0A0A]/50 backdrop-blur-sm border-white/10 hover:bg-white/10 text-muted-foreground hover:text-primary h-10 px-4 flex items-center justify-between rounded-xl shadow-sm transition-all duration-300 hover:shadow-primary/5 hover:border-primary/30"
-                            >
-                                <div className="flex items-center gap-3">
-                                    <Search className="h-4 w-4" />
-                                    <span className="font-medium text-sm">Search tokens...</span>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                    <span className="text-[10px] font-semibold bg-white/[0.05] border border-white/10 px-1.5 py-0.5 rounded text-white/40">/</span>
-                                </div>
-                            </Button>
-                        </TokenSearchModal>
+                    <div className="hidden lg:flex flex-1 max-w-md justify-center px-4">
+                        {/* Search moved to right side */}
                     </div>
                 )}
 
                 {/* Right Section: Social Icons for Landing OR Actions for App */}
                 {isLandingPage ? (
-                    <div className="hidden md:flex items-center gap-3 shrink-0">
+                    <div className="hidden lg:flex items-center gap-3 shrink-0">
                         <a href="https://x.com/bchintents" target="_blank" rel="noopener noreferrer" className="glass-subtle w-10 h-10 flex items-center justify-center rounded-2xl text-zinc-400 hover:text-emerald-400 border border-white/5 hover:border-emerald-500/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] transition-all duration-300 group hover:-translate-y-1">
                             <XIcon />
                         </a>
@@ -225,203 +335,77 @@ export function Header() {
                         </a>
                     </div>
                 ) : (
-                    <div className="hidden md:flex items-center gap-3 shrink-0">
-                        <div className="relative group">
-                            <div className="absolute -inset-0.5 bg-gradient-to-r from-primary to-purple-600 rounded-full blur opacity-30 group-hover:opacity-60 transition duration-500"></div>
-                            <div className="relative">
-                                <ConnectWalletButton />
-                            </div>
-                        </div>
-                        {/* Wallet Popup Trigger with static blazing ring */}
-                        <div className="relative group">
-                            {/* Static conic-gradient ring (same palette as Trade button) */}
-                            <div
+                    <div className="hidden lg:flex items-center gap-3 shrink-0">
+                        {/* Search is now embedded inside the ConnectWalletButton pill */}
+                        {/* Programmatic modal for cross-component open-token-search event */}
+                        <TokenSearchModal open={searchOpen} onOpenChange={setSearchOpen}>
+                            <span />
+                        </TokenSearchModal>
+                        {/* Network segmented toggle — sliding indicator */}
+                        <div
+                            role="tablist"
+                            aria-label="Network"
+                            className={cn(
+                                "relative flex h-10 w-[176px] items-center rounded-xl p-1 bg-[#0A0A0A]/60 backdrop-blur-xl border transition-all duration-300",
+                                isMainnet
+                                    ? "border-emerald-500/30 shadow-[0_0_0_1px_rgba(16,185,129,0.08)_inset,0_4px_20px_-8px_rgba(16,185,129,0.4)]"
+                                    : "border-white/10 shadow-[0_0_0_1px_rgba(255,255,255,0.04)_inset]"
+                            )}
+                        >
+                            {/* Sliding indicator — spring-eased switch */}
+                            <span
+                                aria-hidden
                                 className={cn(
-                                    "absolute -inset-[2px] rounded-xl overflow-hidden transition-opacity duration-300",
-                                    anyWalletConnected || walletPopupOpen ? "opacity-100" : "opacity-40 group-hover:opacity-80"
+                                    "absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-lg",
+                                    "transition-[left,background-color,box-shadow] duration-300 ease-[cubic-bezier(0.34,1.4,0.64,1)]",
+                                    isMainnet
+                                        ? "left-[calc(50%+0px)] bg-gradient-to-br from-emerald-500/30 to-emerald-600/20 border border-emerald-400/40 shadow-[0_0_12px_rgba(16,185,129,0.4)]"
+                                        : "left-1 bg-white/[0.08] border border-white/10"
+                                )}
+                            />
+
+                            <button
+                                role="tab"
+                                aria-selected={!isMainnet}
+                                onClick={() => wdk.setBchNetwork('chipnet')}
+                                className={cn(
+                                    "relative z-10 flex-1 h-8 rounded-lg text-xs font-semibold transition-colors duration-200 active:scale-95",
+                                    !isMainnet ? "text-white" : "text-zinc-500 hover:text-zinc-300"
                                 )}
                             >
-                                <div
-                                    style={{
-                                        background: "conic-gradient(from 180deg, #10b981, #22c55e, #eab308, #f59e0b, #10b981)",
-                                    }}
-                                    className="absolute inset-0"
-                                />
-                                <div className="absolute inset-[2px] rounded-[10px] bg-[#050505]" />
-                            </div>
-                            <Button
-                                variant="ghost"
-                                size="icon"
+                                Testnet
+                            </button>
+                            <button
+                                role="tab"
+                                aria-selected={isMainnet}
+                                onClick={() => wdk.setBchNetwork('mainnet')}
                                 className={cn(
-                                    "relative h-9 w-9 rounded-lg bg-transparent hover:bg-white/5 transition-all border-none",
-                                    walletPopupOpen && "bg-white/5"
+                                    "relative z-10 flex-1 h-8 rounded-lg text-xs font-semibold transition-colors duration-200 active:scale-95 flex items-center justify-center gap-1",
+                                    isMainnet ? "text-emerald-300" : "text-zinc-500 hover:text-zinc-300"
                                 )}
-                                onClick={() => setWalletPopupOpen(v => !v)}
                             >
-                                <Wallet className={cn(
-                                    "h-4 w-4 transition-colors duration-300",
-                                    anyWalletConnected
-                                        ? "text-emerald-400"
-                                        : walletPopupOpen
-                                            ? "text-emerald-400/80"
-                                            : "text-muted-foreground group-hover:text-emerald-400/60"
-                                )} />
-                            </Button>
+                                {isMainnet && (
+                                    <span className="relative flex h-1.5 w-1.5">
+                                        <span className="absolute inset-0 animate-ping rounded-full bg-emerald-400/70" />
+                                        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                                    </span>
+                                )}
+                                Mainnet
+                            </button>
                         </div>
+
+                        <ConnectWalletButton />
                     </div>
                 )}
 
-                {/* Wallet Popup Panel (Only if not landing page) */}
-                {!isLandingPage && <WalletPopup open={walletPopupOpen} onClose={() => setWalletPopupOpen(false)} />}
-
-                {/* Mobile Menu */}
-                <Sheet open={isOpen} onOpenChange={setIsOpen}>
-                    <SheetTrigger asChild>
-                        <Button variant="ghost" size="icon" className="md:hidden hover:bg-white/5 shrink-0 ml-4">
-                            <Menu className="h-6 w-6" />
-                        </Button>
-                    </SheetTrigger>
-                    <SheetContent side="right" className="w-[300px] sm:w-[400px] bg-[#050505]/95 backdrop-blur-xl border-l border-white/10">
-                        <div className="flex flex-col gap-8 mt-12">
-                            <nav className="flex flex-col gap-6">
-                                {isLandingPage ? (
-                                    <>
-                                        {landingNavItems.map((item) => (
-                                            item.name === 'Trade' ? (
-                                                <AnimatedTradeButton key={item.path} onClick={() => setIsOpen(false)} />
-                                            ) : (
-                                                <Link
-                                                    key={item.path}
-                                                    to={item.path}
-                                                    onClick={() => setIsOpen(false)}
-                                                    className={cn(
-                                                        "text-2xl font-bold transition-all hover:text-white hover:drop-shadow-[0_0_12px_rgba(255,255,255,0.4)] flex items-center justify-between group hover:translate-x-2",
-                                                        location.pathname === item.path ? "text-white drop-shadow-[0_0_12px_rgba(255,255,255,0.4)]" : "text-zinc-400"
-                                                    )}
-                                                >
-                                                    {item.name}
-                                                    <ChevronDown className="-rotate-90 h-6 w-6 opacity-0 group-hover:opacity-100 transition-all text-emerald-400 group-hover:translate-x-1" />
-                                                </Link>
-                                            )
-                                        ))}
-                                        <a
-                                            href="https://docs.intentsprotocol.xyz/"
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            onClick={() => setIsOpen(false)}
-                                            className="text-2xl font-bold transition-all hover:text-white hover:drop-shadow-[0_0_12px_rgba(255,255,255,0.4)] flex items-center justify-between group text-zinc-400 hover:translate-x-2"
-                                        >
-                                            Docs
-                                            <ChevronDown className="-rotate-90 h-6 w-6 opacity-0 group-hover:opacity-100 transition-all text-emerald-400 group-hover:translate-x-1" />
-                                        </a>
-                                    </>
-                                ) : (
-                                    <>
-                                        {[...appPrimaryNavItems, ...appDropdownItems].map((item) => (
-                                            item.name === 'Trade' ? (
-                                                <div key={item.path} className="flex flex-col gap-2">
-                                                    <div className="text-2xl font-bold text-white drop-shadow-[0_0_12px_rgba(255,255,255,0.4)] flex items-center justify-between group">
-                                                        {item.name}
-                                                    </div>
-                                                    <div className="flex flex-col gap-4 pl-4 border-l-2 border-emerald-500/30 mt-4">
-                                                        {tradeDropdownItems.map((subItem) => (
-                                                            <Link
-                                                                key={subItem.path}
-                                                                to={subItem.path}
-                                                                onClick={() => setIsOpen(false)}
-                                                                className="text-xl font-semibold text-zinc-400 hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.3)] transition-all hover:translate-x-1"
-                                                            >
-                                                                {subItem.name}
-                                                            </Link>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <Link
-                                                    key={item.path}
-                                                    to={item.path}
-                                                    onClick={() => setIsOpen(false)}
-                                                    className={cn(
-                                                        "text-2xl font-bold transition-all hover:text-white hover:drop-shadow-[0_0_12px_rgba(255,255,255,0.4)] flex items-center justify-between group hover:translate-x-2",
-                                                        location.pathname === item.path ? "text-white drop-shadow-[0_0_12px_rgba(255,255,255,0.4)]" : "text-zinc-400"
-                                                    )}
-                                                >
-                                                    {item.name}
-                                                    <ChevronDown className="-rotate-90 h-6 w-6 opacity-0 group-hover:opacity-100 transition-all text-emerald-400 group-hover:translate-x-1" />
-                                                </Link>
-                                            )
-                                        ))}
-                                        <a
-                                            href="https://docs.intentsprotocol.xyz/"
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            onClick={() => setIsOpen(false)}
-                                            className="text-2xl font-bold transition-all hover:text-white hover:drop-shadow-[0_0_12px_rgba(255,255,255,0.4)] flex items-center justify-between group text-zinc-400 hover:translate-x-2"
-                                        >
-                                            Docs
-                                            <ChevronDown className="-rotate-90 h-6 w-6 opacity-0 group-hover:opacity-100 transition-all text-emerald-400 group-hover:translate-x-1" />
-                                        </a>
-                                    </>
-                                )}
-                            </nav>
-
-                            {!isLandingPage && (
-                                <div className="pt-8 border-t border-white/10 flex flex-col gap-4">
-                                    <div className="flex gap-3 mt-2">
-                                        <div className="flex-1">
-                                            <ConnectWalletButton className="w-full h-12 text-lg rounded-xl" />
-                                        </div>
-                                        <div className="relative group">
-                                            <div className="absolute -inset-[2px] rounded-xl overflow-hidden">
-                                                <div
-                                                    style={{
-                                                        background: "conic-gradient(from 180deg, #10b981, #22c55e, #eab308, #f59e0b, #10b981)",
-                                                    }}
-                                                    className="absolute inset-0"
-                                                />
-                                                <div className="absolute inset-[2px] rounded-[10px] bg-[#050505]" />
-                                            </div>
-                                            <Button
-                                                variant="outline"
-                                                size="icon"
-                                                className={cn(
-                                                    "relative h-12 w-12 shrink-0 rounded-xl bg-transparent hover:bg-white/5 transition-all border-none",
-                                                    walletPopupOpen && "bg-white/5"
-                                                )}
-                                                onClick={() => {
-                                                    setIsOpen(false);
-                                                    setWalletPopupOpen(true);
-                                                }}
-                                            >
-                                                <Wallet className={cn(
-                                                    "h-5 w-5 transition-colors duration-300",
-                                                    anyWalletConnected ? "text-emerald-400" : "text-muted-foreground"
-                                                )} />
-                                            </Button>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {isLandingPage && (
-                                <div className="pt-8 border-t border-white/10 flex gap-4 justify-center">
-                                    <a href="https://x.com/bchintents" target="_blank" rel="noopener noreferrer" className="glass-subtle w-12 h-12 flex items-center justify-center rounded-2xl text-zinc-400 hover:text-emerald-400 border border-white/5 hover:border-emerald-500/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] transition-all duration-300 group hover:-translate-y-1">
-                                        <XIcon />
-                                    </a>
-                                    <a href="https://docs.intentsprotocol.xyz/" target="_blank" rel="noopener noreferrer" className="glass-subtle w-12 h-12 flex items-center justify-center rounded-2xl text-zinc-400 hover:text-emerald-400 border border-white/5 hover:border-emerald-500/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] transition-all duration-300 group hover:-translate-y-1">
-                                        <BookOpen className="w-5 h-5" />
-                                    </a>
-                                    <a href="https://medium.com/@bchintents" target="_blank" rel="noopener noreferrer" className="glass-subtle w-12 h-12 flex items-center justify-center rounded-2xl text-zinc-400 hover:text-emerald-400 border border-white/5 hover:border-emerald-500/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] transition-all duration-300 group hover:-translate-y-1">
-                                        <MediumIcon />
-                                    </a>
-                                    <a href="#" target="_blank" rel="noopener noreferrer" className="glass-subtle w-12 h-12 flex items-center justify-center rounded-2xl text-zinc-400 hover:text-emerald-400 border border-white/5 hover:border-emerald-500/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] transition-all duration-300 group hover:-translate-y-1">
-                                        <DiscordIcon />
-                                    </a>
-                                </div>
-                            )}
-                        </div>
-                    </SheetContent>
-                </Sheet>
+                {/* Mobile: right side items */}
+                <div className="flex lg:hidden items-center gap-2 ml-auto shrink-0">
+                    {!isLandingPage ? (
+                        <ConnectWalletButton />
+                    ) : (
+                        renderMobileMenu()
+                    )}
+                </div>
             </div>
         </header>
     );

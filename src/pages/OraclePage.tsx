@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { PriceService } from "@/lib/pyth";
 import { PriceData } from "@/types";
 import { cn } from "@/lib/utils";
@@ -6,6 +6,7 @@ import { ArrowUpRight, ArrowDownRight, RefreshCcw, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { CauldronTokenData, CauldronService } from "@/lib/cauldron";
+import { useWDK } from "@/context/WDKProvider";
 
 const ASSETS = [
     // Movement Chain
@@ -23,33 +24,33 @@ const ASSETS = [
 ];
 
 export function OraclePage() {
+    const wdk = useWDK();
+    const isMainnet = wdk.bchNetwork === 'mainnet';
+
     const [prices, setPrices] = useState<Record<string, PriceData>>({});
     const [loading, setLoading] = useState(true);
     const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
     const [cashTokens, setCashTokens] = useState<CauldronTokenData[]>([]);
 
-    const fetchPrices = async () => {
+    const fetchPrices = useCallback(async () => {
         setLoading(true);
         try {
             const data = await PriceService.getLatestPrices();
             setPrices(data);
-
-            // Also fetch Cauldron tokens
-            const cTokensRaw = await CauldronService.getTopCashTokens(8);
+            const cTokensRaw = await CauldronService.getTopCashTokens(8, isMainnet);
             setCashTokens(cTokensRaw);
-
             setLastUpdated(new Date());
         } catch (e) {
             console.error("Failed to fetch oracles", e);
         }
         setLoading(false);
-    };
+    }, [isMainnet]);
 
     useEffect(() => {
         fetchPrices();
         const interval = setInterval(fetchPrices, 10000); // Poll every 10s
         return () => clearInterval(interval);
-    }, []);
+    }, [fetchPrices]);
 
     return (
         <div className="container mx-auto p-8 max-w-5xl space-y-8">

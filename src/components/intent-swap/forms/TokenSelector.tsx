@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { ChevronDown, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Token } from "@/types";
+import { TokenChainIcon } from "@/components/common/TokenChainIcon";
 
 export const TOKENS: Token[] = [
     {
@@ -12,28 +13,32 @@ export const TOKENS: Token[] = [
         name: "Movement Coin",
         icon: "https://raw.githubusercontent.com/kitelabs-io/mvmt-tokens/main/logos/MOVE.png",
         decimals: 8,
-        type: "0x1::aptos_coin::AptosCoin"
+        type: "0x1::aptos_coin::AptosCoin",
+        chain: "movement"
     },
     {
         symbol: "WETH.e",
         name: "Wrapped Ether (Bridged)",
         type: "0x7eb1210794c2fdf636c5c9a5796b5122bf932458e3dd1737cf830d79954f5fdb",
         decimals: 8,
-        icon: "/logos/ethereum-eth-logo.svg"
+        icon: "/logos/ethereum-eth-logo.svg",
+        chain: "movement"
     },
     {
         symbol: "USDC.e",
         name: "USD Coin (Bridged)",
         type: "0x45142fb00dde90b950183d8ac2815597892f665c254c3f42b5768bc6ae4c8489",
         decimals: 6,
-        icon: "/logos/usd-coin-usdc-logo.svg"
+        icon: "/logos/usd-coin-usdc-logo.svg",
+        chain: "movement"
     },
     {
         symbol: "USDT.e",
         name: "Tether USD (Bridged)",
         type: "0x927595491037804b410c090a4c152c27af24d647863fc00b4a42904073d2d9de",
         decimals: 6,
-        icon: "/logos/usd-coin-usdc-logo.svg"
+        icon: "/logos/usd-coin-usdc-logo.svg",
+        chain: "movement"
     }
 ];
 
@@ -68,7 +73,7 @@ export function TokenSelector({ value, onSelect, className }: TokenSelectorProps
                 >
                     {value ? (
                         <div className="flex items-center gap-2">
-                            <img src={value.icon} alt={value.symbol} className="w-6 h-6 rounded-full" />
+                            <TokenChainIcon tokenIcon={value.icon} tokenName={value.symbol} chain={value.chain} size="xs" />
                             <span className="font-semibold text-lg">{value.symbol}</span>
                         </div>
                     ) : (
@@ -101,7 +106,7 @@ export function TokenSelector({ value, onSelect, className }: TokenSelectorProps
                                 className="w-full justify-start h-14 px-4 hover:bg-muted/50"
                                 onClick={() => handleSelect(token)}
                             >
-                                <img src={token.icon} alt={token.symbol} className="w-8 h-8 rounded-full mr-3" />
+                                <TokenChainIcon tokenIcon={token.icon} tokenName={token.symbol} chain={token.chain} size="sm" className="mr-3" />
                                 <div className="text-left flex flex-col">
                                     <span className="font-semibold">{token.symbol}</span>
                                     <span className="text-xs text-muted-foreground">{token.name}</span>

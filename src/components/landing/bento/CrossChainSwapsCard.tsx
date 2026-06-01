@@ -162,12 +162,10 @@ export function CrossChainSwapsCard({ className }: CrossChainSwapsCardProps) {
             </p>
 
             {/* CTA Button */}
-            <button onClick={handleExploreChains}>
-                <Button variant="outline" className="rounded-full gap-2 mb-6 group">
-                    Explore chains
-                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                </Button>
-            </button>
+            <Button variant="outline" className="rounded-full gap-2 mb-6 group self-start" onClick={handleExploreChains}>
+                Explore chains
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+            </Button>
 
             {/* Token Prices List - Auto-scrolling */}
             <div

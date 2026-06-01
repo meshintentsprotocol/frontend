@@ -64,6 +64,13 @@ const NETWORKS = [
         position: "bottom-[5%] left-[25%]",
         delay: 1.5,
         live: false,
+    },
+    {
+        name: "Bitcoin",
+        icon: <img src="/logos/bitcoin-btc-logo.svg" alt="BTC" className="w-12 h-12" />,
+        position: "bottom-[15%] right-[12%]",
+        delay: 0.3,
+        live: true,
     }
 ];
 
@@ -71,7 +78,7 @@ export function LiveOnSection() {
     return (
         <section id="live-on-network" className="relative py-20 lg:py-0 lg:min-h-[850px] flex items-center justify-center overflow-hidden bg-[#050505] border-y border-white/5">
             {/* Background Effects */}
-            <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-10 mix-blend-overlay pointer-events-none"></div>
+            <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-10 mix-blend-overlay pointer-events-none"></div>
             <div className="absolute top-1/2 left-1/4 w-[600px] h-[600px] bg-primary/5 rounded-full blur-[140px] pointer-events-none opacity-40 -translate-y-1/2" />
             <div className="absolute top-1/2 right-1/4 w-[600px] h-[600px] bg-teal-500/5 rounded-full blur-[140px] pointer-events-none opacity-40 -translate-y-1/2" />
 

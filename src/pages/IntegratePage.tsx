@@ -27,7 +27,7 @@ export default function IntegratePage() {
                         <div className="absolute -top-[10%] -left-[10%] w-[50vw] h-[50vw] rounded-full blur-[120px] mesh-gradient-primary animate-pulse-glow" />
                         <div className="absolute top-[40%] -right-[10%] w-[40vw] h-[40vw] rounded-full blur-[150px] mesh-gradient-purple animate-pulse-glow delay-1000 opacity-50" />
                         <div className="absolute -bottom-[20%] left-[20%] w-[60vw] h-[60vw] rounded-full blur-[150px] mesh-gradient-orange animate-pulse-glow delay-500 opacity-40" />
-                        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.15] mix-blend-overlay"></div>
+                        <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-[0.15] mix-blend-overlay"></div>
                     </div>
 
                     {/* Floating Geometric/Code Elements */}
@@ -84,7 +84,7 @@ export default function IntegratePage() {
 
                 {/* 2. THE BIFURCATION (BCH Native vs Cross-Chain) */}
                 <section id="bifurcation" className="relative py-24 bg-zinc-950 border-y border-white/5">
-                    <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] mix-blend-overlay"></div>
+                    <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-[0.03] mix-blend-overlay"></div>
                     
                     <div className="container mx-auto px-4 relative z-10">
                         <div className="text-center mb-16">

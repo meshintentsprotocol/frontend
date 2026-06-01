@@ -71,7 +71,7 @@ export function HeroStatsSection() {
             <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
                 <div className="absolute top-[-10%] left-[-10%] w-[50vw] h-[50vw] bg-emerald-500/10 rounded-full blur-[150px] animate-pulse-glow" />
                 <div className="absolute bottom-[-10%] right-[-10%] w-[50vw] h-[50vw] bg-zinc-600/10 rounded-full blur-[150px] animate-pulse-glow delay-1000" />
-                <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay"></div>
+                <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-20 mix-blend-overlay"></div>
             </div>
 
             <div className="container mx-auto px-4 relative z-10">
@@ -87,10 +87,10 @@ export function HeroStatsSection() {
 
                         {/* Main Typography */}
                         <div className="space-y-2">
-                            <h2 className="text-xl md:text-2xl font-medium text-muted-foreground uppercase tracking-widest pl-1">
+                            <h2 className="text-lg md:text-2xl font-medium text-muted-foreground uppercase tracking-widest pl-1">
                                 Explore the
                             </h2>
-                            <h1 className="text-7xl md:text-8xl lg:text-[10rem] font-black tracking-tighter leading-[0.85]">
+                            <h1 className="text-5xl sm:text-7xl md:text-8xl lg:text-[10rem] font-black tracking-tighter leading-[0.85]">
                                 <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-emerald-600">
                                     BRIDGE
                                 </span>
@@ -98,7 +98,7 @@ export function HeroStatsSection() {
                                     LESS
                                 </span>
                                 <br />
-                                <span className="text-white/90 block mt-2 md:mt-4 text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight">
+                                <span className="text-white/90 block mt-2 md:mt-4 text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-bold tracking-tight">
                                     future of DeFi
                                 </span>
                             </h1>
@@ -120,18 +120,22 @@ export function HeroStatsSection() {
                         </div>
 
                         {/* CTA */}
-                        <div className="pt-4 flex flex-col sm:flex-row items-center gap-4">
-                            <AnimatedTradeButton size="lg" className="w-full sm:w-auto" onClick={() => setWaitlistOpen(true)} />
-
-                            <Button asChild size="lg" variant="outline" className="w-full sm:w-auto rounded-xl h-14 px-8 text-lg font-bold border-white/20 hover:bg-white/10 transition-all text-white backdrop-blur-sm shadow-[0_0_20px_-5px_rgba(255,255,255,0.1)]">
-                                <Link to="/ecosystem">
-                                    Explore <ArrowRight className="ml-2 w-5 h-5 opacity-70" />
+                        <div className="pt-6 flex flex-wrap items-center gap-3 sm:gap-4">
+                            <Button asChild className="w-full sm:w-auto rounded-none h-12 sm:h-14 px-6 sm:px-8 text-base sm:text-lg font-bold bg-emerald-500 text-black hover:bg-emerald-400 transition-all">
+                                <Link to="/trade">
+                                    Trade Now <ArrowRight className="ml-2 w-4 h-4 sm:w-5 sm:h-5" />
                                 </Link>
                             </Button>
 
-                            <Button asChild size="lg" className="group/build w-full sm:w-auto rounded-xl h-14 px-8 text-lg font-bold bg-gradient-to-r from-emerald-500 to-emerald-600 text-white hover:from-emerald-400 hover:to-emerald-500 transition-all duration-500 animate-[buildPulse_3.5s_ease-in-out_infinite] border border-emerald-400/30">
+                            <Button asChild variant="outline" className="w-full sm:w-auto rounded-none h-12 sm:h-14 px-6 sm:px-8 text-base sm:text-lg font-bold border-2 border-white/20 hover:border-white hover:bg-white hover:text-black transition-all text-white">
+                                <Link to="/ecosystem">
+                                    Explore
+                                </Link>
+                            </Button>
+
+                            <Button asChild className="group/build w-full sm:w-auto rounded-none h-12 sm:h-14 px-6 sm:px-8 text-base sm:text-lg font-bold bg-white text-black hover:bg-zinc-200 transition-all">
                                 <Link to="/integrate">
-                                    Build <Zap className="ml-2 w-5 h-5 text-white drop-shadow-[0_0_6px_rgba(255,255,255,0.7)] animate-[breatheGlow_3s_ease-in-out_infinite]" />
+                                    Build <Zap className="ml-2 w-4 h-4 sm:w-5 sm:h-5" />
                                 </Link>
                             </Button>
                         </div>
@@ -144,29 +148,6 @@ export function HeroStatsSection() {
                         transition={{ duration: 0.8, delay: 0.2, ease: "easeOut" }}
                         className="relative"
                     >
-                        {/* Stats Header Card */}
-                        <div className="mb-6 relative group">
-                            <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/30 via-zinc-800 to-black rounded-3xl opacity-20 blur-xl group-hover:opacity-30 transition-opacity" />
-                            <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500/20 via-zinc-800/50 to-transparent rounded-[28px] blur-sm opacity-50" />
-
-                            <div className="relative bg-black/80 backdrop-blur-xl border border-white/10 p-6 rounded-[24px] flex items-center justify-between overflow-hidden">
-                                {/* Animated background elements inside header */}
-                                <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-10 mix-blend-overlay" />
-                                <div className="absolute right-0 top-0 w-32 h-32 bg-white/5 rounded-full blur-[40px]" />
-
-                                <div className="flex items-center gap-3 relative z-10">
-                                    <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse" />
-                                    <h3 className="text-lg font-bold tracking-wide">Intents Protocol Stats</h3>
-                                </div>
-
-                                {/* Decorative mini chart or visualization */}
-                                <div className="flex gap-1 items-end h-8 relative z-10">
-                                    {[40, 70, 50, 90, 60, 80].map((h, i) => (
-                                        <div key={i} className="w-1 bg-white/20 rounded-t-sm" style={{ height: `${h}%` }} />
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
 
                         {/* 4 Cards Grid - 2x2 even on mobile */}
                         <div className="grid grid-cols-2 gap-4">
@@ -175,7 +156,7 @@ export function HeroStatsSection() {
                                     key={i}
                                     whileHover={{ scale: 1.02 }}
                                     className={cn(
-                                        "bento-card-interactive relative p-6 rounded-[24px] flex flex-col justify-between min-h-[180px]",
+                                        "bento-card-interactive relative p-4 sm:p-6 rounded-[24px] flex flex-col justify-between min-h-[140px] sm:min-h-[180px]",
                                         "glass-subtle border border-white/5 overflow-hidden group"
                                     )}
                                 >

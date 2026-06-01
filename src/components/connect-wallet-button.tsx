@@ -1,254 +1,106 @@
-import { useState } from 'react';
-import { Wallet, LogOut, ChevronDown, CheckCircle2, ChevronRight } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-} from '@/components/ui/dialog';
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+import { useState, useEffect } from 'react';
+import { Wallet, Bell, Settings, ChevronDown } from 'lucide-react';
+import { useWDK } from '@/context/WDKProvider';
+import { WalletOnboardingModal } from '@/components/wallet/WalletOnboardingModal';
+import { WalletPopup, hasUnseenNotifications } from '@/components/wallet/WalletPopup';
+import { SettingsModal } from '@/components/wallet/SettingsModal';
+import { cn } from '@/lib/utils';
 
-// Tooling / Hooks for Movement
-import { useWallet as useMovementWallet } from '@/context/wallet-provider';
-import { NETWORK_MAP } from '@/lib/wallet/networks';
-
-// Tooling / Hooks for Solana
-import { useWallet as useSolanaWallet } from '@solana/wallet-adapter-react';
-import { useWalletModal } from '@solana/wallet-adapter-react-ui';
-
-// Tooling / Hooks for BCH
-import { useBCHWallet } from '@/context/BCHWalletProvider';
-
-function shortenAddress(address: string, chars = 4): string {
-    return `${address.slice(0, chars + 2)}...${address.slice(-chars)}`;
-}
-
-// Icons
-const NightlyIcon = () => (
-    <img src="https://docs.nightly.app/img/logo.png" alt="Nightly Wallet" width={24} height={24} className="rounded-md" />
-);
-
-const SolanaIcon = () => (
-    <img src="/assets/solanaLogo.png" alt="Solana Wallet" width={24} height={24} className="rounded-md object-contain p-0.5 bg-black/50" />
-);
-
-const BCHIcon = () => (
-    <img src="/logos/bitcoin-cash-bch-logo.svg" alt="BCH Wallet" width={24} height={24} className="rounded-md object-contain" />
-);
+type PopupTab = 'wallet' | 'notifications';
 
 export function ConnectWalletButton({ className }: { className?: string }) {
-    // Modal State
-    const [dialogOpen, setDialogOpen] = useState(false);
+    const wdk = useWDK();
+    const [showOnboarding, setShowOnboarding] = useState(false);
+    const [showPopup, setShowPopup] = useState(false);
+    const [showSettings, setShowSettings] = useState(false);
+    const [popupTab, setPopupTab] = useState<PopupTab>('wallet');
+    const [hasUnseen, setHasUnseen] = useState(false);
 
-    // Contexts
-    const {
-        connected: mvmtConnected,
-        connecting: mvmtConnecting,
-        account: mvmtAccount,
-        network: mvmtNetwork,
-        connect: connectMvmt,
-        disconnect: disconnectMvmt,
-        changeNetwork: changeMvmtNetwork
-    } = useMovementWallet();
+    // Poll for unseen notifications to drive the bell's red dot.
+    useEffect(() => {
+        const check = () => setHasUnseen(hasUnseenNotifications(wdk.bchNetwork));
+        check();
+        const id = setInterval(check, 2000);
+        return () => clearInterval(id);
+    }, [wdk.bchNetwork]);
 
-    const {
-        connected: solConnected,
-        publicKey: solPublicKey,
-        disconnect: disconnectSol
-    } = useSolanaWallet();
-    const { setVisible: setSolanaModalVisible } = useWalletModal();
+    const connectedChains = [
+        wdk.evmAddress && { icon: '/logos/ethereum-eth-logo.svg', label: 'EVM' },
+        wdk.bchAddress && { icon: '/logos/bitcoin-cash-bch-logo.svg', label: 'BCH' },
+        wdk.btcAddress && { icon: '/logos/bitcoin-btc-logo.svg', label: 'BTC' },
+        wdk.solanaAddress && { icon: '/logos/solana.svg', label: 'SOL' },
+    ].filter(Boolean) as { icon: string; label: string }[];
 
-    const {
-        connected: bchConnected,
-        address: bchAddress,
-        connectCashonize,
-        connectBrowserWallet,
-        disconnect: disconnectBch
-    } = useBCHWallet();
-
-    // Aggregations
-    const connectedCount = [mvmtConnected, solConnected, bchConnected].filter(Boolean).length;
-    const isAnyConnected = connectedCount > 0;
-
-    // Derived Label for the Trigger Button
-    let buttonLabel = 'Connect Wallets';
-    if (isAnyConnected) {
-        if (connectedCount === 1) {
-            if (mvmtConnected && mvmtAccount) buttonLabel = shortenAddress(mvmtAccount.address.toString());
-            else if (solConnected && solPublicKey) buttonLabel = shortenAddress(solPublicKey.toString());
-            else if (bchConnected && bchAddress) buttonLabel = shortenAddress(bchAddress);
-        } else {
-            buttonLabel = `${connectedCount} Wallets Connected`;
-        }
-    }
+    const openWallet = () => { setPopupTab('wallet'); setShowPopup(v => !v); };
+    const openNotifications = () => { setPopupTab('notifications'); setShowPopup(true); };
 
     return (
-        <>
-            <Button
-                onClick={() => setDialogOpen(true)}
-                variant="outline"
-                className={className || "gap-2 min-w-[140px] px-3"}
-            >
-                {isAnyConnected ? (
-                    <div className="flex items-center -space-x-2 mr-1">
-                        {bchConnected && (
-                            <div className="z-30 rounded-full border border-background overflow-hidden w-5 h-5 flex items-center justify-center bg-black">
-                                <img src="/logos/bitcoin-cash-bch-logo.svg" alt="BCH" className="w-full h-full object-cover" />
-                            </div>
-                        )}
-                        {solConnected && (
-                            <div className="z-20 rounded-full border border-background overflow-hidden w-5 h-5 flex items-center justify-center bg-black p-0.5">
-                                <img src="/assets/solanaLogo.png" alt="SOL" className="w-full h-full object-contain" />
-                            </div>
-                        )}
-                        {mvmtConnected && (
-                            <div className="z-10 rounded-full border border-background overflow-hidden w-5 h-5 flex items-center justify-center bg-black">
-                                <img src="https://docs.nightly.app/img/logo.png" alt="MOVE" className="w-full h-full object-cover" />
-                            </div>
-                        )}
+        <div className={cn("flex items-center gap-2", className)}>
+            <WalletOnboardingModal open={showOnboarding} onClose={() => setShowOnboarding(false)} />
+            <WalletPopup open={showPopup} onClose={() => setShowPopup(false)} initialTab={popupTab} />
+            <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
+
+            {connectedChains.length === 0 ? (
+                <button
+                    onClick={() => setShowOnboarding(true)}
+                    className="group relative inline-flex shrink-0 h-10 items-center gap-2 overflow-hidden rounded-xl px-5 text-sm font-bold text-[#050505] tracking-wide bg-emerald-500 hover:bg-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all duration-300 hover:-translate-y-[1px] hover:shadow-[0_0_25px_rgba(16,185,129,0.5)] border border-emerald-400/50"
+                >
+                    <Wallet className="relative h-4 w-4" />
+                    <span className="relative tracking-tight">Connect</span>
+                </button>
+            ) : (
+                <div className="flex items-center gap-2">
+                    {/* Actions Panel (Only visible when connected) */}
+                    <div className="flex items-center gap-1 rounded-xl px-1.5 h-10 bg-[#0D0D0D]/90 backdrop-blur-xl border border-white/10 shadow-[0_0_0_1px_rgba(255,255,255,0.04)_inset,0_4px_20px_-6px_rgba(0,0,0,0.7)] shrink-0">
+                        {/* Search */}
+                        <button
+                            id="header-search-trigger"
+                            title="Search tokens"
+                            aria-label="Search tokens"
+                            className="relative flex items-center justify-center h-8 w-8 rounded-lg text-zinc-400 hover:text-white hover:bg-white/[0.06] transition-colors"
+                            onClick={() => document.dispatchEvent(new CustomEvent('open-token-search'))}
+                        >
+                            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                                <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
+                            </svg>
+                        </button>
+
+                        <span className="w-px h-4 bg-white/[0.07] mx-0.5" />
+
+                        {/* Notifications */}
+                        <button
+                            onClick={openNotifications}
+                            title="Notifications"
+                            aria-label="Notifications"
+                            className="relative flex items-center justify-center h-8 w-8 rounded-lg text-zinc-400 hover:text-white hover:bg-white/[0.06] transition-colors"
+                        >
+                            <Bell className="h-4 w-4" />
+                            {hasUnseen && (
+                                <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-emerald-500 ring-2 ring-[#0D0D0D] animate-pulse" />
+                            )}
+                        </button>
+
+                        {/* Settings */}
+                        <button
+                            onClick={() => setShowSettings(true)}
+                            title="Settings"
+                            aria-label="Settings"
+                            className="flex items-center justify-center h-8 w-8 rounded-lg text-zinc-400 hover:text-white hover:bg-white/[0.06] transition-colors"
+                        >
+                            <Settings className="h-4 w-4" />
+                        </button>
                     </div>
-                ) : (
-                    <Wallet className="h-4 w-4" />
-                )}
-                <span className="truncate max-w-[100px]">{buttonLabel}</span>
-                {isAnyConnected && <ChevronDown className="h-4 w-4 ml-0.5 opacity-50 shrink-0" />}
-            </Button>
 
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-                <DialogContent className="sm:max-w-md bg-[#0A0A0A] border-white/10 rounded-2xl overflow-hidden p-0">
-                    <DialogHeader className="p-6 pb-2">
-                        <DialogTitle className="text-xl font-semibold">Connect Wallets</DialogTitle>
-                        <p className="text-sm text-muted-foreground mt-1">Connect to multiple chains simultaneously for cross-chain features.</p>
-                    </DialogHeader>
-
-                    <div className="flex flex-col gap-2 p-6 pt-2">
-                        {/* 1. Movement Network */}
-                        <div className="flex flex-col gap-2 p-4 rounded-xl border border-white/5 bg-white/[0.02]">
-                            <div className="flex items-center justify-between mb-2">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-sm font-medium text-foreground">Movement</span>
-                                    {mvmtConnected && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
-                                </div>
-                                {mvmtConnected && mvmtNetwork && (
-                                    <span className="text-xs text-muted-foreground bg-white/5 px-2 py-0.5 rounded-full">
-                                        {NETWORK_MAP[mvmtNetwork.chainId?.toString()]?.buttonName || mvmtNetwork.name}
-                                    </span>
-                                )}
-                            </div>
-
-                            {!mvmtConnected ? (
-                                <Button
-                                    variant="outline"
-                                    className="w-full justify-between h-12 bg-white/[0.03] hover:bg-white/[0.06] border-white/10"
-                                    onClick={() => connectMvmt()}
-                                    disabled={mvmtConnecting}
-                                >
-                                    <div className="flex items-center gap-3">
-                                        <NightlyIcon />
-                                        <span>Nightly Wallet</span>
-                                    </div>
-                                    <ChevronRight className="h-4 w-4 opacity-50" />
-                                </Button>
-                            ) : (
-                                <div className="flex items-center justify-between bg-primary/10 border border-primary/20 rounded-lg p-3">
-                                    <div className="flex items-center gap-3">
-                                        <NightlyIcon />
-                                        <span className="font-mono text-sm text-primary">{shortenAddress(mvmtAccount?.address.toString() || '')}</span>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        {/* Simple dropdown for network switching, or we can just have disconnect */}
-                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => disconnectMvmt()}>
-                                            <LogOut className="h-4 w-4" />
-                                        </Button>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* 2. Solana Network */}
-                        <div className="flex flex-col gap-2 p-4 rounded-xl border border-white/5 bg-white/[0.02]">
-                            <div className="flex items-center gap-2 mb-2">
-                                <span className="text-sm font-medium text-foreground">Solana</span>
-                                {solConnected && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
-                            </div>
-
-                            {!solConnected ? (
-                                <Button
-                                    variant="outline"
-                                    className="w-full justify-between h-12 bg-white/[0.03] hover:bg-white/[0.06] border-white/10"
-                                    onClick={() => {
-                                        setDialogOpen(false); // Close our modal before opening Solana's
-                                        setSolanaModalVisible(true);
-                                    }}
-                                >
-                                    <div className="flex items-center gap-3">
-                                        <SolanaIcon />
-                                        <span>Select Solana Wallet</span>
-                                    </div>
-                                    <ChevronRight className="h-4 w-4 opacity-50" />
-                                </Button>
-                            ) : (
-                                <div className="flex items-center justify-between bg-purple-500/10 border border-purple-500/20 rounded-lg p-3">
-                                    <div className="flex items-center gap-3">
-                                        <SolanaIcon />
-                                        <span className="font-mono text-sm text-purple-400">{shortenAddress(solPublicKey?.toString() || '')}</span>
-                                    </div>
-                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => disconnectSol()}>
-                                        <LogOut className="h-4 w-4" />
-                                    </Button>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* 3. Bitcoin Cash Network */}
-                        <div className="flex flex-col gap-2 p-4 rounded-xl border border-white/5 bg-white/[0.02]">
-                            <div className="flex items-center gap-2 mb-2">
-                                <span className="text-sm font-medium text-foreground">Bitcoin Cash</span>
-                                {bchConnected && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
-                            </div>
-
-                            {!bchConnected ? (
-                                <div className="grid grid-cols-2 gap-2">
-                                    <Button
-                                        variant="outline"
-                                        className="w-full justify-start gap-2 h-12 bg-white/[0.03] hover:bg-white/[0.06] border-white/10 px-3"
-                                        onClick={() => connectCashonize()}
-                                    >
-                                        <BCHIcon />
-                                        <span className="text-xs">Cashonize</span>
-                                    </Button>
-                                    <Button
-                                        variant="outline"
-                                        className="w-full justify-start gap-2 h-12 bg-white/[0.03] hover:bg-white/[0.06] border-white/10 px-3"
-                                        onClick={() => connectBrowserWallet()}
-                                    >
-                                        <BCHIcon />
-                                        <span className="text-xs">Local Wallet</span>
-                                    </Button>
-                                </div>
-                            ) : (
-                                <div className="flex items-center justify-between bg-emerald-500/10 border border-emerald-500/20 rounded-lg p-3">
-                                    <div className="flex items-center gap-3">
-                                        <BCHIcon />
-                                        <span className="font-mono text-sm text-emerald-400">{shortenAddress(bchAddress || '')}</span>
-                                    </div>
-                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => disconnectBch()}>
-                                        <LogOut className="h-4 w-4" />
-                                    </Button>
-                                </div>
-                            )}
-                        </div>
-
-                    </div>
-                </DialogContent>
-            </Dialog>
-        </>
+                    {/* Wallet Button */}
+                    <button
+                        onClick={openWallet}
+                        title="Open wallet"
+                        className="group relative inline-flex shrink-0 h-10 w-10 items-center justify-center rounded-xl bg-[#111111] border border-white/15 shadow-[0_0_0_1px_rgba(255,255,255,0.05)_inset,0_4px_16px_-6px_rgba(0,0,0,0.8)] hover:bg-[#181818] hover:border-white/25 transition-all duration-300"
+                    >
+                        <Wallet className="h-4 w-4 text-emerald-400 transition-transform duration-200 group-hover:scale-110" />
+                    </button>
+                </div>
+            )}
+        </div>
     );
 }

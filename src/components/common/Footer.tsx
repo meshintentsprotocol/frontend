@@ -1,12 +1,11 @@
 /**
- * Footer - Premium Footer Component
+ * Footer - Premium DeFi Modern Footer
  * 
  * Features:
- * - Morphic design with grainy texture
- * - Gradient mesh background
- * - Clean grid layout with social links
- * - Animated hover states
- * - Full light/dark mode support
+ * - Stark dark theme with minimal borders
+ * - Giant low-opacity background typography
+ * - Clean geometric layout
+ * - Subtle emerald glows
  */
 
 import { Link, useLocation } from 'react-router-dom';
@@ -19,13 +18,13 @@ const footerLinks = {
         { label: 'Swap (Coming Soon)', href: '#' },
         { label: 'Oracle (Coming Soon)', href: '#' },
         { label: 'Explorer (Coming Soon)', href: '#' },
+        { label: 'Monitor', href: '/monitor' },
     ],
     resources: [
         { label: 'Documentation', href: 'https://docs.intentsprotocol.xyz/', external: true },
         { label: 'GitHub', href: 'https://github.com/Intents-Swaps', external: true },
         { label: 'API Reference', href: 'https://docs.intentsprotocol.xyz/', external: true },
     ],
-
 };
 
 const socialLinks = [
@@ -33,25 +32,25 @@ const socialLinks = [
         icon: Twitter,
         href: 'https://x.com/bchintents',
         label: 'Twitter',
-        color: 'hover:bg-blue-500/10 hover:text-blue-500'
+        color: 'hover:text-[#1DA1F2] hover:bg-[#1DA1F2]/10 hover:border-[#1DA1F2]/30'
     },
     {
         icon: BookOpen,
         href: 'https://docs.intentsprotocol.xyz/',
         label: 'Docs',
-        color: 'hover:bg-green-500/10 hover:text-green-500'
+        color: 'hover:text-emerald-400 hover:bg-emerald-400/10 hover:border-emerald-400/30'
     },
     {
         icon: Github,
         href: 'https://github.com/Intents-Swaps',
         label: 'GitHub',
-        color: 'hover:bg-purple-500/10 hover:text-purple-500'
+        color: 'hover:text-white hover:bg-white/10 hover:border-white/30'
     },
     {
         icon: Mail,
         href: 'mailto:hello@intentprotocol.xyz',
         label: 'Email',
-        color: 'hover:bg-orange-500/10 hover:text-orange-500'
+        color: 'hover:text-orange-400 hover:bg-orange-400/10 hover:border-orange-400/30'
     },
 ];
 
@@ -63,8 +62,8 @@ interface FooterLinkProps {
 
 function FooterLink({ label, href, external }: FooterLinkProps) {
     const className = cn(
-        "text-sm text-muted-foreground hover:text-foreground transition-colors",
-        "flex items-center gap-1 group"
+        "text-[15px] font-medium text-zinc-400 hover:text-white transition-colors duration-300",
+        "flex items-center gap-1.5 group w-fit"
     );
 
     if (external) {
@@ -76,7 +75,7 @@ function FooterLink({ label, href, external }: FooterLinkProps) {
                 className={className}
             >
                 {label}
-                <ArrowUpRight className="w-3 h-3 opacity-0 -translate-y-0.5 translate-x-0.5 group-hover:opacity-100 group-hover:translate-y-0 group-hover:translate-x-0 transition-all" />
+                <ArrowUpRight className="w-3.5 h-3.5 opacity-0 -translate-y-1 translate-x-1 group-hover:opacity-100 group-hover:translate-y-0 group-hover:translate-x-0 transition-all text-emerald-400" />
             </a>
         );
     }
@@ -90,101 +89,115 @@ function FooterLink({ label, href, external }: FooterLinkProps) {
 
 export function Footer() {
     const location = useLocation();
-    const isLandingPage = ['/', '/home', '/ecosystem', '/integrate'].includes(location.pathname);
 
     return (
-        <footer className="relative border-t border-border/40 mt-auto overflow-hidden">
-            {/* Gradient Mesh Background */}
-            <div className="absolute inset-0 mesh-gradient-primary opacity-30" />
-            <div className="absolute inset-0 grainy" />
+        <footer className="relative bg-[#050505] border-t border-white/5 mt-auto overflow-hidden">
+            {/* Ambient Background Glows */}
+            <div className="absolute top-0 left-1/4 w-[500px] h-[500px] bg-emerald-500/5 rounded-full blur-[120px] pointer-events-none -translate-y-1/2" />
+            <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-emerald-900/10 rounded-full blur-[120px] pointer-events-none translate-y-1/2" />
+            <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-10 mix-blend-overlay pointer-events-none" />
 
-            <div className="container mx-auto px-4 relative z-10">
-                {/* Main Footer Content */}
-                <div className="py-16">
-                    <div className="grid grid-cols-1 lg:grid-cols-5 gap-12 lg:gap-8">
-                        {/* Brand Column */}
-                        <div className="lg:col-span-2 space-y-6">
-                            <Link to="/" className="flex items-center group">
-                                <img
-                                    src="/assets/bchintentslogo.png"
-                                    alt="BCH Intents Protocol Logo"
-                                    className="w-20 h-20 -ml-3 -mr-4 object-contain transition-transform group-hover:scale-110 duration-300"
-                                />
-                                <span className="font-heading font-bold text-xl tracking-tight">
-                                    BCH <span className="text-primary">Intents Protocol</span>
+            <div className="container mx-auto px-6 relative z-10 pt-16 pb-8">
+                {/* Giant Typography Background Text */}
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none z-0 overflow-hidden">
+                    <span className="text-[15vw] font-black leading-none tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white/[0.04] to-transparent translate-y-12">
+                        INTENTS
+                    </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-12 lg:gap-8 relative z-10">
+                    
+                    {/* Brand Column */}
+                    <div className="lg:col-span-5 flex flex-col justify-between">
+                        <div>
+                            <Link to="/" className="flex items-center gap-3 mb-6 group w-fit">
+                                <div className="p-2 rounded-xl bg-white/5 border border-white/10 group-hover:border-emerald-500/30 transition-colors">
+                                    <img
+                                        src="/assets/bchintentslogo.png"
+                                        alt="BCH Intents Protocol Logo"
+                                        className="w-10 h-10 object-contain group-hover:scale-110 transition-transform duration-500"
+                                    />
+                                </div>
+                                <span className="font-heading font-black text-2xl tracking-tight text-white">
+                                    INTENTS <span className="text-emerald-500">PROTOCOL</span>
                                 </span>
                             </Link>
 
-                            <p className="text-muted-foreground max-w-sm leading-relaxed">
-                                The permissionless intent protocol for Bitcoin Cash.
-                                Stateless covenants, native asset bridging, and atomic execution.
+                            <p className="text-zinc-400 max-w-sm text-lg leading-relaxed font-medium">
+                                The permissionless intent execution layer for Bitcoin Cash and beyond. Atomic, secure, and bridge-less.
                             </p>
-
-                            {/* Social Links */}
-                            <div className="flex items-center gap-2">
-                                {socialLinks.map((social) => (
-                                    <motion.a
-                                        key={social.label}
-                                        href={social.href}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        whileHover={{ scale: 1.1 }}
-                                        whileTap={{ scale: 0.95 }}
-                                        className={cn(
-                                            "w-10 h-10 rounded-xl flex items-center justify-center",
-                                            "bg-muted/50 text-muted-foreground",
-                                            "transition-colors duration-200",
-                                            social.color
-                                        )}
-                                        aria-label={social.label}
-                                    >
-                                        <social.icon className="w-5 h-5" />
-                                    </motion.a>
-                                ))}
-                            </div>
                         </div>
 
-                        {/* Links Columns */}
-                        <div>
-                            <h4 className="font-bold mb-4 text-foreground">Protocol</h4>
-                            <ul className="space-y-3">
-                                {footerLinks.protocol.map((link) => (
-                                    <li key={link.label}>
-                                        <FooterLink {...link} />
-                                    </li>
-                                ))}
-                            </ul>
+                        {/* Social Links */}
+                        <div className="flex items-center gap-3 mt-10">
+                            {socialLinks.map((social) => (
+                                <motion.a
+                                    key={social.label}
+                                    href={social.href}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    whileHover={{ y: -3 }}
+                                    className={cn(
+                                        "w-12 h-12 rounded-xl flex items-center justify-center",
+                                        "bg-zinc-900/50 border border-white/5 text-zinc-400 backdrop-blur-sm",
+                                        "transition-all duration-300",
+                                        social.color
+                                    )}
+                                    aria-label={social.label}
+                                >
+                                    <social.icon className="w-5 h-5" />
+                                </motion.a>
+                            ))}
                         </div>
+                    </div>
 
-                        <div>
-                            <h4 className="font-bold mb-4 text-foreground">Resources</h4>
-                            <ul className="space-y-3">
-                                {footerLinks.resources.map((link) => (
-                                    <li key={link.label}>
-                                        <FooterLink {...link} />
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
+                    {/* Spacer for Desktop */}
+                    <div className="hidden lg:block lg:col-span-3"></div>
 
+                    {/* Links Columns */}
+                    <div className="lg:col-span-2">
+                        <h4 className="font-bold text-white uppercase tracking-widest text-sm mb-6 flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                            Protocol
+                        </h4>
+                        <ul className="space-y-4">
+                            {footerLinks.protocol.map((link) => (
+                                <li key={link.label}>
+                                    <FooterLink {...link} />
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
 
+                    <div className="lg:col-span-2">
+                        <h4 className="font-bold text-white uppercase tracking-widest text-sm mb-6 flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                            Resources
+                        </h4>
+                        <ul className="space-y-4">
+                            {footerLinks.resources.map((link) => (
+                                <li key={link.label}>
+                                    <FooterLink {...link} />
+                                </li>
+                            ))}
+                        </ul>
                     </div>
                 </div>
 
                 {/* Bottom Bar */}
-                <div className="py-6 border-t border-border/40 flex flex-col md:flex-row justify-between items-center gap-4">
-                    <p className="text-sm text-muted-foreground">
-                        © {new Date().getFullYear()} BCH Intents. All rights reserved.
+                <div className="pt-8 mt-12 border-t border-white/10 flex flex-col md:flex-row justify-between items-center gap-4 relative z-10">
+                    <p className="text-sm text-zinc-500 font-medium">
+                        © {new Date().getFullYear()} Intents Protocol. All rights reserved.
                     </p>
 
-                    <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground">
-                            Built on
+                    <div className="flex items-center gap-3">
+                        <span className="text-xs text-zinc-500 font-medium uppercase tracking-widest">
+                            Powered by
                         </span>
-                        <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-muted/50 text-xs font-medium">
+                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-900 border border-white/5">
                             <img src="/logos/bitcoin-cash-bch-logo.svg" alt="BCH" className="w-4 h-4" />
-                            Bitcoin Cash
-                        </span>
+                            <span className="text-xs font-bold text-white">Bitcoin Cash</span>
+                        </div>
                     </div>
                 </div>
             </div>

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
@@ -9,29 +9,21 @@ import { cn } from "@/lib/utils";
 interface Props {
     className?: string;
     size?: "default" | "lg";
-    onClick?: () => void;
 }
 
 export function AnimatedTradeButton({
     className,
     size = "default",
-    onClick,
 }: Props) {
     const isLg = size === "lg";
-    const btnRef = useRef<HTMLAnchorElement>(null);
     const [hovering, setHovering] = useState(false);
 
     return (
-        <a
-            ref={btnRef as any}
-            href="#"
-            onClick={(e) => {
-                e.preventDefault();
-                if (onClick) onClick();
-            }}
+        <Link
+            to="/trade"
             onMouseEnter={() => setHovering(true)}
             onMouseLeave={() => setHovering(false)}
-            className={cn("relative group block cursor-default select-none", className)}
+            className={cn("relative group block cursor-pointer select-none", className)}
         >
             {/* ── 1. Outer soft ambient glow ── */}
             <div
@@ -54,7 +46,7 @@ export function AnimatedTradeButton({
                 )}
             >
                 {/* Subtle mesh / noise texture */}
-                <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.1] mix-blend-overlay pointer-events-none" />
+                <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-[0.1] mix-blend-overlay pointer-events-none" />
 
                 {/* Inner moving shimmer highlight */}
                 <div
@@ -98,7 +90,7 @@ export function AnimatedTradeButton({
                             : "text-white/90"
                     )}
                 >
-                    {isLg ? "JOIN WAITLIST" : "JOIN WAITLIST"}
+                    {isLg ? "LAUNCH APP" : "LAUNCH APP"}
                 </span>
 
                 {/* Right arrow that slides in on hover */}
@@ -122,6 +114,6 @@ export function AnimatedTradeButton({
                     <polyline points="12 5 19 12 12 19" />
                 </svg>
             </div>
-        </a>
+        </Link>
     );
 }

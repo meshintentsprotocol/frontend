@@ -134,7 +134,7 @@ export function WaitlistModal({ isOpen, onClose, initialSuccess }: WaitlistModal
                         {/* Ambient glow */}
                         <div className="absolute -top-32 left-1/2 -translate-x-1/2 w-64 h-64 bg-emerald-500/20 rounded-full blur-[100px] pointer-events-none" />
                         <div className="absolute -bottom-20 right-0 w-40 h-40 bg-teal-500/10 rounded-full blur-[80px] pointer-events-none" />
-                        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.08] mix-blend-overlay pointer-events-none" />
+                        <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-[0.08] mix-blend-overlay pointer-events-none" />
 
                         {/* Close button */}
                         <button
