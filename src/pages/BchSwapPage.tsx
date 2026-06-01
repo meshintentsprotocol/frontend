@@ -26,6 +26,11 @@ export default function BchSwapPage() {
     }, [location.search]);
 
     const [showOrders, setShowOrders] = useState(false);
+
+    // Limit mode needs the Open & Orders panel — show it by default there.
+    useEffect(() => {
+        if (orderType === 'limit') setShowOrders(true);
+    }, [orderType]);
     const swapCtx = useBCHSwapOptional();
     const prevPendingCount = useRef<number | null>(null); // null = not yet initialized
     const swapCardRef = useRef<HTMLDivElement>(null);
@@ -61,30 +66,29 @@ export default function BchSwapPage() {
         return () => observer.disconnect();
     }, []);
 
-    const panelVisible = showOrders || orderType === 'limit';
+    const panelVisible = showOrders;
 
     return (
-        <div className="container mx-auto py-10">
-            <div className="text-center mb-8 space-y-2">
-                <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight">
-                    <span className="text-white">BCH</span> <span className="text-emerald-500">Intents</span> <span className="text-white">Swap</span>
-                </h1>
-            </div>
-
+        <div className="container mx-auto py-4 sm:py-10 px-0 sm:px-4 md:px-8">
             <div className="flex justify-center max-w-[1200px] mx-auto w-full transition-all duration-300">
                 <div
                     ref={containerRef}
-                    className={`flex w-full gap-8 transition-all duration-500 justify-center 
-                    ${panelVisible ? 'lg:justify-start lg:gap-8 flex-col lg:flex-row' : 'max-w-[480px]'}`}
+                    className={`flex w-full gap-8 transition-all duration-500 justify-center
+                    ${panelVisible ? 'lg:justify-start lg:gap-8 flex-col lg:flex-row' : 'max-w-[460px]'}`}
                 >
                     {/* Swap Card */}
-                    <div ref={swapCardRef} className="w-full lg:w-[480px] shrink-0 transform transition-transform duration-300">
-                        <BCHSwapCard orderType={orderType} onOrderTypeChange={setOrderType} />
+                    <div ref={swapCardRef} className="w-full lg:w-[460px] shrink-0 transform transition-transform duration-300">
+                        <BCHSwapCard
+                            orderType={orderType}
+                            onOrderTypeChange={setOrderType}
+                            ordersVisible={panelVisible}
+                            onToggleOrders={() => setShowOrders(v => !v)}
+                        />
                     </div>
 
-                    {/* Orders Panel — slides in after swap or when limit mode is active */}
+                    {/* Orders Panel — slides + scales in after swap or when limit mode is active */}
                     {panelVisible && (
-                        <div className="w-full lg:flex-1 animate-in slide-in-from-right-8 fade-in-50 duration-500 fill-mode-both delay-100">
+                        <div className="w-full lg:flex-1 animate-in fade-in slide-in-from-right-10 zoom-in-95 duration-500 ease-out fill-mode-both delay-100">
                             <LimitOrderHistory />
                         </div>
                     )}

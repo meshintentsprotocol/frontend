@@ -1,16 +1,16 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useBCHSwap } from '@/context/BCHSwapContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Clock, CheckCircle2, XCircle, ExternalLink, RefreshCw, ArrowRight, Loader2 } from 'lucide-react';
+import { Clock, CheckCircle2, XCircle, ExternalLink, RefreshCw, ArrowRight, Loader2, RotateCcw, AlertTriangle } from 'lucide-react';
 import { BCHOrder } from '@/types';
 
 // ============================================================================
 // BCH Order Tracker — Shows pending and completed BCH swap orders
 // ============================================================================
 
-function OrderRow({ order }: { order: BCHOrder }) {
+function OrderRow({ order, onRefund, isRefunding }: { order: BCHOrder; onRefund?: (id: string) => void; isRefunding?: boolean }) {
     const statusConfig: Record<string, { icon: React.ReactNode; badge: 'default' | 'secondary' | 'destructive' | 'outline'; label: string }> = {
         pending: { icon: <Loader2 className="h-3.5 w-3.5 animate-spin text-yellow-400" />, badge: 'default', label: 'Pending' },
         claimable: { icon: <CheckCircle2 className="h-3.5 w-3.5 text-blue-400 animate-pulse" />, badge: 'default', label: 'Claim Ready' },
@@ -18,6 +18,8 @@ function OrderRow({ order }: { order: BCHOrder }) {
         filled: { icon: <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />, badge: 'secondary', label: 'Filled' },
         cancelled: { icon: <XCircle className="h-3.5 w-3.5 text-red-400" />, badge: 'destructive', label: 'Cancelled' },
         expired: { icon: <Clock className="h-3.5 w-3.5 text-muted-foreground" />, badge: 'outline', label: 'Expired' },
+        refunded: { icon: <RotateCcw className="h-3.5 w-3.5 text-orange-400" />, badge: 'outline', label: 'Refunded' },
+        failed: { icon: <AlertTriangle className="h-3.5 w-3.5 text-red-400" />, badge: 'destructive', label: 'Failed' },
     };
 
     const config = statusConfig[order.status] || statusConfig.pending;
@@ -29,6 +31,8 @@ function OrderRow({ order }: { order: BCHOrder }) {
         'sol-to-bch': <Badge variant="outline" className="text-[10px] bg-gradient-to-r from-purple-500/10 to-emerald-500/10 text-blue-400 border-blue-500/20">SOL → BCH</Badge>,
         'bch-to-mov': <Badge variant="outline" className="text-[10px] bg-gradient-to-r from-emerald-500/10 to-yellow-500/10 text-yellow-400 border-yellow-500/20">BCH → MOVE</Badge>,
         'mov-to-bch': <Badge variant="outline" className="text-[10px] bg-gradient-to-r from-yellow-500/10 to-emerald-500/10 text-yellow-400 border-yellow-500/20">MOVE → BCH</Badge>,
+        'eth-to-bch': <Badge variant="outline" className="text-[10px] bg-gradient-to-r from-blue-500/10 to-emerald-500/10 text-blue-400 border-blue-500/20">ETH → BCH</Badge>,
+        'bch-to-eth': <Badge variant="outline" className="text-[10px] bg-gradient-to-r from-emerald-500/10 to-blue-500/10 text-blue-400 border-blue-500/20">BCH → ETH</Badge>,
     };
 
     return (
@@ -49,16 +53,42 @@ function OrderRow({ order }: { order: BCHOrder }) {
             </div>
             <div className="flex items-center gap-2">
                 <Badge variant={config.badge} className="text-[10px]">{config.label}</Badge>
-                {order.txid && (
-                    <a
-                        href={`https://chipnet.chaingraph.cash/tx/${order.txid}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-muted-foreground hover:text-foreground"
+                {order.status === 'failed' && onRefund && (order.swapType === 'bch-to-sol' || order.swapType === 'sol-to-bch') && (
+                    <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 px-2 text-[10px] gap-1 text-orange-400 hover:text-orange-300 hover:bg-orange-500/10"
+                        onClick={() => onRefund(order.id)}
+                        disabled={isRefunding}
+                        title="Recover locked funds after timelock expires"
                     >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                    </a>
+                        <RotateCcw className={`h-3 w-3 ${isRefunding ? 'animate-spin' : ''}`} />
+                        {isRefunding ? '...' : 'Refund'}
+                    </Button>
                 )}
+                {(() => {
+                    const explorerHref = (order.status === 'refunded' || order.status === 'failed')
+                        ? (order.destExplorerUrl
+                            || (order.fillTxid && order.swapType === 'sol-to-bch'
+                                ? `https://explorer.solana.com/tx/${order.fillTxid}?cluster=devnet`
+                                : order.fillTxid
+                                    ? `https://chipnet.chaingraph.cash/tx/${order.fillTxid}`
+                                    : undefined)
+                            || order.explorerUrl)
+                        : (order.explorerUrl
+                            || (order.txid ? `https://chipnet.chaingraph.cash/tx/${order.txid}` : undefined));
+                    return explorerHref ? (
+                        <a
+                            href={explorerHref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-muted-foreground hover:text-foreground"
+                            title={order.status === 'refunded' ? 'View refund transaction' : 'View transaction'}
+                        >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                    ) : null;
+                })()}
             </div>
         </div>
     );
@@ -73,7 +103,13 @@ function getTimeAgo(timestamp: number): string {
 }
 
 export function BCHOrderTracker() {
-    const { pendingOrders, completedOrders, refreshOrders, isLoading } = useBCHSwap();
+    const { pendingOrders, completedOrders, refreshOrders, requestRefund, isLoading } = useBCHSwap();
+    const [refundingId, setRefundingId] = useState<string | null>(null);
+
+    const handleRefund = async (orderId: string) => {
+        setRefundingId(orderId);
+        try { await requestRefund(orderId); } finally { setRefundingId(null); }
+    };
 
     // Auto-poll for order status updates every 30s when there are pending orders
     useEffect(() => {
@@ -117,7 +153,12 @@ export function BCHOrderTracker() {
                 ) : (
                     <div className="space-y-2">
                         {allOrders.map(order => (
-                            <OrderRow key={order.id} order={order} />
+                            <OrderRow
+                                key={order.id}
+                                order={order}
+                                onRefund={handleRefund}
+                                isRefunding={refundingId === order.id}
+                            />
                         ))}
                     </div>
                 )}

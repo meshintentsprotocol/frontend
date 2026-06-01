@@ -21,6 +21,13 @@ import {
     postRefundBCH,
 } from '@/lib/bscBchApi';
 import { createStarkEscrow, getEvmConfig } from '@/lib/intentHTLC';
+import {
+    isEvmChain,
+    getEVMChainConfig,
+    FRI_VERIFIER_ABI,
+    CHAIN_TO_SERVER_NAME,
+    CHAIN_TO_SERVER_NAME_MAINNET,
+} from '@/lib/evmChains';
 
 // Lazy-loaded imports for CashScript (large bundle)
 let cashscriptModule: any = null;
@@ -148,8 +155,8 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
         if (sellChain === 'movement' && buyChain === 'bch') return 'mov-to-bch';
         if (sellChain === 'bch' && buyChain === 'xmr') return 'bch-to-xmr';
         if (sellChain === 'xmr' && buyChain === 'bch') return 'xmr-to-bch';
-        if (sellChain === 'eth' && buyChain === 'bch') return 'eth-to-bch';
-        if (sellChain === 'bch' && buyChain === 'eth') return 'bch-to-eth';
+        if (isEvmChain(sellChain) && buyChain === 'bch') return 'eth-to-bch';
+        if (sellChain === 'bch' && isEvmChain(buyChain)) return 'bch-to-eth';
         return 'same-chain';
     }, []);
 
@@ -955,13 +962,24 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
             ? Math.max(params.expiryTime - now, 3600)
             : 3600;
 
-        const tokenAddress = (params.sellToken.chain === 'eth' && params.sellToken.symbol !== 'ETH' && params.sellToken.symbol !== 'BNB' && params.sellToken.address)
+        const sellChain = params.sellToken.chain || 'ethereum';
+        const evmCfg = getEVMChainConfig(sellChain, isMainnet);
+        if (!evmCfg) throw new Error(`Unknown EVM chain: ${sellChain}`);
+        if (!evmCfg.deployed || !evmCfg.friVerifierHTLC) {
+            throw new Error(`${evmCfg.name} swaps are not yet available — contract not deployed`);
+        }
+
+        const isNativeToken = params.sellToken.type === 'native';
+        const tokenAddress = (!isNativeToken && params.sellToken.address)
             ? params.sellToken.address
             : '0x0000000000000000000000000000000000000000';
 
         const sellAmountWei = toWei(params.sellAmount.toString(), params.sellToken.decimals || 18);
+        const chainServerName = isMainnet
+            ? (CHAIN_TO_SERVER_NAME_MAINNET[sellChain] ?? sellChain)
+            : (CHAIN_TO_SERVER_NAME[sellChain] ?? sellChain);
 
-        setSwapStep(`Creating STARK escrow on ${isMainnet ? 'BSC' : 'Sepolia'}...`);
+        setSwapStep(`Creating STARK escrow on ${evmCfg.name}...`);
         let starkEscrowId: string;
         try {
             starkEscrowId = await createStarkEscrow(
@@ -972,7 +990,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 sellAmountWei,
                 isMainnet,
             );
-            toast.success('ETH locked in STARK escrow!', { description: `Escrow ID: ${starkEscrowId}` });
+            toast.success(`${evmCfg.nativeCurrency} locked in STARK escrow!`, { description: `Escrow ID: ${starkEscrowId}` });
         } catch (e: any) {
             throw new Error(`STARK escrow failed: ${e.message}`);
         }
@@ -980,7 +998,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
         setSwapStep('Notifying solver...');
         try {
             const buyAmountSats = Math.floor(params.buyAmount * 1e8).toString();
-            const evmTokenAddress = (params.sellToken.chain === 'eth' && params.sellToken.symbol !== 'ETH' && params.sellToken.symbol !== 'BNB') ? params.sellToken.address : undefined;
+            const evmTokenAddress = isNativeToken ? undefined : params.sellToken.address;
 
             const { intentId } = await createEVMToBCHIntent({
                 makerAddress: makerEvmAddress,
@@ -990,6 +1008,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 evmEscrowId: starkEscrowId,
                 useStark: true,
                 evmTokenAddress,
+                chainName: chainServerName,
                 expiryTime: params.orderType === 'limit' ? params.expiryTime : undefined,
             }, isMainnet);
 
@@ -1003,7 +1022,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 buyAmount: params.buyAmount,
                 status: 'pending',
                 intentId,
-                explorerUrl: `${getEvmConfig(isMainnet).explorerUrl}/address/${starkEscrowId}`,
+                explorerUrl: `${evmCfg.explorer}/address/${starkEscrowId}`,
                 createdAt: Date.now(),
                 claimData: { evmEscrowId: starkEscrowId, direction: 'ETH_TO_BCH' },
             };
@@ -1081,9 +1100,16 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
         // 3. Notify solver
         setSwapStep('Notifying solver...');
         try {
+            const buyChain = params.buyToken.chain || 'ethereum';
+            const buyEvmCfg = getEVMChainConfig(buyChain, isMainnet);
+            const chainServerName = isMainnet
+                ? (CHAIN_TO_SERVER_NAME_MAINNET[buyChain] ?? buyChain)
+                : (CHAIN_TO_SERVER_NAME[buyChain] ?? buyChain);
+
             const sellAmountSats = Math.floor(params.sellAmount * 1e8).toString();
             const buyAmountWei = toWei(params.buyAmount.toString(), params.buyToken.decimals || 18);
-            const evmTokenAddress = (params.buyToken.chain === 'eth' && params.buyToken.symbol !== 'ETH' && params.buyToken.symbol !== 'BNB') ? params.buyToken.address : undefined;
+            const isBuyNative = params.buyToken.type === 'native';
+            const evmTokenAddress = isBuyNative ? undefined : params.buyToken.address;
 
             const { intentId } = await createBCHToEVMIntent({
                 makerAddress: currentBchWallet.address!,
@@ -1094,8 +1120,11 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 timelock: covenantTimelock,
                 bchContractAddress: starkCovenantAddress,
                 evmTokenAddress,
+                chainName: chainServerName,
                 expiryTime: params.orderType === 'limit' ? params.expiryTime : undefined,
             }, isMainnet);
+
+            const buyExplorer = buyEvmCfg?.explorer ?? 'https://sepolia.etherscan.io';
 
             const order: BCHOrder = {
                 id: intentId || `bch_eth_${Date.now()}`,
@@ -1111,12 +1140,13 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 explorerUrl: isMainnet
                     ? `https://blockchair.com/bitcoin-cash/transaction/${fundTxId}`
                     : `https://chipnet.imaginary.cash/tx/${fundTxId}`,
+                destExplorerUrl: `${buyExplorer}/address/${currentWdk.evmAddress!}`,
                 createdAt: Date.now(),
                 claimData: {
                     starkCovenantAddress,
                     evmRecipient: currentWdk.evmAddress!,
                     direction: 'BCH_TO_ETH',
-                    bchCovenantTimelock: covenantTimelock,
+                    sourceTimelock: covenantTimelock,
                 },
             };
 
@@ -1202,20 +1232,19 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
     // Helper: Build explorer URL per chain
     // =========================================================================
     const buildExplorerUrl = (txid: string, chain: string): string => {
-        const net = wdkRef.current.bchNetwork;
-        switch (chain) {
-            case 'bch': return net === 'mainnet'
-                ? `https://blockchair.com/bitcoin-cash/transaction/${txid}`
-                : `https://chipnet.chaingraph.cash/tx/${txid}`;
-            case 'solana': return `https://explorer.solana.com/tx/${txid}?cluster=devnet`;
-            case 'movement': return `https://explorer.movementnetwork.xyz/txn/${txid}?network=testnet`;
-            case 'eth': return net === 'mainnet'
-                ? `https://bscscan.com/tx/${txid}`
-                : `https://sepolia.etherscan.io/tx/${txid}`;
-            default: return net === 'mainnet'
-                ? `https://blockchair.com/bitcoin-cash/transaction/${txid}`
-                : `https://chipnet.chaingraph.cash/tx/${txid}`;
+        const isMainnet = wdkRef.current.bchNetwork === 'mainnet';
+        if (chain === 'bch') return isMainnet
+            ? `https://blockchair.com/bitcoin-cash/transaction/${txid}`
+            : `https://chipnet.chaingraph.cash/tx/${txid}`;
+        if (chain === 'solana') return `https://explorer.solana.com/tx/${txid}?cluster=${isMainnet ? 'mainnet-beta' : 'devnet'}`;
+        if (chain === 'movement') return `https://explorer.movementnetwork.xyz/txn/${txid}?network=testnet`;
+        if (isEvmChain(chain)) {
+            const cfg = getEVMChainConfig(chain, isMainnet);
+            return cfg ? `${cfg.explorer}/tx/${txid}` : `https://sepolia.etherscan.io/tx/${txid}`;
         }
+        return isMainnet
+            ? `https://blockchair.com/bitcoin-cash/transaction/${txid}`
+            : `https://chipnet.chaingraph.cash/tx/${txid}`;
     };
 
     const refreshOrders = useCallback(async () => {
@@ -1250,7 +1279,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                                 // Source = BCH covenant, dest = EVM fill
                                 if (ethOrder.evmFillTxHash) {
                                     order.fillTxid = ethOrder.evmFillTxHash;
-                                    order.destExplorerUrl = buildExplorerUrl(ethOrder.evmFillTxHash, 'eth');
+                                    order.destExplorerUrl = buildExplorerUrl(ethOrder.evmFillTxHash, order.buyToken.chain || 'ethereum');
                                 }
                             }
                             updated = true;
@@ -1832,6 +1861,42 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 refundExplorerUrl = isMainnet
                     ? `https://blockchair.com/bitcoin-cash/transaction/${refundTxid}`
                     : `https://chipnet.chaingraph.cash/tx/${refundTxid}`;
+            } else if (order.swapType === 'eth-to-bch') {
+                // ── EVM→BCH: user calls FRIVerifierHTLC.refund(escrowId) directly ──
+                const currentWdk = wdkRef.current;
+                let evmSigner: any = currentWdk.evmSigner;
+                if (!evmSigner) {
+                    if (!currentWdk.seedPhrase) throw new Error('Connect your EVM wallet to refund');
+                    const { HDNodeWallet } = await import('ethers');
+                    evmSigner = HDNodeWallet.fromPhrase(currentWdk.seedPhrase, undefined, "m/44'/60'/0'/0/0");
+                }
+
+                const escrowId = order.claimData?.evmEscrowId;
+                if (!escrowId) throw new Error('Escrow ID not found — cannot refund');
+
+                const sellChain = order.sellToken.chain || 'ethereum';
+                const chainCfg = getEVMChainConfig(sellChain, isMainnet);
+                if (!chainCfg) throw new Error(`Unknown EVM chain: ${sellChain}`);
+                if (!chainCfg.friVerifierHTLC) throw new Error(`FRIVerifierHTLC not deployed on ${chainCfg.name} yet`);
+
+                setSwapStep(`Checking timelock on ${chainCfg.name}...`);
+                const { ethers } = await import('ethers');
+                const provider = new ethers.JsonRpcProvider(chainCfg.rpc, chainCfg.chainId);
+                const signer = evmSigner.connect(provider);
+                const contract = new ethers.Contract(chainCfg.friVerifierHTLC, FRI_VERIFIER_ABI, signer);
+
+                setSwapStep('Submitting on-chain refund...');
+                let refundTx: any;
+                try {
+                    refundTx = await contract.refund(BigInt(escrowId));
+                    await refundTx.wait();
+                } catch (e: any) {
+                    const msg = e?.reason ?? e?.message ?? String(e);
+                    throw new Error(`Refund transaction failed: ${msg}`);
+                }
+                refundTxid = refundTx.hash;
+                refundExplorerUrl = `${chainCfg.explorer}/tx/${refundTx.hash}`;
+
             } else {
                 throw new Error(`Refund not available for swap type: ${order.swapType}`);
             }
