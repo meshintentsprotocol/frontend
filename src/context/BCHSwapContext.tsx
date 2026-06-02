@@ -1087,18 +1087,28 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
             const provider = new ElectrumNetworkProvider(isMainnet ? 'mainnet' : 'chipnet');
 
             const allUtxos = await provider.getUtxos(currentBchWallet.address!);
-            const bchUtxos = allUtxos.filter((u: any) => !u.token);
-            if (!bchUtxos.length) throw new Error('No plain BCH UTXOs available — fund your wallet or consolidate UTXOs first');
+            const sortedUtxos = allUtxos.filter((u: any) => !u.token)
+                .sort((a: any, b: any) => Number(b.satoshis - a.satoshis));
+            if (!sortedUtxos.length) throw new Error('No plain BCH UTXOs available — fund your wallet or consolidate UTXOs first');
 
             const sigTemplate = new SignatureTemplate(wif);
             const amountSats = BigInt(Math.floor(params.sellAmount * 1e8));
-            const fee = 1000n;
-            const totalInput = bchUtxos.reduce((acc: bigint, u: any) => acc + u.satoshis, 0n);
+            // Dynamic fee: 2 sat/byte — same pattern as BCH→SOL path
+            const estimateFee = (numIn: number, numOut: number) =>
+                BigInt(Math.ceil((numIn * 148 + numOut * 34 + 10) * 2));
+            const selected: any[] = [];
+            let totalInput = 0n;
+            for (const u of sortedUtxos) {
+                selected.push(u);
+                totalInput += u.satoshis;
+                if (totalInput >= amountSats + estimateFee(selected.length, 2)) break;
+            }
+            const fee = estimateFee(selected.length, 2);
             const change = totalInput - amountSats - fee;
             if (change < 0n) throw new Error('Insufficient BCH balance');
 
             const builder = new TransactionBuilder({ provider });
-            builder.addInputs(bchUtxos, sigTemplate.unlockP2PKH());
+            builder.addInputs(selected, sigTemplate.unlockP2PKH());
             builder.addOutput({ to: lockingBytecode, amount: amountSats });
             if (change >= 546n) {
                 builder.addOutput({ to: currentBchWallet.address!, amount: change });
