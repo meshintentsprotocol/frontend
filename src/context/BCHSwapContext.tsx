@@ -249,7 +249,10 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
             const provider = new ElectrumNetworkProvider(isMainnet ? 'mainnet' : 'chipnet');
             const allUtxos = await provider.getUtxos(currentBchWallet.address!);
             const sigTemplate = new SignatureTemplate(wif);
-            const fee = 1000n;
+            // Dynamic fee: 2 sat/byte. P2PKH input ~148 bytes, output ~34 bytes, overhead 10 bytes.
+            // Avoids "min relay fee not met" when wallet has many small UTXOs.
+            const estimateFee = (numIn: number, numOut: number) =>
+                BigInt(Math.ceil((numIn * 148 + numOut * 34 + 10) * 2));
             const builder = new TransactionBuilder({ provider });
 
             if (!bchToken) {
@@ -257,13 +260,22 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 const { cashAddressToLockingBytecode } = await import('@bitauth/libauth');
                 const lockResult = cashAddressToLockingBytecode(covenantAddr);
                 if (typeof lockResult === 'string') throw new Error(`Invalid covenant address: ${lockResult}`);
-                const bchUtxos = allUtxos.filter((u: any) => !u.token);
-                if (!bchUtxos.length) throw new Error('No plain BCH UTXOs available — fund your wallet or consolidate UTXOs first');
+                // Select minimum UTXOs (largest-first) to keep fee low and tx small.
+                const sortedUtxos = allUtxos.filter((u: any) => !u.token)
+                    .sort((a: any, b: any) => Number(b.satoshis - a.satoshis));
+                if (!sortedUtxos.length) throw new Error('No plain BCH UTXOs available — fund your wallet or consolidate UTXOs first');
                 const amountSats = BigInt(sats);
-                const totalInput = bchUtxos.reduce((acc: bigint, u: any) => acc + u.satoshis, 0n);
+                const selected: any[] = [];
+                let totalInput = 0n;
+                for (const u of sortedUtxos) {
+                    selected.push(u);
+                    totalInput += u.satoshis;
+                    if (totalInput >= amountSats + estimateFee(selected.length, 2)) break;
+                }
+                const fee = estimateFee(selected.length, 2);
                 const change = totalInput - amountSats - fee;
                 if (change < 0n) throw new Error('Insufficient BCH balance');
-                builder.addInputs(bchUtxos, sigTemplate.unlockP2PKH());
+                builder.addInputs(selected, sigTemplate.unlockP2PKH());
                 builder.addOutput({ to: lockResult.bytecode, amount: amountSats });
                 if (change >= 546n) builder.addOutput({ to: currentBchWallet.address!, amount: change });
             } else {
@@ -285,11 +297,14 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 if (tokAcc < tokAmount) throw new Error(`Insufficient ${params.sellToken.symbol} balance`);
                 const tokenChange = tokAcc - tokAmount;
                 const covenantSats = BigInt(sats);   // COVENANT_FUND_SATS — covers the solver's FRI claim fee
-                const satsNeeded = covenantSats + (tokenChange > 0n ? dust : 0n) + fee;
+                // numOut: covenant + optional token change + optional BCH change = up to 3
+                const numOut = 1 + (tokenChange > 0n ? 1 : 0) + 1;
                 for (const u of bchUtxos) {
-                    if (satAcc >= satsNeeded) break;
+                    if (satAcc >= covenantSats + (tokenChange > 0n ? dust : 0n) + estimateFee(selected.length + 1, numOut)) break;
                     selected.push(u); satAcc += u.satoshis;
                 }
+                const fee = estimateFee(selected.length, numOut);
+                const satsNeeded = covenantSats + (tokenChange > 0n ? dust : 0n) + fee;
                 if (satAcc < satsNeeded) throw new Error('Insufficient BCH balance to cover token covenant fees');
 
                 // Token change must return to a token-aware address — convert
