@@ -74,12 +74,21 @@ export async function getStarkCovenantAddress(
     return request<{ address: string; tokenAddress?: string; timelock?: number }>(`/stark/address${qs}`, isMainnet);
 }
 
+// Server responds with { success, network, intent: CrossChainIntent } — extract intentId.
+async function extractIntentId(raw: any): Promise<{ intentId: string }> {
+    const id = raw?.intentId ?? raw?.intent?.id ?? raw?.id;
+    if (!id) throw new Error('Server did not return an intentId');
+    return { intentId: id };
+}
+
 export async function createEVMToBCHIntent(req: EVMToBCHRequest, isMainnet = false): Promise<{ intentId: string }> {
-    return request('/swap/evm-to-bch', isMainnet, { method: 'POST', body: JSON.stringify(req) });
+    const raw = await request<any>('/swap/evm-to-bch', isMainnet, { method: 'POST', body: JSON.stringify(req) });
+    return extractIntentId(raw);
 }
 
 export async function createBCHToEVMIntent(req: BCHToEVMRequest, isMainnet = false): Promise<{ intentId: string }> {
-    return request('/swap/bch-to-evm', isMainnet, { method: 'POST', body: JSON.stringify(req) });
+    const raw = await request<any>('/swap/bch-to-evm', isMainnet, { method: 'POST', body: JSON.stringify(req) });
+    return extractIntentId(raw);
 }
 
 export async function getOrder(id: string, isMainnet = false): Promise<ETHOrderStatus> {
