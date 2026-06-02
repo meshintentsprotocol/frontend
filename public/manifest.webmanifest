@@ -1,0 +1,30 @@
+{
+  "name": "BCH Intents Protocol",
+  "short_name": "BCH Intents",
+  "description": "Intent-based cross-chain swaps on Bitcoin Cash. Trustless, instant, non-custodial.",
+  "theme_color": "#00d17a",
+  "background_color": "#0a0a0f",
+  "display": "standalone",
+  "start_url": "/trade",
+  "scope": "/",
+  "orientation": "portrait-primary",
+  "categories": ["finance", "utilities"],
+  "icons": [
+    {
+      "src": "/assets/bchintentslogo_edited.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/assets/bchintentslogo_edited.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/assets/bchintentslogo_edited.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

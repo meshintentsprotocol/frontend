@@ -23,13 +23,44 @@ export default defineConfig({
         alias: {
             "@": path.resolve(__dirname, "./src"),
             // sodium-native is a C++ Node.js addon — cannot run in the browser.
-            // sodium-universal falls back to this pure-JS/WASM implementation.
             "sodium-native": "sodium-javascript",
             // mainnet-js has an optional dynamic import of this package (try/catch wrapped).
-            // Alias to a stub so Vite doesn't 500 on the missing package.
             "@mem-cash/validation": fileURLToPath(
                 new URL("./src/lib/mem-cash-validation-stub.ts", import.meta.url)
             ),
+        },
+    },
+    build: {
+        rollupOptions: {
+            output: {
+                manualChunks: {
+                    'chunk-solana': [
+                        '@solana/web3.js',
+                        '@solana/wallet-adapter-react',
+                        '@solana/wallet-adapter-react-ui',
+                        '@solana/wallet-adapter-wallets',
+                        '@solana/spl-token',
+                    ],
+                    'chunk-aptos': [
+                        '@aptos-labs/ts-sdk',
+                        '@aptos-labs/wallet-adapter-react',
+                        '@aptos-labs/wallet-adapter-core',
+                        '@aptos-labs/wallet-standard',
+                    ],
+                    'chunk-ui': [
+                        'framer-motion',
+                        'recharts',
+                        'lucide-react',
+                        'embla-carousel-react',
+                    ],
+                    'chunk-react': [
+                        'react',
+                        'react-dom',
+                        'react-router-dom',
+                        '@tanstack/react-query',
+                    ],
+                },
+            },
         },
     },
     server: {

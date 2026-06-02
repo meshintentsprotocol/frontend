@@ -37,6 +37,7 @@ import { BCHWalletProvider, CashonizeProvider } from "./context/BCHWalletProvide
 import { BCHSwapProvider } from "./context/BCHSwapContext"
 import BchSwapPage from "./pages/BchSwapPage"
 import { WDKProvider } from "./context/WDKProvider"
+import { PWAUpdatePrompt } from "./components/common/PWAUpdatePrompt"
 
 function App() {
     useLanguage();
@@ -166,6 +167,7 @@ function App() {
                     </SolanaWalletProvider>
                 </WDKProvider>
             </div>
+            <PWAUpdatePrompt />
             <Toaster />
         </Router>
     )

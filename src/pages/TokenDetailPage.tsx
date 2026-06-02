@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, ExternalLink, Layers } from 'lucide-react';
+import { ArrowLeft, ArrowLeftRight, ExternalLink, Layers } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { useWDK } from '@/context/WDKProvider';
@@ -11,7 +11,6 @@ import { TokenAbout } from '@/components/explore/TokenAbout';
 import { TokenProtocolTransactions } from '@/components/explore/TokenProtocolTransactions';
 import { BCHSwapCard } from '@/components/bch-swap/BCHSwapCard';
 import type { BCHOrderType, Token } from '@/types';
-import { useIsMobile } from '@/hooks/use-mobile';
 import { Drawer, DrawerContent, DrawerTrigger } from '@/components/ui/drawer';
 
 // URL scheme:
@@ -83,7 +82,6 @@ export function TokenDetailPage() {
     const { data: detail, isLoading } = useTokenDetail(tokenId, isCashToken, isMainnet);
 
     const [orderType, setOrderType] = useState<BCHOrderType>('market');
-    const isMobile = useIsMobile();
     const [mobileSwapOpen, setMobileSwapOpen] = useState(false);
 
     // Track the tokenId for which we last "committed" the swap card.
@@ -103,7 +101,7 @@ export function TokenDetailPage() {
             : detail.chain === 'Solana' ? 'solana'
             : detail.chain === 'Monero' ? 'xmr'
             : detail.chain === 'Bitcoin Cash' ? 'bch'
-            : 'eth',
+            : 'ethereum',
         categoryId: isCashToken ? tokenId : undefined,
         priceUsd: detail.priceUsd,
         priceSats: detail.priceSats,
@@ -298,15 +296,20 @@ export function TokenDetailPage() {
             </div>
 
             {/* Mobile/Tablet floating action button & drawer */}
-            <div className={cn("lg:hidden fixed bottom-6 left-0 right-0 px-4 z-[90] transition-opacity duration-200", mobileSwapOpen ? "opacity-0 pointer-events-none" : "opacity-100")}>
+            <div className={cn(
+                "lg:hidden fixed bottom-0 left-0 right-0 px-4 pb-6 z-[90] transition-all duration-200",
+                "safe-area-bottom",
+                mobileSwapOpen ? "opacity-0 pointer-events-none" : "opacity-100"
+            )}>
                 <Drawer open={mobileSwapOpen} onOpenChange={setMobileSwapOpen}>
                     <DrawerTrigger asChild>
-                        <button className="w-full h-14 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white font-bold rounded-2xl shadow-[0_0_24px_rgba(16,185,129,0.3)] flex items-center justify-center text-lg">
-                            Buy {detail?.symbol || 'Token'}
+                        <button className="w-full h-14 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 active:scale-[0.98] text-white font-bold rounded-2xl shadow-[0_8px_32px_rgba(16,185,129,0.35)] flex items-center justify-center gap-2 text-base transition-all duration-150">
+                            <ArrowLeftRight className="h-4 w-4 shrink-0" />
+                            {detail ? `Swap ${detail.symbol}` : 'Swap'}
                         </button>
                     </DrawerTrigger>
-                    <DrawerContent className="p-0 h-[85vh] z-[100] pointer-events-auto">
-                        <div className="flex flex-col h-full bg-[#0A0A0A] rounded-t-[20px] overflow-y-auto px-1 pt-4 pb-8 scrollbar-none">
+                    <DrawerContent className="p-0 max-h-[90dvh] z-[100] pointer-events-auto">
+                        <div className="overflow-y-auto scrollbar-none px-1 pt-2 pb-safe-or-8">
                             {!swapReady ? (
                                 <SwapCardSkeleton />
                             ) : (
