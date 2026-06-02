@@ -9,11 +9,12 @@
  * Persistence: AES-GCM encrypted seed in localStorage (unlocked with password).
  */
 
-import { createContext, useContext, useState, useCallback, useEffect, useMemo, type ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo, type ReactNode } from 'react';
 import { encryptAndStore, decryptFromStorage, hasStoredWallet } from '@/lib/crypto';
 import WalletManagerSolana from '@tetherto/wdk-wallet-solana';
 import WalletManagerBtc, { ElectrumWs } from '@tetherto/wdk-wallet-btc';
 import { createKeyPairSignerFromPrivateKeyBytes } from '@solana/signers';
+import { getEvmConfig, USDC_SEPOLIA, USDC_BSC, USDT_SEPOLIA, USDT_BSC } from '@/lib/intentHTLC';
 
 export type BchNetwork = 'chipnet' | 'mainnet';
 
@@ -37,6 +38,10 @@ interface WDKWalletState {
     bchMainnetWallet: any | null;
     evmBalance: string | null;
     solanaBalance: string | null;
+    /** Symbol → human-readable balance for EVM tokens (ETH, USDC, USDT). */
+    evmTokenBalances: Record<string, number>;
+    /** Symbol → human-readable balance for Solana tokens (SOL, USDC, USDT). */
+    solanaTokenBalances: Record<string, number>;
     error: string | null;
 }
 
@@ -49,6 +54,7 @@ interface WDKContextType extends WDKWalletState {
     unlockWallet: (password: string) => Promise<boolean>;
     saveWallet: (password: string) => Promise<void>;
     disconnect: () => void;
+    /** Refetch all EVM + Solana token balances immediately. */
     refreshBalances: () => Promise<void>;
     hasStoredWallet: boolean;
 }
@@ -197,6 +203,8 @@ const EMPTY_STATE: WDKWalletState = {
     bchMainnetWallet: null,
     evmBalance: null,
     solanaBalance: null,
+    evmTokenBalances: {},
+    solanaTokenBalances: {},
     error: null,
 };
 
@@ -326,7 +334,98 @@ export function WDKProvider({ children }: { children: ReactNode }) {
         setState({ ...EMPTY_STATE, bchNetwork: loadBchNetworkPref() });
     }, [state.solanaAccount, state.solanaManager]);
 
-    const refreshBalances = useCallback(async () => {}, []);
+    // Ref so the interval cleanup sees the latest fetch without re-subscribing.
+    const fetchBalancesRef = useRef<(() => Promise<void>) | null>(null);
+
+    const fetchBalances = useCallback(async () => {
+        const { evmAddress, solanaAddress, bchNetwork } = state;
+        const isMainnet = bchNetwork === 'mainnet';
+
+        // EVM balances (ETH + USDC + USDT)
+        if (evmAddress) {
+            try {
+                const { JsonRpcProvider, Contract, formatUnits, formatEther } = await import('ethers');
+                const evmCfg = getEvmConfig(isMainnet);
+                const provider = new JsonRpcProvider(evmCfg.rpc, evmCfg.chainId);
+                const balanceOf = ['function balanceOf(address) view returns (uint256)'];
+                const usdcAddr = isMainnet ? USDC_BSC : USDC_SEPOLIA;
+                const usdtAddr = isMainnet ? USDT_BSC : USDT_SEPOLIA;
+
+                const [nativeWei, usdcRaw, usdtRaw] = await Promise.all([
+                    provider.getBalance(evmAddress),
+                    new Contract(usdcAddr, balanceOf, provider).balanceOf(evmAddress),
+                    new Contract(usdtAddr, balanceOf, provider).balanceOf(evmAddress),
+                ]);
+
+                const nativeSym = isMainnet ? 'BNB' : 'ETH';
+                setState(s => ({
+                    ...s,
+                    evmBalance: formatEther(nativeWei),
+                    evmTokenBalances: {
+                        [nativeSym]: Number(formatEther(nativeWei)),
+                        USDC: Number(formatUnits(usdcRaw, 6)),
+                        USDT: Number(formatUnits(usdtRaw, 6)),
+                    },
+                }));
+            } catch (e: any) {
+                console.warn('[WDK] EVM balance fetch failed:', e.message);
+            }
+        }
+
+        // Solana balances (SOL + SPL tokens: USDC, USDT)
+        if (solanaAddress) {
+            try {
+                const { Connection, PublicKey } = await import('@solana/web3.js');
+                const SOL_TOKEN_PROGRAM = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
+                const rpc = isMainnet ? 'https://api.mainnet-beta.solana.com' : 'https://api.devnet.solana.com';
+                const conn = new Connection(rpc, 'confirmed');
+                const owner = new PublicKey(solanaAddress);
+
+                const SOL_USDC_MINTS = [
+                    '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU', // devnet
+                    'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // mainnet
+                ];
+                const SOL_USDT_MINT = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB';
+
+                const [lamports, parsed] = await Promise.all([
+                    conn.getBalance(owner),
+                    conn.getParsedTokenAccountsByOwner(owner, { programId: SOL_TOKEN_PROGRAM }),
+                ]);
+
+                let usdc = 0;
+                let usdt = 0;
+                for (const acct of parsed.value) {
+                    const info = acct.account.data.parsed.info;
+                    const ui = info.tokenAmount.uiAmount || 0;
+                    if (SOL_USDC_MINTS.includes(info.mint)) usdc += ui;
+                    if (info.mint === SOL_USDT_MINT) usdt += ui;
+                }
+
+                const sol = lamports / 1e9;
+                setState(s => ({
+                    ...s,
+                    solanaBalance: sol.toString(),
+                    solanaTokenBalances: { SOL: sol, USDC: usdc, USDT: usdt },
+                }));
+            } catch (e: any) {
+                console.warn('[WDK] Solana balance fetch failed:', e.message);
+            }
+        }
+    }, [state.evmAddress, state.solanaAddress, state.bchNetwork]);
+
+    fetchBalancesRef.current = fetchBalances;
+
+    // Auto-fetch on wallet init and every 30s while active.
+    useEffect(() => {
+        if (!state.isInitialized) return;
+        fetchBalancesRef.current?.();
+        const id = setInterval(() => fetchBalancesRef.current?.(), 30_000);
+        return () => clearInterval(id);
+    }, [state.isInitialized, state.evmAddress, state.solanaAddress, state.bchNetwork]);
+
+    const refreshBalances = useCallback(async () => {
+        await fetchBalancesRef.current?.();
+    }, []);
 
     const { bchAddress, bchWallet } = useMemo(() => ({
         bchAddress: state.bchNetwork === 'chipnet' ? state.bchChipnetAddress : state.bchMainnetAddress,

@@ -32,9 +32,15 @@ export interface ETHOrderStatus {
     fillTxid?: string;
     sourceTxid?: string;
     evmEscrowId?: string;
-    evmFillTxHash?: string;
+    /** EVM→BCH: tx that delivered BCH to user (intent.destFillTx) */
     bchTxHash?: string;
+    /** BCH→EVM: tx that delivered EVM funds to user (intent.destFillTx) */
+    evmFillTxHash?: string;
+    /** EVM→BCH: tx that claimed the STARK/FRI escrow on-chain (intent.sourceClaimTx) */
+    evmClaimTxHash?: string;
     error?: string;
+    /** Raw intent for advanced use */
+    raw?: Record<string, unknown>;
 }
 
 async function request<T>(path: string, isMainnet: boolean, options?: RequestInit): Promise<T> {
@@ -77,7 +83,21 @@ export async function createBCHToEVMIntent(req: BCHToEVMRequest, isMainnet = fal
 }
 
 export async function getOrder(id: string, isMainnet = false): Promise<ETHOrderStatus> {
-    return request(`/orders/${id}`, isMainnet);
+    // Server returns { intent: CrossChainIntent } — unwrap and normalise field names.
+    const resp = await request<{ intent?: Record<string, any> } | ETHOrderStatus>(`/orders/${id}`, isMainnet);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const intent: Record<string, any> = (resp as any).intent ?? resp;
+    return {
+        status:         intent.status         ?? 'PENDING',
+        evmEscrowId:    intent.bscEscrowId,
+        // ETH→BCH: BCH delivery tx is destFillTx; BCH→ETH: EVM delivery tx is destFillTx
+        bchTxHash:      intent.destFillTx,
+        evmFillTxHash:  intent.destFillTx,
+        evmClaimTxHash: intent.sourceClaimTx,
+        sourceTxid:     intent.sourceLockTx,
+        error:          intent.failReason,
+        raw:            intent,
+    };
 }
 
 export async function getSolverInfo(isMainnet = false): Promise<{

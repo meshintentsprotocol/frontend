@@ -3,6 +3,7 @@ import { ethers } from 'ethers';
 // ── Testnet (Sepolia) ────────────────────────────────────────────────────────
 export const STARK_HTLC_ADDRESS = '0x6aE7c527064Cb2A78cA5C42A3B5C77D309a8DF27';
 export const USDT_SEPOLIA = '0xd077a400968890eacc75cdc901f0356c943e4fdb';
+export const USDC_SEPOLIA = '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238';
 export const SEPOLIA_CHAIN_ID = 11155111;
 export const SEPOLIA_RPC = 'https://ethereum-sepolia-rpc.publicnode.com';
 
@@ -11,8 +12,8 @@ export const SEPOLIA_RPC = 'https://ethereum-sepolia-rpc.publicnode.com';
 export const BSC_STARK_HTLC_ADDRESS = import.meta.env.VITE_MAINNET_STARK_HTLC_ADDRESS || '';
 export const BSC_CHAIN_ID = 56;
 export const BSC_RPC = import.meta.env.VITE_MAINNET_EVM_RPC || 'https://bsc-dataseed1.binance.org/';
-// USDT on BSC mainnet (standard Binance-peg USDT)
 export const USDT_BSC = '0x55d398326f99059fF775485246999027B3197955';
+export const USDC_BSC = '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d';
 
 // ── Network-aware helpers ─────────────────────────────────────────────────────
 export interface EvmNetworkConfig {

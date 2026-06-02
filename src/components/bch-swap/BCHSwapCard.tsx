@@ -12,6 +12,7 @@ import { isEvmChain, getEVMChainConfig, EVM_CHAINS_TESTNET } from '@/lib/evmChai
 import { useBCHWallet } from '@/context/BCHWalletProvider';
 import { useBCHSwap } from '@/context/BCHSwapContext';
 import { useWDK } from '@/context/WDKProvider';
+import { usePortfolio } from '@/hooks/usePortfolio';
 import { ConnectWalletButton } from '@/components/connect-wallet-button';
 import { useLocation } from 'react-router-dom';
 import { PriceService, PRICE_FEEDS } from '@/lib/pyth';
@@ -117,6 +118,7 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
     const { detectSwapType, executeSwap, isLoading, swapStep } = useBCHSwap();
     const wdk = useWDK();
     const isMainnet = wdk.bchNetwork === 'mainnet';
+    const portfolio = usePortfolio({ pollingMs: 30_000 });
 
     const toggleNetwork = () => {
         wdk.setBchNetwork(isMainnet ? 'chipnet' : 'mainnet');
@@ -439,6 +441,13 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
     const buyUSD = buyAmount ? Number(buyAmount) * getTokenPrice(buyToken) : 0;
     const priceImpact = sellUSD > 0 && buyUSD > 0 ? ((buyUSD - sellUSD) / sellUSD) * 100 : 0;
 
+    // Maps token.chain (lowercase) → portfolio chain label (title-case)
+    const PORTFOLIO_CHAIN: Record<string, string> = useMemo(() => ({
+        ethereum: isMainnet ? 'Ethereum' : 'Ethereum',
+        bsc:      isMainnet ? 'BSC' : 'BSC',
+        solana:   'Solana',
+    }), [isMainnet]);
+
     // Wallet balance helpers
     const sellBalance: number | null = useMemo(() => {
         if (sellToken.chain === 'bch' && bchConnected && sellToken.type === 'native') {
@@ -447,8 +456,16 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
         if (sellToken.chain === 'bch' && bchConnected && sellToken.type && bchWallet.tokenBalances[sellToken.type]) {
             return Number(bchWallet.tokenBalances[sellToken.type]) / Math.pow(10, sellToken.decimals || 0);
         }
+        // EVM (ETH/USDC/USDT) and Solana (SOL/USDC) — look up in portfolio
+        const portfolioChain = sellToken.chain ? PORTFOLIO_CHAIN[sellToken.chain] : undefined;
+        if (portfolioChain && portfolio.tokens.length > 0) {
+            const entry = portfolio.tokens.find(
+                t => t.symbol === sellToken.symbol && t.chain === portfolioChain,
+            );
+            return entry?.balance ?? null;
+        }
         return null;
-    }, [sellToken, bchConnected, bchWallet.balance, bchWallet.tokenBalances]);
+    }, [sellToken, bchConnected, bchWallet.balance, bchWallet.tokenBalances, PORTFOLIO_CHAIN, portfolio.tokens]);
 
     const setPercent = (pct: number) => {
         if (sellBalance === null) return;
@@ -609,7 +626,8 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                             placeholder="0.00"
                             value={limitPrice}
                             onChange={e => setLimitPrice(e.target.value)}
-                            className="border-none bg-transparent text-2xl font-bold p-0 h-auto focus-visible:ring-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none flex-1 min-w-0"
+                            inputMode="decimal"
+                            className="border-none bg-transparent text-xl sm:text-2xl font-bold p-0 h-auto focus-visible:ring-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none flex-1 min-w-0"
                         />
                         <span className="text-sm font-semibold text-white/70 shrink-0">{buyToken.symbol}</span>
                     </div>
@@ -625,9 +643,9 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                         ))}
                     </div>
                     <div className="flex flex-col gap-2 pt-2 border-t border-white/[0.04]">
-                        <div className="flex items-center justify-between">
-                            <span className="text-sm text-white/50">Expires in</span>
-                            <div className="flex gap-1">
+                        <div className="flex flex-wrap items-center gap-y-2 justify-between">
+                            <span className="text-sm text-white/50 shrink-0">Expires in</span>
+                            <div className="flex flex-wrap gap-1 justify-end">
                                 {EXPIRY_PRESETS.map(p => (
                                     <button
                                         key={p.value}
@@ -686,13 +704,14 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                             </div>
                         )}
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 sm:gap-3">
                         <Input
                             type="number"
                             placeholder="0"
                             value={sellAmount}
                             onChange={e => setSellAmount(e.target.value)}
-                            className="border-none bg-transparent text-3xl font-bold p-0 h-auto focus-visible:ring-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none flex-1 min-w-0 text-white placeholder:text-white/20"
+                            inputMode="decimal"
+                            className="border-none bg-transparent text-2xl sm:text-3xl font-bold p-0 h-auto focus-visible:ring-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none flex-1 min-w-0 text-white placeholder:text-white/20"
                         />
                         <BCHTokenSelector value={sellToken} onSelect={handleSellTokenSelect} tokens={availableTokens} evmNetworkLabel={activeEvmLabel} isMainnet={isMainnet} />
                     </div>
@@ -727,14 +746,15 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                     flipping && "scale-[0.99]"
                 )}>
                     <span className="text-sm text-white/50 font-medium">Buy</span>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 sm:gap-3">
                         <Input
                             type="number"
                             placeholder="0"
                             value={buyAmount}
                             onChange={e => setBuyAmount(e.target.value)}
                             readOnly={orderType === 'market'}
-                            className="border-none bg-transparent text-3xl font-bold p-0 h-auto focus-visible:ring-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none flex-1 min-w-0 text-white placeholder:text-white/20"
+                            inputMode="decimal"
+                            className="border-none bg-transparent text-2xl sm:text-3xl font-bold p-0 h-auto focus-visible:ring-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none flex-1 min-w-0 text-white placeholder:text-white/20"
                         />
                         <BCHTokenSelector value={buyToken} onSelect={handleBuyTokenSelect} tokens={availableTokens} evmNetworkLabel={activeEvmLabel} isMainnet={isMainnet} />
                     </div>

@@ -79,6 +79,15 @@ export const ETH_TOKENS: Token[] = [
         chain: "ethereum",
     },
     {
+        symbol: "USDC",
+        name: "USD Coin (Sepolia)",
+        icon: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png",
+        decimals: 6,
+        type: "erc20",
+        chain: "ethereum",
+        address: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
+    },
+    {
         symbol: "USDT",
         name: "Tether USD (Sepolia)",
         icon: "/logos/usdt-svgrepo-com.svg",

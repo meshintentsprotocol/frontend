@@ -16,7 +16,7 @@ import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { useConnection } from '@solana/wallet-adapter-react';
 import { PublicKey } from '@solana/web3.js';
 import { useWDK } from '@/context/WDKProvider';
-import { getEvmConfig, USDT_BSC, USDT_SEPOLIA } from '@/lib/intentHTLC';
+import { getEvmConfig, USDT_BSC, USDT_SEPOLIA, USDC_SEPOLIA, USDC_BSC } from '@/lib/intentHTLC';
 import { usePrices } from '@/hooks/usePrices';
 import { useBchBalances } from '@/hooks/useBchBalances';
 import { CauldronService } from '@/lib/cauldron';
@@ -41,6 +41,7 @@ export interface PortfolioToken {
 interface EvmBalances {
     native: number;
     usdt: number;
+    usdc: number;
 }
 
 interface SolBalances {
@@ -108,16 +109,19 @@ export function usePortfolio(options?: { pollingMs?: number }) {
             const { JsonRpcProvider, Contract, formatUnits, formatEther } = await import('ethers');
             const provider = new JsonRpcProvider(evmCfg.rpc, evmCfg.chainId);
             const usdtContract = isMainnet ? USDT_BSC : USDT_SEPOLIA;
+            const usdcContract = isMainnet ? USDC_BSC : USDC_SEPOLIA;
+            const balanceOf = ['function balanceOf(address) view returns (uint256)'];
 
-            const [nativeWei, usdtRaw] = await Promise.all([
+            const [nativeWei, usdtRaw, usdcRaw] = await Promise.all([
                 provider.getBalance(evmAddress!),
-                new Contract(usdtContract, ['function balanceOf(address) view returns (uint256)'], provider)
-                    .balanceOf(evmAddress!),
+                new Contract(usdtContract, balanceOf, provider).balanceOf(evmAddress!),
+                new Contract(usdcContract, balanceOf, provider).balanceOf(evmAddress!),
             ]);
 
             return {
                 native: Number(formatEther(nativeWei)),
                 usdt: Number(formatUnits(usdtRaw, 6)),
+                usdc: Number(formatUnits(usdcRaw, 6)),
             };
         },
     });
@@ -217,6 +221,20 @@ export function usePortfolio(options?: { pollingMs?: number }) {
                     price: usdtPrice,
                     valueUsd: evmQuery.data.usdt * usdtPrice,
                     change24h: prices['USDT']?.change24h ?? 0,
+                });
+            }
+
+            if (evmQuery.data.usdc > 0) {
+                const usdcPrice = prices['USDC']?.price || 1;
+                list.push({
+                    symbol: 'USDC',
+                    name: `USD Coin (${networkLabel})`,
+                    chain: isMainnet ? 'BSC' : 'Ethereum',
+                    icon: '/logos/usd-coin-usdc-logo.svg',
+                    balance: evmQuery.data.usdc,
+                    price: usdcPrice,
+                    valueUsd: evmQuery.data.usdc * usdcPrice,
+                    change24h: prices['USDC']?.change24h ?? 0,
                 });
             }
         }

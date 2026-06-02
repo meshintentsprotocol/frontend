@@ -994,7 +994,11 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
             ? (CHAIN_TO_SERVER_NAME_MAINNET[sellChain] ?? sellChain)
             : (CHAIN_TO_SERVER_NAME[sellChain] ?? sellChain);
 
-        setSwapStep(`Creating STARK escrow on ${evmCfg.name}...`);
+        const sellTokenLabel = isNativeToken ? evmCfg.nativeCurrency : params.sellToken.symbol;
+        setSwapStep(isNativeToken
+            ? `Locking ${sellTokenLabel} in ZK escrow on ${evmCfg.name}...`
+            : `Approving & locking ${sellTokenLabel} in ZK escrow on ${evmCfg.name}...`
+        );
         let starkEscrowId: string;
         try {
             starkEscrowId = await createStarkEscrow(
@@ -1005,7 +1009,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 sellAmountWei,
                 isMainnet,
             );
-            toast.success(`${evmCfg.nativeCurrency} locked in STARK escrow!`, { description: `Escrow ID: ${starkEscrowId}` });
+            toast.success(`${sellTokenLabel} locked in ZK escrow!`, { description: `Escrow ID: ${starkEscrowId}` });
         } catch (e: any) {
             throw new Error(`STARK escrow failed: ${e.message}`);
         }
@@ -1295,11 +1299,17 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                         if (s === 'COMPLETED') {
                             order.status = 'filled';
                             if (order.swapType === 'eth-to-bch') {
+                                // BCH delivery tx
                                 if (ethOrder.bchTxHash) {
                                     order.fillTxid = ethOrder.bchTxHash;
                                     order.destExplorerUrl = buildExplorerUrl(ethOrder.bchTxHash, 'bch');
                                 }
+                                // EVM claim tx (solver claimed the STARK escrow)
+                                if (ethOrder.evmClaimTxHash) {
+                                    order.explorerUrl = buildExplorerUrl(ethOrder.evmClaimTxHash, order.sellToken.chain || 'ethereum');
+                                }
                             } else {
+                                // EVM delivery tx (BCH→ETH)
                                 if (ethOrder.evmFillTxHash) {
                                     order.fillTxid = ethOrder.evmFillTxHash;
                                     order.destExplorerUrl = buildExplorerUrl(ethOrder.evmFillTxHash, order.buyToken.chain || 'ethereum');
@@ -1312,8 +1322,11 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                         } else if (s === 'FAILED' || s === 'EXPIRED') {
                             order.status = 'cancelled';
                             updated = true;
-                        } else if ((s === 'SOURCE_LOCKED' || s === 'DEST_FILLED') && order.status !== 'proving') {
-                            // Source funded; server is delivering the other leg and generating proof
+                        } else if (
+                            (s === 'SOURCE_LOCKED' || s === 'DEST_FILLED' || s === 'GENERATING_PROOF') &&
+                            order.status !== 'proving'
+                        ) {
+                            // Source funded; server is delivering and generating proof
                             order.status = 'proving';
                             updated = true;
                         } else if (s === 'PENDING' && order.status === 'pending') {
