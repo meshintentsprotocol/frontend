@@ -12,14 +12,16 @@ import { BCHOrder } from '@/types';
 
 function OrderRow({ order, onRefund, isRefunding }: { order: BCHOrder; onRefund?: (id: string) => void; isRefunding?: boolean }) {
     const statusConfig: Record<string, { icon: React.ReactNode; badge: 'default' | 'secondary' | 'destructive' | 'outline'; label: string }> = {
-        pending: { icon: <Loader2 className="h-3.5 w-3.5 animate-spin text-yellow-400" />, badge: 'default', label: 'Pending' },
-        claimable: { icon: <CheckCircle2 className="h-3.5 w-3.5 text-blue-400 animate-pulse" />, badge: 'default', label: 'Claim Ready' },
-        claimed: { icon: <CheckCircle2 className="h-3.5 w-3.5 text-teal-400" />, badge: 'secondary', label: 'Claimed' },
-        filled: { icon: <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />, badge: 'secondary', label: 'Filled' },
-        cancelled: { icon: <XCircle className="h-3.5 w-3.5 text-red-400" />, badge: 'destructive', label: 'Cancelled' },
-        expired: { icon: <Clock className="h-3.5 w-3.5 text-muted-foreground" />, badge: 'outline', label: 'Expired' },
-        refunded: { icon: <RotateCcw className="h-3.5 w-3.5 text-orange-400" />, badge: 'outline', label: 'Refunded' },
-        failed: { icon: <AlertTriangle className="h-3.5 w-3.5 text-red-400" />, badge: 'destructive', label: 'Failed' },
+        pending:       { icon: <Loader2 className="h-3.5 w-3.5 animate-spin text-yellow-400" />, badge: 'default', label: 'Pending' },
+        source_locked: { icon: <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-400" />, badge: 'default', label: 'Funds Locked' },
+        proving:       { icon: <Loader2 className="h-3.5 w-3.5 animate-spin text-purple-400" />, badge: 'default', label: 'Generating Proof' },
+        claimable:     { icon: <CheckCircle2 className="h-3.5 w-3.5 text-blue-400 animate-pulse" />, badge: 'default', label: 'Claim Ready' },
+        claimed:       { icon: <CheckCircle2 className="h-3.5 w-3.5 text-teal-400" />, badge: 'secondary', label: 'Claimed' },
+        filled:        { icon: <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />, badge: 'secondary', label: 'Completed' },
+        cancelled:     { icon: <XCircle className="h-3.5 w-3.5 text-red-400" />, badge: 'destructive', label: 'Cancelled' },
+        expired:       { icon: <Clock className="h-3.5 w-3.5 text-muted-foreground" />, badge: 'outline', label: 'Expired' },
+        refunded:      { icon: <RotateCcw className="h-3.5 w-3.5 text-orange-400" />, badge: 'outline', label: 'Refunded' },
+        failed:        { icon: <AlertTriangle className="h-3.5 w-3.5 text-red-400" />, badge: 'destructive', label: 'Failed' },
     };
 
     const config = statusConfig[order.status] || statusConfig.pending;
@@ -111,12 +113,18 @@ export function BCHOrderTracker() {
         try { await requestRefund(orderId); } finally { setRefundingId(null); }
     };
 
-    // Auto-poll for order status updates every 30s when there are pending orders
+    // Poll faster (8s) when any pending order is an active ZK swap (proof can complete in 30-60s).
+    // Fall back to 30s when only same-chain / claimable orders remain.
+    const hasActiveZK = pendingOrders.some(o =>
+        ['eth-to-bch', 'bch-to-eth', 'bch-to-sol', 'sol-to-bch'].includes(o.swapType) &&
+        ['pending', 'source_locked', 'proving'].includes(o.status)
+    );
     useEffect(() => {
         if (pendingOrders.length === 0) return;
-        const interval = setInterval(refreshOrders, 30000);
+        const ms = hasActiveZK ? 8000 : 30000;
+        const interval = setInterval(refreshOrders, ms);
         return () => clearInterval(interval);
-    }, [pendingOrders.length, refreshOrders]);
+    }, [pendingOrders.length, hasActiveZK, refreshOrders]);
 
     const allOrders = [...pendingOrders, ...completedOrders].slice(0, 10);
 

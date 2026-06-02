@@ -1295,13 +1295,11 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                         if (s === 'COMPLETED') {
                             order.status = 'filled';
                             if (order.swapType === 'eth-to-bch') {
-                                // Source = ETH escrow, dest = BCH fill
                                 if (ethOrder.bchTxHash) {
                                     order.fillTxid = ethOrder.bchTxHash;
                                     order.destExplorerUrl = buildExplorerUrl(ethOrder.bchTxHash, 'bch');
                                 }
                             } else {
-                                // Source = BCH covenant, dest = EVM fill
                                 if (ethOrder.evmFillTxHash) {
                                     order.fillTxid = ethOrder.evmFillTxHash;
                                     order.destExplorerUrl = buildExplorerUrl(ethOrder.evmFillTxHash, order.buyToken.chain || 'ethereum');
@@ -1314,8 +1312,13 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                         } else if (s === 'FAILED' || s === 'EXPIRED') {
                             order.status = 'cancelled';
                             updated = true;
+                        } else if ((s === 'SOURCE_LOCKED' || s === 'DEST_FILLED') && order.status !== 'proving') {
+                            // Source funded; server is delivering the other leg and generating proof
+                            order.status = 'proving';
+                            updated = true;
+                        } else if (s === 'PENDING' && order.status === 'pending') {
+                            // No change, keep pending
                         }
-                        // SOURCE_LOCKED, DEST_FILLED, GENERATING_PROOF → stay pending, no action needed
                     } else if (order.swapType === 'same-chain') {
                         // Poll CashToken relayer — use correct network endpoint
                         if (order.status !== 'pending') continue;

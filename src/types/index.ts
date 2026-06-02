@@ -63,7 +63,7 @@ export interface BCHOrder {
     buyToken: Token;
     sellAmount: number;
     buyAmount: number;
-    status: 'pending' | 'claimable' | 'claimed' | 'filled' | 'cancelled' | 'expired' | 'refunded' | 'failed';
+    status: 'pending' | 'source_locked' | 'proving' | 'claimable' | 'claimed' | 'filled' | 'cancelled' | 'expired' | 'refunded' | 'failed';
     contractAddress?: string;  // For same-chain covenant swaps
     tokenAddress?: string;     // Token-aware address for funding
     txid?: string;
