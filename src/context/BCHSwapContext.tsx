@@ -1151,6 +1151,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 evmTokenAddress,
                 chainName: chainServerName,
                 expiryTime: params.orderType === 'limit' ? params.expiryTime : undefined,
+                useStark: true,   // ZK route — server delivers ETH directly, no hashlock escrow
             }, isMainnet);
 
             const buyExplorer = buyEvmCfg?.explorer ?? 'https://sepolia.etherscan.io';

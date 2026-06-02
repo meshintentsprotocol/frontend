@@ -19,12 +19,13 @@ export interface BCHToEVMRequest {
     recipientAddress: string;
     sellAmount: string;       // satoshis
     buyAmount: string;        // wei
-    hashlock: string;         // always "dummy" for STARK path
+    hashlock: string;         // "dummy" for STARK/ZK path
     timelock: number;
     bchContractAddress: string;
     evmTokenAddress?: string;
     chainName?: string;      // bsc-bch-server chain key e.g. "Sepolia", "BSCTestnet"
     expiryTime?: number;
+    useStark?: boolean;      // ZK route — server delivers EVM funds directly, no hashlock escrow
 }
 
 export interface ETHOrderStatus {
