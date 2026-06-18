@@ -173,7 +173,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
     //   3. Relayer detects funding, broadcasts SOL tx, generates FRI proof, claims BCH
     // =========================================================================
     const executeBCHToSolana = async (params: BCHSwapParams, recipientSolAddress: string) => {
-        if (!isMainActive) throw new Error('External wallets cannot sign advanced ZK swaps yet. Please use the WDK Main Wallet.');
+        // if (!isMainActive) throw new Error('External wallets cannot sign advanced ZK swaps yet. Please use the WDK Main Wallet.');
         
         const currentBchWallet = bchWalletRef.current;
         if (!currentBchWallet.address) throw new Error('Connect your BCH wallet first');
@@ -263,6 +263,13 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 BigInt(Math.ceil((numIn * 148 + numOut * 34 + 10) * 2));
             const builder = new TransactionBuilder({ provider });
 
+            // Define the unlocker based on whether we are using WDK or External Wallet
+            const unlocker = isMainActive 
+                ? sigTemplate.unlockP2PKH() 
+                : { unlockingBytecode: new Uint8Array(0) } as any;
+
+            let selected: any[] = [];
+
             if (!bchToken) {
                 // ── Native-BCH covenant ─────────────────────────────────────
                 const { cashAddressToLockingBytecode } = await import('@bitauth/libauth');
@@ -273,7 +280,6 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                     .sort((a: any, b: any) => Number(b.satoshis - a.satoshis));
                 if (!sortedUtxos.length) throw new Error('No plain BCH UTXOs available — fund your wallet or consolidate UTXOs first');
                 const amountSats = BigInt(sats);
-                const selected: any[] = [];
                 let totalInput = 0n;
                 for (const u of sortedUtxos) {
                     selected.push(u);
@@ -283,7 +289,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 const fee = estimateFee(selected.length, 2);
                 const change = totalInput - amountSats - fee;
                 if (change < 0n) throw new Error('Insufficient BCH balance');
-                builder.addInputs(selected, sigTemplate.unlockP2PKH());
+                builder.addInputs(selected, unlocker);
                 builder.addOutput({ to: lockResult.bytecode, amount: amountSats });
                 if (change >= 546n) builder.addOutput({ to: currentBchWallet.address!, amount: change });
             } else {
@@ -296,7 +302,6 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 const bchUtxos = allUtxos.filter((u: any) => !u.token)
                     .sort((a: any, b: any) => Number(b.satoshis - a.satoshis));
 
-                const selected: any[] = [];
                 let tokAcc = 0n, satAcc = 0n;
                 for (const u of tokenUtxos) {
                     selected.push(u); tokAcc += BigInt(u.token.amount); satAcc += u.satoshis;
@@ -327,7 +332,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 });
                 if (typeof selfTokenAddr === 'string') throw new Error(`Cannot derive token address: ${selfTokenAddr}`);
 
-                builder.addInputs(selected, sigTemplate.unlockP2PKH());
+                builder.addInputs(selected, unlocker);
                 builder.addOutput({
                     to: covenantTokenAddr,
                     amount: covenantSats,
@@ -345,10 +350,33 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 if (bchChange >= 546n) builder.addOutput({ to: currentBchWallet.address!, amount: bchChange });
             }
 
-            const tx = await builder.send();
-            fundTxId = tx.txid;
-            console.log('[BCH→SOL ZK] Covenant funded:', fundTxId);
-            toast.success(`${bchToken ? params.sellToken.symbol : 'BCH'} locked in ZK covenant!`, { description: `Tx: ${fundTxId.slice(0, 16)}...` });
+            if (isMainActive) {
+                const tx = await builder.send();
+                fundTxId = tx.txid;
+                console.log('[BCH→SOL ZK] Covenant funded:', fundTxId);
+                toast.success(`${bchToken ? params.sellToken.symbol : 'BCH'} locked in ZK covenant!`, { description: `Tx: ${fundTxId.slice(0, 16)}...` });
+            } else {
+                if (!activeExtWallet) throw new Error('No active external wallet found.');
+                const { buildWC2SourceOutputs, buildWC2Payload } = await import('@/lib/wc2Serialize');
+
+                setSwapStep('Waiting for wallet approval...');
+                toast.info('Check your external wallet to approve the transaction.', { duration: 8000 });
+
+                const utxoIndices = selected.map((_: any, i: number) => i);
+                const sourceOutputs = await buildWC2SourceOutputs(selected, utxoIndices, currentBchWallet.address!);
+                const unsignedHex = builder.build();
+
+                const payload = buildWC2Payload(
+                    unsignedHex,
+                    sourceOutputs,
+                    `Fund ZK covenant`
+                );
+
+                const result = await extBCHCtx.signTransaction(activeWalletId, payload);
+                fundTxId = result.signedTransactionHash;
+                console.log('[BCH→SOL ZK] Covenant funded via external wallet:', fundTxId);
+                toast.success(`${bchToken ? params.sellToken.symbol : 'BCH'} locked in ZK covenant!`);
+            }
         } catch (e: any) {
             throw new Error(`Failed to fund BCH covenant: ${e.message}`);
         }
@@ -824,10 +852,6 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                     if (change >= 546n) builder.addOutput({ to: makerAddress, amount: change });
                 }
 
-                // Build unsigned transaction hex using libauth directly
-                // We construct the raw tx template without signatures then encode it.
-                const { encodeTransaction, generateTransaction } = await import('@bitauth/libauth');
-
                 setSwapStep('Waiting for wallet approval in Cashonize...');
                 toast.info('Check your Cashonize wallet to approve the transaction.', { duration: 8000 });
 
@@ -835,26 +859,8 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 const utxoIndices = selectedUtxos.map((_: any, i: number) => i);
                 const sourceOutputs = await buildWC2SourceOutputs(selectedUtxos, utxoIndices, makerAddress);
 
-                // Build unsigned tx: use CashScript's internal method to get the tx template.
-                // Since CashScript doesn't expose a raw build() API, we encode a minimal
-                // unsigned tx using libauth with empty unlocking scripts per WC2-BCH spec.
-                const unsignedTx = {
-                    version: 2,
-                    locktime: 0,
-                    inputs: selectedUtxos.map((u: any) => ({
-                        outpointTransactionHash: Uint8Array.from(
-                            (u.txid as string).match(/.{2}/g)!.reverse().map((h: string) => parseInt(h, 16))
-                        ),
-                        outpointIndex: u.vout ?? 0,
-                        sequenceNumber: 0xffffffff,
-                        unlockingBytecode: new Uint8Array(0),
-                    })),
-                    outputs: [] as any[],
-                };
-
                 // Encode to get the raw unsigned tx hex that the wallet can sign
-                const encodedUnsigned = encodeTransaction(unsignedTx as any);
-                const unsignedHex = Array.from(encodedUnsigned).map(b => b.toString(16).padStart(2, '0')).join('');
+                const unsignedHex = builder.build();
 
                 const payload = buildWC2Payload(
                     unsignedHex,
@@ -918,7 +924,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
     // BCH → Movement: Deploy CrossChainHTLC covenant on BCH, notify relayer
     // =========================================================================
     const executeBCHToMovement = async (params: BCHSwapParams, recipientMovAddress: string) => {
-        if (!isMainActive) throw new Error('External wallets cannot sign cross-chain HTLC swaps yet. Please use the WDK Main Wallet.');
+        // if (!isMainActive) throw new Error('External wallets cannot sign cross-chain HTLC swaps yet. Please use the WDK Main Wallet.');
         const currentBchWallet = bchWalletRef.current;
         if (!currentBchWallet.address) {
             throw new Error('BCH wallet not connected');
@@ -975,23 +981,65 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
         setSwapStep('Signing BCH transaction...');
         let fundTxId: string;
         try {
-            const amountSats = Math.floor(params.sellAmount * 1e8);
+            const amountSats = BigInt(Math.floor(params.sellAmount * 1e8));
             const wif = currentBchWallet.getWIF();
-            if (!wif) throw new Error('WIF not available — please reconnect your BCH wallet');
 
-            const { TestNetWallet, Wallet } = await import('mainnet-js');
-            const wallet = bchNet === 'mainnet' ? await Wallet.fromWIF(wif) : await TestNetWallet.fromWIF(wif);
+            const { TransactionBuilder, SignatureTemplate } = await getCashScript();
+            const builder = new TransactionBuilder({ provider });
+            const allUtxos = await provider.getUtxos(currentBchWallet.address);
 
-            setSwapStep(`Sending ${params.sellAmount} BCH to HTLC...`);
-            const tx = await wallet.send([{
-                cashaddr: contractAddress,
-                value: amountSats,
-                unit: 'sat',
-            } as any]);
+            const sortedUtxos = allUtxos.filter((u: any) => !u.token)
+                .sort((a: any, b: any) => Number(b.satoshis - a.satoshis));
+            if (!sortedUtxos.length) throw new Error('No plain BCH UTXOs available');
 
-            fundTxId = tx.txId as string;
-            console.log('[BCH→MOV] HTLC funded:', fundTxId);
-            toast.success('BCH locked in HTLC!', { description: `Tx: ${fundTxId.slice(0, 16)}...` });
+            const estimateFee = (numIn: number, numOut: number) => BigInt(Math.ceil((numIn * 148 + numOut * 34 + 10) * 2));
+            const selected: any[] = [];
+            let totalInput = 0n;
+            for (const u of sortedUtxos) {
+                selected.push(u);
+                totalInput += BigInt(u.satoshis);
+                if (totalInput >= amountSats + estimateFee(selected.length, 2)) break;
+            }
+            const fee = estimateFee(selected.length, 2);
+            const change = totalInput - amountSats - fee;
+            if (change < 0n) throw new Error('Insufficient BCH balance');
+
+            const unlocker = isMainActive 
+                ? new SignatureTemplate(wif!).unlockP2PKH() 
+                : { unlockingBytecode: new Uint8Array(0) } as any;
+
+            builder.addInputs(selected, unlocker);
+            builder.addOutput({ to: contractAddress, amount: amountSats });
+            if (change >= 546n) builder.addOutput({ to: currentBchWallet.address, amount: change });
+
+            if (isMainActive) {
+                setSwapStep(`Sending ${params.sellAmount} BCH to HTLC...`);
+                const tx = await builder.send();
+                fundTxId = tx.txid;
+                console.log('[BCH→MOV] HTLC funded:', fundTxId);
+                toast.success('BCH locked in HTLC!', { description: `Tx: ${fundTxId.slice(0, 16)}...` });
+            } else {
+                if (!activeExtWallet) throw new Error('No active external wallet found.');
+                const { buildWC2SourceOutputs, buildWC2Payload } = await import('@/lib/wc2Serialize');
+
+                setSwapStep('Waiting for wallet approval...');
+                toast.info('Check your external wallet to approve the transaction.', { duration: 8000 });
+
+                const utxoIndices = selected.map((_: any, i: number) => i);
+                const sourceOutputs = await buildWC2SourceOutputs(selected, utxoIndices, currentBchWallet.address);
+                const unsignedHex = builder.build();
+
+                const payload = buildWC2Payload(
+                    unsignedHex,
+                    sourceOutputs,
+                    `Fund MOV swap covenant`
+                );
+
+                const result = await extBCHCtx.signTransaction(activeWalletId, payload);
+                fundTxId = result.signedTransactionHash;
+                console.log('[BCH→MOV] HTLC funded via external wallet:', fundTxId);
+                toast.success('BCH locked in HTLC!');
+            }
         } catch (e: any) {
             throw new Error(`Failed to deploy BCH HTLC: ${e.message}`);
         }
@@ -1202,13 +1250,13 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
     // BCH → ETH: Fund StarkVerifierFRIPhaseB P2SH32 covenant, notify bsc-bch-server (ZK, auto-complete)
     // =========================================================================
     const executeBCHToETH = async (params: BCHSwapParams, _recipientAddress: string) => {
+        // if (!isMainActive) throw new Error('External wallets cannot sign advanced ZK swaps yet. Please use the WDK Main Wallet.');
         const currentBchWallet = bchWalletRef.current;
         const currentWdk = wdkRef.current;
         if (!currentBchWallet.address) throw new Error('Connect your BCH wallet first');
         if (!currentWdk.evmAddress) throw new Error('EVM address not available in WDK wallet');
 
         const wif = currentBchWallet.getWIF();
-        if (!wif) throw new Error('Cannot sign: WIF not available');
 
         const isMainnet = currentWdk.bchNetwork === 'mainnet';
 
@@ -1237,7 +1285,10 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 .sort((a: any, b: any) => Number(b.satoshis - a.satoshis));
             if (!sortedUtxos.length) throw new Error('No plain BCH UTXOs available — fund your wallet or consolidate UTXOs first');
 
-            const sigTemplate = new SignatureTemplate(wif);
+            const unlocker = isMainActive 
+                ? new SignatureTemplate(wif!).unlockP2PKH() 
+                : { unlockingBytecode: new Uint8Array(0) } as any;
+
             const amountSats = BigInt(Math.floor(params.sellAmount * 1e8));
             // Dynamic fee: 2 sat/byte — same pattern as BCH→SOL path
             const estimateFee = (numIn: number, numOut: number) =>
@@ -1254,16 +1305,39 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
             if (change < 0n) throw new Error('Insufficient BCH balance');
 
             const builder = new TransactionBuilder({ provider });
-            builder.addInputs(selected, sigTemplate.unlockP2PKH());
+            builder.addInputs(selected, unlocker);
             builder.addOutput({ to: lockingBytecode, amount: amountSats });
             if (change >= 546n) {
                 builder.addOutput({ to: currentBchWallet.address!, amount: change });
             }
 
-            const tx = await builder.send();
-            fundTxId = tx.txid;
-            console.log('[BCH→ETH] Covenant funded:', fundTxId);
-            toast.success('BCH locked in ZK covenant!', { description: `Tx: ${fundTxId.slice(0, 16)}...` });
+            if (isMainActive) {
+                const tx = await builder.send();
+                fundTxId = tx.txid;
+                console.log('[BCH→ETH] Covenant funded:', fundTxId);
+                toast.success('BCH locked in ZK covenant!', { description: `Tx: ${fundTxId.slice(0, 16)}...` });
+            } else {
+                if (!activeExtWallet) throw new Error('No active external wallet found.');
+                const { buildWC2SourceOutputs, buildWC2Payload } = await import('@/lib/wc2Serialize');
+
+                setSwapStep('Waiting for wallet approval...');
+                toast.info('Check your external wallet to approve the transaction.', { duration: 8000 });
+
+                const utxoIndices = selected.map((_: any, i: number) => i);
+                const sourceOutputs = await buildWC2SourceOutputs(selected, utxoIndices, currentBchWallet.address!);
+                const unsignedHex = builder.build();
+
+                const payload = buildWC2Payload(
+                    unsignedHex,
+                    sourceOutputs,
+                    `Fund ZK covenant`
+                );
+
+                const result = await extBCHCtx.signTransaction(activeWalletId, payload);
+                fundTxId = result.signedTransactionHash;
+                console.log('[BCH→ETH] Covenant funded via external wallet:', fundTxId);
+                toast.success('BCH locked in ZK covenant!');
+            }
         } catch (e: any) {
             throw new Error(`Failed to fund BCH covenant: ${e.message}`);
         }
