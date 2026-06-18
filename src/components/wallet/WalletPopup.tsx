@@ -1,13 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Wallet, Bell, LogOut, RefreshCw, Eye, EyeOff, CheckCircle2, Clock, XCircle, KeyRound } from 'lucide-react';
+import { X, Wallet, Bell, LogOut, RefreshCw, Eye, EyeOff, CheckCircle2, Clock, XCircle, KeyRound, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useWDK } from '@/context/WDKProvider';
+import { useExternalBCHWallet } from '@/context/ExternalBCHWalletProvider';
 import { WalletTokensTab } from './WalletTokensTab';
 import { WalletOrdersTab } from './WalletOrdersTab';
 import { WalletHistoryTab } from './WalletHistoryTab';
 import { WalletAddressesTab } from './WalletAddressesTab';
 import { ChangePasswordModal } from './ChangePasswordModal';
+import { ConnectExternalWalletModal } from './ConnectExternalWalletModal';
 
 import { hasStoredWallet } from '@/lib/crypto';
 import { toast } from 'sonner';
@@ -186,10 +188,12 @@ export function WalletPopup({ open, onClose, initialTab }: WalletPopupProps) {
     const [subTab, setSubTab] = useState<SubTab>('tokens');
     const [balanceVisible, setBalanceVisible] = useState(true);
     const [showChangePwd, setShowChangePwd] = useState(false);
+    const [showConnectExt, setShowConnectExt] = useState(false);
     const panelRef = useRef<HTMLDivElement>(null);
     const isMobile = useIsMobile();
 
     const wdk = useWDK();
+    const extBCH = useExternalBCHWallet();
 
     // Keep module-level _activeNetwork in sync so pushNotification() writes to the right key
     useEffect(() => { setNotifNetwork(wdk.bchNetwork); }, [wdk.bchNetwork]);
@@ -201,7 +205,7 @@ export function WalletPopup({ open, onClose, initialTab }: WalletPopupProps) {
 
     // A child modal (change-password / settings) portals outside the panel, so
     // suspend the popup's own close handlers while one is open.
-    const childModalOpen = showChangePwd;
+    const childModalOpen = showChangePwd || showConnectExt;
 
     // True while a Radix dialog (Send / Receive / token selector …) is open —
     // those portal to <body>, so the popup must not treat clicks in them as
@@ -251,7 +255,7 @@ export function WalletPopup({ open, onClose, initialTab }: WalletPopupProps) {
 
     const handleLogout = () => {
         if (wdk.isInitialized) wdk.disconnect();
-        toast.success('Wallet disconnected');
+        toast.success('Main wallet disconnected');
         onClose();
     };
 
@@ -295,6 +299,16 @@ export function WalletPopup({ open, onClose, initialTab }: WalletPopupProps) {
                     </button>
                 </div>
                 <div className="flex items-center gap-1 pr-2">
+                    {wdk.isInitialized && (
+                        <Button
+                            variant="ghost" size="icon"
+                            className="h-7 w-7 text-muted-foreground hover:text-emerald-400 hover:bg-emerald-500/10"
+                            onClick={() => setShowConnectExt(true)}
+                            title="Connect external BCH wallet"
+                        >
+                            <Plus className="h-3.5 w-3.5" />
+                        </Button>
+                    )}
                     {wdk.isInitialized && hasStoredWallet() && (
                         <Button
                             variant="ghost" size="icon"
@@ -434,7 +448,7 @@ export function WalletPopup({ open, onClose, initialTab }: WalletPopupProps) {
                         {subTab === 'tokens' && <WalletTokensTab balanceVisible={balanceVisible} activeTokens={activeTokens} loading={portfolioLoading} onClose={onClose} />}
                         {subTab === 'orders' && <WalletOrdersTab />}
                         {subTab === 'history' && <WalletHistoryTab />}
-                        {subTab === 'addresses' && <WalletAddressesTab onChangePassword={() => setShowChangePwd(true)} />}
+                        {subTab === 'addresses' && <WalletAddressesTab onChangePassword={() => setShowChangePwd(true)} onConnectExternal={() => setShowConnectExt(true)} />}
                     </div>
                 </div>
             ) : (
@@ -443,6 +457,7 @@ export function WalletPopup({ open, onClose, initialTab }: WalletPopupProps) {
             )}
 
             <ChangePasswordModal open={showChangePwd} onClose={() => setShowChangePwd(false)} />
+            <ConnectExternalWalletModal open={showConnectExt} onClose={() => setShowConnectExt(false)} />
         </>
     );
 

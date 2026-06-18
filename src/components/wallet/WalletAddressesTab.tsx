@@ -1,8 +1,10 @@
 import { useState, ReactNode } from 'react';
 import { useWDK } from '@/context/WDKProvider';
 import { useBCHWallet } from '@/context/BCHWalletProvider';
+import { useExternalBCHWallet } from '@/context/ExternalBCHWalletProvider';
+import { useBchAddressBalance } from '@/hooks/useBchAddressBalance';
 import { Button } from '@/components/ui/button';
-import { Copy, ExternalLink, KeyRound, Wallet, Eye, EyeOff, Check, Lock, Loader2, AlertTriangle, BookOpen } from 'lucide-react';
+import { Copy, ExternalLink, KeyRound, Wallet, Eye, EyeOff, Check, Lock, Loader2, AlertTriangle, BookOpen, Plus, WifiOff, Wifi } from 'lucide-react';
 import { toast } from 'sonner';
 import { decryptFromStorage, hasStoredWallet } from '@/lib/crypto';
 import { cn } from '@/lib/utils';
@@ -136,11 +138,14 @@ function ChainAddressRow({ icon, iconNode, chainName, networkLabel, networkColor
 interface WalletAddressesTabProps {
     /** Opens the wallet-popup's change-password modal (wired by WalletPopup). */
     onChangePassword?: () => void;
+    /** Opens the connect-external-wallet modal (wired by WalletPopup). */
+    onConnectExternal?: () => void;
 }
 
-export function WalletAddressesTab({ onChangePassword }: WalletAddressesTabProps) {
+export function WalletAddressesTab({ onChangePassword, onConnectExternal }: WalletAddressesTabProps) {
     const wdk = useWDK();
     const bchWallet = useBCHWallet();
+    const extBCH = useExternalBCHWallet();
     const isMainnet = wdk.bchNetwork === 'mainnet';
 
     // Password-gated seed phrase reveal
@@ -236,7 +241,21 @@ export function WalletAddressesTab({ onChangePassword }: WalletAddressesTabProps
 
             {/* ═══════════════ NETWORKS ═══════════════ */}
             <div>
-                <SectionLabel>Networks</SectionLabel>
+                <div className="flex items-center justify-between px-1 mb-2">
+                    <div className="flex items-center gap-2">
+                        <span className="text-[10px] uppercase tracking-[0.14em] text-white/40 font-bold">Networks</span>
+                        <span className="flex-1 h-px bg-white/[0.06]" />
+                    </div>
+                    {onConnectExternal && (
+                        <button
+                            onClick={onConnectExternal}
+                            className="flex items-center gap-1 text-[10px] font-semibold text-emerald-400/80 hover:text-emerald-300 transition-colors px-2 py-1 rounded-md hover:bg-emerald-500/10"
+                        >
+                            <Plus className="h-3 w-3" />
+                            Add Wallet
+                        </button>
+                    )}
+                </div>
                 <div className="space-y-2">
                     {/* EVM */}
                     {wdk.evmAddress && (
@@ -302,6 +321,16 @@ export function WalletAddressesTab({ onChangePassword }: WalletAddressesTabProps
                             onCopy={() => copyAddress(wdk.btcAddress!, 'Bitcoin')}
                         />
                     )}
+
+                    {/* ── External BCH Wallets ── */}
+                    {extBCH.wallets.map(extWallet => (
+                        <ExternalWalletCard
+                            key={extWallet.id}
+                            wallet={extWallet}
+                            isMainnet={isMainnet}
+                            onDisconnect={() => extBCH.disconnectWallet(extWallet.id)}
+                        />
+                    ))}
                 </div>
             </div>
 
@@ -491,6 +520,113 @@ export function WalletAddressesTab({ onChangePassword }: WalletAddressesTabProps
                         </a>
                     </div>
                 </div>
+            </div>
+        </div>
+    );
+}
+
+// ============================================================================
+// ExternalWalletCard — shows a connected external BCH wallet (WC / Wizard)
+// ============================================================================
+
+interface ExternalWalletCardProps {
+    wallet: import('@/context/ExternalBCHWalletProvider').ExternalBCHWallet;
+    isMainnet: boolean;
+    onDisconnect: () => void;
+}
+
+function ExternalWalletCard({ wallet, isMainnet, onDisconnect }: ExternalWalletCardProps) {
+    const { data: balData, isLoading } = useBchAddressBalance({
+        address: wallet.address,
+        isMainnet,
+        refetchMs: 15_000,
+    });
+    const [copied, setCopied] = useState(false);
+
+    const handleCopy = () => {
+        navigator.clipboard.writeText(wallet.address);
+        setCopied(true);
+        toast.success('Address copied!');
+        setTimeout(() => setCopied(false), 1200);
+    };
+
+    const explorerUrl = isMainnet
+        ? `https://blockchair.com/bitcoin-cash/address/${wallet.address}`
+        : `https://chipnet.chaingraph.cash/address/${wallet.address}`;
+
+    const sourceLabel = wallet.source === 'wizardconnect' ? 'WizardConnect' : 'WalletConnect';
+
+    return (
+        <div className="relative rounded-xl bg-white/[0.02] hover:bg-white/[0.04] border border-blue-500/15 hover:border-blue-500/25 p-3 transition-all duration-200 shadow-sm hover:-translate-y-[1px] shadow-blue-500/5">
+            {/* "External" ribbon */}
+            <div className="absolute top-2 right-2">
+                <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-300 font-bold uppercase tracking-wider">
+                    {sourceLabel}
+                </span>
+            </div>
+
+            <div className="flex items-center gap-3 pr-20">
+                {/* Icon */}
+                <div className="h-9 w-9 rounded-xl bg-blue-500/10 border border-blue-500/20 ring-1 ring-blue-500/10 flex items-center justify-center flex-shrink-0 text-base">
+                    {wallet.source === 'wizardconnect' ? '🔵' : '🟢'}
+                </div>
+
+                {/* Name + address */}
+                <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                        <span className="text-xs font-semibold tracking-tight text-blue-300">
+                            {wallet.label}
+                        </span>
+                        <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded border bg-emerald-500/10 text-emerald-300 border-emerald-500/25 uppercase tracking-wider">
+                            {isMainnet ? 'Mainnet' : 'Chipnet'}
+                        </span>
+                    </div>
+                    <div className="text-[10px] font-mono text-white/50 truncate" title={wallet.address}>
+                        {formatAddr(wallet.address)}
+                    </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center gap-0.5 flex-shrink-0">
+                    <button
+                        onClick={handleCopy}
+                        title="Copy address"
+                        className="h-7 w-7 rounded-md flex items-center justify-center text-white/40 hover:text-white hover:bg-white/[0.06] transition-all"
+                    >
+                        {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                    </button>
+                    <a
+                        href={explorerUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="View in explorer"
+                        className="h-7 w-7 rounded-md flex items-center justify-center text-white/40 hover:text-white hover:bg-white/[0.06] transition-all"
+                    >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                </div>
+            </div>
+
+            {/* Balance + disconnect */}
+            <div className="mt-2 pt-2 border-t border-white/[0.04] flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5">
+                    <Wifi className="h-3 w-3 text-blue-400/70" />
+                    {isLoading ? (
+                        <Loader2 className="h-3 w-3 animate-spin text-white/30" />
+                    ) : (
+                        <span className="text-[11px] font-mono font-semibold text-blue-300">
+                            {(balData.sats / 1e8).toFixed(6)} BCH
+                        </span>
+                    )}
+                </div>
+                <button
+                    onClick={onDisconnect}
+                    className="flex items-center gap-1 text-[10px] font-semibold text-red-400/60 hover:text-red-400 transition-colors px-2 py-1 rounded-md hover:bg-red-500/10"
+                    title="Disconnect wallet"
+                >
+                    <WifiOff className="h-3 w-3" />
+                    Disconnect
+                </button>
             </div>
         </div>
     );

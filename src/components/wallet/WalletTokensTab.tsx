@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useBCHWallet } from '@/context/BCHWalletProvider';
 import { useWDK } from '@/context/WDKProvider';
+import { useExternalBCHWallet, type ExternalBCHWallet } from '@/context/ExternalBCHWalletProvider';
+import { useBchAddressBalance } from '@/hooks/useBchAddressBalance';
 import { Badge } from '@/components/ui/badge';
-import { ArrowUpRight, ArrowDownRight, ArrowDownLeft, ArrowLeftRight, Copy, Check, ChevronDown, Loader2, Wallet, ExternalLink } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, ArrowDownLeft, ArrowLeftRight, Copy, Check, ChevronDown, Loader2, Wallet, ExternalLink, ShoppingBag, Wifi } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PortfolioToken } from '@/hooks/usePortfolio';
 import { CauldronService } from '@/lib/cauldron';
@@ -11,6 +13,14 @@ import { TokenChainIcon } from '@/components/common/TokenChainIcon';
 import { SendModal } from '@/components/portfolio/SendModal';
 import { ReceiveModal } from '@/components/portfolio/ReceiveModal';
 import { toast } from 'sonner';
+
+// PUSD CashToken category IDs (always display these alongside BCH for external wallets)
+const PUSD_MAINNET = 'a8158f8233c24c1d56e1c9196e40e7c80d03591cd1e4f8cde23c1f5b0be5c5c5'; // placeholder — replace with real category
+const PUSD_CHIPNET = ''; // placeholder — replace with real chipnet category
+
+function getPusdCategory(isMainnet: boolean) {
+    return isMainnet ? PUSD_MAINNET : PUSD_CHIPNET;
+}
 
 // ============================================================================
 // Wallet Tokens Tab — WDK-driven token list
@@ -72,12 +82,37 @@ interface TokenData {
 export function WalletTokensTab({ balanceVisible, activeTokens, loading, onClose }: WalletTokensTabProps) {
     const bchWallet = useBCHWallet();
     const wdk = useWDK();
+    const extBCH = useExternalBCHWallet();
     const navigate = useNavigate();
 
     const [dynamicTokens, setDynamicTokens] = useState<any[]>([]);
     const [isLoadingDynamic, setIsLoadingDynamic] = useState(false);
     const [expandedKey, setExpandedKey] = useState<string | null>(null);
     const [copiedKey, setCopiedKey] = useState<string | null>(null);
+    // Default to 'main'; if WDK is locked and external wallets exist, switch to first external
+    const [activeWalletId, setActiveWalletId] = useState<string>(
+        !wdk.isInitialized && extBCH.wallets.length > 0 ? extBCH.wallets[0].id : 'main'
+    );
+
+    // When WDK is locked and user is on 'main', switch to first external wallet if available
+    useEffect(() => {
+        if (!wdk.isInitialized && activeWalletId === 'main' && extBCH.wallets.length > 0) {
+            setActiveWalletId(extBCH.wallets[0].id);
+        }
+        // When WDK unlocks, switch back to main
+        if (wdk.isInitialized && !extBCH.wallets.find(w => w.id === activeWalletId)) {
+            setActiveWalletId('main');
+        }
+    }, [wdk.isInitialized, extBCH.wallets.length]);
+
+    const activeExtWallet = extBCH.wallets.find(w => w.id === activeWalletId);
+    
+    // Always call hook, but it only fetches if address is not null
+    const { data: extData, isLoading: isExtLoading } = useBchAddressBalance({
+        address: activeExtWallet?.address || null,
+        isMainnet: wdk.bchNetwork === 'mainnet',
+        refetchMs: 15_000,
+    });
 
     const copyTokenId = (token: any, key: string) => {
         const id = token.type || token.symbol;
@@ -117,38 +152,54 @@ export function WalletTokensTab({ balanceVisible, activeTokens, loading, onClose
         return () => { mounted = false; };
     }, [wdk.bchNetwork]);
 
-    // Empty state — nothing connected via WDK
-    if (!wdk.isInitialized) {
+    // True empty state: no main wallet AND no external wallets at all
+    if (!wdk.isInitialized && extBCH.wallets.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center py-10 text-center px-4">
                 <Wallet className="h-10 w-10 text-muted-foreground/30 mb-3" />
                 <p className="text-sm text-muted-foreground">No wallet connected</p>
                 <p className="text-[10px] text-muted-foreground/60 mt-1">
-                    Connect a WDK wallet to see your tokens
+                    Connect a WDK wallet or link an external wallet
                 </p>
             </div>
         );
     }
 
-    // Single source of truth: held assets are looked up in usePortfolio's
-    // `activeTokens`. CashTokens (which have no price feed) fall back to the
-    // BCH wallet's token UTXO balances with a zero USD value.
+    // Single source of truth for token data depending on active wallet
     const getTokenData = (token: any): TokenData => {
-        const found = activeTokens.find(t => t.chain === token.chain && t.symbol === token.symbol);
-        if (found) {
-            return { balance: found.balance, valueUsd: found.valueUsd, change24h: found.change24h };
-        }
-        if (token.type) {
-            const raw = bchWallet.tokenBalances[token.type];
-            if (raw) {
-                return {
-                    balance: Number(raw) / Math.pow(10, token.decimals || 0),
-                    valueUsd: 0,
-                    change24h: 0,
-                };
+        if (activeWalletId === 'main') {
+            const found = activeTokens.find(t => t.chain === token.chain && t.symbol === token.symbol);
+            if (found) {
+                return { balance: found.balance, valueUsd: found.valueUsd, change24h: found.change24h };
             }
+            if (token.type) {
+                const raw = bchWallet.tokenBalances[token.type];
+                if (raw) {
+                    return {
+                        balance: Number(raw) / Math.pow(10, token.decimals || 0),
+                        valueUsd: 0,
+                        change24h: 0,
+                    };
+                }
+            }
+            return { balance: 0, valueUsd: 0, change24h: 0 };
+        } else {
+            // External wallet logic
+            if (token.symbol === 'BCH') {
+                return { balance: extData.sats / 1e8, valueUsd: 0, change24h: 0 };
+            }
+            if (token.type) {
+                const raw = extData.tokens[token.type];
+                if (raw) {
+                    return {
+                        balance: Number(raw) / Math.pow(10, token.decimals || 0),
+                        valueUsd: 0,
+                        change24h: 0,
+                    };
+                }
+            }
+            return { balance: 0, valueUsd: 0, change24h: 0 };
         }
-        return { balance: 0, valueUsd: 0, change24h: 0 };
     };
 
     const getChainColor = (chain: string) => {
@@ -186,27 +237,123 @@ export function WalletTokensTab({ balanceVisible, activeTokens, loading, onClose
             type: t.category,
         }));
 
-    // Render tokens whose chain has a WDK address. Held CashTokens take priority
-    // over the Cauldron discovery list; duplicates are removed by category.
-    const displayTokens = (() => {
+    // Render tokens based on the active wallet context
+    const displayTokens = useMemo(() => {
         const seen = new Set<string>();
         const out: any[] = [];
-        for (const t of [...WALLET_TOKENS, ...heldCashTokens, ...dynamicTokens]) {
-            if (!isChainConnected(t.chain)) continue;
-            const key = (t as any).type ? `cat-${(t as any).type}` : `${t.chain}-${t.symbol}`;
-            if (seen.has(key)) continue;
-            seen.add(key);
-            out.push(t);
+        
+        if (activeWalletId === 'main') {
+            for (const t of [...WALLET_TOKENS, ...heldCashTokens, ...dynamicTokens]) {
+                if (!isChainConnected(t.chain)) continue;
+                const key = (t as any).type ? `cat-${(t as any).type}` : `${t.chain}-${t.symbol}`;
+                if (seen.has(key)) continue;
+                seen.add(key);
+                out.push(t);
+            }
+        } else {
+            // External wallet: Always show BCH + PUSD + held tokens
+            const pusdCat = getPusdCategory(wdk.bchNetwork === 'mainnet');
+            
+            // Push BCH
+            const bchToken = WALLET_TOKENS.find(t => t.symbol === 'BCH')!;
+            out.push(bchToken);
+            seen.add(`Bitcoin Cash-BCH`);
+
+            // Push PUSD if available in top tokens or manually crafted
+            if (pusdCat) {
+                const pusdToken = dynamicTokens.find(t => t.type === pusdCat) || {
+                    symbol: 'PUSD',
+                    name: 'ParyonUSD',
+                    chain: 'Bitcoin Cash',
+                    icon: '/assets/paryonlogo.jpg',
+                    decimals: 0,
+                    type: pusdCat
+                };
+                out.push(pusdToken);
+                seen.add(`cat-${pusdCat}`);
+            }
+
+            // Push any other held tokens in the external wallet
+            for (const [category, amountStr] of Object.entries(extData.tokens)) {
+                if (seen.has(`cat-${category}`)) continue;
+                if (Number(amountStr) <= 0) continue;
+
+                // Try to enrich from dynamic cauldron list
+                const known = dynamicTokens.find(t => t.type === category);
+                if (known) {
+                    out.push(known);
+                } else {
+                    out.push({
+                        symbol: `${category.slice(0, 4)}…`,
+                        name: `CashToken (${category.slice(0, 8)}…)`,
+                        chain: 'Bitcoin Cash',
+                        icon: `https://api.dicebear.com/7.x/identicon/svg?seed=${category}`,
+                        decimals: 0,
+                        type: category,
+                    });
+                }
+                seen.add(`cat-${category}`);
+            }
         }
+        
         return out;
-    })();
+    }, [activeWalletId, WALLET_TOKENS, heldCashTokens, dynamicTokens, extData, wdk.bchNetwork]);
 
     return (
         <div className="space-y-1">
-            <div className="flex items-center justify-between px-1 py-2">
+            {/* Global Wallet Switcher — shown whenever external wallets exist */}
+            {extBCH.wallets.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 px-1 py-2 mb-2 border-b border-white/[0.04]">
+                    {/* Main tab: only clickable when WDK is unlocked */}
+                    {wdk.isInitialized ? (
+                        <button
+                            onClick={() => setActiveWalletId('main')}
+                            className={cn(
+                                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
+                                activeWalletId === 'main'
+                                    ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"
+                                    : "bg-white/[0.02] text-white/40 border border-white/[0.05] hover:bg-white/[0.05] hover:text-white/60"
+                            )}
+                        >
+                            <Wallet className={cn("h-3.5 w-3.5", activeWalletId === 'main' ? "text-emerald-400" : "")} />
+                            Main
+                        </button>
+                    ) : (
+                        <div
+                            title="Main wallet is locked"
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-white/[0.01] text-white/20 border border-white/[0.04] cursor-not-allowed select-none"
+                        >
+                            <Wallet className="h-3.5 w-3.5" />
+                            Main
+                            <span className="text-[8px] px-1 py-0.5 rounded bg-white/[0.04] text-white/25">🔒</span>
+                        </div>
+                    )}
+                    {extBCH.wallets.map((wallet, idx) => {
+                        const isSelected = activeWalletId === wallet.id;
+                        const walletNum = idx + 2; // W2, W3...
+                        return (
+                            <button
+                                key={wallet.id}
+                                onClick={() => setActiveWalletId(wallet.id)}
+                                className={cn(
+                                    "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
+                                    isSelected
+                                        ? "bg-blue-500/15 text-blue-300 border border-blue-500/30"
+                                        : "bg-white/[0.02] text-white/40 border border-white/[0.05] hover:bg-white/[0.05] hover:text-white/60"
+                                )}
+                            >
+                                <ShoppingBag className={cn("h-3.5 w-3.5", isSelected ? "text-blue-400" : "")} />
+                                W{walletNum}
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
+
+            <div className="flex items-center justify-between px-1 py-1">
                 <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
                     {displayTokens.length} Assets
-                    {(isLoadingDynamic || loading) && <Loader2 className="animate-spin h-3 w-3" />}
+                    {(isLoadingDynamic || loading || isExtLoading) && <Loader2 className="animate-spin h-3 w-3" />}
                 </span>
             </div>
 
@@ -335,3 +482,6 @@ export function WalletTokensTab({ balanceVisible, activeTokens, loading, onClose
         </div>
     );
 }
+
+// The ExternalWalletsTokenSection and ExternalWalletTokenBag have been fully deprecated 
+// in favor of the unified rendering in WalletTokensTab.

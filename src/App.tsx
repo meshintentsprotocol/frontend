@@ -37,6 +37,7 @@ import { BCHWalletProvider, CashonizeProvider } from "./context/BCHWalletProvide
 import { BCHSwapProvider } from "./context/BCHSwapContext"
 import BchSwapPage from "./pages/BchSwapPage"
 import { WDKProvider } from "./context/WDKProvider"
+import { ExternalBCHWalletProvider } from "./context/ExternalBCHWalletProvider"
 import { PWAUpdatePrompt } from "./components/common/PWAUpdatePrompt"
 
 function App() {
@@ -49,122 +50,124 @@ function App() {
             <AnalyticsTracker />
             <div className="flex min-h-screen flex-col bg-background font-sans antialiased">
                 <WDKProvider>
-                    <SolanaWalletProvider>
-                        <SwapProvider>
-                            <CrossChainProvider>
-                                <CashonizeProvider>
-                                    <BCHWalletProvider>
-                                        <BCHSwapProvider>
-                                            <Routes>
-                                                <Route path="/" element={<LandingPage />} />
-                                                <Route path="/home" element={<LandingPage />} />
-                                                <Route path="/features" element={<FeaturesPage />} />
-                                                <Route path="/swap" element={<Navigate to="/" replace />} />
-                                                <Route path="/orders" element={<Navigate to="/" replace />} />
+                    <ExternalBCHWalletProvider>
+                        <SolanaWalletProvider>
+                            <SwapProvider>
+                                <CrossChainProvider>
+                                    <CashonizeProvider>
+                                        <BCHWalletProvider>
+                                            <BCHSwapProvider>
+                                                <Routes>
+                                                    <Route path="/" element={<LandingPage />} />
+                                                    <Route path="/home" element={<LandingPage />} />
+                                                    <Route path="/features" element={<FeaturesPage />} />
+                                                    <Route path="/swap" element={<Navigate to="/" replace />} />
+                                                    <Route path="/orders" element={<Navigate to="/" replace />} />
 
-                                                <Route path="/explore" element={
-                                                    <div className="flex flex-col min-h-screen">
-                                                        <Header />
-                                                        <main className="flex-1 pt-24"><ExplorePage /></main>
-                                                    </div>
-                                                } />
-                                                <Route path="/explore/tokens/:id" element={
-                                                    <div className="flex flex-col min-h-screen bg-[#050505]">
-                                                        <Header />
-                                                        <main className="flex-1 pt-20"><TokenDetailPage /></main>
-                                                    </div>
-                                                } />
-                                                <Route path="/ecosystem" element={<EcosystemPage />} />
-                                                <Route path="/integrate" element={<IntegratePage />} />
-                                                <Route path="/portfolio" element={
-                                                    <div className="flex flex-col min-h-screen">
-                                                        <Header />
-                                                        <main className="flex-1 pt-24"><PortfolioPage /></main>
-                                                    </div>
-                                                } />
-                                                <Route path="/portfolio/referral" element={
-                                                    <div className="flex flex-col min-h-screen">
-                                                        <Header />
-                                                        <main className="flex-1 pt-24"><PortfolioComingSoonPage variant="referral" /></main>
-                                                    </div>
-                                                } />
-                                                <Route path="/portfolio/points" element={
-                                                    <div className="flex flex-col min-h-screen">
-                                                        <Header />
-                                                        <main className="flex-1 pt-24"><PortfolioComingSoonPage variant="points" /></main>
-                                                    </div>
-                                                } />
-                                                <Route path="/resolver" element={<Navigate to="/" replace />} />
-                                                <Route path="/monitor" element={
-                                                    <div className="flex flex-col min-h-screen">
-                                                        <Header />
-                                                        <main className="flex-1 pt-24"><MonitorPage /></main>
-                                                    </div>
-                                                } />
-                                                <Route path="/solver" element={<Navigate to="/" replace />} />
-                                                <Route path="/oracle" element={
-                                                    <div className="flex flex-col min-h-screen">
-                                                        <Header />
-                                                        <main className="flex-1 pt-24"><OraclePage /></main>
-                                                    </div>
-                                                } />
-                                                <Route path="/crossswap" element={<Navigate to="/" replace />} />
-                                                <Route path="/crossorders" element={<Navigate to="/" replace />} />
-                                                <Route path="/pro" element={<Navigate to="/" replace />} />
-                                                <Route path="/trade" element={
-                                                    <div className="flex flex-col min-h-screen bg-[#050505]">
-                                                        <Header />
-                                                        <main className="flex-1 pt-24">
-                                                            <BchSwapPage />
-                                                        </main>
-                                                    </div>
-                                                } />
+                                                    <Route path="/explore" element={
+                                                        <div className="flex flex-col min-h-screen">
+                                                            <Header />
+                                                            <main className="flex-1 pt-24"><ExplorePage /></main>
+                                                        </div>
+                                                    } />
+                                                    <Route path="/explore/tokens/:id" element={
+                                                        <div className="flex flex-col min-h-screen bg-[#050505]">
+                                                            <Header />
+                                                            <main className="flex-1 pt-20"><TokenDetailPage /></main>
+                                                        </div>
+                                                    } />
+                                                    <Route path="/ecosystem" element={<EcosystemPage />} />
+                                                    <Route path="/integrate" element={<IntegratePage />} />
+                                                    <Route path="/portfolio" element={
+                                                        <div className="flex flex-col min-h-screen">
+                                                            <Header />
+                                                            <main className="flex-1 pt-24"><PortfolioPage /></main>
+                                                        </div>
+                                                    } />
+                                                    <Route path="/portfolio/referral" element={
+                                                        <div className="flex flex-col min-h-screen">
+                                                            <Header />
+                                                            <main className="flex-1 pt-24"><PortfolioComingSoonPage variant="referral" /></main>
+                                                        </div>
+                                                    } />
+                                                    <Route path="/portfolio/points" element={
+                                                        <div className="flex flex-col min-h-screen">
+                                                            <Header />
+                                                            <main className="flex-1 pt-24"><PortfolioComingSoonPage variant="points" /></main>
+                                                        </div>
+                                                    } />
+                                                    <Route path="/resolver" element={<Navigate to="/" replace />} />
+                                                    <Route path="/monitor" element={
+                                                        <div className="flex flex-col min-h-screen">
+                                                            <Header />
+                                                            <main className="flex-1 pt-24"><MonitorPage /></main>
+                                                        </div>
+                                                    } />
+                                                    <Route path="/solver" element={<Navigate to="/" replace />} />
+                                                    <Route path="/oracle" element={
+                                                        <div className="flex flex-col min-h-screen">
+                                                            <Header />
+                                                            <main className="flex-1 pt-24"><OraclePage /></main>
+                                                        </div>
+                                                    } />
+                                                    <Route path="/crossswap" element={<Navigate to="/" replace />} />
+                                                    <Route path="/crossorders" element={<Navigate to="/" replace />} />
+                                                    <Route path="/pro" element={<Navigate to="/" replace />} />
+                                                    <Route path="/trade" element={
+                                                        <div className="flex flex-col min-h-screen bg-[#050505]">
+                                                            <Header />
+                                                            <main className="flex-1 pt-24">
+                                                                <BchSwapPage />
+                                                            </main>
+                                                        </div>
+                                                    } />
 
-                                                <Route path="/terms" element={<TermsOfService />} />
-                                                <Route path="/privacy" element={<PrivacyPolicy />} />
+                                                    <Route path="/terms" element={<TermsOfService />} />
+                                                    <Route path="/privacy" element={<PrivacyPolicy />} />
 
 
-                                                <Route path="/add-token" element={
-                                                    <div className="flex flex-col min-h-screen">
-                                                        <Header />
-                                                        <main className="flex-1 container mx-auto p-8 mt-20">
-                                                            <AddTokenPage />
-                                                        </main>
-                                                    </div>
-                                                } />
+                                                    <Route path="/add-token" element={
+                                                        <div className="flex flex-col min-h-screen">
+                                                            <Header />
+                                                            <main className="flex-1 container mx-auto p-8 mt-20">
+                                                                <AddTokenPage />
+                                                            </main>
+                                                        </div>
+                                                    } />
 
-                                                {/* Knowledge Base Routes */}
-                                                <Route path="/kb" element={
-                                                    <div className="flex flex-col min-h-screen">
-                                                        <Header />
-                                                        <KnowledgeBasePage />
-                                                    </div>
-                                                } />
-                                                <Route path="/kb/search" element={
-                                                    <div className="flex flex-col min-h-screen">
-                                                        <Header />
-                                                        <KBSearchPage />
-                                                    </div>
-                                                } />
-                                                <Route path="/kb/:categoryId" element={
-                                                    <div className="flex flex-col min-h-screen">
-                                                        <Header />
-                                                        <KBCategoryPage />
-                                                    </div>
-                                                } />
-                                                <Route path="/kb/:categoryId/:articleId" element={
-                                                    <div className="flex flex-col min-h-screen">
-                                                        <Header />
-                                                        <KBArticlePage />
-                                                    </div>
-                                                } />
-                                            </Routes>
-                                        </BCHSwapProvider>
-                                    </BCHWalletProvider>
-                                </CashonizeProvider>
-                            </CrossChainProvider>
-                        </SwapProvider>
-                    </SolanaWalletProvider>
+                                                    {/* Knowledge Base Routes */}
+                                                    <Route path="/kb" element={
+                                                        <div className="flex flex-col min-h-screen">
+                                                            <Header />
+                                                            <KnowledgeBasePage />
+                                                        </div>
+                                                    } />
+                                                    <Route path="/kb/search" element={
+                                                        <div className="flex flex-col min-h-screen">
+                                                            <Header />
+                                                            <KBSearchPage />
+                                                        </div>
+                                                    } />
+                                                    <Route path="/kb/:categoryId" element={
+                                                        <div className="flex flex-col min-h-screen">
+                                                            <Header />
+                                                            <KBCategoryPage />
+                                                        </div>
+                                                    } />
+                                                    <Route path="/kb/:categoryId/:articleId" element={
+                                                        <div className="flex flex-col min-h-screen">
+                                                            <Header />
+                                                            <KBArticlePage />
+                                                        </div>
+                                                    } />
+                                                </Routes>
+                                            </BCHSwapProvider>
+                                        </BCHWalletProvider>
+                                    </CashonizeProvider>
+                                </CrossChainProvider>
+                            </SwapProvider>
+                        </SolanaWalletProvider>
+                    </ExternalBCHWalletProvider>
                 </WDKProvider>
             </div>
             <PWAUpdatePrompt />
