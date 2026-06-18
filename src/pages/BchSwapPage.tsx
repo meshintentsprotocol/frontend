@@ -4,6 +4,8 @@ import { LimitOrderHistory } from '@/components/bch-swap/LimitOrderHistory';
 import { BCHOrderType } from '@/types';
 import { useBCHSwapOptional } from '@/context/BCHSwapContext';
 import { useLocation } from 'react-router-dom';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 
 // ============================================================================
 // BCH Swap Page — /bchswap
@@ -18,6 +20,7 @@ export default function BchSwapPage() {
     const initialOrderType = queryParams.get('type') === 'limit' ? 'limit' : 'market';
 
     const [orderType, setOrderType] = useState<BCHOrderType>(initialOrderType);
+    const isMobile = useIsMobile();
 
     // Ensure orderType updates if URL param changes after initial mount
     useEffect(() => {
@@ -74,7 +77,7 @@ export default function BchSwapPage() {
                 <div
                     ref={containerRef}
                     className={`flex w-full gap-8 transition-all duration-500 justify-center
-                    ${panelVisible ? 'lg:justify-start lg:gap-8 flex-col lg:flex-row' : 'max-w-[460px]'}`}
+                    ${panelVisible && !isMobile ? 'lg:justify-start lg:gap-8 flex-col lg:flex-row' : 'max-w-[460px]'}`}
                 >
                     {/* Swap Card */}
                     <div ref={swapCardRef} className="w-full lg:w-[460px] shrink-0 transform transition-transform duration-300">
@@ -86,14 +89,28 @@ export default function BchSwapPage() {
                         />
                     </div>
 
-                    {/* Orders Panel — slides + scales in after swap or when limit mode is active */}
-                    {panelVisible && (
+                    {/* Orders Panel — desktop only: slides + scales in after swap or when limit mode is active */}
+                    {panelVisible && !isMobile && (
                         <div className="w-full lg:flex-1 animate-in fade-in slide-in-from-right-10 zoom-in-95 duration-500 ease-out fill-mode-both delay-100">
                             <LimitOrderHistory />
                         </div>
                     )}
                 </div>
             </div>
+
+            {/* Mobile: history as slide-up bottom sheet */}
+            {isMobile && (
+                <Drawer open={panelVisible} onOpenChange={setShowOrders}>
+                    <DrawerContent className="max-h-[85vh]">
+                        <DrawerHeader>
+                            <DrawerTitle className="text-white text-base">Orders & History</DrawerTitle>
+                        </DrawerHeader>
+                        <div className="overflow-y-auto px-4 pb-6">
+                            <LimitOrderHistory />
+                        </div>
+                    </DrawerContent>
+                </Drawer>
+            )}
         </div>
     );
 }

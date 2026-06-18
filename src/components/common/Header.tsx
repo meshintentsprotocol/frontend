@@ -67,16 +67,16 @@ export function Header() {
                     <span className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 to-transparent scale-0 group-hover:scale-100 transition-transform duration-300 rounded-xl origin-center" />
                 </Button>
             </DrawerTrigger>
-            <DrawerContent className="px-6 pb-6">
-                <div className="flex flex-col gap-8 mt-2">
+            <DrawerContent className="px-5 pb-5">
+                <div className="flex flex-col gap-4 mt-1">
                     {/* Mobile menu logo header */}
-                    <div className="flex items-center gap-2 pb-6 border-b border-white/10">
+                    <div className="flex items-center gap-2 pb-3 border-b border-white/10">
                         <img
                             src="/assets/bchintentslogo.png"
                             alt="BCH Intents"
-                            className="w-14 h-14 object-contain -ml-1 shrink-0"
+                            className="w-10 h-10 object-contain -ml-1 shrink-0"
                         />
-                        <span className="font-heading font-black text-xl tracking-tighter text-white leading-tight">
+                        <span className="font-heading font-black text-base tracking-tighter text-white leading-tight">
                             {isLandingPage ? (
                                 <><span className="text-emerald-500">BCH </span>Intents Protocol</>
                             ) : (
@@ -85,7 +85,7 @@ export function Header() {
                         </span>
                     </div>
 
-                    <nav className="flex flex-col gap-2.5">
+                    <nav className="flex flex-col gap-1">
                         {(isLandingPage ? landingNavItems : appPrimaryNavItems).map((item) => {
                             const isActive = location.pathname === item.path;
                             return (
@@ -94,29 +94,29 @@ export function Header() {
                                     to={item.path}
                                     onClick={() => setIsOpen(false)}
                                     className={cn(
-                                        "flex items-center gap-4 p-3 rounded-2xl transition-all duration-300 group hover:translate-x-1",
+                                        "flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-300 group hover:translate-x-1",
                                         isActive
-                                            ? "bg-gradient-to-r from-emerald-500/10 to-transparent border border-emerald-500/20 shadow-[0_0_20px_rgba(16,185,129,0.05)]"
+                                            ? "bg-gradient-to-r from-emerald-500/10 to-transparent border border-emerald-500/20"
                                             : "hover:bg-white/[0.03] border border-transparent hover:border-white/[0.05]"
                                     )}
                                 >
                                     <span className={cn(
-                                        "flex h-12 w-12 items-center justify-center rounded-xl transition-all duration-300 shrink-0",
+                                        "flex h-9 w-9 items-center justify-center rounded-lg transition-all duration-300 shrink-0",
                                         isActive
-                                            ? "bg-emerald-500/20 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.2)]"
-                                            : "bg-[#111] text-zinc-400 border border-white/5 group-hover:bg-[#151515] group-hover:text-emerald-400 group-hover:border-emerald-500/30"
+                                            ? "bg-emerald-500/20 text-emerald-400"
+                                            : "bg-[#111] text-zinc-400 border border-white/5 group-hover:text-emerald-400 group-hover:border-emerald-500/30"
                                     )}>
-                                        <item.icon className={cn("h-5 w-5 transition-transform duration-300", isActive ? "scale-110" : "group-hover:scale-110")} />
+                                        <item.icon className="h-4 w-4" />
                                     </span>
                                     <span className={cn(
-                                        "flex-1 text-lg font-bold tracking-wide transition-colors",
+                                        "flex-1 text-sm font-semibold tracking-wide transition-colors",
                                         isActive ? "text-white" : "text-zinc-400 group-hover:text-zinc-200"
                                     )}>
                                         {item.name}
                                     </span>
                                     <ChevronRight className={cn(
-                                        "h-5 w-5 transition-all duration-300",
-                                        isActive ? "text-emerald-400 opacity-100 translate-x-0" : "text-zinc-600 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:text-emerald-400 group-hover:translate-x-0"
+                                        "h-4 w-4 transition-all duration-300",
+                                        isActive ? "text-emerald-400 opacity-100" : "text-zinc-600 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:text-emerald-400 group-hover:translate-x-0"
                                     )} />
                                 </Link>
                             );
@@ -127,91 +127,35 @@ export function Header() {
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 onClick={() => setIsOpen(false)}
-                                className="flex items-center gap-4 p-3 rounded-2xl transition-all duration-300 group hover:translate-x-1 hover:bg-white/[0.03] border border-transparent hover:border-white/[0.05]"
+                                className="flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-300 group hover:translate-x-1 hover:bg-white/[0.03] border border-transparent hover:border-white/[0.05]"
                             >
-                                <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#111] text-zinc-400 border border-white/5 group-hover:bg-[#151515] group-hover:text-emerald-400 group-hover:border-emerald-500/30 transition-all duration-300 shrink-0">
-                                    <FileText className="h-5 w-5 transition-transform duration-300 group-hover:scale-110" />
+                                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#111] text-zinc-400 border border-white/5 group-hover:text-emerald-400 group-hover:border-emerald-500/30 transition-all duration-300 shrink-0">
+                                    <FileText className="h-4 w-4" />
                                 </span>
-                                <span className="flex-1 text-lg font-bold tracking-wide text-zinc-400 group-hover:text-zinc-200 transition-colors">Docs</span>
-                                <ChevronRight className="h-5 w-5 text-zinc-600 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:text-emerald-400 group-hover:translate-x-0 transition-all duration-300" />
+                                <span className="flex-1 text-sm font-semibold tracking-wide text-zinc-400 group-hover:text-zinc-200 transition-colors">Docs</span>
+                                <ChevronRight className="h-4 w-4 text-zinc-600 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:text-emerald-400 group-hover:translate-x-0 transition-all duration-300" />
                             </a>
                         )}
                     </nav>
 
-                    {!isLandingPage && (
-                        <div className="pt-6 border-t border-white/10 flex flex-col gap-3">
-                            {/* Mobile network segmented toggle */}
-                            <div
-                                role="tablist"
-                                aria-label="Network"
-                                className={cn(
-                                    "relative flex h-12 items-center w-full rounded-xl p-1 bg-[#0A0A0A]/60 backdrop-blur-xl border transition-all duration-300",
-                                    isMainnet
-                                        ? "border-emerald-500/30 shadow-[0_0_0_1px_rgba(16,185,129,0.08)_inset,0_4px_20px_-8px_rgba(16,185,129,0.4)]"
-                                        : "border-white/10"
-                                )}
-                            >
-                                <span
-                                    aria-hidden
-                                    className={cn(
-                                        "absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-lg",
-                                        "transition-[left,background-color,box-shadow] duration-300 ease-[cubic-bezier(0.34,1.4,0.64,1)]",
-                                        isMainnet
-                                            ? "left-[calc(50%+0px)] bg-gradient-to-br from-emerald-500/30 to-emerald-600/20 border border-emerald-400/40 shadow-[0_0_12px_rgba(16,185,129,0.4)]"
-                                            : "left-1 bg-white/[0.08] border border-white/10"
-                                    )}
-                                />
-                                <button
-                                    role="tab"
-                                    aria-selected={!isMainnet}
-                                    onClick={() => { wdk.setBchNetwork('chipnet'); setIsOpen(false); }}
-                                    className={cn(
-                                        "relative z-10 flex-1 h-10 rounded-lg text-sm font-semibold transition-colors duration-200 active:scale-95",
-                                        !isMainnet ? "text-white" : "text-zinc-500"
-                                    )}
-                                >
-                                    Testnet
-                                </button>
-                                <button
-                                    role="tab"
-                                    aria-selected={isMainnet}
-                                    onClick={() => { wdk.setBchNetwork('mainnet'); setIsOpen(false); }}
-                                    className={cn(
-                                        "relative z-10 flex-1 h-10 rounded-lg text-sm font-semibold transition-colors duration-200 active:scale-95 flex items-center justify-center gap-1.5",
-                                        isMainnet ? "text-emerald-300" : "text-zinc-500"
-                                    )}
-                                >
-                                    {isMainnet && (
-                                        <span className="relative flex h-2 w-2">
-                                            <span className="absolute inset-0 animate-ping rounded-full bg-emerald-400/70" />
-                                            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
-                                        </span>
-                                    )}
-                                    Mainnet
-                                </button>
-                            </div>
-                            <ConnectWalletButton className="w-full h-12 rounded-xl" />
-                        </div>
-                    )}
-
-                    {/* ─── Footer: socials + version (both menus) ─── */}
-                    <div className="pt-6 border-t border-white/10 flex flex-col items-center gap-4">
-                        <div className="flex gap-3">
-                            <a href="https://x.com/bchintents" target="_blank" rel="noopener noreferrer" aria-label="X" className="glass-subtle w-11 h-11 flex items-center justify-center rounded-2xl text-zinc-400 hover:text-emerald-400 border border-white/5 hover:border-emerald-500/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] transition-all duration-300 hover:-translate-y-1">
+                    {/* ─── Footer: socials + version ─── */}
+                    <div className="pt-3 border-t border-white/10 flex items-center justify-between">
+                        <div className="flex gap-2">
+                            <a href="https://x.com/bchintents" target="_blank" rel="noopener noreferrer" aria-label="X" className="w-9 h-9 flex items-center justify-center rounded-xl text-zinc-400 hover:text-emerald-400 border border-white/5 hover:border-emerald-500/50 transition-all duration-300">
                                 <XIcon />
                             </a>
-                            <a href="https://docs.intentsprotocol.xyz/" target="_blank" rel="noopener noreferrer" aria-label="Docs" className="glass-subtle w-11 h-11 flex items-center justify-center rounded-2xl text-zinc-400 hover:text-emerald-400 border border-white/5 hover:border-emerald-500/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] transition-all duration-300 hover:-translate-y-1">
-                                <BookOpen className="w-5 h-5" />
+                            <a href="https://docs.intentsprotocol.xyz/" target="_blank" rel="noopener noreferrer" aria-label="Docs" className="w-9 h-9 flex items-center justify-center rounded-xl text-zinc-400 hover:text-emerald-400 border border-white/5 hover:border-emerald-500/50 transition-all duration-300">
+                                <BookOpen className="w-4 h-4" />
                             </a>
-                            <a href="https://medium.com/@bchintents" target="_blank" rel="noopener noreferrer" aria-label="Medium" className="glass-subtle w-11 h-11 flex items-center justify-center rounded-2xl text-zinc-400 hover:text-emerald-400 border border-white/5 hover:border-emerald-500/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] transition-all duration-300 hover:-translate-y-1">
+                            <a href="https://medium.com/@bchintents" target="_blank" rel="noopener noreferrer" aria-label="Medium" className="w-9 h-9 flex items-center justify-center rounded-xl text-zinc-400 hover:text-emerald-400 border border-white/5 hover:border-emerald-500/50 transition-all duration-300">
                                 <MediumIcon />
                             </a>
-                            <a href="#" target="_blank" rel="noopener noreferrer" aria-label="Discord" className="glass-subtle w-11 h-11 flex items-center justify-center rounded-2xl text-zinc-400 hover:text-emerald-400 border border-white/5 hover:border-emerald-500/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.2)] transition-all duration-300 hover:-translate-y-1">
+                            <a href="#" target="_blank" rel="noopener noreferrer" aria-label="Discord" className="w-9 h-9 flex items-center justify-center rounded-xl text-zinc-400 hover:text-emerald-400 border border-white/5 hover:border-emerald-500/50 transition-all duration-300">
                                 <DiscordIcon />
                             </a>
                         </div>
                         <div className="text-[11px] text-zinc-500 tracking-wide">
-                            BCH Intents Swap <span className="text-emerald-400/80 font-semibold">v{APP_VERSION}</span>
+                            v<span className="text-emerald-400/80 font-semibold">{APP_VERSION}</span>
                         </div>
                     </div>
                 </div>

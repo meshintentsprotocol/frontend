@@ -81,7 +81,7 @@ interface RawCashIntent {
 function mapCashStatus(s: string): TxStatus {
     const m: Record<string, TxStatus> = {
         pending: 'PENDING', active: 'ACTIVE', filled: 'COMPLETED',
-        cancelled: 'FAILED', expired: 'EXPIRED', refunded: 'REFUNDED',
+        failed: 'FAILED', cancelled: 'FAILED', expired: 'EXPIRED', refunded: 'REFUNDED',
     };
     return m[s.toLowerCase()] ?? 'FAILED';
 }

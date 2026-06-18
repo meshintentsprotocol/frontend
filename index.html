@@ -96,20 +96,6 @@
       filter: drop-shadow(0 0 18px rgba(0, 209, 122, 0.45));
     }
 
-    /* Spinning ring around logo */
-    #splash-ring {
-      position: absolute;
-      inset: -6px;
-      border-radius: 28px;
-      border: 2px solid transparent;
-      border-top-color: rgba(0, 209, 122, 0.7);
-      border-right-color: rgba(0, 209, 122, 0.2);
-      animation: splash-ring-spin 1.4s linear infinite;
-    }
-
-    @keyframes splash-ring-spin {
-      to { transform: rotate(360deg); }
-    }
 
     @keyframes splash-text-enter {
       to { opacity: 1; transform: translateY(0); }
@@ -143,7 +129,7 @@
     <div id="splash-inner">
       <div id="splash-logo-wrap">
         <img id="splash-logo" src="/assets/bchintentslogo_edited.png" alt="BCH Intents" />
-        <div id="splash-ring"></div>
+
       </div>
     </div>
   </div>

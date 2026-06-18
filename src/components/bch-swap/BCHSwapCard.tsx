@@ -555,11 +555,11 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                         {isMainnet ? 'Mainnet' : 'Testnet'}
                     </button>
 
-                    {/* Open & Orders toggle — hidden in compact/embedded mode */}
+                    {/* Orders & History toggle — hidden in compact/embedded mode */}
                     {onToggleOrders && !compact && (
                         <button
                             onClick={onToggleOrders}
-                            title={ordersVisible ? 'Hide Open & Orders' : 'Show Open & Orders'}
+                            title={ordersVisible ? 'Hide Orders & History' : 'Show Orders & History'}
                             aria-pressed={!!ordersVisible}
                             className={cn(
                                 'p-2 rounded-xl transition-colors',

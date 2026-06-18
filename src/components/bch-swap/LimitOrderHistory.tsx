@@ -458,7 +458,7 @@ export function LimitOrderHistory() {
                                     value="open"
                                     className="px-0 py-2.5 border-b-2 border-transparent data-[state=active]:border-emerald-500 data-[state=active]:text-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none text-muted-foreground hover:text-foreground text-sm font-semibold"
                                 >
-                                    Open ({openCount})
+                                    Orders ({openCount})
                                     {claimableCount > 0 && (
                                         <span className="ml-1.5 inline-flex items-center justify-center h-5 w-5 rounded-full bg-blue-500/20 text-blue-400 text-xs font-bold animate-pulse">
                                             {claimableCount}
@@ -469,7 +469,7 @@ export function LimitOrderHistory() {
                                     value="history"
                                     className="px-0 py-2.5 border-b-2 border-transparent data-[state=active]:border-emerald-500 data-[state=active]:text-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none text-muted-foreground hover:text-foreground text-sm font-semibold"
                                 >
-                                    Orders ({historyCount})
+                                    History ({historyCount})
                                 </TabsTrigger>
                             </TabsList>
                             <Button

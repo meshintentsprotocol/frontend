@@ -430,7 +430,7 @@ export function WalletPopup({ open, onClose, initialTab }: WalletPopupProps) {
                     </div>
 
                     {/* ─── Tab Content ─── */}
-                    <div className="flex-1 overflow-y-auto px-3 pb-3 min-h-0" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.08) transparent' }}>
+                    <div className="flex-1 overflow-y-auto px-3 pb-6 min-h-0" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.08) transparent' }}>
                         {subTab === 'tokens' && <WalletTokensTab balanceVisible={balanceVisible} activeTokens={activeTokens} loading={portfolioLoading} onClose={onClose} />}
                         {subTab === 'orders' && <WalletOrdersTab />}
                         {subTab === 'history' && <WalletHistoryTab />}
@@ -449,8 +449,8 @@ export function WalletPopup({ open, onClose, initialTab }: WalletPopupProps) {
     if (isMobile) {
         return (
             <Drawer open={open} onOpenChange={(o) => !o && onClose()}>
-                <DrawerContent className="p-0 h-[85vh]">
-                    <div className="flex flex-col h-full bg-[#0A0A0A] rounded-t-[20px]">
+                <DrawerContent className="p-0 h-[88vh]">
+                    <div className="flex flex-col flex-1 min-h-0 bg-[#0A0A0A] pb-[env(safe-area-inset-bottom)]">
                         {content}
                     </div>
                 </DrawerContent>
