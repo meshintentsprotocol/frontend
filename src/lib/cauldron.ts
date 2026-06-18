@@ -80,8 +80,12 @@ export const CauldronService = {
                 const symbol = t.bcmr?.token?.symbol || t.display_symbol || 'UNKNOWN';
                 return symbol !== 'UNKNOWN';
             });
-        } catch (e) {
-            console.error("Cauldron API fetch error:", e);
+        } catch (e: any) {
+            // AbortError is expected — we intentionally abort after 8 s via controller.
+            // Only log genuine failures to avoid console noise on slow connections.
+            if (e?.name !== 'AbortError') {
+                console.warn('Cauldron API fetch error:', e?.message ?? e);
+            }
             return [];
         } finally {
             clearTimeout(timer);

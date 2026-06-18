@@ -111,23 +111,38 @@ const WALLETCONNECT_PROJECT_ID = '46eab391b8e623fe273e8b3ed7d45e18';
 const BCH_NAMESPACE = 'bch';
 const STORAGE_KEY = 'ext_bch_wallets';
 
-// Module-level singleton so SignClient.init() is only called once per page load.
-// Both the background restore effect and the connect flow share this instance.
-let _wcClientSingleton: any = null;
-let _wcClientInitPromise: Promise<any> | null = null;
+// ── WalletConnect singleton ───────────────────────────────────────────────────
+// We store the client on `window` rather than in module scope so that Vite's
+// HMR (which re-evaluates the module on every save) cannot reset the singleton.
+// WalletConnect keeps its own internal global counter, so if our module-level
+// variable is cleared but WC's counter isn't, `SignClient.init()` would be
+// called again and WC would warn "Init() was called N times".
+//
+// Using `window.__wcBchClient` / `window.__wcBchClientPending` ensures only one
+// init ever runs for the lifetime of the page, regardless of HMR.
+declare global {
+    interface Window {
+        __wcBchClient?: any;
+        __wcBchClientPending?: Promise<any>;
+    }
+}
 
 async function getWCClient(): Promise<any> {
-    if (_wcClientSingleton) return _wcClientSingleton;
-    if (_wcClientInitPromise) return _wcClientInitPromise;
+    // Already resolved — return immediately (the common hot path).
+    if (window.__wcBchClient) return window.__wcBchClient;
 
-    const isLocalhost = typeof window !== 'undefined' &&
-        (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+    // Init already in progress — piggy-back on the existing promise.
+    if (window.__wcBchClientPending) return window.__wcBchClientPending;
+
+    const isLocalhost = window.location.hostname === 'localhost' ||
+        window.location.hostname === '127.0.0.1';
     const safeUrl = isLocalhost ? 'https://bchintents.com' : window.location.origin;
 
     const mod = await import('@walletconnect/sign-client');
     const SignClient = mod.SignClient ?? mod.default;
 
-    _wcClientInitPromise = SignClient.init({
+    // Store the promise immediately before awaiting so concurrent calls share it.
+    window.__wcBchClientPending = SignClient.init({
         projectId: WALLETCONNECT_PROJECT_ID,
         metadata: {
             name: 'BCH Intents Protocol',
@@ -136,12 +151,12 @@ async function getWCClient(): Promise<any> {
             icons: [`${window.location.origin}/assets/bchintentslogo_edited.png`],
         },
     }).then((client: any) => {
-        _wcClientSingleton = client;
-        _wcClientInitPromise = null;
+        window.__wcBchClient = client;
+        delete window.__wcBchClientPending;   // clean up — resolved, not needed
         return client;
     });
 
-    return _wcClientInitPromise;
+    return window.__wcBchClientPending;
 }
 
 function getBchChain(network: BchNetwork): string {
