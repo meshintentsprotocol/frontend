@@ -41,7 +41,7 @@ async function fetchBchBalance(address: string, isMainnet: boolean): Promise<num
 
     for (const base of endpoints) {
         try {
-            const res = await fetch(`${base}/electrs/address/${encodeURIComponent(addr)}`);
+            const res = await fetch(`${base}/electrs/address/${addr}`);
             if (!res.ok) throw new Error(`REST ${res.status}`);
             const data = await res.json();
             // confirmed + unconfirmed
@@ -58,7 +58,7 @@ async function fetchBchBalance(address: string, isMainnet: boolean): Promise<num
     // Final fallback: try UTXO sum from first endpoint
     for (const base of endpoints) {
         try {
-            const res = await fetch(`${base}/electrs/address/${encodeURIComponent(addr)}/utxo`);
+            const res = await fetch(`${base}/electrs/address/${addr}/utxo`);
             if (!res.ok) continue;
             const utxos: any[] = await res.json();
             return utxos.reduce((sum: number, u: any) => sum + (u.value ?? 0), 0);
@@ -82,7 +82,7 @@ async function fetchTokenBalances(address: string, isMainnet: boolean): Promise<
 
     for (const base of endpoints) {
         try {
-            const res = await fetch(`${base}/electrs/address/${encodeURIComponent(addr)}/utxo`);
+            const res = await fetch(`${base}/electrs/address/${addr}/utxo`);
             if (!res.ok) continue;
             const utxos: any[] = await res.json();
 

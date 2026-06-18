@@ -47,6 +47,23 @@ const getCashScript = async () => {
 const getOrdersKey = (network: string) => `bch_orders_${network}`;
 const SOLANA_PROGRAM_ID = 'G3F8TFjuxCAkTv8zZcPLJWmeAabTx7pasgmePcJa4pEL';
 
+/**
+ * Normalize a BCH address to ensure it carries the correct cashaddr prefix.
+ *
+ * External wallets (Cashonize, Paytaca via WC2/WizardConnect) sometimes return
+ * only the payload part — e.g. `qpnxkp6yz...` without `bitcoincash:` or `bchtest:`.
+ * libauth and the CashToken relayer both require the full `prefix:payload` form.
+ *
+ * @param address  Raw address string from wallet (may or may not have prefix)
+ * @param isMainnet  Whether the active network is mainnet (default: chipnet)
+ */
+function normalizeBchAddress(address: string, isMainnet: boolean): string {
+    if (!address) return address;
+    if (address.includes(':')) return address;                        // already prefixed
+    const prefix = isMainnet ? 'bitcoincash' : 'bchtest';
+    return `${prefix}:${address}`;
+}
+
 // ============================================================================
 // Context Type
 // ============================================================================
@@ -263,10 +280,13 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 BigInt(Math.ceil((numIn * 148 + numOut * 34 + 10) * 2));
             const builder = new TransactionBuilder({ provider });
 
-            // Define the unlocker based on whether we are using WDK or External Wallet
-            const unlocker = isMainActive 
-                ? sigTemplate.unlockP2PKH() 
-                : { unlockingBytecode: new Uint8Array(0) } as any;
+            let unlocker: any;
+            if (isMainActive) {
+                unlocker = new SignatureTemplate(wif).unlockP2PKH();
+            } else {
+                const { getDummyUnlocker } = await import('@/lib/wc2Serialize');
+                unlocker = await getDummyUnlocker(currentBchWallet.address!);
+            }
 
             let selected: any[] = [];
 
@@ -601,10 +621,16 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
         const isMainnet = wdkRef.current.bchNetwork === 'mainnet';
         const relayerUrl = isMainnet ? CASHTOKEN_RELAYER_MAINNET_URL : CASHTOKEN_RELAYER_URL;
 
-        // Determine the signing address: main wallet or connected external wallet
-        const makerAddress = isMainActive
+        // Determine the signing address: main wallet or connected external wallet.
+        // External wallets (WC2/WizardConnect) sometimes omit the cashaddr prefix
+        // (e.g. "qp..."). Normalize so the relayer always gets "bitcoincash:qp..."
+        // or "bchtest:qp..."
+        const rawMakerAddress = isMainActive
             ? bchWalletRef.current.address
             : activeExtWallet?.address;
+        const makerAddress = rawMakerAddress
+            ? normalizeBchAddress(rawMakerAddress, isMainnet)
+            : undefined;
 
         if (!makerAddress) {
             throw new Error(isMainActive
@@ -777,7 +803,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 // then pass the unsigned hex + source UTXOs to Cashonize via WalletConnect.
                 if (!activeExtWallet) throw new Error('No active external wallet found.');
 
-                const { buildWC2SourceOutputs, buildWC2Payload } = await import('@/lib/wc2Serialize');
+                const { buildWC2SourceOutputs, buildWC2Payload, getDummyUnlocker } = await import('@/lib/wc2Serialize');
                 const { TransactionBuilder, ElectrumNetworkProvider } = await getCashScript();
                 const provider = new ElectrumNetworkProvider(isMainnet ? 'mainnet' : 'chipnet');
 
@@ -787,6 +813,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 const isTokenSell = !!sellCategoryId && sellCategoryId !== 'BCH';
                 let fee = 1000n;
                 const selectedUtxos: any[] = [];
+                const dummyUnlocker = await getDummyUnlocker(makerAddress);
 
                 // Build the transaction structure (outputs + UTXO selection)
                 const builder = new TransactionBuilder({ provider });
@@ -825,7 +852,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                     const tokenChange = totalTokenIn - BigInt(sellBaseUnits);
                     let satRem = totalTokenSats + bchIn - 1000n - fee;
 
-                    builder.addInputs(selectedUtxos, { unlockingBytecode: new Uint8Array(0) } as any);
+                    builder.addInputs(selectedUtxos, dummyUnlocker);
                     builder.addOutput({ to: data.tokenAddress, amount: 1000n, token: { category: sellCategoryId, amount: BigInt(sellBaseUnits) } });
                     if (tokenChange > 0n) {
                         const tSats = satRem > 1000n ? 1000n : satRem;
@@ -846,7 +873,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                     }
                     if (bchIn < BigInt(sellBaseUnits) + fee) throw new Error('Insufficient BCH in external wallet');
 
-                    builder.addInputs(selectedUtxos, { unlockingBytecode: new Uint8Array(0) } as any);
+                    builder.addInputs(selectedUtxos, dummyUnlocker);
                     builder.addOutput({ to: data.contractAddress, amount: BigInt(sellBaseUnits) });
                     const change = bchIn - BigInt(sellBaseUnits) - fee;
                     if (change >= 546n) builder.addOutput({ to: makerAddress, amount: change });
@@ -1004,9 +1031,13 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
             const change = totalInput - amountSats - fee;
             if (change < 0n) throw new Error('Insufficient BCH balance');
 
-            const unlocker = isMainActive 
-                ? new SignatureTemplate(wif!).unlockP2PKH() 
-                : { unlockingBytecode: new Uint8Array(0) } as any;
+            let unlocker: any;
+            if (isMainActive) {
+                unlocker = new SignatureTemplate(wif!).unlockP2PKH();
+            } else {
+                const { getDummyUnlocker } = await import('@/lib/wc2Serialize');
+                unlocker = await getDummyUnlocker(currentBchWallet.address!);
+            }
 
             builder.addInputs(selected, unlocker);
             builder.addOutput({ to: contractAddress, amount: amountSats });

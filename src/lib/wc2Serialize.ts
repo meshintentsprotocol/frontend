@@ -136,3 +136,21 @@ export function buildWC2Payload(
         userPrompt,
     };
 }
+
+/**
+ * Creates a mock Unlocker object for CashScript's TransactionBuilder.
+ * CashScript requires inputs to have an unlocker so it can extract the 
+ * locking bytecode for serialization. Since the external wallet will sign
+ * the inputs, we provide empty unlocking bytes, but we MUST provide the 
+ * correct locking bytecode generated from the user's address.
+ */
+export async function getDummyUnlocker(address: string) {
+    const { cashAddressToLockingBytecode } = await import('@bitauth/libauth');
+    const result = cashAddressToLockingBytecode(address);
+    const bytecode = typeof result === 'string' ? new Uint8Array(25) : result.bytecode;
+    
+    return {
+        unlockingBytecode: new Uint8Array(0),
+        generateLockingBytecode: () => bytecode,
+    } as any;
+}
