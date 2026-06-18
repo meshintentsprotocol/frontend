@@ -29,7 +29,6 @@ export const PriceService = {
     async getLatestPrices(): Promise<Record<string, PriceData>> {
         try {
             const ids = Array.from(new Set(Object.values(PRICE_FEEDS)));
-            console.log("Fetching Pyth prices for IDs:", ids);
 
             const response = await axios.get(`${HERMES_URL}/v2/updates/price/latest`, {
                 params: {
@@ -57,7 +56,6 @@ export const PriceService = {
                     }
                 }
             }
-            console.log("Processed prices:", prices);
             return prices;
 
         } catch (error) {

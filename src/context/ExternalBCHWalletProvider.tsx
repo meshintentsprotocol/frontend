@@ -61,6 +61,8 @@ interface ExternalBCHWalletContextType {
 
     /** Build the Cashonize web wallet deep-link for a WC URI. */
     getCashonizeDeepLink: (wcUri: string) => string;
+    /** Build the Paytaca deep-link for a WC or WizardConnect URI. */
+    getPaytacaDeepLink: (uri: string, isWizardConnect: boolean) => string;
 
     /** Cancel an in-progress connection attempt. */
     cancelConnecting: () => void;
@@ -108,6 +110,39 @@ export function useExternalBCHWallet() {
 const WALLETCONNECT_PROJECT_ID = '46eab391b8e623fe273e8b3ed7d45e18';
 const BCH_NAMESPACE = 'bch';
 const STORAGE_KEY = 'ext_bch_wallets';
+
+// Module-level singleton so SignClient.init() is only called once per page load.
+// Both the background restore effect and the connect flow share this instance.
+let _wcClientSingleton: any = null;
+let _wcClientInitPromise: Promise<any> | null = null;
+
+async function getWCClient(): Promise<any> {
+    if (_wcClientSingleton) return _wcClientSingleton;
+    if (_wcClientInitPromise) return _wcClientInitPromise;
+
+    const isLocalhost = typeof window !== 'undefined' &&
+        (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+    const safeUrl = isLocalhost ? 'https://bchintents.com' : window.location.origin;
+
+    const mod = await import('@walletconnect/sign-client');
+    const SignClient = mod.SignClient ?? mod.default;
+
+    _wcClientInitPromise = SignClient.init({
+        projectId: WALLETCONNECT_PROJECT_ID,
+        metadata: {
+            name: 'BCH Intents Protocol',
+            description: 'Intent-based cross-chain swaps on Bitcoin Cash',
+            url: safeUrl,
+            icons: [`${window.location.origin}/assets/bchintentslogo_edited.png`],
+        },
+    }).then((client: any) => {
+        _wcClientSingleton = client;
+        _wcClientInitPromise = null;
+        return client;
+    });
+
+    return _wcClientInitPromise;
+}
 
 function getBchChain(network: BchNetwork): string {
     return network === 'mainnet' ? 'bch:bitcoincash' : 'bch:bchtest';
@@ -161,30 +196,11 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
         let cancelled = false;
 
         (async () => {
-            let SignClient: any;
-            try {
-                const mod = await import('@walletconnect/sign-client');
-                SignClient = mod.SignClient ?? mod.default;
-            } catch {
-                // WalletConnect not installed — silently skip
-                return;
-            }
-
-            const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-            const safeUrl = isLocalhost ? 'https://bchintents.com' : window.location.origin;
-
             let client: any;
             try {
-                client = await SignClient.init({
-                    projectId: WALLETCONNECT_PROJECT_ID,
-                    metadata: {
-                        name: 'BCH Intents Protocol',
-                        description: 'Intent-based cross-chain swaps on Bitcoin Cash',
-                        url: safeUrl,
-                        icons: [`${window.location.origin}/assets/bchintentslogo_edited.png`],
-                    },
-                });
+                client = await getWCClient();
             } catch {
+                // WalletConnect not installed — silently skip
                 return;
             }
 
@@ -235,29 +251,15 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
     const startWalletConnect = useCallback(async (label: string): Promise<string> => {
         setConnecting({ active: true, label, source: 'walletconnect', uri: null });
 
-        let SignClient: any;
+        let client: any;
         try {
-            const mod = await import('@walletconnect/sign-client');
-            SignClient = mod.SignClient ?? mod.default;
+            client = await getWCClient();
         } catch {
             setConnecting({ active: false, label: null, source: null, uri: null });
             throw new Error(
                 'WalletConnect is not installed. Run: npm install @walletconnect/sign-client'
             );
         }
-
-        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        const safeUrl = isLocalhost ? 'https://bchintents.com' : window.location.origin;
-
-        const client = await SignClient.init({
-            projectId: WALLETCONNECT_PROJECT_ID,
-            metadata: {
-                name: 'BCH Intents Protocol',
-                description: 'Intent-based cross-chain swaps on Bitcoin Cash',
-                url: safeUrl,
-                icons: [`${window.location.origin}/assets/bchintentslogo_edited.png`],
-            },
-        });
 
         wcClientRef.current = client;
 
@@ -408,6 +410,12 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
         return `https://cashonize.com/?uri=${encodeURIComponent(wcUri)}`;
     }, []);
 
+    const getPaytacaDeepLink = useCallback((uri: string, isWizardConnect: boolean): string => {
+        return isWizardConnect 
+            ? `paytaca://wizard?uri=${encodeURIComponent(uri)}` 
+            : `paytaca://wc?uri=${encodeURIComponent(uri)}`;
+    }, []);
+
     // ── Cancel / Disconnect ──────────────────────────────────────────────────
 
     const cancelConnecting = useCallback(() => {
@@ -510,6 +518,7 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
             startWizardConnect,
             waitForWizardConnect,
             getCashonizeDeepLink,
+            getPaytacaDeepLink,
             cancelConnecting,
             disconnectWallet,
             disconnectAll,

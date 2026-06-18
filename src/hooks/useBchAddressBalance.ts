@@ -22,40 +22,52 @@ export interface AddressBalance {
 const EMPTY: AddressBalance = { sats: 0, tokens: {} };
 
 // ── Electrum REST endpoints ─────────────────────────────────────────────────
-// These are public, no-auth endpoints that return UTXO-level data.
-const CHIPNET_REST = 'https://chipnet.imaginary.cash';
+// chipnet.imaginary.cash blocks localhost (no CORS headers).
+// chipnet.bch.ninja returns Access-Control-Allow-Origin: * and is the
+// recommended public Chipnet Fulcrum REST for dApp development.
+const CHIPNET_ENDPOINTS = [
+    'https://chipnet.bch.ninja',
+    'https://chipnet.imaginary.cash',    // fallback — may fail on localhost
+];
 const MAINNET_REST = 'https://rest1.biggestfan.net';
 
 /**
  * Fetch the confirmed balance (in sats) for an address via Electrum REST.
  */
 async function fetchBchBalance(address: string, isMainnet: boolean): Promise<number> {
-    const base = isMainnet ? MAINNET_REST : CHIPNET_REST;
+    const endpoints = isMainnet ? [MAINNET_REST] : CHIPNET_ENDPOINTS;
     // Strip the prefix for the REST query if needed
     const addr = address.includes(':') ? address : `bitcoincash:${address}`;
 
-    try {
-        const res = await fetch(`${base}/electrs/address/${encodeURIComponent(addr)}`);
-        if (!res.ok) throw new Error(`REST ${res.status}`);
-        const data = await res.json();
-        // confirmed + unconfirmed
-        const funded = data?.chain_stats?.funded_txo_sum ?? 0;
-        const spent = data?.chain_stats?.spent_txo_sum ?? 0;
-        const mempoolFunded = data?.mempool_stats?.funded_txo_sum ?? 0;
-        const mempoolSpent = data?.mempool_stats?.spent_txo_sum ?? 0;
-        return (funded - spent) + (mempoolFunded - mempoolSpent);
-    } catch (e: any) {
-        console.warn('[useBchAddressBalance] balance fetch failed:', e.message);
-        // Fallback: try the fulcrum balance endpoint
+    for (const base of endpoints) {
         try {
-            const res2 = await fetch(`${base}/electrs/address/${encodeURIComponent(addr)}/utxo`);
-            if (!res2.ok) throw new Error(`UTXO REST ${res2.status}`);
-            const utxos: any[] = await res2.json();
-            return utxos.reduce((sum: number, u: any) => sum + (u.value ?? 0), 0);
+            const res = await fetch(`${base}/electrs/address/${encodeURIComponent(addr)}`);
+            if (!res.ok) throw new Error(`REST ${res.status}`);
+            const data = await res.json();
+            // confirmed + unconfirmed
+            const funded = data?.chain_stats?.funded_txo_sum ?? 0;
+            const spent = data?.chain_stats?.spent_txo_sum ?? 0;
+            const mempoolFunded = data?.mempool_stats?.funded_txo_sum ?? 0;
+            const mempoolSpent = data?.mempool_stats?.spent_txo_sum ?? 0;
+            return (funded - spent) + (mempoolFunded - mempoolSpent);
         } catch {
-            return 0;
+            // try next endpoint
         }
     }
+
+    // Final fallback: try UTXO sum from first endpoint
+    for (const base of endpoints) {
+        try {
+            const res = await fetch(`${base}/electrs/address/${encodeURIComponent(addr)}/utxo`);
+            if (!res.ok) continue;
+            const utxos: any[] = await res.json();
+            return utxos.reduce((sum: number, u: any) => sum + (u.value ?? 0), 0);
+        } catch {
+            // try next
+        }
+    }
+
+    return 0;
 }
 
 /**
@@ -64,25 +76,28 @@ async function fetchBchBalance(address: string, isMainnet: boolean): Promise<num
  * to scanning regular UTXOs for token data.
  */
 async function fetchTokenBalances(address: string, isMainnet: boolean): Promise<Record<string, string>> {
-    const base = isMainnet ? MAINNET_REST : CHIPNET_REST;
+    const endpoints = isMainnet ? [MAINNET_REST] : CHIPNET_ENDPOINTS;
     const addr = address.includes(':') ? address : `bitcoincash:${address}`;
     const tokens: Record<string, string> = {};
 
-    try {
-        const res = await fetch(`${base}/electrs/address/${encodeURIComponent(addr)}/utxo`);
-        if (!res.ok) return tokens;
-        const utxos: any[] = await res.json();
+    for (const base of endpoints) {
+        try {
+            const res = await fetch(`${base}/electrs/address/${encodeURIComponent(addr)}/utxo`);
+            if (!res.ok) continue;
+            const utxos: any[] = await res.json();
 
-        for (const u of utxos) {
-            if (!u.token) continue;
-            const category = u.token.category;
-            if (!category) continue;
-            const amount = BigInt(u.token.amount ?? 0);
-            const prev = BigInt(tokens[category] ?? '0');
-            tokens[category] = (prev + amount).toString();
+            for (const u of utxos) {
+                if (!u.token) continue;
+                const category = u.token.category;
+                if (!category) continue;
+                const amount = BigInt(u.token.amount ?? 0);
+                const prev = BigInt(tokens[category] ?? '0');
+                tokens[category] = (prev + amount).toString();
+            }
+            return tokens; // success, stop iterating
+        } catch {
+            // try next endpoint
         }
-    } catch (e: any) {
-        console.warn('[useBchAddressBalance] token fetch failed:', e.message);
     }
 
     return tokens;
