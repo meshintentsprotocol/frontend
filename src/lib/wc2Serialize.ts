@@ -152,5 +152,6 @@ export async function getDummyUnlocker(address: string) {
     return {
         unlockingBytecode: new Uint8Array(0),
         generateLockingBytecode: () => bytecode,
+        generateUnlockingBytecode: () => new Uint8Array(0),
     } as any;
 }
