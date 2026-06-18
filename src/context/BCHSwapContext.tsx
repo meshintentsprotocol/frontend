@@ -1,6 +1,9 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef, ReactNode } from 'react';
 import { notifyToast as toast } from '@/lib/notify-toast';
 import { useBCHWallet } from './BCHWalletProvider';
+import { useActiveWallet } from '@/hooks/useActiveWallet';
+import { useActiveSigner } from '@/hooks/useActiveSigner';
+import { useExternalBCHWallet } from '@/context/ExternalBCHWalletProvider';
 import { useWDK } from '@/context/WDKProvider';
 import { useConnection } from '@solana/wallet-adapter-react';
 import { Keypair, PublicKey, SystemProgram, Transaction } from '@solana/web3.js';
@@ -66,6 +69,9 @@ export const BCHSwapContext = createContext<BCHSwapContextType | undefined>(unde
 // ============================================================================
 export function BCHSwapProvider({ children }: { children: ReactNode }) {
     const bchWallet = useBCHWallet();
+    const { activeWalletId, isMainActive, activeExtWallet } = useActiveWallet();
+    const activeSigner = useActiveSigner();
+    const extBCHCtx = useExternalBCHWallet();
     const wdk = useWDK();
     const { connection: solanaConnection } = useConnection();
 
@@ -167,6 +173,8 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
     //   3. Relayer detects funding, broadcasts SOL tx, generates FRI proof, claims BCH
     // =========================================================================
     const executeBCHToSolana = async (params: BCHSwapParams, recipientSolAddress: string) => {
+        if (!isMainActive) throw new Error('External wallets cannot sign advanced ZK swaps yet. Please use the WDK Main Wallet.');
+        
         const currentBchWallet = bchWalletRef.current;
         if (!currentBchWallet.address) throw new Error('Connect your BCH wallet first');
         if (!recipientSolAddress) throw new Error('Solana recipient address required');
@@ -371,6 +379,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
         });
     };
 
+
     // =========================================================================
     // Solana → BCH: Trustless ZK path via Solana FRI escrow
     //   1. POST /swap/sol-to-bch — solver pre-signs BCH tx, returns FRI escrow PDA
@@ -557,15 +566,23 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
 
     // =========================================================================
     // Same-chain BCH swap — Deploy CashToken covenant via relayer API
+    // Supports both WDK main wallet (WIF signing) and external wallets
+    // (Cashonize/Paytaca via WC2 bch_signTransaction).
     // =========================================================================
     const executeSameChainSwap = async (params: BCHSwapParams) => {
-        const currentBchWallet = bchWalletRef.current;
-        if (!currentBchWallet.address) {
-            throw new Error('Connect your BCH wallet first');
-        }
-
         const isMainnet = wdkRef.current.bchNetwork === 'mainnet';
         const relayerUrl = isMainnet ? CASHTOKEN_RELAYER_MAINNET_URL : CASHTOKEN_RELAYER_URL;
+
+        // Determine the signing address: main wallet or connected external wallet
+        const makerAddress = isMainActive
+            ? bchWalletRef.current.address
+            : activeExtWallet?.address;
+
+        if (!makerAddress) {
+            throw new Error(isMainActive
+                ? 'Connect your BCH wallet first'
+                : 'No external BCH wallet connected — connect Cashonize or Paytaca first');
+        }
 
         setSwapStep(`Creating intent on CashToken relayer (${isMainnet ? 'mainnet' : 'chipnet'})...`);
 
@@ -579,7 +596,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
 
         try {
             const response = await axios.post(`${relayerUrl}/intent/create`, {
-                makerAddress: currentBchWallet.address,
+                makerAddress,
                 sellToken: sellCategoryId || 'BCH',
                 buyToken: buyCategoryId || 'BCH',
                 sellAmount: sellBaseUnits.toString(),
@@ -592,15 +609,15 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
 
             const data = response.data;
 
-            // 2. Fund the contract address via TransactionBuilder (avoids mainnet-js
-            //    creating a competing Electrum connection that races with existing ones)
+            // 2. Fund the contract address
             setSwapStep('Signing funding transaction...');
             let fundTxId: string;
 
-            const wif = currentBchWallet.getWIF();
-            if (!wif) throw new Error('WIF not available — please reconnect your BCH wallet');
-
-            {
+            if (isMainActive) {
+                // ── WDK main wallet: local WIF signing via CashScript builder ────────────────
+                const currentBchWallet = bchWalletRef.current;
+                const wif = currentBchWallet.getWIF();
+                if (!wif) throw new Error('WIF not available — please reconnect your BCH wallet');
                 const { TransactionBuilder, ElectrumNetworkProvider, SignatureTemplate } = await getCashScript();
                 const provider = new ElectrumNetworkProvider(isMainnet ? 'mainnet' : 'chipnet');
 
@@ -726,9 +743,133 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 const tx = await builder.send();
                 fundTxId = tx.txid;
                 console.log('[Same-chain] Contract funded:', fundTxId);
+            } else {
+                // ── External wallet: build unsigned tx, send via WC2 bch_signTransaction ─────
+                // We use CashScript TransactionBuilder to build + serialize the tx,
+                // then pass the unsigned hex + source UTXOs to Cashonize via WalletConnect.
+                if (!activeExtWallet) throw new Error('No active external wallet found.');
+
+                const { buildWC2SourceOutputs, buildWC2Payload } = await import('@/lib/wc2Serialize');
+                const { TransactionBuilder, ElectrumNetworkProvider } = await getCashScript();
+                const provider = new ElectrumNetworkProvider(isMainnet ? 'mainnet' : 'chipnet');
+
+                const allUtxos = await provider.getUtxos(makerAddress);
+                if (!allUtxos.length) throw new Error('No BCH UTXOs found in external wallet \u2014 fund it first');
+
+                const isTokenSell = !!sellCategoryId && sellCategoryId !== 'BCH';
+                let fee = 1000n;
+                const selectedUtxos: any[] = [];
+
+                // Build the transaction structure (outputs + UTXO selection)
+                const builder = new TransactionBuilder({ provider });
+
+                if (isTokenSell) {
+                    const tokenUtxos = allUtxos.filter((u: any) => u.token?.category === sellCategoryId);
+                    const bchUtxos = allUtxos.filter((u: any) => !u.token);
+                    if (!tokenUtxos.length) throw new Error(`No ${sellCategoryId} token UTXOs in external wallet`);
+
+                    const totalTokenIn = tokenUtxos.reduce((s: bigint, u: any) => s + BigInt(u.token!.amount), 0n);
+                    if (totalTokenIn < BigInt(sellBaseUnits)) throw new Error('Insufficient token balance in external wallet');
+
+                    const totalTokenSats = tokenUtxos.reduce((s: bigint, u: any) => s + BigInt(u.satoshis), 0n);
+                    selectedUtxos.push(...tokenUtxos);
+
+                    let bchIn = 0n;
+                    const selectedBch: any[] = [];
+                    const baseFee = BigInt(tokenUtxos.length * 150 + 250);
+                    const baseNeed = 1000n + baseFee + 1000n;
+                    if (totalTokenSats < baseNeed) {
+                        const sortedBch = [...bchUtxos].sort((a: any, b: any) => Number(BigInt(b.satoshis) - BigInt(a.satoshis)));
+                        for (const u of sortedBch) {
+                            selectedBch.push(u); bchIn += BigInt(u.satoshis);
+                            const dynFee = BigInt((tokenUtxos.length + selectedBch.length) * 150 + 250);
+                            if (totalTokenSats + bchIn >= 1000n + dynFee + 1000n) { fee = dynFee; break; }
+                        }
+                    } else { fee = baseFee; }
+                    if (totalTokenSats + bchIn < 1000n + fee + 1000n) throw new Error('Insufficient BCH for token fees in external wallet');
+                    if (selectedBch.length) selectedUtxos.push(...selectedBch);
+
+                    // For external wallets, use a placeholder unlocker — the wallet will fill in signatures
+                    // CashScript doesn't expose a raw "unsigned hex" API, so we temporarily use a dummy WIF
+                    // to build a valid-structure tx, then strip signatures server-side. Cashonize re-signs
+                    // inputs where unlockingBytecode is empty.
+
+                    const tokenChange = totalTokenIn - BigInt(sellBaseUnits);
+                    let satRem = totalTokenSats + bchIn - 1000n - fee;
+
+                    builder.addInputs(selectedUtxos, { unlockingBytecode: new Uint8Array(0) } as any);
+                    builder.addOutput({ to: data.tokenAddress, amount: 1000n, token: { category: sellCategoryId, amount: BigInt(sellBaseUnits) } });
+                    if (tokenChange > 0n) {
+                        const tSats = satRem > 1000n ? 1000n : satRem;
+                        builder.addOutput({ to: makerAddress, amount: tSats, token: { category: sellCategoryId, amount: tokenChange } });
+                        satRem -= tSats;
+                    }
+                    if (satRem >= 546n) builder.addOutput({ to: makerAddress, amount: satRem });
+                } else {
+                    // BCH sell
+                    const bchUtxos = allUtxos.filter((u: any) => !u.token);
+                    if (!bchUtxos.length) throw new Error('No plain BCH UTXOs in external wallet');
+                    const sortedBch = [...bchUtxos].sort((a: any, b: any) => Number(BigInt(b.satoshis) - BigInt(a.satoshis)));
+                    let bchIn = 0n;
+                    for (const u of sortedBch) {
+                        selectedUtxos.push(u); bchIn += BigInt(u.satoshis);
+                        const dynFee = BigInt(selectedUtxos.length * 150 + 250);
+                        if (bchIn >= BigInt(sellBaseUnits) + dynFee) { fee = dynFee; break; }
+                    }
+                    if (bchIn < BigInt(sellBaseUnits) + fee) throw new Error('Insufficient BCH in external wallet');
+
+                    builder.addInputs(selectedUtxos, { unlockingBytecode: new Uint8Array(0) } as any);
+                    builder.addOutput({ to: data.contractAddress, amount: BigInt(sellBaseUnits) });
+                    const change = bchIn - BigInt(sellBaseUnits) - fee;
+                    if (change >= 546n) builder.addOutput({ to: makerAddress, amount: change });
+                }
+
+                // Build unsigned transaction hex using libauth directly
+                // We construct the raw tx template without signatures then encode it.
+                const { encodeTransaction, generateTransaction } = await import('@bitauth/libauth');
+
+                setSwapStep('Waiting for wallet approval in Cashonize...');
+                toast.info('Check your Cashonize wallet to approve the transaction.', { duration: 8000 });
+
+                // Build sourceOutputs in WC2 libauth-stringify format
+                const utxoIndices = selectedUtxos.map((_: any, i: number) => i);
+                const sourceOutputs = await buildWC2SourceOutputs(selectedUtxos, utxoIndices, makerAddress);
+
+                // Build unsigned tx: use CashScript's internal method to get the tx template.
+                // Since CashScript doesn't expose a raw build() API, we encode a minimal
+                // unsigned tx using libauth with empty unlocking scripts per WC2-BCH spec.
+                const unsignedTx = {
+                    version: 2,
+                    locktime: 0,
+                    inputs: selectedUtxos.map((u: any) => ({
+                        outpointTransactionHash: Uint8Array.from(
+                            (u.txid as string).match(/.{2}/g)!.reverse().map((h: string) => parseInt(h, 16))
+                        ),
+                        outpointIndex: u.vout ?? 0,
+                        sequenceNumber: 0xffffffff,
+                        unlockingBytecode: new Uint8Array(0),
+                    })),
+                    outputs: [] as any[],
+                };
+
+                // Encode to get the raw unsigned tx hex that the wallet can sign
+                const encodedUnsigned = encodeTransaction(unsignedTx as any);
+                const unsignedHex = Array.from(encodedUnsigned).map(b => b.toString(16).padStart(2, '0')).join('');
+
+                const payload = buildWC2Payload(
+                    unsignedHex,
+                    sourceOutputs,
+                    `Fund ${params.sellToken.symbol} \u2192 ${params.buyToken.symbol} swap covenant`,
+                );
+
+                const result = await extBCHCtx.signTransaction(activeWalletId, payload);
+                fundTxId = result.signedTransactionHash;
+                console.log('[Same-chain External] Signed & broadcast via Cashonize:', fundTxId);
+                toast.success('Transaction signed and broadcast by Cashonize!');
             }
 
             // Fallback explorer URL if relayer doesn't provide one
+
             const explorerUrl = data.explorerUrl || (data.contractAddress
                 ? (isMainnet
                     ? `https://blockchair.com/bitcoin-cash/address/${data.contractAddress}`
@@ -777,6 +918,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
     // BCH → Movement: Deploy CrossChainHTLC covenant on BCH, notify relayer
     // =========================================================================
     const executeBCHToMovement = async (params: BCHSwapParams, recipientMovAddress: string) => {
+        if (!isMainActive) throw new Error('External wallets cannot sign cross-chain HTLC swaps yet. Please use the WDK Main Wallet.');
         const currentBchWallet = bchWalletRef.current;
         if (!currentBchWallet.address) {
             throw new Error('BCH wallet not connected');

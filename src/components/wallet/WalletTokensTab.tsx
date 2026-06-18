@@ -4,6 +4,7 @@ import { useBCHWallet } from '@/context/BCHWalletProvider';
 import { useWDK } from '@/context/WDKProvider';
 import { useExternalBCHWallet, type ExternalBCHWallet } from '@/context/ExternalBCHWalletProvider';
 import { useBchAddressBalance } from '@/hooks/useBchAddressBalance';
+import { useActiveWallet } from '@/hooks/useActiveWallet';
 import { Badge } from '@/components/ui/badge';
 import { ArrowUpRight, ArrowDownRight, ArrowDownLeft, ArrowLeftRight, Copy, Check, ChevronDown, Loader2, Wallet, ExternalLink, ShoppingBag, Wifi } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -89,21 +90,9 @@ export function WalletTokensTab({ balanceVisible, activeTokens, loading, onClose
     const [isLoadingDynamic, setIsLoadingDynamic] = useState(false);
     const [expandedKey, setExpandedKey] = useState<string | null>(null);
     const [copiedKey, setCopiedKey] = useState<string | null>(null);
-    // Default to 'main'; if WDK is locked and external wallets exist, switch to first external
-    const [activeWalletId, setActiveWalletId] = useState<string>(
-        !wdk.isInitialized && extBCH.wallets.length > 0 ? extBCH.wallets[0].id : 'main'
-    );
-
-    // When WDK is locked and user is on 'main', switch to first external wallet if available
-    useEffect(() => {
-        if (!wdk.isInitialized && activeWalletId === 'main' && extBCH.wallets.length > 0) {
-            setActiveWalletId(extBCH.wallets[0].id);
-        }
-        // When WDK unlocks, switch back to main
-        if (wdk.isInitialized && !extBCH.wallets.find(w => w.id === activeWalletId)) {
-            setActiveWalletId('main');
-        }
-    }, [wdk.isInitialized, extBCH.wallets.length]);
+    
+    // Global active wallet state
+    const { activeWalletId, setActiveWalletId } = useActiveWallet();
 
     const activeExtWallet = extBCH.wallets.find(w => w.id === activeWalletId);
     

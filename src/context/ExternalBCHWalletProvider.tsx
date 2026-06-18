@@ -67,6 +67,32 @@ interface ExternalBCHWalletContextType {
 
     disconnectWallet: (id: string) => void;
     disconnectAll: () => void;
+
+    /**
+     * Request the external wallet to sign (and optionally broadcast) a raw transaction.
+     * The `payload` must be in WC2-BCH format:
+     *   - transaction: hex-encoded unsigned tx
+     *   - sourceOutputs: UTXOs in libauth-stringify format
+     *   - broadcast: true → wallet broadcasts and returns signedTransactionHash
+     *   - userPrompt: optional label shown in wallet UI
+     *
+     * Returns: { signedTransaction, signedTransactionHash } when broadcast=true
+     */
+    signTransaction: (id: string, payload: WC2SignPayload) => Promise<WC2SignResult>;
+}
+
+/** WC2-BCH bch_signTransaction request payload */
+export interface WC2SignPayload {
+    transaction: string;         // hex-encoded unsigned tx
+    sourceOutputs: unknown[];    // libauth-stringify encoded UTXOs
+    broadcast: boolean;
+    userPrompt?: string;
+}
+
+/** WC2-BCH bch_signTransaction response */
+export interface WC2SignResult {
+    signedTransaction: string;       // hex of the signed tx
+    signedTransactionHash: string;   // txid
 }
 
 const ExternalBCHWalletContext = createContext<ExternalBCHWalletContextType | null>(null);
@@ -285,6 +311,10 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
             sessionTopic: session.topic,
         };
 
+        try {
+            localStorage.setItem('active_bch_wallet_id', newWallet.id);
+        } catch {}
+
         setWallets(prev => [...prev.filter(w => w.address !== address), newWallet]);
         setConnecting({ active: false, label: null, source: null, uri: null });
 
@@ -307,7 +337,7 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
         let DappConnectionManager: any;
         try {
             const mod = await import('@wizardconnect/dapp');
-            DappConnectionManager = mod.DappConnectionManager ?? mod.default;
+            DappConnectionManager = mod.DappConnectionManager ?? (mod as any).default;
         } catch {
             setConnecting({ active: false, label: null, source: null, uri: null });
             throw new Error(
@@ -364,6 +394,10 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
             connected: true,
         };
 
+        try {
+            localStorage.setItem('active_bch_wallet_id', newWallet.id);
+        } catch {}
+
         setWallets(prev => [...prev.filter(w => w.address !== address), newWallet]);
         setConnecting({ active: false, label: null, source: null, uri: null });
     }, []);
@@ -410,6 +444,60 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
         setWallets([]);
     }, [wallets]);
 
+    // ── Transaction Signing ──────────────────────────────────────────────────
+
+    const signTransaction = useCallback(async (id: string, payload: WC2SignPayload): Promise<WC2SignResult> => {
+        const wallet = wallets.find(w => w.id === id);
+        if (!wallet) throw new Error(`Wallet ${id} not found.`);
+
+        if (wallet.source === 'walletconnect') {
+            if (!wallet.sessionTopic || !wcClientRef.current) {
+                throw new Error('WalletConnect session is not active.');
+            }
+
+            // Send bch_signTransaction — Cashonize will show a preview dialog,
+            // the user approves, wallet signs + optionally broadcasts.
+            // Spec: https://github.com/mainnet-pat/wc2-bch-bcr
+            const response = await wcClientRef.current.request({
+                topic: wallet.sessionTopic,
+                chainId: getBchChain(bchNetwork),
+                request: {
+                    method: 'bch_signTransaction',
+                    // WalletConnect params must be JSON-serialisable.
+                    // The sourceOutputs already use the libauth-stringify format
+                    // ('<Uint8Array: 0x...>' / '<bigint: 123n>') produced by wc2Serialize.ts.
+                    params: payload,
+                },
+            }) as any;
+
+            if (response && typeof response === 'object') {
+                const signedTransaction = response.signedTransaction ?? '';
+                const signedTransactionHash = response.signedTransactionHash ?? '';
+                if (signedTransactionHash) {
+                    return { signedTransaction, signedTransactionHash };
+                }
+            }
+
+            throw new Error('Invalid or empty response from WalletConnect bch_signTransaction.');
+
+        } else if (wallet.source === 'wizardconnect') {
+            if (!wizClientRef.current) throw new Error('WizardConnect client is not active.');
+
+            // WizardConnect uses a similar interface; pass the full payload
+            const response = await wizClientRef.current.signTransaction(payload) as any;
+            if (response && response.signedTransactionHash) {
+                return {
+                    signedTransaction: response.signedTransaction ?? '',
+                    signedTransactionHash: response.signedTransactionHash,
+                };
+            }
+
+            throw new Error('Invalid or empty response from WizardConnect signTransaction.');
+        }
+
+        throw new Error('Unsupported external wallet source.');
+    }, [wallets, bchNetwork]);
+
     return (
         <ExternalBCHWalletContext.Provider value={{
             wallets,
@@ -425,6 +513,7 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
             cancelConnecting,
             disconnectWallet,
             disconnectAll,
+            signTransaction,
         }}>
             {children}
         </ExternalBCHWalletContext.Provider>
