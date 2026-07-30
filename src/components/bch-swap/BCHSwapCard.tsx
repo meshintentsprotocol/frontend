@@ -291,11 +291,26 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
     const priceAboveFillable = referenceIsFillable
         && !!limitPrice && Number(limitPrice) > referenceRatio * 1.0005;
 
+    /**
+     * Has the user set the price themselves (typed it, or picked a preset)?
+     *
+     * Needed because the two candidate references do not arrive together: USD mid is
+     * available on mount, the solver quote only after an amount is entered and the
+     * request returns. Seeding on `!limitPrice` alone therefore locked in USD mid and
+     * never replaced it — orders were still created at an unfillable price, which is
+     * exactly what F4 was meant to fix. Observed live: two browser-created orders at
+     * 0.000224 and 0.000220 units/sat against a fillable 0.000218, both rejected.
+     */
+    const [priceTouched, setPriceTouched] = useState(false);
+
+    // A new pair is a new pricing context, so the user's old choice no longer applies.
+    useEffect(() => { setPriceTouched(false); }, [sellToken, buyToken]);
+
     useEffect(() => {
-        if (!limitPrice && referenceRatio > 0 && orderType === 'limit') {
+        if (!priceTouched && referenceRatio > 0 && orderType === 'limit') {
             setLimitPrice(referenceRatio.toFixed(6));
         }
-    }, [referenceRatio, limitPrice, orderType]);
+    }, [referenceRatio, priceTouched, orderType]);
 
     // Market auto-fill: derive buyAmount from current USD spot or relayer quote.
     // Skipped when a same-chain limit order has an explicit limitPrice — the dedicated
@@ -821,7 +836,7 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                             type="number"
                             placeholder="0.00"
                             value={limitPrice}
-                            onChange={e => setLimitPrice(e.target.value)}
+                            onChange={e => { setLimitPrice(e.target.value); setPriceTouched(true); }}
                             inputMode="decimal"
                             className="border-none bg-transparent text-xl sm:text-2xl font-bold p-0 h-auto focus-visible:ring-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none flex-1 min-w-0"
                         />
@@ -832,7 +847,12 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                             <button
                                 key={preset.label}
                                 disabled={referenceRatio <= 0}
-                                onClick={() => referenceRatio > 0 && setLimitPrice((referenceRatio * preset.mult).toFixed(6))}
+                                onClick={() => {
+                                    if (referenceRatio <= 0) return;
+                                    setLimitPrice((referenceRatio * preset.mult).toFixed(6));
+                                    // A preset is a deliberate choice; stop re-seeding over it.
+                                    setPriceTouched(true);
+                                }}
                                 title={preset.mult === 1
                                     ? 'Price this to fill at the current best solver quote'
                                     : `Ask ${Math.round((preset.mult - 1) * 100)}% above the fillable price — rests until the market moves`}
