@@ -12,7 +12,11 @@ import { ChangePasswordModal } from './ChangePasswordModal';
 import { ConnectExternalWalletModal } from './ConnectExternalWalletModal';
 
 import { hasStoredWallet } from '@/lib/crypto';
-import { toast } from 'sonner';
+import { notifyToast as toast } from '@/lib/notify-toast';
+import {
+    setNotifNetwork, markNotificationsSeen, readNotifications, clearNotifications,
+} from '@/lib/notifications';
+import type { StoredNotification } from '@/lib/notifications';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Drawer, DrawerContent } from '@/components/ui/drawer';
@@ -28,59 +32,14 @@ type SubTab = 'tokens' | 'orders' | 'history' | 'addresses';
 // Notifications Panel — Shows captured toast/notification events
 // ============================================================================
 
-const NOTIF_BASE_KEY = 'intent_notifications';
-const getNotifKey = (network: string) => `${NOTIF_BASE_KEY}_${network}`;
-
-// Module-level network tracker — kept in sync by WalletPopup via setNotifNetwork()
-let _activeNetwork = 'chipnet';
-export function setNotifNetwork(network: string) { _activeNetwork = network; }
-
-export interface StoredNotification {
-    id: string;
-    type: 'success' | 'error' | 'info' | 'warning';
-    message: string;
-    description?: string;
-    timestamp: number;
-}
-
-/** Call this alongside toast() to also store the notification for the wallet panel */
-export function pushNotification(type: StoredNotification['type'], message: string, description?: string) {
-    try {
-        const key = getNotifKey(_activeNetwork);
-        const raw = localStorage.getItem(key);
-        const list: StoredNotification[] = raw ? JSON.parse(raw) : [];
-        list.unshift({
-            id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            type,
-            message,
-            description,
-            timestamp: Date.now(),
-        });
-        localStorage.setItem(key, JSON.stringify(list.slice(0, 50)));
-    } catch { /* non-fatal */ }
-}
-
-// ── Unseen-notification tracking ────────────────────────────────────────────
-const getNotifSeenKey = (network: string) => `${NOTIF_BASE_KEY}_seen_${network}`;
-
-/** Mark all current notifications as seen (called while the panel is viewed). */
-export function markNotificationsSeen(network: string) {
-    try { localStorage.setItem(getNotifSeenKey(network), String(Date.now())); } catch { /* non-fatal */ }
-}
-
-/** True when there is at least one notification newer than the last view. */
-export function hasUnseenNotifications(network: string): boolean {
-    try {
-        const raw = localStorage.getItem(getNotifKey(network));
-        if (!raw) return false;
-        const list: StoredNotification[] = JSON.parse(raw);
-        if (!list.length) return false;
-        const seenAt = Number(localStorage.getItem(getNotifSeenKey(network)) || 0);
-        return list.some(n => n.timestamp > seenAt);
-    } catch {
-        return false;
-    }
-}
+// The notification store moved to @/lib/notifications: keeping it here made
+// notify-toast.ts import a component module, which became a real import cycle
+// once this file started using notifyToast itself.
+// Re-exported so existing importers of this module keep working.
+export {
+    setNotifNetwork, pushNotification, markNotificationsSeen, hasUnseenNotifications,
+} from '@/lib/notifications';
+export type { StoredNotification } from '@/lib/notifications';
 
 function getTimeAgo(ts: number): string {
     const diff = Date.now() - ts;
@@ -95,12 +54,8 @@ function NotificationsPanel() {
     const [notifications, setNotifications] = useState<StoredNotification[]>([]);
 
     useEffect(() => {
-        const key = getNotifKey(bchNetwork);
         const load = () => {
-            try {
-                const raw = localStorage.getItem(key);
-                setNotifications(raw ? JSON.parse(raw) : []);
-            } catch { setNotifications([]); }
+            setNotifications(readNotifications(bchNetwork));
             // The panel is visible whenever this runs — keep notifications marked
             // as seen so the navbar's unseen indicator clears.
             markNotificationsSeen(bchNetwork);
@@ -111,7 +66,7 @@ function NotificationsPanel() {
     }, [bchNetwork]);
 
     const clearAll = () => {
-        localStorage.removeItem(getNotifKey(bchNetwork));
+        clearNotifications(bchNetwork);
         setNotifications([]);
     };
 
@@ -445,7 +400,7 @@ export function WalletPopup({ open, onClose, initialTab }: WalletPopupProps) {
 
                     {/* ─── Tab Content ─── */}
                     <div className="flex-1 overflow-y-auto px-3 pb-6 min-h-0" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.08) transparent' }}>
-                        {subTab === 'tokens' && <WalletTokensTab balanceVisible={balanceVisible} activeTokens={activeTokens} loading={portfolioLoading} onClose={onClose} />}
+                        {subTab === 'tokens' && <WalletTokensTab balanceVisible={balanceVisible} activeTokens={activeTokens} loading={portfolioLoading} onClose={onClose} onConnectExternal={() => setShowConnectExt(true)} />}
                         {subTab === 'orders' && <WalletOrdersTab />}
                         {subTab === 'history' && <WalletHistoryTab />}
                         {subTab === 'addresses' && <WalletAddressesTab onChangePassword={() => setShowChangePwd(true)} onConnectExternal={() => setShowConnectExt(true)} />}

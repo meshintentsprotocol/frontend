@@ -3,8 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Button } from '@/components/ui/button';
 import { useWDK } from '@/context/WDKProvider';
 import { ArrowDownLeft, Copy, Check, ExternalLink } from 'lucide-react';
-import { toast } from 'sonner';
-
+import { notifyToast as toast } from '@/lib/notify-toast';
 // ============================================================================
 // ReceiveModal — WDK-powered: shows all derived addresses
 // ============================================================================

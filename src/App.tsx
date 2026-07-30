@@ -1,4 +1,3 @@
-import { Toaster } from "@/components/ui/sonner"
 import { useLanguage } from "@/context/language-provider"
 import { useWallet } from "@/context/wallet-provider"
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom"
@@ -171,7 +170,8 @@ function App() {
                 </WDKProvider>
             </div>
             <PWAUpdatePrompt />
-            <Toaster />
+            {/* <Toaster /> lives in main.tsx only. Mounting it here as well made
+                sonner render every toast twice, since App is inside main's tree. */}
         </Router>
     )
 }

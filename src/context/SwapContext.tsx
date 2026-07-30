@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { toast } from 'sonner';
+import { notifyToast as toast } from '@/lib/notify-toast';
 import { useWallet } from '@/context/wallet-provider'; // Use custom provider
 import { signAndSubmitTransaction as adapterSignTransaction, signMessage as adapterSignMessage } from '@/lib/wallet/adapter';
 import { Aptos, AptosConfig, Network } from "@aptos-labs/ts-sdk";

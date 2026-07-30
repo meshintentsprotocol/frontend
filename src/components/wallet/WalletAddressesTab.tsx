@@ -5,7 +5,7 @@ import { useExternalBCHWallet } from '@/context/ExternalBCHWalletProvider';
 import { useBchAddressBalance } from '@/hooks/useBchAddressBalance';
 import { Button } from '@/components/ui/button';
 import { Copy, ExternalLink, KeyRound, Wallet, Eye, EyeOff, Check, Lock, Loader2, AlertTriangle, BookOpen, Plus, WifiOff, Wifi } from 'lucide-react';
-import { toast } from 'sonner';
+import { notifyToast as toast } from '@/lib/notify-toast';
 import { decryptFromStorage, hasStoredWallet } from '@/lib/crypto';
 import { cn } from '@/lib/utils';
 

@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Info, Search, AlertCircle, ArrowLeft } from "lucide-react";
-import { toast } from "sonner";
+import { notifyToast as toast } from '@/lib/notify-toast';
 import { Link } from 'react-router-dom';
 
 export function AddTokenPage() {

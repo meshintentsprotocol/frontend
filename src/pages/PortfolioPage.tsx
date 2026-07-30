@@ -10,8 +10,7 @@ import { SendModal } from '@/components/portfolio/SendModal';
 import { ReceiveModal } from '@/components/portfolio/ReceiveModal';
 import { Link } from 'react-router-dom';
 import { useState } from 'react';
-import { toast } from 'sonner';
-
+import { notifyToast as toast } from '@/lib/notify-toast';
 // ============================================================================
 // Portfolio Page — /portfolio
 // ============================================================================

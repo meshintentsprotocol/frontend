@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { toast } from 'sonner';
+import { notifyToast as toast } from '@/lib/notify-toast';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { useSwap } from '@/context/SwapContext';
 import { useWallet } from '@/context/wallet-provider';

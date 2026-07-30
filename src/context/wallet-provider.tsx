@@ -2,8 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { AccountInfo, AptosWallet, NetworkInfo, UserResponseStatus } from '@aptos-labs/wallet-standard';
 import { waitForWallet, connectWallet, disconnectWallet, getWalletNetwork, changeWalletNetwork } from '@/lib/wallet/adapter';
 import { DEFAULT_NETWORK, MOVEMENT_CHAIN_IDS, NETWORK_MAP } from '@/lib/wallet/networks';
-import { toast } from 'sonner';
-
+import { notifyToast as toast } from '@/lib/notify-toast';
 interface WalletContextType {
     connected: boolean;
     connecting: boolean;

@@ -5,8 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Wallet, Copy, ExternalLink, Loader2, RefreshCw, Shield, Globe } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { toast } from 'sonner';
-
+import { notifyToast as toast } from '@/lib/notify-toast';
 // ============================================================================
 // BCH Wallet Panel — Dual-mode BCH wallet + Solana wallet status
 // ============================================================================

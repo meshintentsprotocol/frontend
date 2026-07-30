@@ -6,7 +6,7 @@ import { useWDK } from '@/context/WDKProvider';
 import { useBCHWallet } from '@/context/BCHWalletProvider';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { Navigation, Loader2, ChevronLeft, ArrowRight } from 'lucide-react';
-import { toast } from 'sonner';
+import { notifyToast as toast } from '@/lib/notify-toast';
 import { ActivityService } from '@/lib/activity';
 import { USDT_SEPOLIA, USDT_BSC, getEvmConfig } from '@/lib/intentHTLC';
 

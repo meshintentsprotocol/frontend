@@ -8,7 +8,7 @@ import { ArrowRight, ExternalLink, RefreshCw, CheckCircle, Clock, Link as LinkIc
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import axios from 'axios';
-import { toast } from 'sonner';
+import { notifyToast as toast } from '@/lib/notify-toast';
 import { signAndSubmitTransaction } from "@/lib/wallet/adapter";
 import { useCrossChain } from "@/context/CrossChainContext";
 

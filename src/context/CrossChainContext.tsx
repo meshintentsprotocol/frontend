@@ -8,7 +8,7 @@ import axios from 'axios';
 import { CROSS_CHAIN_RELAYER_URL } from '../lib/config';
 import { DEFAULT_NETWORK } from '../lib/wallet/networks';
 import * as anchor from '@coral-xyz/anchor';
-import { toast } from 'sonner';
+import { notifyToast as toast } from '@/lib/notify-toast';
 import { createCloseAccountInstruction, getAssociatedTokenAddress, NATIVE_MINT } from '@solana/spl-token';
 
 interface CrossChainContextType {

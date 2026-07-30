@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useWDK } from '@/context/WDKProvider';
 import { decryptFromStorage } from '@/lib/crypto';
 import { KeyRound, Loader2, X, CheckCircle2, ShieldCheck } from 'lucide-react';
-import { toast } from 'sonner';
+import { notifyToast as toast } from '@/lib/notify-toast';
 import { PasswordInput, PasswordStrengthMeter } from './PasswordInput';
 
 // ============================================================================
