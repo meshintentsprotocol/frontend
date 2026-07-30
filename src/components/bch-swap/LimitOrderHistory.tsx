@@ -2,7 +2,8 @@ import { useEffect, useState, useRef } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { ExternalLink, Clock, CheckCircle2, XCircle, BoxSelect, RefreshCw, Zap, ArrowRight, ChevronLeft, ChevronRight, RotateCcw, Timer, AlertTriangle } from 'lucide-react';
+import { OrderStatusBadge } from './OrderStatusBadge';
+import { ExternalLink, Clock, XCircle, BoxSelect, RefreshCw, Zap, ArrowRight, ChevronLeft, ChevronRight, RotateCcw, Timer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useBCHSwap } from '@/context/BCHSwapContext';
 import { BCHOrder, Token } from '@/types';
@@ -51,23 +52,10 @@ function shortenTx(tx?: string) {
     return `${tx.slice(0, 8)}…${tx.slice(-6)}`;
 }
 
+/** Shared renderer — see OrderStatusBadge.tsx. Was a 10-case switch that called
+ *  `expired` a final state and had no case for `abandoned`. */
 function statusBadge(status: BCHOrder['status']) {
-    const cls = "gap-1 text-xs lg:text-xs";
-    switch (status) {
-        case 'pending': return <Badge variant="outline" className={`border-amber-500/50 text-amber-400 ${cls}`}><Clock className="h-3 w-3 lg:h-3.5 lg:w-3.5" />Pending</Badge>;
-        case 'claimable': return (
-            <Badge variant="outline" className={`border-blue-500/50 text-blue-400 animate-pulse ${cls}`}>
-                <Zap className="h-3 w-3 lg:h-3.5 lg:w-3.5" />Claim Ready
-            </Badge>
-        );
-        case 'claimed': return <Badge variant="outline" className={`border-teal-500/50 text-teal-400 ${cls}`}><CheckCircle2 className="h-3 w-3 lg:h-3.5 lg:w-3.5" />Claimed</Badge>;
-        case 'filled': return <Badge variant="outline" className={`border-emerald-500/50 text-emerald-400 ${cls}`}><CheckCircle2 className="h-3 w-3 lg:h-3.5 lg:w-3.5" />Completed</Badge>;
-        case 'cancelled': return <Badge variant="outline" className={`border-red-500/50 text-red-400 ${cls}`}><XCircle className="h-3 w-3 lg:h-3.5 lg:w-3.5" />Cancelled</Badge>;
-        case 'expired': return <Badge variant="outline" className={`border-gray-500/50 text-gray-400 ${cls}`}><XCircle className="h-3 w-3 lg:h-3.5 lg:w-3.5" />Expired</Badge>;
-        case 'refunded': return <Badge variant="outline" className={`border-orange-500/50 text-orange-400 ${cls}`}><RotateCcw className="h-3 w-3 lg:h-3.5 lg:w-3.5" />Refunded</Badge>;
-        case 'failed': return <Badge variant="outline" className={`border-red-500/50 text-red-400 ${cls}`}><AlertTriangle className="h-3 w-3 lg:h-3.5 lg:w-3.5" />Failed</Badge>;
-        default: return <Badge variant="outline">{status}</Badge>;
-    }
+    return <OrderStatusBadge status={status} className="text-xs lg:text-xs" />;
 }
 
 function swapTypeBadge(order: BCHOrder) {
@@ -128,6 +116,13 @@ function formatDuration(seconds: number): string {
     return `${s}s`;
 }
 
+// BCH's Median-Time-Past lags real wall-clock time by ~2h, and the covenant's
+// cancel() requires tx.time >= expiryTime — so the trustless auto-refund the
+// bot broadcasts on the maker's behalf can't actually go out until MTP catches
+// up to expiryTime, even though real-world expiry already passed.
+// See cashtoken-relayer/docs/unfilled-orders.md §2.
+const MTP_LAG_SECONDS = 7200;
+
 function ElapsedTimer({ order }: { order: BCHOrder }) {
     const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
 
@@ -138,14 +133,31 @@ function ElapsedTimer({ order }: { order: BCHOrder }) {
 
     const createdSec = Math.floor(order.createdAt / 1000);
 
-    // Limit order: show countdown to expiry
+    // Limit order: countdown to expiry, then countdown to the auto-refund
+    // (the relayer broadcasts cancel() on its own once MTP catches up).
     if (order.orderType === 'limit' && order.expiryTime) {
         const remaining = order.expiryTime - now;
-        const isExpired = remaining <= 0;
+        if (remaining > 0) {
+            return (
+                <span className="flex items-center gap-0.5 text-xs tabular-nums text-amber-400/80">
+                    <Timer className="h-2.5 w-2.5 flex-shrink-0" />
+                    expires in {formatDuration(remaining)}
+                </span>
+            );
+        }
+        const refundEta = order.expiryTime + MTP_LAG_SECONDS - now;
+        if (refundEta > 0) {
+            return (
+                <span className="flex items-center gap-0.5 text-xs tabular-nums text-red-400" title="BCH's median-time-past lags real time by ~2h — the trustless refund can't broadcast until MTP catches up to your order's expiry">
+                    <Timer className="h-2.5 w-2.5 flex-shrink-0" />
+                    refund in ~{formatDuration(refundEta)}
+                </span>
+            );
+        }
         return (
-            <span className={`flex items-center gap-0.5 text-xs tabular-nums ${isExpired ? 'text-red-400' : 'text-amber-400/80'}`}>
+            <span className="flex items-center gap-0.5 text-xs tabular-nums text-red-400 animate-pulse">
                 <Timer className="h-2.5 w-2.5 flex-shrink-0" />
-                {isExpired ? 'Expiring…' : `expires in ${formatDuration(remaining)}`}
+                refunding…
             </span>
         );
     }
@@ -178,12 +190,14 @@ function ElapsedTimer({ order }: { order: BCHOrder }) {
 // ============================================================================
 // Order Row — responsive sizing for large screens
 // ============================================================================
-function OrderRow({ order, onClaim, isClaiming, onRefund, isRefunding }: {
+function OrderRow({ order, onClaim, isClaiming, onRefund, isRefunding, onCancel, isCancelling }: {
     order: BCHOrder;
     onClaim?: (id: string) => void;
     isClaiming?: boolean;
     onRefund?: (id: string) => void;
     isRefunding?: boolean;
+    onCancel?: (id: string) => void;
+    isCancelling?: boolean;
 }) {
     const sourceExplorerUrl = order.explorerUrl
         || (order.txid ? `https://chipnet.chaingraph.cash/tx/${order.txid}` : undefined)
@@ -262,6 +276,20 @@ function OrderRow({ order, onClaim, isClaiming, onRefund, isRefunding }: {
                     >
                         <Zap className="h-3 w-3 lg:h-3.5 lg:w-3.5" />
                         {isClaiming ? '...' : 'Claim'}
+                    </Button>
+                )}
+
+                {order.swapType === 'same-chain' && order.orderType === 'limit' && order.status === 'pending' && onCancel && (
+                    <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 lg:h-8 gap-1 border-red-500/50 text-red-400 hover:bg-red-500/10 hover:text-red-300 text-xs font-medium"
+                        onClick={() => onCancel(order.id)}
+                        disabled={isCancelling}
+                        title="Cancel this order now and reclaim your funds — no need to wait for expiry"
+                    >
+                        <XCircle className={`h-3 w-3 lg:h-3.5 lg:w-3.5 ${isCancelling ? 'animate-spin' : ''}`} />
+                        {isCancelling ? '...' : 'Cancel'}
                     </Button>
                 )}
 
@@ -412,12 +440,17 @@ const greenScrollCSS = `
 // Main Component
 // ============================================================================
 export function LimitOrderHistory() {
-    const { pendingOrders, completedOrders, refreshOrders, claimOrder, requestRefund, isLoading } = useBCHSwap();
+    const { pendingOrders, completedOrders, refreshOrders, claimOrder, requestRefund, cancelSameChainOrder, isLoading } = useBCHSwap();
     const [refundingId, setRefundingId] = useState<string | null>(null);
+    const [cancellingId, setCancellingId] = useState<string | null>(null);
 
     const handleRefund = async (orderId: string) => {
         setRefundingId(orderId);
         try { await requestRefund(orderId); } finally { setRefundingId(null); }
+    };
+    const handleCancel = async (orderId: string) => {
+        setCancellingId(orderId);
+        try { await cancelSameChainOrder(orderId); } finally { setCancellingId(null); }
     };
     const [openPage, setOpenPage] = useState(1);
     const [historyPage, setHistoryPage] = useState(1);
@@ -499,6 +532,8 @@ export function LimitOrderHistory() {
                                                     isClaiming={isLoading && refundingId !== order.id}
                                                     onRefund={handleRefund}
                                                     isRefunding={refundingId === order.id}
+                                                    onCancel={handleCancel}
+                                                    isCancelling={cancellingId === order.id}
                                                 />
                                             ))}
                                         </div>

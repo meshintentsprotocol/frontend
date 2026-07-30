@@ -7,7 +7,7 @@ import { useExternalBCHWallet } from '@/context/ExternalBCHWalletProvider';
 import { useWDK } from '@/context/WDKProvider';
 import { useConnection } from '@solana/wallet-adapter-react';
 import { Keypair, PublicKey, SystemProgram, Transaction } from '@solana/web3.js';
-import { BCHSwapParams, BCHSwapType, BCHOrder } from '@/types';
+import { BCHSwapParams, BCHSwapType, BCHOrder, isTerminalOrderStatus, splitOrders } from '@/types';
 import { BCH_SOLANA_RELAYER_URL, CASHTOKEN_RELAYER_URL, CASHTOKEN_RELAYER_MAINNET_URL, SOL_BCH_ZK_SERVER_URL, SOL_BCH_ZK_SERVER_MAINNET_URL } from '@/lib/config';
 import axios from 'axios';
 import * as anchor from '@coral-xyz/anchor';
@@ -75,6 +75,7 @@ interface BCHSwapContextType {
     executeSwap: (params: BCHSwapParams, recipientAddress: string) => Promise<void>;
     claimOrder: (orderId: string) => Promise<void>;
     requestRefund: (orderId: string) => Promise<void>;
+    cancelSameChainOrder: (orderId: string) => Promise<void>;
     refreshOrders: () => Promise<void>;
     detectSwapType: (sellChain?: string, buyChain?: string) => BCHSwapType;
 }
@@ -121,6 +122,8 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
     bchWalletRef.current = bchWallet;
     const solanaWalletRef = useRef(solanaWallet);
     solanaWalletRef.current = solanaWallet;
+    const activeWalletRef = useRef({ isMainActive, activeExtWallet });
+    activeWalletRef.current = { isMainActive, activeExtWallet };
     const [isLoading, setIsLoading] = useState(false);
     const [swapStep, setSwapStep] = useState('');
     const [pendingOrders, setPendingOrders] = useState<BCHOrder[]>([]);
@@ -133,8 +136,11 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
             const saved = localStorage.getItem(key);
             if (saved) {
                 const all: BCHOrder[] = JSON.parse(saved);
-                setPendingOrders(all.filter(o => o.status === 'pending' || o.status === 'claimable'));
-                setCompletedOrders(all.filter(o => o.status !== 'pending' && o.status !== 'claimable'));
+                {
+                    const split = splitOrders(all);
+                    setPendingOrders(split.pending);
+                    setCompletedOrders(split.completed);
+                }
             } else {
                 setPendingOrders([]);
                 setCompletedOrders([]);
@@ -190,6 +196,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
     //   3. Relayer detects funding, broadcasts SOL tx, generates FRI proof, claims BCH
     // =========================================================================
     const executeBCHToSolana = async (params: BCHSwapParams, recipientSolAddress: string) => {
+        const { isMainActive, activeExtWallet } = activeWalletRef.current;
         // if (!isMainActive) throw new Error('External wallets cannot sign advanced ZK swaps yet. Please use the WDK Main Wallet.');
         
         const currentBchWallet = bchWalletRef.current;
@@ -621,6 +628,8 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
         const isMainnet = wdkRef.current.bchNetwork === 'mainnet';
         const relayerUrl = isMainnet ? CASHTOKEN_RELAYER_MAINNET_URL : CASHTOKEN_RELAYER_URL;
 
+        const { isMainActive, activeExtWallet } = activeWalletRef.current;
+
         // Determine the signing address: main wallet or connected external wallet.
         // External wallets (WC2/WizardConnect) sometimes omit the cashaddr prefix
         // (e.g. "qp..."). Normalize so the relayer always gets "bitcoincash:qp..."
@@ -682,7 +691,12 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 const builder = new TransactionBuilder({ provider });
 
                 const isTokenSell = !!sellCategoryId && sellCategoryId !== 'BCH';
-                let fee = 1000n;
+                // Dynamic fee: 2 sat/byte. CashToken inputs ~180 bytes (P2PKH + token prefix),
+                // outputs ~50 bytes (P2PKH + token metadata), overhead 10 bytes.
+                // Prevents "mempool min fee not met" for token-bearing transactions.
+                const estimateFee = (numIn: number, numOut: number) =>
+                    BigInt(Math.ceil((numIn * 180 + numOut * 50 + 10) * 2));
+                let fee = estimateFee(1, 2);
 
                 if (isTokenSell) {
                     // Token sell: pick token UTXOs of this category + BCH UTXOs for fees
@@ -706,7 +720,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                     // Check if token UTXOs alone cover dust + fee + token change dust
                     let bchIn = 0n;
                     const selectedBch: any[] = [];
-                    const baseFee = BigInt(tokenUtxos.length * 150 + 250);
+                    const baseFee = estimateFee(tokenUtxos.length, 3);
                     const baseNeed = 1000n + baseFee + 1000n;
 
                     if (totalTokenSats < baseNeed) {
@@ -718,7 +732,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                         for (const u of sortedBch) {
                             selectedBch.push(u);
                             bchIn += BigInt(u.satoshis);
-                            const dynamicFee = BigInt((tokenUtxos.length + selectedBch.length) * 150 + 250);
+                            const dynamicFee = estimateFee(tokenUtxos.length + selectedBch.length, 3);
                             const needSats = 1000n + dynamicFee + 1000n;
                             if (totalTokenSats + bchIn >= needSats) {
                                 fee = dynamicFee;
@@ -775,7 +789,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                     for (const u of sortedBch) {
                         selectedBch.push(u);
                         bchIn += BigInt(u.satoshis);
-                        const dynamicFee = BigInt(selectedBch.length * 150 + 250);
+                        const dynamicFee = estimateFee(selectedBch.length, 2);
                         if (bchIn >= BigInt(sellBaseUnits) + dynamicFee) {
                             fee = dynamicFee;
                             break;
@@ -811,7 +825,9 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 if (!allUtxos.length) throw new Error('No BCH UTXOs found in external wallet \u2014 fund it first');
 
                 const isTokenSell = !!sellCategoryId && sellCategoryId !== 'BCH';
-                let fee = 1000n;
+                const estimateFee = (numIn: number, numOut: number) =>
+                    BigInt(Math.ceil((numIn * 180 + numOut * 50 + 10) * 2));
+                let fee = estimateFee(1, 2);
                 const selectedUtxos: any[] = [];
                 const dummyUnlocker = await getDummyUnlocker(makerAddress);
 
@@ -831,13 +847,13 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
 
                     let bchIn = 0n;
                     const selectedBch: any[] = [];
-                    const baseFee = BigInt(tokenUtxos.length * 150 + 250);
+                    const baseFee = estimateFee(tokenUtxos.length, 3);
                     const baseNeed = 1000n + baseFee + 1000n;
                     if (totalTokenSats < baseNeed) {
                         const sortedBch = [...bchUtxos].sort((a: any, b: any) => Number(BigInt(b.satoshis) - BigInt(a.satoshis)));
                         for (const u of sortedBch) {
                             selectedBch.push(u); bchIn += BigInt(u.satoshis);
-                            const dynFee = BigInt((tokenUtxos.length + selectedBch.length) * 150 + 250);
+                            const dynFee = estimateFee(tokenUtxos.length + selectedBch.length, 3);
                             if (totalTokenSats + bchIn >= 1000n + dynFee + 1000n) { fee = dynFee; break; }
                         }
                     } else { fee = baseFee; }
@@ -868,7 +884,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                     let bchIn = 0n;
                     for (const u of sortedBch) {
                         selectedUtxos.push(u); bchIn += BigInt(u.satoshis);
-                        const dynFee = BigInt(selectedUtxos.length * 150 + 250);
+                        const dynFee = estimateFee(selectedUtxos.length, 2);
                         if (bchIn >= BigInt(sellBaseUnits) + dynFee) { fee = dynFee; break; }
                     }
                     if (bchIn < BigInt(sellBaseUnits) + fee) throw new Error('Insufficient BCH in external wallet');
@@ -948,9 +964,193 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
     };
 
     // =========================================================================
+    // Same-chain Limit Order: maker-initiated early cancellation
+    //
+    // Unlike a fill, this is entirely maker-side: we reconstruct the exact
+    // LimitOrderSwap covenant this order created, unlock it with the
+    // `cancelEarly(pubkey, sig)` branch (see contracts-bch-swap/docs/
+    // limit-order-early-cancel.md), broadcast directly, then tell the relayer
+    // so it stops watching the address. Fund safety never depends on the
+    // relayer call succeeding — the covenant already guarantees the maker
+    // gets their funds back correctly on-chain.
+    //
+    // Dutch Auctions are intentionally NOT supported here — only cancel()
+    // (post-auction-end) exists for that contract.
+    //
+    // Currently WDK-wallet only. Covenant unlocking needs a real signature
+    // over a custom redeem script, which generic external wallets (Cashonize/
+    // WalletConnect) aren't set up to produce the way they handle plain
+    // P2PKH funding transactions — see getDummyUnlocker in wc2Serialize.ts.
+    // =========================================================================
+    const cancelSameChainOrder = useCallback(async (orderId: string) => {
+        setIsLoading(true);
+        setSwapStep('Cancelling order...');
+        try {
+            const { isMainActive } = activeWalletRef.current;
+            if (!isMainActive) {
+                throw new Error('Early cancellation currently requires the main wallet — external wallets (Cashonize/WalletConnect) are not yet supported for this action.');
+            }
+
+            const key = getOrdersKey(wdkRef.current.bchNetwork);
+            const saved = localStorage.getItem(key);
+            if (!saved) throw new Error('No orders found');
+            const all: BCHOrder[] = JSON.parse(saved);
+            const order = all.find(o => o.id === orderId);
+            if (!order) throw new Error('Order not found');
+            if (order.swapType !== 'same-chain' || order.orderType !== 'limit') {
+                throw new Error('Early cancellation is only available for same-chain Limit Orders.');
+            }
+            if (order.status !== 'pending') {
+                throw new Error(`Cannot cancel — order status is already '${order.status}'.`);
+            }
+            if (!order.contractAddress || !order.intentId) {
+                throw new Error('Order is missing contract details — cannot cancel.');
+            }
+
+            const isMainnet = wdkRef.current.bchNetwork === 'mainnet';
+            const relayerUrl = isMainnet ? CASHTOKEN_RELAYER_MAINNET_URL : CASHTOKEN_RELAYER_URL;
+            const currentBchWallet = bchWalletRef.current;
+            const wif = currentBchWallet.getWIF();
+            if (!wif) throw new Error('WIF not available — please reconnect your BCH wallet');
+            const makerAddress = normalizeBchAddress(currentBchWallet.address!, isMainnet);
+            const makerPk: Uint8Array | undefined =
+                (wdkRef.current.bchWallet as any)?.publicKeyCompressed || (wdkRef.current.bchWallet as any)?.publicKey;
+            if (!makerPk) throw new Error('Could not read wallet public key — please reconnect your BCH wallet');
+
+            const { Contract, ElectrumNetworkProvider, SignatureTemplate, TransactionBuilder } = await getCashScript();
+            const { cashAddressToLockingBytecode } = await import('@bitauth/libauth');
+            const artifactModule = await import('@/lib/LimitOrderSwap.json');
+            const artifact = (artifactModule as any).default || artifactModule;
+
+            const derivePkh = (address: string): Uint8Array => {
+                const result = cashAddressToLockingBytecode(address);
+                if (typeof result === 'string') throw new Error(`Invalid BCH address: ${result}`);
+                const bytecode = result.bytecode;
+                if (bytecode.length === 25 && bytecode[0] === 0x76 && bytecode[1] === 0xa9 && bytecode[2] === 0x14) {
+                    return bytecode.slice(3, 23);
+                }
+                throw new Error('Not a standard P2PKH address');
+            };
+            const reverseHex = (hex: string) => hex.match(/.{2}/g)!.reverse().join('');
+            const stripHex = (s: string) => s.startsWith('0x') ? s.slice(2) : s;
+
+            const makerPkh = derivePkh(makerAddress);
+            const sellCategoryId = order.sellToken.categoryId;
+            const buyCategoryId = order.buyToken.categoryId;
+            const sellCatLE = sellCategoryId ? `0x${reverseHex(stripHex(sellCategoryId))}` : '0x';
+            const buyCatLE = buyCategoryId ? `0x${reverseHex(stripHex(buyCategoryId))}` : '0x';
+            const sellBaseUnits = BigInt(Math.floor(order.sellAmount * Math.pow(10, order.sellToken.decimals || 0)));
+            const buyBaseUnits = BigInt(Math.floor(order.buyAmount * Math.pow(10, order.buyToken.decimals || 0)));
+            const expiryTime = BigInt(order.expiryTime || Math.floor(Date.now() / 1000) + 3600);
+
+            const provider = new ElectrumNetworkProvider(isMainnet ? 'mainnet' : 'chipnet');
+            const contract = new Contract(artifact, [
+                makerPkh, sellCatLE, buyCatLE, sellBaseUnits, buyBaseUnits, expiryTime,
+            ], { provider });
+
+            if (contract.address !== order.contractAddress) {
+                throw new Error('Reconstructed contract does not match the stored order — refusing to cancel to avoid an unsafe transaction.');
+            }
+
+            // The covenant UTXO shows up under either address form (same script) — dedup.
+            const [utxosA, utxosB] = await Promise.all([
+                provider.getUtxos(contract.address),
+                provider.getUtxos(contract.tokenAddress),
+            ]);
+            const seenOutpoints = new Set<string>();
+            const covenantUtxos = [...utxosA, ...utxosB].filter((u: any) => {
+                const k = `${u.txid}:${u.vout}`;
+                if (seenOutpoints.has(k)) return false;
+                seenOutpoints.add(k);
+                return true;
+            });
+            if (!covenantUtxos.length) {
+                throw new Error('No unspent covenant UTXO found — the order may already be filled, refunded, or not yet funded on-chain.');
+            }
+            const covenantUtxo = covenantUtxos[0] as any;
+
+            // Fee-funding input from the maker's own wallet
+            const walletUtxos = await provider.getUtxos(makerAddress);
+            const bchUtxos = walletUtxos.filter((u: any) => !u.token);
+            if (!bchUtxos.length) throw new Error('No plain BCH UTXOs in your wallet to pay the cancellation network fee.');
+            const feeUtxo = [...bchUtxos].sort((a: any, b: any) => Number(BigInt(b.satoshis) - BigInt(a.satoshis)))[0];
+
+            const sigTemplate = new SignatureTemplate(wif);
+            const builder = new TransactionBuilder({ provider });
+            builder.addInput(
+                {
+                    txid: covenantUtxo.txid,
+                    vout: covenantUtxo.vout,
+                    satoshis: BigInt(covenantUtxo.satoshis),
+                    token: covenantUtxo.token
+                        ? { amount: BigInt(covenantUtxo.token.amount), category: stripHex(covenantUtxo.token.category) }
+                        : undefined,
+                },
+                contract.unlock.cancelEarly(makerPk, sigTemplate),
+            );
+            builder.addInput(
+                { txid: feeUtxo.txid, vout: feeUtxo.vout, satoshis: BigInt(feeUtxo.satoshis) },
+                sigTemplate.unlockP2PKH(),
+            );
+
+            const FEE = 1500n;
+            const isBchSell = !sellCategoryId;
+            if (isBchSell) {
+                const totalIn = BigInt(covenantUtxo.satoshis) + BigInt(feeUtxo.satoshis);
+                const change = totalIn - sellBaseUnits - FEE;
+                builder.addOutput({ to: makerAddress, amount: sellBaseUnits });
+                if (change >= 546n) builder.addOutput({ to: makerAddress, amount: change });
+            } else {
+                const change = BigInt(feeUtxo.satoshis) - 1000n - FEE;
+                builder.addOutput({
+                    to: makerAddress,
+                    amount: 1000n,
+                    token: { amount: sellBaseUnits, category: stripHex(sellCategoryId!) },
+                });
+                if (change >= 546n) builder.addOutput({ to: makerAddress, amount: change });
+            }
+
+            setSwapStep('Broadcasting cancellation...');
+            const tx = await builder.send();
+            const cancelTxid = tx.txid;
+            console.log('[Cancel] cancelEarly() broadcast:', cancelTxid);
+
+            // Best-effort: tell the relayer so it stops watching this address and the
+            // order book reflects reality. If this fails, the funds are already safely
+            // back with the maker on-chain — only the relayer's bookkeeping is stale.
+            try {
+                await axios.post(`${relayerUrl}/intent/${order.intentId}/cancel`, { txid: cancelTxid });
+            } catch (notifyErr: any) {
+                console.warn('[Cancel] Relayer notify failed (funds are already safe on-chain):', notifyErr.message);
+            }
+
+            order.status = 'cancelled';
+            order.fillTxid = cancelTxid;
+            order.explorerUrl = buildExplorerUrl(cancelTxid, 'bch');
+            localStorage.setItem(key, JSON.stringify(all));
+            {
+                const split = splitOrders(all);
+                setPendingOrders(split.pending);
+                setCompletedOrders(split.completed);
+            }
+
+            toast.success('Order cancelled — funds returned to your wallet.', {
+                description: `TX: ${cancelTxid.slice(0, 16)}...`,
+            });
+        } catch (e: any) {
+            console.error('[Cancel] Same-chain order cancellation failed:', e);
+            toast.error('Cancellation failed', { description: e.message });
+        } finally {
+            setIsLoading(false);
+            setSwapStep('');
+        }
+    }, []);
+
+    // =========================================================================
     // BCH → Movement: Deploy CrossChainHTLC covenant on BCH, notify relayer
     // =========================================================================
     const executeBCHToMovement = async (params: BCHSwapParams, recipientMovAddress: string) => {
+        const { isMainActive, activeExtWallet } = activeWalletRef.current;
         // if (!isMainActive) throw new Error('External wallets cannot sign cross-chain HTLC swaps yet. Please use the WDK Main Wallet.');
         const currentBchWallet = bchWalletRef.current;
         if (!currentBchWallet.address) {
@@ -1281,6 +1481,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
     // BCH → ETH: Fund StarkVerifierFRIPhaseB P2SH32 covenant, notify bsc-bch-server (ZK, auto-complete)
     // =========================================================================
     const executeBCHToETH = async (params: BCHSwapParams, _recipientAddress: string) => {
+        const { isMainActive, activeExtWallet } = activeWalletRef.current;
         // if (!isMainActive) throw new Error('External wallets cannot sign advanced ZK swaps yet. Please use the WDK Main Wallet.');
         const currentBchWallet = bchWalletRef.current;
         const currentWdk = wdkRef.current;
@@ -1536,8 +1737,15 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
 
             for (const order of all) {
                 if (!order.intentId) continue;
-                // Skip terminal states (refunded is terminal too — the relayer cancel() has burned the covenant)
-                if (['filled', 'cancelled', 'expired', 'refunded'].includes(order.status)) continue;
+                // Derived from TERMINAL_ORDER_STATUSES rather than an inline list.
+                //
+                // 'expired' used to be in that inline list, and must not be: the relayer
+                // uses it for "past the fill window, refund attempted, still retrying".
+                // Skipping it meant the order sat on "Expired" forever and the eventual
+                // 'refunded' was never picked up — the refund landed on-chain and the UI
+                // never said so. 'failed' is likewise non-terminal (funded covenant,
+                // retrying on backoff).
+                if (isTerminalOrderStatus(order.status)) continue;
 
                 try {
                     if (order.swapType === 'eth-to-bch' || order.swapType === 'bch-to-eth') {
@@ -1581,37 +1789,82 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                             // No change, keep pending
                         }
                     } else if (order.swapType === 'same-chain') {
-                        // Poll CashToken relayer — use correct network endpoint
-                        if (order.status !== 'pending') continue;
+                        // Poll the CashToken relayer. Every non-terminal status is polled, not
+                        // just 'pending': an order can legitimately sit in 'active', 'expired'
+                        // (refund retrying) or 'failed' (funded, retrying on backoff) and still
+                        // move afterwards. Gating on 'pending' froze all three.
                         const ctNet = wdkRef.current.bchNetwork;
                         const ctRelayerUrl = ctNet === 'mainnet' ? CASHTOKEN_RELAYER_MAINNET_URL : CASHTOKEN_RELAYER_URL;
                         try {
                             const res = await axios.get(`${ctRelayerUrl}/intent/${order.intentId}`);
                             const intent = res.data;
                             if (intent) {
-                                if (intent.status === 'filled') {
-                                    order.status = 'filled';
-                                    order.fillTxid = intent.fillTxid;
-                                    order.explorerUrl = intent.explorerUrl || (intent.fillTxid
-                                        ? buildExplorerUrl(intent.fillTxid, 'bch')
-                                        : undefined);
-                                    updated = true;
-                                } else if (intent.status === 'refunded') {
-                                    order.status = 'refunded';
-                                    if (intent.fillTxid) {
+                                const prevStatus = order.status;
+
+                                // Mirror the relayer's status directly — it is the source of
+                                // truth and now has states this used to silently drop
+                                // ('abandoned' was unmapped entirely, so those orders polled
+                                // forever showing "pending").
+                                switch (intent.status) {
+                                    case 'filled':
+                                        order.status = 'filled';
                                         order.fillTxid = intent.fillTxid;
-                                        order.destExplorerUrl = intent.explorerUrl || buildExplorerUrl(intent.fillTxid, 'bch');
-                                    }
-                                    updated = true;
-                                } else if (intent.status === 'cancelled' || intent.status === 'expired') {
-                                    order.status = intent.status;
-                                    updated = true;
+                                        order.explorerUrl = intent.fillExplorerUrl || intent.explorerUrl
+                                            || (intent.fillTxid ? buildExplorerUrl(intent.fillTxid, 'bch') : undefined);
+                                        break;
+                                    case 'refunded':
+                                        order.status = 'refunded';
+                                        // The relayer writes refundTxid (not fillTxid) for refunds —
+                                        // reading fillTxid here meant the refund link was always absent.
+                                        order.refundTxid = intent.refundTxid ?? intent.fillTxid;
+                                        if (order.refundTxid) {
+                                            order.destExplorerUrl = intent.fillExplorerUrl
+                                                || buildExplorerUrl(order.refundTxid, 'bch');
+                                        }
+                                        break;
+                                    case 'cancelled':
+                                        order.status = 'cancelled';
+                                        order.cancelTxid = intent.cancelTxid;
+                                        if (order.cancelTxid) {
+                                            order.destExplorerUrl = intent.fillExplorerUrl
+                                                || buildExplorerUrl(order.cancelTxid, 'bch');
+                                        }
+                                        break;
+                                    case 'abandoned':
+                                        // Created but never funded before the relayer's deadline.
+                                        order.status = 'abandoned';
+                                        break;
+                                    case 'expired':
+                                        // NOT terminal: past the fill window with the refund still
+                                        // being retried. Keep polling so 'refunded' is picked up.
+                                        order.status = 'expired';
+                                        break;
+                                    case 'failed':
+                                        order.status = 'failed';
+                                        break;
+                                    case 'active':
+                                    case 'pending':
+                                        order.status = 'pending';
+                                        break;
                                 }
+
+                                // Detail the relayer already tracked but nothing displayed.
+                                order.fillableUntil    = intent.fillableUntil    ?? order.fillableUntil;
+                                order.refundableFrom   = intent.refundableFrom   ?? order.refundableFrom;
+                                order.lastSkipCategory = intent.lastSkipCategory ?? order.lastSkipCategory;
+                                order.lastSkipReason   = intent.lastSkipReason   ?? order.lastSkipReason;
+                                order.routeType        = intent.routeType        ?? order.routeType;
+
+                                if (order.status !== prevStatus) updated = true;
+                                else updated = updated || !!intent.lastSkipReason;
                             }
                         } catch (pollErr: any) {
-                            // 404 = intent not found (relayer restarted / stale localStorage order)
+                            // 404 means the relayer has no record — it keeps a 500-entry ring
+                            // buffer, so an old order ages out. That is not the same as expiry,
+                            // and labelling it 'expired' claimed a covenant state that never
+                            // happened. Mark it unknown and stop polling.
                             if (pollErr?.response?.status === 404) {
-                                order.status = 'expired';
+                                order.status = 'unknown';
                                 updated = true;
                             }
                             // Other errors (network down etc.) → silently skip this cycle
@@ -1724,8 +1977,11 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
 
             if (updated) {
                 localStorage.setItem(ordersKey, JSON.stringify(all));
-                setPendingOrders(all.filter(o => o.status === 'pending' || o.status === 'claimable'));
-                setCompletedOrders(all.filter(o => !['pending', 'claimable'].includes(o.status)));
+                {
+                    const split = splitOrders(all);
+                    setPendingOrders(split.pending);
+                    setCompletedOrders(split.completed);
+                }
             }
         } catch { /* ignore */ }
         finally {
@@ -1997,8 +2253,11 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
             }
 
             localStorage.setItem(claimKey, JSON.stringify(all));
-            setPendingOrders(all.filter(o => o.status === 'pending' || o.status === 'claimable'));
-            setCompletedOrders(all.filter(o => !['pending', 'claimable'].includes(o.status)));
+            {
+                const split = splitOrders(all);
+                setPendingOrders(split.pending);
+                setCompletedOrders(split.completed);
+            }
 
             toast.success('Tokens claimed! 🎉', {
                 description: claimTxid && claimTxid !== 'auto-claim-pending'
@@ -2195,8 +2454,11 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 order.fillTxid = refundTxid;
                 order.destExplorerUrl = refundExplorerUrl;
                 localStorage.setItem(key, JSON.stringify(all));
-                setPendingOrders(all.filter(o => o.status === 'pending' || o.status === 'claimable'));
-                setCompletedOrders(all.filter(o => !['pending', 'claimable'].includes(o.status)));
+                {
+                    const split = splitOrders(all);
+                    setPendingOrders(split.pending);
+                    setCompletedOrders(split.completed);
+                }
 
                 toast.success('Refund successful!', {
                     description: `Tx: ${refundTxid.slice(0, 16)}...`,
@@ -2273,6 +2535,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 executeSwap,
                 claimOrder,
                 requestRefund,
+                cancelSameChainOrder,
                 refreshOrders,
                 detectSwapType,
             }}

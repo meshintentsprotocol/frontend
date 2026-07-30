@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 import { formatCurrency } from '@/lib/coingecko';
 import { ActivityService } from '@/lib/activity';
 import { BCHOrder } from '@/types';
+import { OrderStatusPill } from '@/components/bch-swap/OrderStatusBadge';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 
 const getOrdersKey = (network: string) => `bch_orders_${network}`;
@@ -101,24 +102,9 @@ function CopyableHash({ label, value }: { label: string; value: string }) {
     );
 }
 
+/** Thin wrapper over the shared renderer — see OrderStatusBadge.tsx. */
 function StatusBadge({ status }: { status?: BCHOrder['status'] }) {
-    if (!status) return null;
-    const map: Record<BCHOrder['status'], { label: string; cls: string }> = {
-        pending:   { label: 'Pending',   cls: 'bg-yellow-500/15 text-yellow-400 border-yellow-500/20' },
-        source_locked: { label: 'Source Locked', cls: 'bg-blue-500/15 text-blue-400 border-blue-500/20' },
-        proving:   { label: 'Proving',   cls: 'bg-purple-500/15 text-purple-400 border-purple-500/20' },
-        claimable: { label: 'Claimable', cls: 'bg-blue-500/15 text-blue-400 border-blue-500/20' },
-        claimed:   { label: 'Claimed',   cls: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20' },
-        filled:    { label: 'Filled',    cls: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20' },
-        cancelled: { label: 'Cancelled', cls: 'bg-red-500/15 text-red-400 border-red-500/20' },
-        expired:   { label: 'Expired',   cls: 'bg-zinc-500/15 text-zinc-400 border-zinc-500/20' },
-        refunded:  { label: 'Refunded',  cls: 'bg-orange-500/15 text-orange-400 border-orange-500/20' },
-        failed:    { label: 'Failed',    cls: 'bg-red-500/15 text-red-400 border-red-500/20' },
-    };
-    const { label, cls } = map[status];
-    return (
-        <span className={cn('text-[10px] font-semibold px-2 py-0.5 rounded-full border', cls)}>{label}</span>
-    );
+    return <OrderStatusPill status={status} />;
 }
 
 function TxDetailDialog({ tx, onClose }: { tx: MergedActivity; onClose: () => void }) {

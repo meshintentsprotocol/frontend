@@ -2,29 +2,25 @@ import { useEffect, useState } from 'react';
 import { useBCHSwap } from '@/context/BCHSwapContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
+import { statusMeta } from '@/lib/orderStatus';
 import { Button } from '@/components/ui/button';
-import { Clock, CheckCircle2, XCircle, ExternalLink, RefreshCw, ArrowRight, Loader2, RotateCcw, AlertTriangle } from 'lucide-react';
+import { Clock, XCircle, ExternalLink, RefreshCw, ArrowRight, RotateCcw } from 'lucide-react';
 import { BCHOrder } from '@/types';
 
 // ============================================================================
 // BCH Order Tracker — Shows pending and completed BCH swap orders
 // ============================================================================
 
-function OrderRow({ order, onRefund, isRefunding }: { order: BCHOrder; onRefund?: (id: string) => void; isRefunding?: boolean }) {
-    const statusConfig: Record<string, { icon: React.ReactNode; badge: 'default' | 'secondary' | 'destructive' | 'outline'; label: string }> = {
-        pending:       { icon: <Loader2 className="h-3.5 w-3.5 animate-spin text-yellow-400" />, badge: 'default', label: 'Pending' },
-        source_locked: { icon: <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-400" />, badge: 'default', label: 'Funds Locked' },
-        proving:       { icon: <Loader2 className="h-3.5 w-3.5 animate-spin text-purple-400" />, badge: 'default', label: 'Generating Proof' },
-        claimable:     { icon: <CheckCircle2 className="h-3.5 w-3.5 text-blue-400 animate-pulse" />, badge: 'default', label: 'Claim Ready' },
-        claimed:       { icon: <CheckCircle2 className="h-3.5 w-3.5 text-teal-400" />, badge: 'secondary', label: 'Claimed' },
-        filled:        { icon: <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />, badge: 'secondary', label: 'Completed' },
-        cancelled:     { icon: <XCircle className="h-3.5 w-3.5 text-red-400" />, badge: 'destructive', label: 'Cancelled' },
-        expired:       { icon: <Clock className="h-3.5 w-3.5 text-muted-foreground" />, badge: 'outline', label: 'Expired' },
-        refunded:      { icon: <RotateCcw className="h-3.5 w-3.5 text-orange-400" />, badge: 'outline', label: 'Refunded' },
-        failed:        { icon: <AlertTriangle className="h-3.5 w-3.5 text-red-400" />, badge: 'destructive', label: 'Failed' },
-    };
-
-    const config = statusConfig[order.status] || statusConfig.pending;
+function OrderRow({ order, onRefund, isRefunding, onCancel, isCancelling }: {
+    order: BCHOrder;
+    onRefund?: (id: string) => void;
+    isRefunding?: boolean;
+    onCancel?: (id: string) => void;
+    isCancelling?: boolean;
+}) {
+    // Shared status metadata — see OrderStatusBadge.tsx.
+    const config = statusMeta(order.status);
     const timeAgo = getTimeAgo(order.createdAt);
 
     const swapTypeBadge: Record<string, React.ReactNode> = {
@@ -54,7 +50,20 @@ function OrderRow({ order, onRefund, isRefunding }: { order: BCHOrder; onRefund?
                 </div>
             </div>
             <div className="flex items-center gap-2">
-                <Badge variant={config.badge} className="text-[10px]">{config.label}</Badge>
+                <Badge variant="outline" title={config.hint} className={cn("text-[10px]", config.cls)}>{config.label}</Badge>
+                {order.swapType === 'same-chain' && order.orderType === 'limit' && order.status === 'pending' && onCancel && (
+                    <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 px-2 text-[10px] gap-1 text-red-400 hover:text-red-300 hover:bg-red-500/10"
+                        onClick={() => onCancel(order.id)}
+                        disabled={isCancelling}
+                        title="Cancel this order now and reclaim your funds — no need to wait for expiry"
+                    >
+                        <XCircle className={`h-3 w-3 ${isCancelling ? 'animate-spin' : ''}`} />
+                        {isCancelling ? '...' : 'Cancel'}
+                    </Button>
+                )}
                 {order.status === 'failed' && onRefund && (order.swapType === 'bch-to-sol' || order.swapType === 'sol-to-bch') && (
                     <Button
                         size="sm"
@@ -105,12 +114,17 @@ function getTimeAgo(timestamp: number): string {
 }
 
 export function BCHOrderTracker() {
-    const { pendingOrders, completedOrders, refreshOrders, requestRefund, isLoading } = useBCHSwap();
+    const { pendingOrders, completedOrders, refreshOrders, requestRefund, cancelSameChainOrder, isLoading } = useBCHSwap();
     const [refundingId, setRefundingId] = useState<string | null>(null);
+    const [cancellingId, setCancellingId] = useState<string | null>(null);
 
     const handleRefund = async (orderId: string) => {
         setRefundingId(orderId);
         try { await requestRefund(orderId); } finally { setRefundingId(null); }
+    };
+    const handleCancel = async (orderId: string) => {
+        setCancellingId(orderId);
+        try { await cancelSameChainOrder(orderId); } finally { setCancellingId(null); }
     };
 
     // Poll faster (8s) when any pending order is an active ZK swap (proof can complete in 30-60s).
@@ -166,6 +180,8 @@ export function BCHOrderTracker() {
                                 order={order}
                                 onRefund={handleRefund}
                                 isRefunding={refundingId === order.id}
+                                onCancel={handleCancel}
+                                isCancelling={cancellingId === order.id}
                             />
                         ))}
                     </div>

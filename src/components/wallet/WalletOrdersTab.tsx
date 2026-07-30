@@ -2,8 +2,10 @@ import { useEffect } from 'react';
 import { useBCHSwapOptional } from '@/context/BCHSwapContext';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Clock, CheckCircle2, XCircle, ExternalLink, RefreshCw, ArrowRight, Loader2, RotateCcw } from 'lucide-react';
+import { Clock, ExternalLink, RefreshCw, ArrowRight } from 'lucide-react';
 import { BCHOrder } from '@/types';
+import { cn } from '@/lib/utils';
+import { statusMeta } from '@/lib/orderStatus';
 
 // ============================================================================
 // Wallet Orders Tab — Reuses BCHOrderTracker logic in popup layout
@@ -19,17 +21,8 @@ function getTimeAgo(timestamp: number): string {
 }
 
 function OrderRow({ order }: { order: BCHOrder }) {
-    const statusConfig: Record<string, { icon: React.ReactNode; badge: 'default' | 'secondary' | 'destructive' | 'outline'; label: string }> = {
-        pending: { icon: <Loader2 className="h-3 w-3 animate-spin text-yellow-400" />, badge: 'default', label: 'Pending' },
-        claimable: { icon: <CheckCircle2 className="h-3 w-3 text-blue-400 animate-pulse" />, badge: 'default', label: 'Claim' },
-        claimed: { icon: <CheckCircle2 className="h-3 w-3 text-teal-400" />, badge: 'secondary', label: 'Claimed' },
-        filled: { icon: <CheckCircle2 className="h-3 w-3 text-emerald-400" />, badge: 'secondary', label: 'Filled' },
-        cancelled: { icon: <XCircle className="h-3 w-3 text-red-400" />, badge: 'destructive', label: 'Cancelled' },
-        expired: { icon: <Clock className="h-3 w-3 text-muted-foreground" />, badge: 'outline', label: 'Expired' },
-        refunded: { icon: <RotateCcw className="h-3 w-3 text-orange-400" />, badge: 'outline', label: 'Refunded' },
-    };
-
-    const config = statusConfig[order.status] || statusConfig.pending;
+    // Shared status metadata — see OrderStatusBadge.tsx.
+    const config = statusMeta(order.status);
     const swapLabels: Record<string, string> = {
         'same-chain': 'Same Chain',
         'bch-to-sol': 'BCH → SOL',
@@ -77,7 +70,7 @@ function OrderRow({ order }: { order: BCHOrder }) {
                 </div>
             </div>
             <div className="flex items-center gap-1.5 flex-shrink-0">
-                <Badge variant={config.badge} className="text-[9px] h-4 px-1.5">{config.label}</Badge>
+                <Badge variant="outline" title={config.hint} className={cn('text-[9px] h-4 px-1.5', config.cls)}>{config.label}</Badge>
                 {(() => {
                     // Refunded orders: point at the refund tx (lives on destExplorerUrl/fillTxid), not the funding tx.
                     const explorerHref = order.status === 'refunded'
