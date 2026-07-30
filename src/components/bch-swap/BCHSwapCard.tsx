@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
     ArrowDown, Loader2, Zap, Globe, AlertTriangle, Settings2, History,
-    Sparkles, ChevronDown, ChevronUp,
+    Sparkles, ChevronDown, ChevronUp, Wallet, ShoppingBag
 } from 'lucide-react';
 import { Token, BCHSwapParams, BCHSwapType, BCHOrderType } from '@/types';
 import { BCHTokenSelector, BCH_TOKENS, SOLANA_TOKENS, ETH_TOKENS, ALL_BCH_SWAP_TOKENS, MAINNET_SWAP_TOKENS } from './BCHTokenSelector';
@@ -19,12 +19,14 @@ import { PriceService, PRICE_FEEDS } from '@/lib/pyth';
 import { CauldronService } from '@/lib/cauldron';
 import { CASHTOKEN_RELAYER_URL, CASHTOKEN_RELAYER_MAINNET_URL, EVM_RELAYER_URL, EVM_RELAYER_MAINNET_URL, SOL_BCH_ZK_SERVER_URL, SOL_BCH_ZK_SERVER_MAINNET_URL } from '@/lib/config';
 import axios from 'axios';
-import { getDefaultAuctionDuration } from '@/lib/appSettings';
+import { AUCTION_DURATION, AUCTION_DURATION_PRESETS, formatAuctionDuration, getDefaultAuctionDuration } from '@/lib/appSettings';
 import { PriceData } from '@/types';
 import { cn } from '@/lib/utils';
 import {
     Popover, PopoverContent, PopoverTrigger,
 } from '@/components/ui/popover';
+import { useActiveWallet } from '@/hooks/useActiveWallet';
+import { useExternalBCHWallet } from '@/context/ExternalBCHWalletProvider';
 
 // ============================================================================
 // BCH Swap Card — Uniswap-style unified swap card
@@ -52,16 +54,30 @@ export interface BCHSwapCardProps {
     transparent?: boolean;
 }
 
+/** Limit-order expiry is capped at 30 days (2592000s) — both the presets below and the custom input. */
+const EXPIRY_MAX_SECONDS = 2592000;
+
 const EXPIRY_PRESETS = [
     { value: '3600', label: '1H' },
     { value: '86400', label: '1D' },
     { value: '604800', label: '7D' },
-    { value: '2592000', label: '30D' },
-    { value: 'forever', label: '∞' },
+    { value: String(EXPIRY_MAX_SECONDS), label: '30D' },
 ];
 
+/**
+ * Limit-price presets, as multiples of the reference ratio.
+ *
+ * The reference is the relayer's quote — the price a solver will actually fill at —
+ * not USD mid. These used to be multiples of mid, labelled "Market, +1%, +5%, +10%",
+ * where every option was at-or-worse-than-mid from the solver's side and therefore
+ * unfillable. "Market" in particular sat exactly on the profit floor and never filled.
+ *
+ * Anything above 1× asks for more buyToken than a solver will currently pay, so it
+ * rests until the market moves — which is a legitimate thing to want from a limit
+ * order, just not a sensible default.
+ */
 const PRICE_PRESETS = [
-    { label: 'Market', mult: 1 },
+    { label: 'Fills now', mult: 1 },
     { label: '+1%', mult: 1.01 },
     { label: '+5%', mult: 1.05 },
     { label: '+10%', mult: 1.10 },
@@ -101,6 +117,7 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
     const [buyAmount, setBuyAmount] = useState('');
 
     const [duration, setDuration] = useState(() => getDefaultAuctionDuration());
+    const durationPct = ((duration - AUCTION_DURATION.min) / (AUCTION_DURATION.max - AUCTION_DURATION.min)) * 100;
     const [limitPrice, setLimitPrice] = useState<string>('');
     const [expiryValue, setExpiryValue] = useState<string>('86400');
     const [customExpiryValue, setCustomExpiryValue] = useState<string>('');
@@ -114,6 +131,8 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
     const [flipping, setFlipping] = useState(false);
     const [routeExpanded, setRouteExpanded] = useState(false);
 
+    const { activeWalletId, setActiveWallet, isMainActive, activeExtWallet } = useActiveWallet();
+    const extBCH = useExternalBCHWallet();
     const bchWallet = useBCHWallet();
     const { detectSwapType, executeSwap, isLoading, swapStep } = useBCHSwap();
     const wdk = useWDK();
@@ -206,6 +225,7 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
         return 0;
     }, [prices, cauldronPrices]);
 
+    /** USD mid from Pyth/CoinGecko. Indicative only — the solver does not trade at this. */
     const currentMarketRatio = useMemo(() => {
         const sellPrice = getTokenPrice(sellToken);
         const buyPrice = getTokenPrice(buyToken);
@@ -213,11 +233,69 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
         return 0;
     }, [sellToken, buyToken, getTokenPrice]);
 
+    /**
+     * The ratio a solver will actually fill at, from the relayer's own quote.
+     *
+     * This matters because the two numbers are not the same. `currentMarketRatio` is
+     * USD mid with no solver margin, and limit orders used to be seeded from it — so
+     * the default limit order sat exactly at mid, below the solver's profit floor,
+     * and could never fill. The relayer's quote already nets off its margin *and*
+     * (since the recent relayer work) the on-chain fill costs, so a price anchored
+     * here is genuinely fillable.
+     *
+     * 0 while unknown — no quote yet, cross-chain, or the relayer is unreachable.
+     */
+    const [fillableRatio, setFillableRatio] = useState(0);
+    const [quoteUnavailable, setQuoteUnavailable] = useState(false);
+
     useEffect(() => {
-        if (!limitPrice && currentMarketRatio > 0 && orderType === 'limit') {
-            setLimitPrice(currentMarketRatio.toFixed(6));
+        if (swapType !== 'same-chain' || !sellAmount || Number(sellAmount) <= 0) {
+            setFillableRatio(0);
+            setQuoteUnavailable(false);
+            return;
         }
-    }, [currentMarketRatio, limitPrice, orderType]);
+        let cancelled = false;
+        const isMainnet = wdk.bchNetwork === 'mainnet';
+        const relayerUrl = isMainnet ? CASHTOKEN_RELAYER_MAINNET_URL : CASHTOKEN_RELAYER_URL;
+        const sellCategoryId = sellToken.categoryId || 'BCH';
+        const buyCategoryId = buyToken.categoryId || 'BCH';
+        const sellBaseUnits = Math.floor(Number(sellAmount) * Math.pow(10, sellToken.decimals || 0));
+
+        axios.post(`${relayerUrl}/router/quote`, {
+            sellToken: sellCategoryId || 'BCH',
+            buyToken: buyCategoryId || 'BCH',
+            sellAmount: sellBaseUnits.toString(),
+            network: isMainnet ? 'mainnet' : 'chipnet',
+        }).then(res => {
+            if (cancelled) return;
+            const units = Number(res.data?.buyAmount ?? 0) / Math.pow(10, buyToken.decimals || 0);
+            setFillableRatio(units > 0 ? units / Number(sellAmount) : 0);
+            setQuoteUnavailable(false);
+        }).catch(() => {
+            if (cancelled) return;
+            setFillableRatio(0);
+            setQuoteUnavailable(true);
+        });
+        return () => { cancelled = true; };
+    }, [swapType, sellAmount, sellToken, buyToken, wdk.bchNetwork]);
+
+    /** What the limit-price input and its presets are anchored to. */
+    const referenceRatio = fillableRatio > 0 ? fillableRatio : currentMarketRatio;
+    const referenceIsFillable = fillableRatio > 0;
+
+    /**
+     * A limit price above the reference asks for MORE buyToken per sellToken than a
+     * solver will pay, so it will not fill until the market moves. Small tolerance so
+     * the "Fills now" preset does not immediately warn about itself.
+     */
+    const priceAboveFillable = referenceIsFillable
+        && !!limitPrice && Number(limitPrice) > referenceRatio * 1.0005;
+
+    useEffect(() => {
+        if (!limitPrice && referenceRatio > 0 && orderType === 'limit') {
+            setLimitPrice(referenceRatio.toFixed(6));
+        }
+    }, [referenceRatio, limitPrice, orderType]);
 
     // Market auto-fill: derive buyAmount from current USD spot or relayer quote.
     // Skipped when a same-chain limit order has an explicit limitPrice — the dedicated
@@ -248,6 +326,7 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                 }
             }).catch(e => {
                 console.error("Failed to get quote from relayer", e);
+                setBuyAmount('0'); // Relayer unreachable/paused — don't leave a stale buyAmount on screen
             });
             return;
         }
@@ -368,7 +447,10 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
     const needsBCHWallet = sellToken.chain === 'bch' || buyToken.chain === 'bch';
     const needsSolanaWallet = sellToken.chain === 'solana' || buyToken.chain === 'solana';
     const needsEthWallet = isEvmChain(sellToken.chain) || isEvmChain(buyToken.chain);
-    const bchConnected = bchWallet.connected;
+    
+    // bchConnected represents if there's any active BCH wallet
+    const bchConnected = isMainActive ? bchWallet.connected : !!activeExtWallet;
+    
     const solanaConnected = !!wdk.solanaAddress;
     const ethConnected = !!wdk.evmAddress;
 
@@ -390,9 +472,10 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
         const num = parseFloat(match[1]);
         if (isNaN(num)) return 3600;
         const unit = match[2];
-        if (unit?.startsWith('h')) return Math.floor(num * 3600);
-        if (unit?.startsWith('d')) return Math.floor(num * 86400);
-        return Math.floor(num * 60); // default to minutes
+        const seconds = unit?.startsWith('h') ? num * 3600
+            : unit?.startsWith('d') ? num * 86400
+            : num * 60; // default to minutes
+        return Math.min(EXPIRY_MAX_SECONDS, Math.max(60, Math.floor(seconds)));
     };
 
     const handleSwap = async () => {
@@ -403,9 +486,8 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
             swapType, orderType,
             duration: orderType === 'market' ? duration : undefined,
             expiryTime: orderType === 'limit'
-                ? (expiryValue === 'forever' ? 4102444800 
-                  : expiryValue === 'custom' ? Math.floor(Date.now() / 1000) + parseCustomExpiry(customExpiryValue)
-                  : Math.floor(Date.now() / 1000) + parseInt(expiryValue))
+                ? (expiryValue === 'custom' ? Math.floor(Date.now() / 1000) + parseCustomExpiry(customExpiryValue)
+                  : Math.floor(Date.now() / 1000) + Math.min(EXPIRY_MAX_SECONDS, parseInt(expiryValue)))
                 : undefined,
             xmr: swapType === 'bch-to-xmr'
                 ? { viewKey: xmrViewKey, spendKey: xmrSpendKey } : undefined,
@@ -453,8 +535,15 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
         if (sellToken.chain === 'bch' && bchConnected && sellToken.type === 'native') {
             return bchWallet.balance / 1e8;
         }
-        if (sellToken.chain === 'bch' && bchConnected && sellToken.type && bchWallet.tokenBalances[sellToken.type]) {
+        if (sellToken.chain === 'bch' && bchConnected && isMainActive && sellToken.type && bchWallet.tokenBalances[sellToken.type]) {
             return Number(bchWallet.tokenBalances[sellToken.type]) / Math.pow(10, sellToken.decimals || 0);
+        }
+        // If an external wallet is active, we don't have token balances immediately available in the provider yet
+        if (sellToken.chain === 'bch' && activeExtWallet) {
+            // Note: In the future, we should fetch token balances for external wallets.
+            // For now, allow swap but don't show max balance accurately if it's a token
+            if (sellToken.type === 'native') return 0; // we don't track native balance in external provider currently either, fallback
+            return null;
         }
         // EVM (ETH/USDC/USDT) and Solana (SOL/USDC) — look up in portfolio
         const portfolioChain = sellToken.chain ? PORTFOLIO_CHAIN[sellToken.chain] : undefined;
@@ -501,9 +590,16 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                     ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> {swapStep || 'Processing…'}</>
                     : orderType === 'limit'
                         ? `Place limit · ${sellToken.symbol} → ${buyToken.symbol}`
-                        : `Swap ${sellToken.symbol} → ${buyToken.symbol}`}
+                        : (!isMainActive && swapType === 'same-chain')
+                            ? `Sign ${sellToken.symbol} → ${buyToken.symbol} (External Wallet)`
+                            : `Swap ${sellToken.symbol} → ${buyToken.symbol}`}
             </Button>
         );
+    };
+
+    const formatAddress = (addr: string) => {
+        if (addr.length <= 16) return addr;
+        return `${addr.slice(0, 12)}...${addr.slice(-6)}`;
     };
 
     return (
@@ -541,6 +637,67 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                 </div>
 
                 <div className="flex items-center gap-1">
+                    {/* Wallet Selector Dropdown */}
+                    {((bchWallet.connected && bchWallet.address ? 1 : 0) + extBCH.wallets.length > 1) && (
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <button className={cn(
+                                    "flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-xs font-bold transition-all",
+                                    isMainActive 
+                                        ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"
+                                        : "bg-blue-500/15 text-blue-300 border border-blue-500/30"
+                                )}>
+                                    {isMainActive 
+                                        ? <Wallet className="h-3.5 w-3.5 text-emerald-400" />
+                                        : <ShoppingBag className="h-3.5 w-3.5 text-blue-400" />
+                                    }
+                                    <span className="truncate max-w-[80px]">
+                                        {isMainActive ? 'Main Wallet' : (activeExtWallet?.label || 'External')}
+                                    </span>
+                                    <ChevronDown className="h-3 w-3 opacity-50" />
+                                </button>
+                            </PopoverTrigger>
+                            <PopoverContent align="end" className="w-56 bg-[#0a0a0a]/95 backdrop-blur-xl border border-white/10 rounded-2xl p-2 text-xs">
+                                <div className="space-y-1">
+                                    <p className="px-2 py-1.5 text-[10px] uppercase tracking-wider text-white/40 font-semibold">Active BCH Wallet</p>
+                                    
+                                    {bchWallet.connected && bchWallet.address && (
+                                        <button
+                                            onClick={() => setActiveWallet('main')}
+                                            className={cn(
+                                                "w-full flex items-center justify-between px-2.5 py-2 rounded-xl transition-colors",
+                                                isMainActive ? "bg-emerald-500/10 text-emerald-300" : "hover:bg-white/[0.06] text-white/80"
+                                            )}
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <Wallet className={cn("h-3.5 w-3.5", isMainActive ? "text-emerald-400" : "text-white/40")} />
+                                                <span>Main Wallet</span>
+                                            </div>
+                                            <span className="text-[10px] opacity-60 font-mono">{formatAddress(bchWallet.address)}</span>
+                                        </button>
+                                    )}
+
+                                    {extBCH.wallets.map((w, idx) => (
+                                        <button
+                                            key={w.id}
+                                            onClick={() => setActiveWallet(w.id)}
+                                            className={cn(
+                                                "w-full flex items-center justify-between px-2.5 py-2 rounded-xl transition-colors",
+                                                activeWalletId === w.id ? "bg-blue-500/10 text-blue-300" : "hover:bg-white/[0.06] text-white/80"
+                                            )}
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <ShoppingBag className={cn("h-3.5 w-3.5", activeWalletId === w.id ? "text-blue-400" : "text-white/40")} />
+                                                <span>{w.label}</span>
+                                            </div>
+                                            <span className="text-[10px] opacity-60 font-mono">{formatAddress(w.address)}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </PopoverContent>
+                        </Popover>
+                    )}
+
                     {/* Network toggle pill */}
                     <button
                         onClick={toggleNetwork}
@@ -582,17 +739,48 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                         <div className="space-y-3">
                             <p className="text-xs uppercase tracking-wider text-white/40 font-semibold">Settings</p>
                             {orderType === 'market' && (
-                                <div className="space-y-2">
+                                <div className="space-y-2.5">
                                     <div className="flex items-center justify-between">
-                                        <span className="text-white/60">Auction duration</span>
-                                        <span className="font-mono text-white">{Math.floor(duration / 60)}m {duration % 60}s</span>
+                                        <span className="text-white/60 flex items-center gap-1.5">
+                                            <Zap className="h-3 w-3 text-emerald-400" />
+                                            Auction duration
+                                        </span>
+                                        <span className="font-mono text-[11px] font-bold text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md tabular-nums">
+                                            {formatAuctionDuration(duration)}
+                                        </span>
                                     </div>
+
                                     <input
-                                        type="range" min={60} max={3600} step={60}
+                                        type="range"
+                                        min={AUCTION_DURATION.min}
+                                        max={AUCTION_DURATION.max}
+                                        step={AUCTION_DURATION.step}
                                         value={duration}
                                         onChange={e => setDuration(Number(e.target.value))}
-                                        className="w-full accent-emerald-500"
+                                        style={{
+                                            background: `linear-gradient(to right, #10b981 ${durationPct}%, rgba(255,255,255,0.08) ${durationPct}%)`,
+                                        }}
+                                        className="defi-range w-full"
                                     />
+
+                                    <div className="flex gap-1">
+                                        {AUCTION_DURATION_PRESETS.map(p => (
+                                            <button
+                                                key={p}
+                                                type="button"
+                                                onClick={() => setDuration(p)}
+                                                className={cn(
+                                                    'flex-1 py-1 rounded-md text-[10px] font-bold border transition-colors',
+                                                    duration === p
+                                                        ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                                                        : 'bg-white/[0.03] text-white/50 border-white/[0.06] hover:text-white hover:bg-white/[0.06]',
+                                                )}
+                                            >
+                                                {formatAuctionDuration(p)}
+                                            </button>
+                                        ))}
+                                    </div>
+
                                     <p className="text-xs text-white/40 leading-relaxed">
                                         Dutch auction: price walks down over this period until a solver fills it.
                                     </p>
@@ -614,8 +802,16 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                 <div className="mx-4 mb-3 p-4 rounded-2xl bg-white/[0.03] border border-white/[0.06] space-y-3 animate-in fade-in-50 slide-in-from-top-1 duration-200">
                     <div className="flex items-center justify-between">
                         <span className="text-sm text-white/50">When 1 {sellToken.symbol} is worth</span>
-                        {currentMarketRatio > 0 && (
-                            <span className="text-xs text-white/30 font-mono">
+                        {/* Show the price a solver will actually fill at when we have it,
+                            and say which number is on screen. USD mid was previously shown
+                            as "mkt" and used as the default, which is why the default limit
+                            order could never fill. */}
+                        {referenceIsFillable ? (
+                            <span className="text-xs text-emerald-400/70 font-mono" title="Best price a solver will fill at right now, from the relayer's quote">
+                                fills at {referenceRatio.toFixed(6)} {buyToken.symbol}
+                            </span>
+                        ) : currentMarketRatio > 0 && (
+                            <span className="text-xs text-white/30 font-mono" title="Indicative USD mid — a solver needs a margin on top, so an order at this price may not fill">
                                 mkt {currentMarketRatio.toFixed(6)} {buyToken.symbol}
                             </span>
                         )}
@@ -635,13 +831,36 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                         {PRICE_PRESETS.map(preset => (
                             <button
                                 key={preset.label}
-                                onClick={() => currentMarketRatio > 0 && setLimitPrice((currentMarketRatio * preset.mult).toFixed(6))}
-                                className="px-2.5 py-1 rounded-full text-xs font-semibold bg-white/[0.04] hover:bg-emerald-500/15 hover:text-emerald-300 text-white/60 border border-white/[0.06] hover:border-emerald-500/30 transition-colors"
+                                disabled={referenceRatio <= 0}
+                                onClick={() => referenceRatio > 0 && setLimitPrice((referenceRatio * preset.mult).toFixed(6))}
+                                title={preset.mult === 1
+                                    ? 'Price this to fill at the current best solver quote'
+                                    : `Ask ${Math.round((preset.mult - 1) * 100)}% above the fillable price — rests until the market moves`}
+                                className="px-2.5 py-1 rounded-full text-xs font-semibold bg-white/[0.04] hover:bg-emerald-500/15 hover:text-emerald-300 text-white/60 border border-white/[0.06] hover:border-emerald-500/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                             >
                                 {preset.label}
                             </button>
                         ))}
                     </div>
+
+                    {/* The order is still submittable — the maker may well intend to rest
+                        above the market — but silently creating an unfillable order is
+                        what made limit orders look broken. */}
+                    {priceAboveFillable && (
+                        <div className="flex items-start gap-2 text-xs text-amber-400/90 bg-amber-500/[0.07] border border-amber-500/20 rounded-lg px-2.5 py-2">
+                            <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
+                            <span>
+                                Above the fillable price ({referenceRatio.toFixed(6)} {buyToken.symbol}).
+                                This will rest until the market moves rather than filling now.
+                            </span>
+                        </div>
+                    )}
+                    {quoteUnavailable && (
+                        <div className="flex items-start gap-2 text-xs text-white/40 bg-white/[0.03] border border-white/[0.06] rounded-lg px-2.5 py-2">
+                            <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
+                            <span>Solver quote unavailable — the price shown is indicative USD mid, not a fillable quote.</span>
+                        </div>
+                    )}
                     <div className="flex flex-col gap-2 pt-2 border-t border-white/[0.04]">
                         <div className="flex flex-wrap items-center gap-y-2 justify-between">
                             <span className="text-sm text-white/50 shrink-0">Expires in</span>
@@ -677,7 +896,7 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                             <div className="flex justify-end">
                                 <Input
                                     type="text"
-                                    placeholder="e.g. 5m, 4.5h, 2d"
+                                    placeholder="e.g. 5m, 4.5h, 2d (max 30d)"
                                     value={customExpiryValue}
                                     onChange={e => setCustomExpiryValue(e.target.value)}
                                     className="h-7 w-36 text-right text-xs bg-black/40 border-white/10 focus-visible:ring-1 focus-visible:ring-emerald-500/50"
@@ -851,7 +1070,7 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                             {orderType === 'market' && (
                                 <div className="flex justify-between text-white/50">
                                     <span>Auction duration</span>
-                                    <span className="text-white/80">{Math.floor(duration / 60)}m {duration % 60}s</span>
+                                    <span className="text-white/80">{formatAuctionDuration(duration)}</span>
                                 </div>
                             )}
                             {orderType === 'limit' && limitPrice && (
