@@ -187,6 +187,69 @@ function ElapsedTimer({ order }: { order: BCHOrder }) {
     );
 }
 
+/** Human phrasing for the relayer's skip categories. */
+const SKIP_REASON_LABEL: Record<string, string> = {
+    unprofitable_spread:  'Waiting for a better price',
+    slippage_too_high:    'Pool too thin right now',
+    insufficient_capital: 'Waiting on solver liquidity',
+    no_pool:              'No liquidity pool for this token',
+    quote_error:          'Could not price this route',
+    other:                'Waiting for a solver',
+};
+
+function formatWhen(unixSec: number): string {
+    return new Date(unixSec * 1000).toLocaleString(undefined, {
+        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+    });
+}
+
+/**
+ * Detail the relayer already reports and nothing used to display.
+ *
+ * `fillableUntil` matters because it is NOT the expiry the maker chose. The
+ * covenant compares against `tx.locktime`, which is MTP-shifted by ~2h, so a "1H"
+ * limit order is really fillable for ~3h on-chain. Showing only the chosen expiry
+ * made that a surprise. `lastSkipReason` answers "why hasn't this filled yet?",
+ * which previously showed as a bare "pending".
+ */
+function OrderDetail({ order }: { order: BCHOrder }) {
+    const isOpen = order.status === 'pending' || order.status === 'failed';
+    const skip = order.lastSkipCategory ? SKIP_REASON_LABEL[order.lastSkipCategory] : undefined;
+
+    const rows: Array<{ label: string; value: string; title?: string }> = [];
+    if (isOpen && order.fillableUntil) {
+        rows.push({
+            label: 'Fillable until',
+            value: formatWhen(order.fillableUntil),
+            title: 'The covenant keeps accepting fills until this time — later than the expiry you chose, because the chain compares against median-time-past.',
+        });
+    }
+    if (isOpen && order.refundableFrom) {
+        rows.push({
+            label: 'Refundable from',
+            value: formatWhen(order.refundableFrom),
+            title: 'If it never fills, your funds can be reclaimed from this time.',
+        });
+    }
+
+    if (!rows.length && !skip) return null;
+
+    return (
+        <div className="mt-1 flex flex-col gap-0.5">
+            {skip && isOpen && (
+                <span className="text-[11px] text-amber-400/80" title={order.lastSkipReason}>
+                    {skip}
+                </span>
+            )}
+            {rows.map(r => (
+                <span key={r.label} className="text-[11px] text-muted-foreground/70" title={r.title}>
+                    {r.label}: <span className="tabular-nums">{r.value}</span>
+                </span>
+            ))}
+        </div>
+    );
+}
+
 // ============================================================================
 // Order Row — responsive sizing for large screens
 // ============================================================================
@@ -262,6 +325,7 @@ function OrderRow({ order, onClaim, isClaiming, onRefund, isRefunding, onCancel,
                             <ElapsedTimer order={order} />
                         )}
                     </div>
+                    <OrderDetail order={order} />
                 </div>
             </div>
 
