@@ -457,7 +457,8 @@ export function LimitOrderHistory() {
 
     useEffect(() => {
         refreshOrders();
-        const interval = setInterval(() => { refreshOrders(); }, 15000);
+        // Safety net only — live updates come over the relayer WebSocket.
+        const interval = setInterval(() => { refreshOrders(); }, 60000);
         return () => clearInterval(interval);
     }, [refreshOrders]);
 

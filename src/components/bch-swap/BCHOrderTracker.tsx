@@ -135,7 +135,10 @@ export function BCHOrderTracker() {
     );
     useEffect(() => {
         if (pendingOrders.length === 0) return;
-        const ms = hasActiveZK ? 8000 : 30000;
+        // Same-chain status arrives over the relayer WebSocket (see useRelayerEvents),
+        // so this poll is only a safety net for a dropped socket. ZK swaps keep their
+        // 8s poll — that is a different backend with no event stream.
+        const ms = hasActiveZK ? 8000 : 60000;
         const interval = setInterval(refreshOrders, ms);
         return () => clearInterval(interval);
     }, [pendingOrders.length, hasActiveZK, refreshOrders]);

@@ -8,6 +8,7 @@ import { useWDK } from '@/context/WDKProvider';
 import { useConnection } from '@solana/wallet-adapter-react';
 import { Keypair, PublicKey, SystemProgram, Transaction } from '@solana/web3.js';
 import { BCHSwapParams, BCHSwapType, BCHOrder, isTerminalOrderStatus, splitOrders } from '@/types';
+import { useRelayerEvents, type RelayerEvent } from '@/hooks/useRelayerEvents';
 import { BCH_SOLANA_RELAYER_URL, CASHTOKEN_RELAYER_URL, CASHTOKEN_RELAYER_MAINNET_URL, SOL_BCH_ZK_SERVER_URL, SOL_BCH_ZK_SERVER_MAINNET_URL } from '@/lib/config';
 import axios from 'axios';
 import * as anchor from '@coral-xyz/anchor';
@@ -78,6 +79,8 @@ interface BCHSwapContextType {
     cancelSameChainOrder: (orderId: string) => Promise<void>;
     refreshOrders: () => Promise<void>;
     detectSwapType: (sellChain?: string, buyChain?: string) => BCHSwapType;
+    /** True while the relayer WebSocket is connected — status is live, not polled. */
+    relayerLive: boolean;
 }
 
 export const BCHSwapContext = createContext<BCHSwapContextType | undefined>(undefined);
@@ -1990,6 +1993,94 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
     }, []);
 
     // =========================================================================
+    // Live order updates from the relayer WebSocket
+    //
+    // The relayer has always broadcast intent:* events and nothing listened, so
+    // status came only from a 15-30s poll. Fills now land in 8-24s, meaning the
+    // poll interval — not the swap — was what users were waiting on.
+    //
+    // Polling is deliberately kept as a fallback (see the pollers in
+    // BCHOrderTracker / LimitOrderHistory): a dropped socket should leave status
+    // slightly stale, never silently frozen.
+    // =========================================================================
+    const handleRelayerEvent = useCallback((event: RelayerEvent) => {
+        const intentId: string | undefined = event.data?.id ?? event.data?.intentId;
+        if (!intentId) return;
+
+        const key = getOrdersKey(wdkRef.current.bchNetwork);
+        const saved = localStorage.getItem(key);
+        if (!saved) return;
+
+        let all: BCHOrder[];
+        try { all = JSON.parse(saved); } catch { return; }
+
+        const order = all.find(o => o.intentId === intentId);
+        if (!order) return;   // an event for someone else's order, or another device
+
+        // Trust the intent payload the relayer sends with the event; it is the same
+        // shape /intent/:id returns, so this mirrors the polling path exactly rather
+        // than inventing a second status mapping that could drift from it.
+        const intent = event.data;
+        const prev = order.status;
+
+        switch (event.type) {
+            case 'intent:filled':
+                order.status = 'filled';
+                order.fillTxid = intent.fillTxid ?? order.fillTxid;
+                order.explorerUrl = intent.fillExplorerUrl ?? order.explorerUrl;
+                break;
+            case 'intent:refunded':
+                order.status = 'refunded';
+                order.refundTxid = intent.refundTxid ?? intent.fillTxid ?? order.refundTxid;
+                order.destExplorerUrl = intent.fillExplorerUrl ?? order.destExplorerUrl;
+                break;
+            case 'intent:cancelled':
+                order.status = 'cancelled';
+                order.cancelTxid = intent.cancelTxid ?? order.cancelTxid;
+                break;
+            case 'intent:abandoned':
+                order.status = 'abandoned';
+                break;
+            case 'intent:failed':
+                order.status = 'failed';
+                break;
+            case 'intent:updated':
+                // Covers pending→active and the 'expired' refund-pending state.
+                if (intent.status === 'expired') order.status = 'expired';
+                else if (intent.status === 'failed') order.status = 'failed';
+                order.lastSkipCategory = intent.lastSkipCategory ?? order.lastSkipCategory;
+                order.lastSkipReason = intent.lastSkipReason ?? order.lastSkipReason;
+                order.routeType = intent.routeType ?? order.routeType;
+                break;
+            default:
+                return;   // router:* events carry no per-order state
+        }
+
+        order.fillableUntil = intent.fillableUntil ?? order.fillableUntil;
+        order.refundableFrom = intent.refundableFrom ?? order.refundableFrom;
+
+        localStorage.setItem(key, JSON.stringify(all));
+        const split = splitOrders(all);
+        setPendingOrders(split.pending);
+        setCompletedOrders(split.completed);
+
+        if (order.status !== prev && isTerminalOrderStatus(order.status)) {
+            const label = order.status === 'filled' ? 'Order filled'
+                : order.status === 'refunded' ? 'Order refunded'
+                : order.status === 'cancelled' ? 'Order cancelled'
+                : 'Order closed';
+            toast.success(label, {
+                description: `${order.sellAmount} ${order.sellToken?.symbol} → ${order.buyAmount} ${order.buyToken?.symbol}`,
+            });
+        }
+    }, []);
+
+    const { connected: relayerLive } = useRelayerEvents({
+        network: wdk.bchNetwork === 'mainnet' ? 'mainnet' : 'chipnet',
+        onEvent: handleRelayerEvent,
+    });
+
+    // =========================================================================
     // Claim order — user claims tokens on the destination chain
     // =========================================================================
     const claimOrder = useCallback(async (orderId: string) => {
@@ -2538,6 +2629,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 cancelSameChainOrder,
                 refreshOrders,
                 detectSwapType,
+                relayerLive,
             }}
         >
             {children}

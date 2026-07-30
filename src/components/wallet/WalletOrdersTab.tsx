@@ -106,7 +106,8 @@ export function WalletOrdersTab() {
 
     useEffect(() => {
         if (pendingOrders.length === 0) return;
-        const interval = setInterval(refreshOrders, 30000);
+        // Safety net only — live updates come over the relayer WebSocket.
+        const interval = setInterval(refreshOrders, 60000);
         return () => clearInterval(interval);
     }, [pendingOrders.length, refreshOrders]);
 
