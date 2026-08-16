@@ -23,8 +23,9 @@ import {
     toWei,
     getRefundBCH,
     postRefundBCH,
+    postClaim,
 } from '@/lib/bscBchApi';
-import { createStarkEscrow, getEvmConfig } from '@/lib/intentHTLC';
+import { createStarkEscrow, createHTLCEscrow, getEvmConfig } from '@/lib/intentHTLC';
 import {
     isEvmChain,
     getEVMChainConfig,
@@ -1104,9 +1105,19 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 builder.addOutput({ to: makerAddress, amount: sellBaseUnits });
                 if (change >= 546n) builder.addOutput({ to: makerAddress, amount: change });
             } else {
+                const { cashAddressToLockingBytecode, lockingBytecodeToCashAddress } = await import('@bitauth/libauth');
+                const makerDecoded = cashAddressToLockingBytecode(makerAddress);
+                if (typeof makerDecoded === 'string') throw new Error(`Invalid address: ${makerDecoded}`);
+                const makerTokenAddr = lockingBytecodeToCashAddress({
+                    bytecode: makerDecoded.bytecode,
+                    prefix: (isMainnet ? 'bitcoincash' : 'bchtest') as any,
+                    tokenSupport: true,
+                });
+                if (typeof makerTokenAddr === 'string') throw new Error(`Cannot derive token address: ${makerTokenAddr}`);
+
                 const change = BigInt(feeUtxo.satoshis) - 1000n - FEE;
                 builder.addOutput({
-                    to: makerAddress,
+                    to: makerTokenAddr.address,
                     amount: 1000n,
                     token: { amount: sellBaseUnits, category: stripHex(sellCategoryId!) },
                 });
@@ -1418,24 +1429,27 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
             ? (CHAIN_TO_SERVER_NAME_MAINNET[sellChain] ?? sellChain)
             : (CHAIN_TO_SERVER_NAME[sellChain] ?? sellChain);
 
+        const { secretHex, hashlockHex } = await generateHashlock();
+
         const sellTokenLabel = isNativeToken ? evmCfg.nativeCurrency : params.sellToken.symbol;
         setSwapStep(isNativeToken
-            ? `Locking ${sellTokenLabel} in ZK escrow on ${evmCfg.name}...`
-            : `Approving & locking ${sellTokenLabel} in ZK escrow on ${evmCfg.name}...`
+            ? `Locking ${sellTokenLabel} in HTLC escrow on ${evmCfg.name}...`
+            : `Approving & locking ${sellTokenLabel} in HTLC escrow on ${evmCfg.name}...`
         );
         let starkEscrowId: string;
         try {
-            starkEscrowId = await createStarkEscrow(
+            starkEscrowId = await createHTLCEscrow(
                 evmSigner,
+                hashlockHex,
                 solverEvmAddr,
                 timelockDuration,
                 tokenAddress,
                 sellAmountWei,
                 isMainnet,
             );
-            toast.success(`${sellTokenLabel} locked in ZK escrow!`, { description: `Escrow ID: ${starkEscrowId}` });
+            toast.success(`${sellTokenLabel} locked in HTLC escrow!`, { description: `Escrow ID: ${starkEscrowId}` });
         } catch (e: any) {
-            throw new Error(`STARK escrow failed: ${e.message}`);
+            throw new Error(`HTLC escrow failed: ${e.message}`);
         }
 
         setSwapStep('Notifying solver...');
@@ -1448,8 +1462,9 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 recipientAddress,
                 sellAmount: sellAmountWei,
                 buyAmount: buyAmountSats,
+                hashlock: hashlockHex,
                 evmEscrowId: starkEscrowId,
-                useStark: true,
+                useStark: false,
                 evmTokenAddress,
                 chainName: chainServerName,
                 expiryTime: params.orderType === 'limit' ? params.expiryTime : undefined,
@@ -1467,13 +1482,13 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 intentId,
                 explorerUrl: `${evmCfg.explorer}/address/${starkEscrowId}`,
                 createdAt: Date.now(),
-                claimData: { evmEscrowId: starkEscrowId, direction: 'ETH_TO_BCH' },
+                claimData: { hashlock: hashlockHex, secret: secretHex, evmEscrowId: starkEscrowId, direction: 'ETH_TO_BCH' },
             };
 
             saveOrder(order);
             setSwapStep('');
-            toast.success('ZK swap initiated!', {
-                description: `Server fills BCH and claims ${isMainnet ? 'BSC' : 'ETH'} escrow via STARK proof automatically.`,
+            toast.success('HTLC swap initiated!', {
+                description: `Server fills BCH. Reveal secret to claim payout.`,
             });
         } catch (e: any) {
             throw new Error(`Solver error: ${e.message}`);
@@ -1494,56 +1509,153 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
         const wif = currentBchWallet.getWIF();
 
         const isMainnet = currentWdk.bchNetwork === 'mainnet';
+        const { secretHex, hashlockHex, hashlockArray } = await generateHashlock();
 
-        // 1. Get per-user StarkVerifierFRIPhaseB covenant address (includes userPkh + timelock
-        //    in the redeemScript so the OP_ELSE refund branch is tied to this user's key)
-        setSwapStep('Fetching ZK covenant address...');
+        // 1. Get relayer BCH address and derive HTLC covenant
+        setSwapStep('Getting relayer info...');
+        let relayerBchAddress: string;
+        try {
+            const healthRes = await axios.get(`${BCH_SOLANA_RELAYER_URL}/solver`);
+            relayerBchAddress = healthRes.data?.wallets?.bch?.address || 'bchtest:qzufsn0wtcmc4lhc3s3trhl0nxn6dgkpmgvzngkxl7';
+        } catch {
+            relayerBchAddress = 'bchtest:qzufsn0wtcmc4lhc3s3trhl0nxn6dgkpmgvzngkxl7';
+        }
+
+        const artifactModule = await import('@/lib/CrossChainHTLC.json');
+        const artifact = artifactModule.default || artifactModule;
+        const { cashAddressToLockingBytecode } = await import('@bitauth/libauth');
+
+        const derivePkh = (address: string): Uint8Array => {
+            const result = cashAddressToLockingBytecode(address);
+            if (typeof result === 'string') throw new Error(`Invalid BCH address: ${result}`);
+            const bytecode = result.bytecode;
+            if (bytecode.length === 25 && bytecode[0] === 0x76 && bytecode[1] === 0xa9 && bytecode[2] === 0x14) {
+                return bytecode.slice(3, 23);
+            }
+            throw new Error(`Not a standard P2PKH address`);
+        };
+
+        const userPkh = derivePkh(currentBchWallet.address!);
+        const relayerPkh = derivePkh(relayerBchAddress);
         const covenantTimelock = Math.floor(Date.now() / 1000) + 7200; // 2 hours from now
-        const covenantInfo = await getStarkCovenantAddress(isMainnet, currentBchWallet.address!, covenantTimelock);
-        const starkCovenantAddress = covenantInfo.address;
-        console.log('[BCH→ETH] STARK covenant address:', starkCovenantAddress, 'timelock:', covenantTimelock);
+
+        const { Contract, ElectrumNetworkProvider, TransactionBuilder, SignatureTemplate } = await getCashScript();
+        const provider = new ElectrumNetworkProvider(isMainnet ? 'mainnet' : 'chipnet');
+        const contract = new Contract(
+            artifact,
+            [userPkh, relayerPkh, hashlockArray, BigInt(covenantTimelock)],
+            { provider }
+        );
+        const starkCovenantAddress = contract.address;
+        console.log('[BCH→ETH] HTLC covenant address:', starkCovenantAddress, 'timelock:', covenantTimelock);
 
         // 2. Fund the P2SH32 covenant using TransactionBuilder + raw lockingBytecode
-        setSwapStep('Funding BCH ZK covenant...');
+        //    — supports both native BCH and CashToken (e.g. PUSD) sell side
+        setSwapStep('Funding BCH HTLC covenant...');
         let fundTxId: string;
+        const isCashToken = !!params.sellToken.categoryId;
         try {
-            const { cashAddressToLockingBytecode } = await import('@bitauth/libauth');
             const lockResult = cashAddressToLockingBytecode(starkCovenantAddress);
             if (typeof lockResult === 'string') throw new Error(`Invalid covenant address: ${lockResult}`);
             const lockingBytecode = lockResult.bytecode;
 
-            const { TransactionBuilder, ElectrumNetworkProvider, SignatureTemplate } = await getCashScript();
-            const provider = new ElectrumNetworkProvider(isMainnet ? 'mainnet' : 'chipnet');
-
             const allUtxos = await provider.getUtxos(currentBchWallet.address!);
-            const sortedUtxos = allUtxos.filter((u: any) => !u.token)
-                .sort((a: any, b: any) => Number(b.satoshis - a.satoshis));
-            if (!sortedUtxos.length) throw new Error('No plain BCH UTXOs available — fund your wallet or consolidate UTXOs first');
-
-            const unlocker = isMainActive 
-                ? new SignatureTemplate(wif!).unlockP2PKH() 
+            const unlocker = isMainActive
+                ? new SignatureTemplate(wif!).unlockP2PKH()
                 : { unlockingBytecode: new Uint8Array(0) } as any;
 
-            const amountSats = BigInt(Math.floor(params.sellAmount * 1e8));
-            // Dynamic fee: 2 sat/byte — same pattern as BCH→SOL path
+            // Dynamic fee: 2 sat/byte
             const estimateFee = (numIn: number, numOut: number) =>
                 BigInt(Math.ceil((numIn * 148 + numOut * 34 + 10) * 2));
-            const selected: any[] = [];
-            let totalInput = 0n;
-            for (const u of sortedUtxos) {
-                selected.push(u);
-                totalInput += u.satoshis;
-                if (totalInput >= amountSats + estimateFee(selected.length, 2)) break;
-            }
-            const fee = estimateFee(selected.length, 2);
-            const change = totalInput - amountSats - fee;
-            if (change < 0n) throw new Error('Insufficient BCH balance');
 
             const builder = new TransactionBuilder({ provider });
-            builder.addInputs(selected, unlocker);
-            builder.addOutput({ to: lockingBytecode, amount: amountSats });
-            if (change >= 546n) {
-                builder.addOutput({ to: currentBchWallet.address!, amount: change });
+            // allInputs tracks every UTXO added to the builder so the WC2 path
+            // (external wallet) can pass them to buildWC2SourceOutputs.
+            const allInputs: any[] = [];
+
+            if (isCashToken) {
+                // ── CashToken path ────────────────────────────────────────────
+                const sellDecimals = params.sellToken.decimals ?? 0;
+                const tokenAmountRaw = BigInt(Math.round(params.sellAmount * Math.pow(10, sellDecimals)));
+                const category = params.sellToken.categoryId!;
+
+                const tokenUtxos = allUtxos.filter((u: any) =>
+                    u.token?.category === category && BigInt(u.token.amount) >= tokenAmountRaw
+                );
+                if (!tokenUtxos.length) {
+                    throw new Error(
+                        `No ${params.sellToken.symbol} token UTXO with ≥ ${params.sellAmount} ${params.sellToken.symbol} found. ` +
+                        `Make sure your wallet holds enough ${params.sellToken.symbol} on ${isMainnet ? 'mainnet' : 'chipnet'}.`
+                    );
+                }
+                const tokenUtxo = tokenUtxos[0];
+
+                const DUST = 1000n;
+                const plainUtxos = allUtxos.filter((u: any) => !u.token)
+                    .sort((a: any, b: any) => Number(b.satoshis - a.satoshis));
+                if (!plainUtxos.length) throw new Error('No plain BCH UTXOs to cover dust + fee. Send a small amount of BCH to your wallet.');
+
+                const tokenChange = BigInt(tokenUtxo.token.amount) - tokenAmountRaw;
+                const TOKEN_CHANGE_DUST = tokenChange > 0n ? 1000n : 0n; // CashToken outputs require >= 657 sats
+
+                const selectedPlain: any[] = [];
+                let totalPlain = 0n;
+                for (const u of plainUtxos) {
+                    selectedPlain.push(u);
+                    totalPlain += u.satoshis;
+                    if (totalPlain >= DUST + TOKEN_CHANGE_DUST + estimateFee(selectedPlain.length + 1, 3)) break;
+                }
+                const fee = estimateFee(selectedPlain.length + 1, 3);
+                const changeNative = totalPlain + tokenUtxo.satoshis - DUST - TOKEN_CHANGE_DUST - fee;
+                if (changeNative < 0n) throw new Error('Insufficient BCH to cover dust and fee');
+
+                builder.addInput(tokenUtxo, unlocker);
+                builder.addInputs(selectedPlain, unlocker);
+                allInputs.push(tokenUtxo, ...selectedPlain);
+
+                // Token change must return to a token-aware address (p2pkhWithTokens)
+                const { lockingBytecodeToCashAddress } = await import('@bitauth/libauth');
+                const selfDecoded = cashAddressToLockingBytecode(currentBchWallet.address!);
+                if (typeof selfDecoded === 'string') throw new Error(`Invalid wallet address: ${selfDecoded}`);
+                const selfTokenAddr = lockingBytecodeToCashAddress({
+                    bytecode: selfDecoded.bytecode,
+                    prefix: (isMainnet ? 'bitcoincash' : 'bchtest') as any,
+                    tokenSupport: true,
+                });
+                if (typeof selfTokenAddr === 'string') throw new Error(`Cannot derive token address: ${selfTokenAddr}`);
+
+                builder.addOutput({ to: lockingBytecode, amount: DUST, token: { category, amount: tokenAmountRaw } });
+                if (tokenChange > 0n) {
+                    builder.addOutput({ to: selfTokenAddr.address, amount: TOKEN_CHANGE_DUST, token: { category, amount: tokenChange } });
+                }
+                if (changeNative >= 546n) {
+                    builder.addOutput({ to: currentBchWallet.address!, amount: changeNative });
+                }
+                console.log(`[BCH→ETH] CashToken swap: ${tokenAmountRaw} × ${category.slice(0, 12)}… → covenant ${starkCovenantAddress}`);
+            } else {
+                // ── Native BCH path ───────────────────────────────────────────
+                const sortedUtxos = allUtxos.filter((u: any) => !u.token)
+                    .sort((a: any, b: any) => Number(b.satoshis - a.satoshis));
+                if (!sortedUtxos.length) throw new Error('No plain BCH UTXOs available — fund your wallet or consolidate UTXOs first');
+
+                const amountSats = BigInt(Math.floor(params.sellAmount * 1e8));
+                const nativeSelected: any[] = [];
+                let totalInput = 0n;
+                for (const u of sortedUtxos) {
+                    nativeSelected.push(u);
+                    totalInput += u.satoshis;
+                    if (totalInput >= amountSats + estimateFee(nativeSelected.length, 2)) break;
+                }
+                const fee = estimateFee(nativeSelected.length, 2);
+                const change = totalInput - amountSats - fee;
+                if (change < 0n) throw new Error('Insufficient BCH balance');
+
+                builder.addInputs(nativeSelected, unlocker);
+                allInputs.push(...nativeSelected);
+                builder.addOutput({ to: lockingBytecode, amount: amountSats });
+                if (change >= 546n) {
+                    builder.addOutput({ to: currentBchWallet.address!, amount: change });
+                }
             }
 
             if (isMainActive) {
@@ -1558,8 +1670,8 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 setSwapStep('Waiting for wallet approval...');
                 toast.info('Check your external wallet to approve the transaction.', { duration: 8000 });
 
-                const utxoIndices = selected.map((_: any, i: number) => i);
-                const sourceOutputs = await buildWC2SourceOutputs(selected, utxoIndices, currentBchWallet.address!);
+                const utxoIndices = allInputs.map((_: any, i: number) => i);
+                const sourceOutputs = await buildWC2SourceOutputs(allInputs, utxoIndices, currentBchWallet.address!);
                 const unsignedHex = builder.build();
 
                 const payload = buildWC2Payload(
@@ -1586,23 +1698,41 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 ? (CHAIN_TO_SERVER_NAME_MAINNET[buyChain] ?? buyChain)
                 : (CHAIN_TO_SERVER_NAME[buyChain] ?? buyChain);
 
-            const sellAmountSats = Math.floor(params.sellAmount * 1e8).toString();
-            const buyAmountWei = toWei(params.buyAmount.toString(), params.buyToken.decimals || 18);
             const isBuyNative = params.buyToken.type === 'native';
             const evmTokenAddress = isBuyNative ? undefined : params.buyToken.address;
+
+            // For CashToken sells: sellAmount is the human-readable token amount.
+            // The solver needs the raw token units (respecting token decimals), and
+            // we pass 1000 sat (DUST) as the on-chain satoshi amount.
+            let sellAmountForServer: string;
+            let bchTokenPayload: { category: string; amount: string } | undefined;
+            if (isCashToken) {
+                const sellDecimals = params.sellToken.decimals ?? 0;
+                const tokenAmountRaw = Math.round(params.sellAmount * Math.pow(10, sellDecimals));
+                bchTokenPayload = {
+                    category: params.sellToken.categoryId!,
+                    amount: tokenAmountRaw.toString(),
+                };
+                sellAmountForServer = '1000'; // dust sats locked with token
+            } else {
+                sellAmountForServer = Math.floor(params.sellAmount * 1e8).toString();
+            }
+
+            const buyAmountWei = toWei(params.buyAmount.toString(), params.buyToken.decimals || 18);
 
             const { intentId } = await createBCHToEVMIntent({
                 makerAddress: currentBchWallet.address!,
                 recipientAddress: currentWdk.evmAddress!,
-                sellAmount: sellAmountSats,
+                sellAmount: sellAmountForServer,
                 buyAmount: buyAmountWei,
-                hashlock: 'dummy',
+                hashlock: hashlockHex,
                 timelock: covenantTimelock,
                 bchContractAddress: starkCovenantAddress,
                 evmTokenAddress,
                 chainName: chainServerName,
                 expiryTime: params.orderType === 'limit' ? params.expiryTime : undefined,
-                useStark: true,   // ZK route — server delivers ETH directly, no hashlock escrow
+                useStark: false,
+                bchToken: bchTokenPayload,
             }, isMainnet);
 
             const buyExplorer = buyEvmCfg?.explorer ?? 'https://sepolia.etherscan.io';
@@ -1624,10 +1754,13 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 destExplorerUrl: `${buyExplorer}/address/${currentWdk.evmAddress!}`,
                 createdAt: Date.now(),
                 claimData: {
+                    hashlock: hashlockHex,
+                    secret: secretHex,
                     starkCovenantAddress,
                     evmRecipient: currentWdk.evmAddress!,
                     direction: 'BCH_TO_ETH',
                     sourceTimelock: covenantTimelock,
+                    ...(bchTokenPayload ? { bchToken: bchTokenPayload } : {}),
                 },
             };
 
@@ -1740,38 +1873,41 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
 
             for (const order of all) {
                 if (!order.intentId) continue;
-                // Derived from TERMINAL_ORDER_STATUSES rather than an inline list.
-                //
-                // 'expired' used to be in that inline list, and must not be: the relayer
-                // uses it for "past the fill window, refund attempted, still retrying".
-                // Skipping it meant the order sat on "Expired" forever and the eventual
-                // 'refunded' was never picked up — the refund landed on-chain and the UI
-                // never said so. 'failed' is likewise non-terminal (funded covenant,
-                // retrying on backoff).
+                // If the order is already in a terminal state (filled, claimed, cancelled, refunded), do not poll or revert it!
                 if (isTerminalOrderStatus(order.status)) continue;
 
                 try {
                     if (order.swapType === 'eth-to-bch' || order.swapType === 'bch-to-eth') {
-                        // Poll bsc-bch-server for ETH↔BCH ZK orders — both directions auto-complete, no user claim
+                        // Poll bsc-bch-server for ETH↔BCH orders
                         const ethOrder = await getETHOrder(order.intentId);
                         const s = ethOrder.status;
+
+                        // Ensure claimData is preserved and populated from server intent
+                        order.claimData = {
+                            ...order.claimData,
+                            bchContractAddress: (ethOrder.raw?.bchContractAddress as string | undefined) || order.claimData?.bchContractAddress,
+                            destTimelock: (ethOrder.raw?.destTimelock as number | undefined) || order.claimData?.destTimelock,
+                            evmEscrowId: ethOrder.evmEscrowId || (ethOrder.raw?.bscEscrowId as string | undefined) || order.claimData?.evmEscrowId,
+                            destFillTx: ethOrder.bchTxHash || ethOrder.evmFillTxHash || order.claimData?.destFillTx,
+                        };
+
                         if (s === 'COMPLETED') {
-                            order.status = 'filled';
+                            // Server completed its leg — if the user hasn't claimed yet, make it claimable, else filled
+                            if (order.status !== 'claimed') {
+                                order.status = 'claimable';
+                            } else {
+                                order.status = 'filled';
+                            }
                             if (order.swapType === 'eth-to-bch') {
-                                // BCH delivery tx
                                 if (ethOrder.bchTxHash) {
                                     order.fillTxid = ethOrder.bchTxHash;
-                                    order.destExplorerUrl = buildExplorerUrl(ethOrder.bchTxHash, 'bch');
                                 }
-                                // EVM claim tx (solver claimed the STARK escrow)
                                 if (ethOrder.evmClaimTxHash) {
                                     order.explorerUrl = buildExplorerUrl(ethOrder.evmClaimTxHash, order.sellToken.chain || 'ethereum');
                                 }
                             } else {
-                                // EVM delivery tx (BCH→ETH)
                                 if (ethOrder.evmFillTxHash) {
                                     order.fillTxid = ethOrder.evmFillTxHash;
-                                    order.destExplorerUrl = buildExplorerUrl(ethOrder.evmFillTxHash, order.buyToken.chain || 'ethereum');
                                 }
                             }
                             updated = true;
@@ -1781,11 +1917,30 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                         } else if (s === 'FAILED' || s === 'EXPIRED') {
                             order.status = 'cancelled';
                             updated = true;
+                        } else if (s === 'DEST_FILLED' || s === 'DEST_CLAIMED') {
+                            order.status = 'claimable';
+                            order.fillTxid = ethOrder.bchTxHash || ethOrder.evmFillTxHash;
+                            if (order.swapType === 'eth-to-bch' && ethOrder.bchTxHash && !order.destExplorerUrl) {
+                                order.destExplorerUrl = buildExplorerUrl(ethOrder.bchTxHash, 'bch');
+                            } else if (order.swapType === 'bch-to-eth' && ethOrder.evmFillTxHash && !order.destExplorerUrl) {
+                                order.destExplorerUrl = buildExplorerUrl(ethOrder.evmFillTxHash, order.buyToken.chain || 'ethereum');
+                            }
+                            updated = true;
+
+                            // 🔔 Toast notification with Claim button
+                            toast.info(`Your ${order.sellToken?.symbol} → ${order.buyToken?.symbol} swap is ready!`, {
+                                description: 'Click Claim to complete your swap and receive funds.',
+                                duration: 30000,
+                                action: {
+                                    label: '⚡ Claim Now',
+                                    onClick: () => claimOrder(order.id),
+                                },
+                            });
                         } else if (
-                            (s === 'SOURCE_LOCKED' || s === 'DEST_FILLED' || s === 'GENERATING_PROOF') &&
+                            (s === 'SOURCE_LOCKED' || s === 'GENERATING_PROOF') &&
                             order.status !== 'proving'
                         ) {
-                            // Source funded; server is delivering and generating proof
+                            // Source funded; solver is processing
                             order.status = 'proving';
                             updated = true;
                         } else if (s === 'PENDING' && order.status === 'pending') {
@@ -2101,7 +2256,29 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
             }
 
             const secret = order.claimData.secret;
-            const direction = order.claimData.direction || (order.swapType === 'bch-to-sol' ? 'BCH_TO_SOL' : 'SOL_TO_BCH');
+            const direction = order.claimData.direction || (
+                order.swapType === 'bch-to-sol' ? 'BCH_TO_SOL' :
+                order.swapType === 'sol-to-bch' ? 'SOL_TO_BCH' :
+                order.swapType === 'bch-to-eth' ? 'BCH_TO_ETH' :
+                order.swapType === 'eth-to-bch' ? 'ETH_TO_BCH' : 'BCH_TO_SOL'
+            );
+
+            // If it's an ETH↔BCH swap, hydrate missing claim metadata from the relayer
+            if ((order.swapType === 'bch-to-eth' || order.swapType === 'eth-to-bch' || direction === 'BCH_TO_ETH' || direction === 'ETH_TO_BCH') && order.intentId) {
+                try {
+                    const ethOrder = await getETHOrder(order.intentId, wdkRef.current.bchNetwork === 'mainnet');
+                    order.claimData = {
+                        ...order.claimData,
+                        bchContractAddress: (ethOrder.raw?.bchContractAddress as string | undefined) || order.claimData?.bchContractAddress,
+                        destTimelock: (ethOrder.raw?.destTimelock as number | undefined) || order.claimData?.destTimelock,
+                        evmEscrowId: ethOrder.evmEscrowId || (ethOrder.raw?.bscEscrowId as string | undefined) || order.claimData?.evmEscrowId,
+                        destFillTx: ethOrder.bchTxHash || ethOrder.evmFillTxHash || order.claimData?.destFillTx,
+                        hashlock: (ethOrder.raw?.hashlock as string | undefined) || order.claimData?.hashlock,
+                    };
+                } catch (hydrateErr) {
+                    console.warn('[Claim] Could not fetch intent from server:', hydrateErr);
+                }
+            }
 
             let claimTxid: string | undefined;
 
@@ -2116,8 +2293,9 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 }
 
                 // Derive PDAs
-                const makerPubKey = new PublicKey(order.claimData.solMaker || 'VBmpGVzabx8AsptQXrA2okEwqFVjbuosHvR2NkuBoaS'); // Relayer is Maker in BCH->SOL
-                const hashBuf = Buffer.from(order.claimData.hashlock!.replace('0x', ''), 'hex');
+                const claimD = order.claimData ?? {};
+                const makerPubKey = new PublicKey((claimD as any).solMaker || 'VBmpGVzabx8AsptQXrA2okEwqFVjbuosHvR2NkuBoaS'); // Relayer is Maker in BCH->SOL
+                const hashBuf = Buffer.from(((claimD as any).hashlock ?? '').replace('0x', ''), 'hex');
                 const secretBuf = Buffer.from(secret.replace('0x', ''), 'hex');
 
                 // Get the token mint address (USDC or SOL NATIVE_MINT)
@@ -2126,8 +2304,8 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 const tokenMint = new PublicKey(tokenAddress!);
 
                 let escrowPda: PublicKey;
-                if (order.claimData.solanaEscrowPda) {
-                    escrowPda = new PublicKey(order.claimData.solanaEscrowPda);
+                if ((claimD as any).solanaEscrowPda) {
+                    escrowPda = new PublicKey((claimD as any).solanaEscrowPda);
                 } else {
                     [escrowPda] = PublicKey.findProgramAddressSync(
                         [Buffer.from('escrow'), makerPubKey.toBuffer(), hashBuf],
@@ -2223,7 +2401,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                     throw new Error(`Transaction failed: ${err.message}`);
                 }
 
-            } else if (direction === 'SOL_TO_BCH' || direction === 'MOV_TO_BCH') {
+            } else if (direction === 'SOL_TO_BCH' || direction === 'MOV_TO_BCH' || direction === 'ETH_TO_BCH') {
                 // User claims on BCH (destination)
                 setSwapStep('Claiming on BCH...');
                 if (!bchWallet.connected || !order.claimData?.bchContractAddress) {
@@ -2245,15 +2423,22 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                     throw new Error('Not a standard P2PKH address');
                 };
 
-                // In SOL_TO_BCH and MOV_TO_BCH, the Relayer is the Maker (locks BCH) and User is the Taker (claims BCH)
-                let relayerSolAddress = '';
-                try {
-                    const healthRes = await axios.get(`${BCH_SOLANA_RELAYER_URL}/health`);
-                    relayerSolAddress = healthRes.data?.pubkeys?.bch || '';
-                } catch { }
-                if (!relayerSolAddress) throw new Error('Could not fetch Relayer BCH address');
+                let relayerBchAddress = '';
+                if (direction === 'ETH_TO_BCH') {
+                    try {
+                        const solverInfo = await getSolverInfo(wdkRef.current.bchNetwork === 'mainnet');
+                        relayerBchAddress = solverInfo.wallets?.bch?.address || '';
+                    } catch { }
+                    if (!relayerBchAddress) relayerBchAddress = 'bchtest:qzufsn0wtcmc4lhc3s3trhl0nxn6dgkpmgvzngkxl7';
+                } else {
+                    try {
+                        const healthRes = await axios.get(`${BCH_SOLANA_RELAYER_URL}/health`);
+                        relayerBchAddress = healthRes.data?.pubkeys?.bch || '';
+                    } catch { }
+                    if (!relayerBchAddress) throw new Error('Could not fetch Relayer BCH address');
+                }
 
-                const makerPkh = derivePkh(relayerSolAddress);
+                const makerPkh = derivePkh(relayerBchAddress);
                 const takerPkh = derivePkh(bchWallet.address!);
                 const hashBuf = Buffer.from(order.claimData.hashlock!.replace('0x', ''), 'hex');
                 const secretBuf = Buffer.from(secret.replace('0x', ''), 'hex');
@@ -2273,74 +2458,114 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 const contractAddress = contract.address;
                 console.log('[Claim] Reconstructed Contract Address:', contractAddress);
                 if (contractAddress !== order.claimData.bchContractAddress) {
-                    throw new Error('Contract address mismatch. Make sure you are using the correct account.');
+                    throw new Error(`Contract address mismatch (got ${contractAddress}, expected ${order.claimData.bchContractAddress})`);
                 }
 
                 const utxos = await provider.getUtxos(contractAddress);
-                if (utxos.length === 0) throw new Error('No funds found in the HTLC contract.');
+                if (utxos.length === 0) {
+                    console.log('[Claim] BCH HTLC contract has already been claimed on-chain!');
+                    claimTxid = order.fillTxid || 'already-claimed';
+                } else {
+                    const balance = utxos.reduce((acc: bigint, u: any) => acc + u.satoshis, 0n);
+                    console.log('[Claim] Found', balance, 'sats to claim');
 
-                const balance = utxos.reduce((acc: bigint, u: any) => acc + u.satoshis, 0n);
-                console.log('[Claim] Found', balance, 'sats to claim');
+                    const wif = bchWallet.getWIF();
+                    if (!wif) throw new Error('Cannot sign BCH claim: WIF not available in wallet');
 
-                const wif = bchWallet.getWIF();
-                if (!wif) throw new Error('Cannot sign BCH claim: WIF not available in wallet');
+                    const sigTemplate = new SignatureTemplate(wif);
+                    const recipientPubKey = sigTemplate.getPublicKey();
 
-                const sigTemplate = new SignatureTemplate(wif);
-                const recipientPubKey = sigTemplate.getPublicKey();
+                    const { TransactionBuilder } = await getCashScript();
+                    const builder = new TransactionBuilder({ provider });
 
-                const { TransactionBuilder } = await getCashScript();
-                const builder = new TransactionBuilder({ provider });
+                    const unlocker = contract.unlock.claim(
+                        recipientPubKey,
+                        sigTemplate,
+                        secretBuf
+                    );
+                    builder.addInputs(utxos, unlocker);
 
-                const unlocker = contract.unlock.claim(
-                    recipientPubKey,
-                    sigTemplate,
-                    secretBuf
-                );
-                builder.addInputs(utxos, unlocker);
+                    const fee = 1000n;
+                    const outputAmount = balance - fee;
+                    if (outputAmount < 546n) throw new Error('Output amount below dust limit.');
 
-                const fee = 1000n;
-                const outputAmount = balance - fee;
-                if (outputAmount < 546n) throw new Error('Output amount below dust limit.');
-
-                builder.addOutput({
-                    to: bchWallet.address!,
-                    amount: outputAmount
-                });
-
-                console.log('[Claim] Sending BCH transaction...');
-                const tx = await builder.send();
-                claimTxid = tx.txid;
-
-                console.log('[Claim] BCH Claim successful! TX:', claimTxid);
-
-                // Best effort notify relayer so it updates UI faster
-                try {
-                    await axios.post(`${BCH_SOLANA_RELAYER_URL}/claim`, {
-                        intentId: orderId,
-                        secret,
+                    builder.addOutput({
+                        to: bchWallet.address!,
+                        amount: outputAmount
                     });
+
+                    console.log('[Claim] Sending BCH transaction...');
+                    const tx = await builder.send();
+                    claimTxid = tx.txid;
+
+                    console.log('[Claim] BCH Claim successful! TX:', claimTxid);
+                }
+
+                // Best effort notify relayer so it completes the EVM/SOL claim side immediately
+                try {
+                    if (direction === 'ETH_TO_BCH') {
+                        await postClaim(order.intentId || orderId, secret, undefined, wdkRef.current.bchNetwork === 'mainnet');
+                    } else {
+                        await axios.post(`${BCH_SOLANA_RELAYER_URL}/claim`, {
+                            intentId: orderId,
+                            secret,
+                        });
+                    }
                 } catch { }
 
-            } else if (direction === 'BCH_TO_MOV') {
-                // Movement chain claims (handled by Relayer API until Movement wallet integrated)
-                setSwapStep('Claiming on Movement...');
-                try {
-                    const res = await axios.post(`${BCH_SOLANA_RELAYER_URL}/claim`, {
-                        intentId: orderId,
-                        secret,
-                    });
-                    claimTxid = res.data.txid || res.data.destClaimTx;
-                } catch {
-                    console.log('[Claim] Relayer claim endpoint not available');
-                    claimTxid = 'auto-claim-pending';
+            } else if (direction === 'BCH_TO_ETH') {
+                setSwapStep('Claiming tokens on EVM (Sepolia)...');
+                const isMainnet = wdkRef.current.bchNetwork === 'mainnet';
+                const currentWdk = wdkRef.current;
+                let evmSigner: any = currentWdk.evmSigner;
+                if (!evmSigner && currentWdk.seedPhrase) {
+                    const { HDNodeWallet } = await import('ethers');
+                    evmSigner = HDNodeWallet.fromPhrase(currentWdk.seedPhrase, undefined, "m/44'/60'/0'/0/0");
                 }
+
+                if (!evmSigner) {
+                    throw new Error('EVM signer not available. Please ensure your wallet is connected.');
+                }
+
+                const escrowId = order.claimData?.evmEscrowId || (order as any).evmEscrowId;
+                if (!escrowId) {
+                    throw new Error('Sepolia Escrow ID missing from order. Cannot claim.');
+                }
+
+                const { claimHTLCEscrow } = await import('@/lib/intentHTLC');
+                console.log(`[Claim] Claiming Sepolia Escrow ID ${escrowId} with secret...`);
+                try {
+                    claimTxid = await claimHTLCEscrow(evmSigner, escrowId.toString(), secret, isMainnet);
+                    console.log('[Claim] Sepolia claim successful! TX:', claimTxid);
+                } catch (claimErr: any) {
+                    const errMsg = claimErr?.data || claimErr?.message || '';
+                    if (errMsg.includes('0x646cf558') || errMsg.includes('AlreadyClaimed') || claimErr?.info?.error?.data === '0x646cf558') {
+                        console.log('[Claim] Sepolia escrow was already claimed on-chain!');
+                        claimTxid = order.fillTxid || 'already-claimed';
+                    } else {
+                        throw claimErr;
+                    }
+                }
+
+                // Notify relayer
+                try {
+                    await postClaim(order.intentId || orderId, secret, undefined, isMainnet);
+                } catch { }
             }
 
-            // Update order status
-            order.status = 'claimed';
-            if (claimTxid && claimTxid !== 'auto-claim-pending') {
-                const destChain = order.swapType === 'bch-to-sol' ? 'solana' : 'bch';
+            // Update order status to filled (settled) and move to History
+            order.status = 'filled';
+            if (claimTxid && claimTxid !== 'auto-claim-pending' && claimTxid !== 'relayer-claim-submitted' && claimTxid !== 'already-claimed') {
+                const destChain = (order.swapType === 'bch-to-eth')
+                    ? (order.buyToken.chain || 'ethereum')
+                    : (order.swapType === 'bch-to-sol' ? 'solana' : 'bch');
                 order.destExplorerUrl = buildExplorerUrl(claimTxid, destChain);
+                order.fillTxid = claimTxid;
+            } else if (!order.destExplorerUrl && order.fillTxid) {
+                const destChain = (order.swapType === 'bch-to-eth')
+                    ? (order.buyToken.chain || 'ethereum')
+                    : (order.swapType === 'bch-to-sol' ? 'solana' : 'bch');
+                order.destExplorerUrl = buildExplorerUrl(order.fillTxid, destChain);
             }
 
             localStorage.setItem(claimKey, JSON.stringify(all));
@@ -2501,7 +2726,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                     ? `https://blockchair.com/bitcoin-cash/transaction/${refundTxid}`
                     : `https://chipnet.chaingraph.cash/tx/${refundTxid}`;
             } else if (order.swapType === 'eth-to-bch') {
-                // ── EVM→BCH: user calls FRIVerifierHTLC.refund(escrowId) directly ──
+                // ── EVM→BCH: user calls IntentHTLC.refund(escrowId) directly on EVM ──
                 const currentWdk = wdkRef.current;
                 let evmSigner: any = currentWdk.evmSigner;
                 if (!evmSigner) {
@@ -2510,31 +2735,23 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                     evmSigner = HDNodeWallet.fromPhrase(currentWdk.seedPhrase, undefined, "m/44'/60'/0'/0/0");
                 }
 
-                const escrowId = order.claimData?.evmEscrowId;
+                const escrowId = order.claimData?.evmEscrowId || (order as any).evmEscrowId;
                 if (!escrowId) throw new Error('Escrow ID not found — cannot refund');
 
                 const sellChain = order.sellToken.chain || 'ethereum';
                 const chainCfg = getEVMChainConfig(sellChain, isMainnet);
-                if (!chainCfg) throw new Error(`Unknown EVM chain: ${sellChain}`);
-                if (!chainCfg.friVerifierHTLC) throw new Error(`FRIVerifierHTLC not deployed on ${chainCfg.name} yet`);
+                const explorer = chainCfg?.explorer || 'https://sepolia.etherscan.io';
 
-                setSwapStep(`Checking timelock on ${chainCfg.name}...`);
-                const { ethers } = await import('ethers');
-                const provider = new ethers.JsonRpcProvider(chainCfg.rpc, chainCfg.chainId);
-                const signer = evmSigner.connect(provider);
-                const contract = new ethers.Contract(chainCfg.friVerifierHTLC, FRI_VERIFIER_ABI, signer);
-
-                setSwapStep('Submitting on-chain refund...');
-                let refundTx: any;
+                setSwapStep(`Submitting on-chain refund on ${chainCfg?.name || 'EVM'}...`);
+                const { refundHTLCEscrow } = await import('@/lib/intentHTLC');
                 try {
-                    refundTx = await contract.refund(BigInt(escrowId));
-                    await refundTx.wait();
+                    const txHash = await refundHTLCEscrow(evmSigner, escrowId.toString(), isMainnet);
+                    refundTxid = txHash;
+                    refundExplorerUrl = `${explorer}/tx/${txHash}`;
                 } catch (e: any) {
                     const msg = e?.reason ?? e?.message ?? String(e);
                     throw new Error(`Refund transaction failed: ${msg}`);
                 }
-                refundTxid = refundTx.hash;
-                refundExplorerUrl = `${chainCfg.explorer}/tx/${refundTx.hash}`;
 
             } else {
                 throw new Error(`Refund not available for swap type: ${order.swapType}`);

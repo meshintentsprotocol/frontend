@@ -318,7 +318,12 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
         const rawAccount = accounts[0];
         const address = rawAccount.split(':').slice(2).join(':');
 
-        const label = connecting.label || 'External Wallet';
+        const peerName = session.peer?.metadata?.name;
+        let label = connecting.label || 'External Wallet';
+        if (label === 'External Wallet' && peerName) {
+            label = peerName;
+        }
+
         const newWallet: ExternalBCHWallet = {
             id: `wc-${Date.now()}`,
             source: 'walletconnect',

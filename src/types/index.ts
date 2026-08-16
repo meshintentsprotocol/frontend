@@ -164,5 +164,7 @@ export interface BCHOrder {
         bchCovenantTimelock?: number;  // Alias for sourceTimelock used by BCH→EVM path
         pendingRefundTx?: string;      // Base64 unsigned Solana refund tx prebuilt by server
         refundTx?: string;             // Txid/sig once the refund is confirmed
+        /** Present when selling a CashToken (PUSD etc.) — passed to solver for covenant verification */
+        bchToken?: { category: string; amount: string };
     };
 }
