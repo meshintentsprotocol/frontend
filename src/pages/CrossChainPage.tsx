@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
 import { ArrowDown, ArrowLeftRight, Loader2, RotateCw } from 'lucide-react';
-import { toast } from 'sonner';
+import { notifyToast as toast } from '@/lib/notify-toast';
 import { useWallet as useAptosWallet } from "@/context/wallet-provider";
 import { useWallet as useSolanaWallet } from "@solana/wallet-adapter-react";
 import { WalletMultiButton, useWalletModal as useWalletMultiButton } from "@solana/wallet-adapter-react-ui";

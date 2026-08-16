@@ -9,11 +9,22 @@
 const STORAGE_KEY = 'intent_app_settings_v1';
 
 export const AUCTION_DURATION = {
-    min: 60,
-    max: 3600,
-    step: 60,
-    default: 3600,
+    min: 5,
+    max: 300,
+    step: 1,
+    default: 60,
 };
+
+/** Quick-select presets shown alongside the duration slider (seconds). */
+export const AUCTION_DURATION_PRESETS = [15, 30, 60, 120, 300];
+
+/** Human-friendly label for a duration in seconds — e.g. 45 -> "45s", 90 -> "1m 30s", 300 -> "5m". */
+export function formatAuctionDuration(seconds: number): string {
+    if (seconds < 60) return `${seconds}s`;
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return s > 0 ? `${m}m ${s}s` : `${m}m`;
+}
 
 export interface AppSettings {
     /** Default Dutch-auction duration for new market swaps, in seconds. */

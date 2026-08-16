@@ -20,7 +20,7 @@ function getTimeAgo(timestamp: number): string {
     return `${Math.floor(diff / 86400000)}d ago`;
 }
 
-function OrderRow({ order }: { order: BCHOrder }) {
+function OrderRow({ order, onClaim, isClaiming }: { order: BCHOrder; onClaim?: (id: string) => void; isClaiming?: boolean }) {
     // Shared status metadata — see OrderStatusBadge.tsx.
     const config = statusMeta(order.status);
     const swapLabels: Record<string, string> = {
@@ -71,6 +71,17 @@ function OrderRow({ order }: { order: BCHOrder }) {
             </div>
             <div className="flex items-center gap-1.5 flex-shrink-0">
                 <Badge variant="outline" title={config.hint} className={cn('text-[9px] h-4 px-1.5', config.cls)}>{config.label}</Badge>
+                {(order.status === 'claimable' || (order.claimData?.secret && (order.status === 'pending' || order.status === 'proving' || (order.status === 'claimed' && order.destExplorerUrl?.includes('relayer-claim-submitted'))))) && onClaim && (
+                    <Button
+                        size="sm"
+                        variant="default"
+                        className="h-5 px-2 text-[9px] gap-1 bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-500 hover:to-violet-500 text-white font-semibold shadow-sm animate-pulse"
+                        onClick={() => onClaim(order.id)}
+                        disabled={isClaiming}
+                    >
+                        {isClaiming ? '...' : 'Claim'}
+                    </Button>
+                )}
                 {(() => {
                     // Refunded orders: point at the refund tx (lives on destExplorerUrl/fillTxid), not the funding tx.
                     const explorerHref = order.status === 'refunded'
@@ -102,6 +113,7 @@ export function WalletOrdersTab() {
     const pendingOrders = swapCtx?.pendingOrders || [];
     const completedOrders = swapCtx?.completedOrders || [];
     const refreshOrders = swapCtx?.refreshOrders || (() => Promise.resolve());
+    const claimOrder = swapCtx?.claimOrder;
     const isLoading = swapCtx?.isLoading || false;
 
     useEffect(() => {
@@ -142,7 +154,7 @@ export function WalletOrdersTab() {
             ) : (
                 <div className="space-y-1">
                     {allOrders.map(order => (
-                        <OrderRow key={order.id} order={order} />
+                        <OrderRow key={order.id} order={order} onClaim={claimOrder} isClaiming={isLoading} />
                     ))}
                 </div>
             )}

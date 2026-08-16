@@ -157,7 +157,7 @@ Reviewers examining this frontend should focus on:
 As the protocol transitions from HTLCs to **Triton VM STARK proofs**, the frontend will evolve to:
 
 1. **Eliminate the Claim Step** — Users will receive funds directly without needing to reveal a secret, as STARK proofs will handle verification asynchronously.
-2. **Support Bounded Loop Pricing** — Advanced non-linear pricing curves (enabled by `OP_BEGIN`/`OP_UNTIL`) will be visualized in the Limit Order UI.
+2. **Support Bounded Loop Pricing** — Advanced non-linear pricing curves will be visualized in the Limit Order UI. Note: the underlying opcodes (`OP_BEGIN`/`OP_UNTIL`, part of the "Layla" upgrade) already activated 2026-05-15 — this item is now blocked only on the contracts/frontend work to use them, not on a future network upgrade. See `cashtoken-relayer/docs/future/03-partial-order-fills.md` and `04-twap-orders.md` for designs that depend on this.
 3. **Multi-Resolver Discovery** — The frontend will query a decentralized registry of Resolver nodes instead of a single configured endpoint.
 
 ---

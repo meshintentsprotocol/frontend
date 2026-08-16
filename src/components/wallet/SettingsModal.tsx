@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Settings, X, Loader2, Check, Gavel, Moon, Sun, Globe, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { toast } from 'sonner';
-import { AUCTION_DURATION, getDefaultAuctionDuration, saveAppSettings } from '@/lib/appSettings';
+import { notifyToast as toast } from '@/lib/notify-toast';
+import { AUCTION_DURATION, AUCTION_DURATION_PRESETS, formatAuctionDuration, getDefaultAuctionDuration, saveAppSettings } from '@/lib/appSettings';
 import { useTheme } from '@/context/theme-provider';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Drawer, DrawerContent } from '@/components/ui/drawer';
@@ -18,18 +18,7 @@ interface Props {
     onClose: () => void;
 }
 
-const PRESETS = [
-    { label: '5m', value: 300 },
-    { label: '15m', value: 900 },
-    { label: '30m', value: 1800 },
-    { label: '1h', value: 3600 },
-];
-
-function formatDuration(seconds: number): string {
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return s > 0 ? `${m}m ${s}s` : `${m}m`;
-}
+const PRESETS = AUCTION_DURATION_PRESETS.map(value => ({ label: formatAuctionDuration(value), value }));
 
 export function SettingsModal({ open, onClose }: Props) {
     const [duration, setDuration] = useState(() => getDefaultAuctionDuration());
@@ -76,7 +65,7 @@ export function SettingsModal({ open, onClose }: Props) {
                         <span className="text-sm font-semibold text-white">Default auction duration</span>
                     </div>
                     <span className="font-mono text-sm text-emerald-300 tabular-nums">
-                        {formatDuration(duration)}
+                        {formatAuctionDuration(duration)}
                     </span>
                 </div>
 

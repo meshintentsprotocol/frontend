@@ -32,12 +32,22 @@ const CHIPNET_ENDPOINTS = [
 const MAINNET_REST = 'https://rest1.biggestfan.net';
 
 /**
+ * Ensure the address carries the cashaddr prefix matching the network being
+ * queried. A bare payload (no prefix) must not be hardcoded to `bitcoincash:` —
+ * on chipnet that produces a mainnet-prefixed address sent to a chipnet host,
+ * which the REST endpoint can't resolve.
+ */
+function withNetworkPrefix(address: string, isMainnet: boolean): string {
+    if (address.includes(':')) return address;
+    return `${isMainnet ? 'bitcoincash' : 'bchtest'}:${address}`;
+}
+
+/**
  * Fetch the confirmed balance (in sats) for an address via Electrum REST.
  */
 async function fetchBchBalance(address: string, isMainnet: boolean): Promise<number> {
     const endpoints = isMainnet ? [MAINNET_REST] : CHIPNET_ENDPOINTS;
-    // Strip the prefix for the REST query if needed
-    const addr = address.includes(':') ? address : `bitcoincash:${address}`;
+    const addr = withNetworkPrefix(address, isMainnet);
 
     for (const base of endpoints) {
         try {
@@ -77,7 +87,7 @@ async function fetchBchBalance(address: string, isMainnet: boolean): Promise<num
  */
 async function fetchTokenBalances(address: string, isMainnet: boolean): Promise<Record<string, string>> {
     const endpoints = isMainnet ? [MAINNET_REST] : CHIPNET_ENDPOINTS;
-    const addr = address.includes(':') ? address : `bitcoincash:${address}`;
+    const addr = withNetworkPrefix(address, isMainnet);
     const tokens: Record<string, string> = {};
 
     for (const base of endpoints) {

@@ -498,4 +498,70 @@
       opacity: 1;
     }
   }
+
+  /* --- DeFi-style range slider (gradient fill-to-thumb + glow) ---
+     Fill color is driven by an inline `background: linear-gradient(...)`
+     on the element itself (computed from value/min/max in JS); these rules
+     just make the native track/thumb transparent enough for that gradient
+     to show through consistently across engines. */
+  .defi-range {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 6px;
+    border-radius: 9999px;
+    outline: none;
+    cursor: pointer;
+  }
+
+  .defi-range::-webkit-slider-runnable-track {
+    height: 6px;
+    border-radius: 9999px;
+    background: transparent;
+  }
+
+  .defi-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    margin-top: -5px;
+    border-radius: 9999px;
+    background: #10b981;
+    border: 2px solid #052e21;
+    box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.15), 0 2px 8px rgba(16, 185, 129, 0.5);
+    cursor: grab;
+    transition: box-shadow 0.15s ease, transform 0.15s ease;
+  }
+
+  .defi-range::-webkit-slider-thumb:hover {
+    box-shadow: 0 0 0 6px rgba(16, 185, 129, 0.2), 0 2px 10px rgba(16, 185, 129, 0.6);
+    transform: scale(1.08);
+  }
+
+  .defi-range::-webkit-slider-thumb:active {
+    cursor: grabbing;
+    transform: scale(1.15);
+  }
+
+  .defi-range::-moz-range-track {
+    height: 6px;
+    border-radius: 9999px;
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .defi-range::-moz-range-progress {
+    height: 6px;
+    border-radius: 9999px;
+    background: #10b981;
+  }
+
+  .defi-range::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border-radius: 9999px;
+    background: #10b981;
+    border: 2px solid #052e21;
+    box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.15), 0 2px 8px rgba(16, 185, 129, 0.5);
+    cursor: grab;
+  }
 }

@@ -18,8 +18,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useExternalBCHWallet, type ExternalWalletSource } from '@/context/ExternalBCHWalletProvider';
-import { toast } from 'sonner';
-
+import { notifyToast as toast } from '@/lib/notify-toast';
 // ── Types ────────────────────────────────────────────────────────────────────
 
 type ModalStep = 'pick-wallet' | 'qr-display' | 'connected';
@@ -173,6 +172,7 @@ export function ConnectExternalWalletModal({ open, onClose }: Props) {
     const selectedOption = WALLET_OPTIONS.find(w => w.id === selectedWallet);
     const isWizardMode = selectedWallet === 'paytaca' && paytacaTab === 'wizard';
     const cashonizeDeepLink = uri && selectedWallet === 'cashonize' ? ext.getCashonizeDeepLink(uri) : null;
+    const paytacaDeepLink = uri && selectedWallet === 'paytaca' ? ext.getPaytacaDeepLink(uri, isWizardMode) : null;
 
     const modal = (
         <>
@@ -375,6 +375,17 @@ export function ConnectExternalWalletModal({ open, onClose }: Props) {
                                     >
                                         <Globe className="h-4 w-4" />
                                         Open in Cashonize Web Wallet
+                                    </a>
+                                )}
+
+                                {/* Paytaca deep-link */}
+                                {paytacaDeepLink && (
+                                    <a
+                                        href={paytacaDeepLink}
+                                        className="w-full flex items-center justify-center gap-2 h-11 rounded-xl text-xs font-semibold bg-blue-500/10 border border-blue-500/25 text-blue-300 hover:bg-blue-500/20 hover:text-blue-200 transition-all"
+                                    >
+                                        <Smartphone className="h-4 w-4" />
+                                        Open Paytaca App
                                     </a>
                                 )}
 

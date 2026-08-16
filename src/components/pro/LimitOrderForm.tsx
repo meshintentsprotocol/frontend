@@ -1,3 +1,6 @@
+// LEGACY — only used by ProPage/SwapPage, both unreachable ("/pro" and "/swap"
+// redirect to "/" in App.tsx). The live swap UI is BCHSwapCard
+// (components/bch-swap/), routed at "/trade".
 import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,8 +14,7 @@ import { TokenPair } from './TokenPairSelector';
 import { TOKENS } from '@/components/intent-swap/forms/TokenSelector';
 import { PriceService } from '@/lib/pyth';
 import { PriceData, Token } from '@/types';
-import { toast } from 'sonner';
-
+import { notifyToast as toast } from '@/lib/notify-toast';
 interface LimitOrderFormProps {
     selectedPair: TokenPair;
 }
