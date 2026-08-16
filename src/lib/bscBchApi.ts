@@ -8,7 +8,8 @@ export interface EVMToBCHRequest {
     sellAmount: string;      // wei or token units (string to avoid bigint issues)
     buyAmount: string;       // satoshis
     evmEscrowId: string;
-    useStark: true;
+    useStark?: boolean;
+    hashlock?: string;
     evmTokenAddress?: string;
     chainName?: string;      // bsc-bch-server chain key e.g. "Sepolia", "BSCTestnet"
     expiryTime?: number;
@@ -17,7 +18,7 @@ export interface EVMToBCHRequest {
 export interface BCHToEVMRequest {
     makerAddress: string;
     recipientAddress: string;
-    sellAmount: string;       // satoshis
+    sellAmount: string;       // satoshis (BCH dust) locked with the token
     buyAmount: string;        // wei
     hashlock: string;         // "dummy" for STARK/ZK path
     timelock: number;
@@ -26,6 +27,8 @@ export interface BCHToEVMRequest {
     chainName?: string;      // bsc-bch-server chain key e.g. "Sepolia", "BSCTestnet"
     expiryTime?: number;
     useStark?: boolean;      // ZK route — server delivers EVM funds directly, no hashlock escrow
+    /** Present when selling a BCH CashToken (e.g. PUSD) instead of native BCH */
+    bchToken?: { category: string; amount: string };
 }
 
 export interface ETHOrderStatus {
@@ -132,12 +135,25 @@ export async function getRefundBCH(intentId: string, isMainnet = false): Promise
 
 export async function postRefundBCH(
     intentId: string,
-    payload: { userPk: string; userSig: string },
+    body: { userPk: string; userSig: string },
     isMainnet = false,
-): Promise<{ txid: string }> {
+): Promise<{ success: boolean; txid: string }> {
     return request(`/intents/${intentId}/refund-bch`, isMainnet, {
         method: 'POST',
-        body: JSON.stringify(payload),
+        body: JSON.stringify(body),
+    });
+}
+
+export async function postClaim(
+    intentId: string,
+    secret: string,
+    chain?: string,
+    isMainnet = false,
+): Promise<{ success: boolean; message: string; intentId: string }> {
+    const query = chain ? `?chain=${chain}` : '';
+    return request(`/claim${query}`, isMainnet, {
+        method: 'POST',
+        body: JSON.stringify({ intentId, secret }),
     });
 }
 
