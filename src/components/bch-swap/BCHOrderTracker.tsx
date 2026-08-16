@@ -5,15 +5,17 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { statusMeta } from '@/lib/orderStatus';
 import { Button } from '@/components/ui/button';
-import { Clock, XCircle, ExternalLink, RefreshCw, ArrowRight, RotateCcw } from 'lucide-react';
+import { Clock, XCircle, ExternalLink, RefreshCw, ArrowRight, RotateCcw, Zap } from 'lucide-react';
 import { BCHOrder } from '@/types';
 
 // ============================================================================
 // BCH Order Tracker — Shows pending and completed BCH swap orders
 // ============================================================================
 
-function OrderRow({ order, onRefund, isRefunding, onCancel, isCancelling }: {
+function OrderRow({ order, onClaim, isClaiming, onRefund, isRefunding, onCancel, isCancelling }: {
     order: BCHOrder;
+    onClaim?: (id: string) => void;
+    isClaiming?: boolean;
     onRefund?: (id: string) => void;
     isRefunding?: boolean;
     onCancel?: (id: string) => void;
@@ -51,6 +53,19 @@ function OrderRow({ order, onRefund, isRefunding, onCancel, isCancelling }: {
             </div>
             <div className="flex items-center gap-2">
                 <Badge variant="outline" title={config.hint} className={cn("text-[10px]", config.cls)}>{config.label}</Badge>
+                {(order.status === 'claimable' || (order.claimData?.secret && (order.status === 'pending' || order.status === 'proving' || (order.status === 'claimed' && order.destExplorerUrl?.includes('relayer-claim-submitted'))))) && onClaim && (
+                    <Button
+                        size="sm"
+                        variant="default"
+                        className="h-6 px-2.5 text-[10px] gap-1 bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-500 hover:to-violet-500 text-white font-semibold shadow-md shadow-blue-500/20 animate-pulse"
+                        onClick={() => onClaim(order.id)}
+                        disabled={isClaiming}
+                        title="Claim your tokens on the destination chain"
+                    >
+                        <Zap className={`h-3 w-3 ${isClaiming ? 'animate-spin' : ''}`} />
+                        {isClaiming ? 'Claiming...' : 'Claim'}
+                    </Button>
+                )}
                 {order.swapType === 'same-chain' && order.orderType === 'limit' && order.status === 'pending' && onCancel && (
                     <Button
                         size="sm"
@@ -64,7 +79,7 @@ function OrderRow({ order, onRefund, isRefunding, onCancel, isCancelling }: {
                         {isCancelling ? '...' : 'Cancel'}
                     </Button>
                 )}
-                {order.status === 'failed' && onRefund && (order.swapType === 'bch-to-sol' || order.swapType === 'sol-to-bch') && (
+                {(order.status === 'failed' || order.status === 'expired' || (order.status === 'pending' && order.expiryTime && Date.now() / 1000 > order.expiryTime)) && onRefund && (order.swapType === 'bch-to-sol' || order.swapType === 'sol-to-bch' || order.swapType === 'bch-to-eth' || order.swapType === 'eth-to-bch') && (
                     <Button
                         size="sm"
                         variant="ghost"
@@ -114,7 +129,7 @@ function getTimeAgo(timestamp: number): string {
 }
 
 export function BCHOrderTracker() {
-    const { pendingOrders, completedOrders, refreshOrders, requestRefund, cancelSameChainOrder, isLoading } = useBCHSwap();
+    const { pendingOrders, completedOrders, refreshOrders, claimOrder, requestRefund, cancelSameChainOrder, isLoading } = useBCHSwap();
     const [refundingId, setRefundingId] = useState<string | null>(null);
     const [cancellingId, setCancellingId] = useState<string | null>(null);
 
@@ -127,18 +142,14 @@ export function BCHOrderTracker() {
         try { await cancelSameChainOrder(orderId); } finally { setCancellingId(null); }
     };
 
-    // Poll faster (8s) when any pending order is an active ZK swap (proof can complete in 30-60s).
-    // Fall back to 30s when only same-chain / claimable orders remain.
+    // Poll faster (8s) when any pending order is an active cross-chain swap
     const hasActiveZK = pendingOrders.some(o =>
         ['eth-to-bch', 'bch-to-eth', 'bch-to-sol', 'sol-to-bch'].includes(o.swapType) &&
-        ['pending', 'source_locked', 'proving'].includes(o.status)
+        ['pending', 'source_locked', 'proving', 'claimable'].includes(o.status)
     );
     useEffect(() => {
         if (pendingOrders.length === 0) return;
-        // Same-chain status arrives over the relayer WebSocket (see useRelayerEvents),
-        // so this poll is only a safety net for a dropped socket. ZK swaps keep their
-        // 8s poll — that is a different backend with no event stream.
-        const ms = hasActiveZK ? 8000 : 60000;
+        const ms = hasActiveZK ? 5000 : 30000;
         const interval = setInterval(refreshOrders, ms);
         return () => clearInterval(interval);
     }, [pendingOrders.length, hasActiveZK, refreshOrders]);
@@ -181,6 +192,8 @@ export function BCHOrderTracker() {
                             <OrderRow
                                 key={order.id}
                                 order={order}
+                                onClaim={claimOrder}
+                                isClaiming={isLoading && refundingId !== order.id && cancellingId !== order.id}
                                 onRefund={handleRefund}
                                 isRefunding={refundingId === order.id}
                                 onCancel={handleCancel}

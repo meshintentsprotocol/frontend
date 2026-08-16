@@ -330,16 +330,17 @@ function OrderRow({ order, onClaim, isClaiming, onRefund, isRefunding, onCancel,
             </div>
 
             <div className="flex items-center gap-1.5 ml-2 flex-shrink-0">
-                {order.status === 'claimable' && onClaim && order.claimData?.secret && (
+                {(order.status === 'claimable' || (order.claimData?.secret && (order.status === 'pending' || order.status === 'proving' || (order.status === 'claimed' && order.destExplorerUrl?.includes('relayer-claim-submitted'))))) && onClaim && (
                     <Button
                         size="sm"
                         variant="default"
                         className="h-7 lg:h-8 gap-1 bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-500 hover:to-violet-500 text-white text-xs lg:text-xs font-medium shadow-lg shadow-blue-500/25 animate-pulse"
                         onClick={() => onClaim(order.id)}
                         disabled={isClaiming}
+                        title="Claim tokens on destination chain"
                     >
                         <Zap className="h-3 w-3 lg:h-3.5 lg:w-3.5" />
-                        {isClaiming ? '...' : 'Claim'}
+                        {isClaiming ? 'Claiming...' : 'Claim'}
                     </Button>
                 )}
 
@@ -357,7 +358,7 @@ function OrderRow({ order, onClaim, isClaiming, onRefund, isRefunding, onCancel,
                     </Button>
                 )}
 
-                {order.status === 'failed' && onRefund && (order.swapType === 'bch-to-sol' || order.swapType === 'sol-to-bch') && (
+                {(order.status === 'failed' || order.status === 'expired' || (order.status === 'pending' && order.expiryTime && Date.now() / 1000 > order.expiryTime)) && onRefund && (order.swapType === 'bch-to-sol' || order.swapType === 'sol-to-bch' || order.swapType === 'bch-to-eth' || order.swapType === 'eth-to-bch') && (
                     <Button
                         size="sm"
                         variant="outline"

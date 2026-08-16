@@ -313,11 +313,11 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
     }, [referenceRatio, priceTouched, orderType]);
 
     // Market auto-fill: derive buyAmount from current USD spot or relayer quote.
-    // Skipped when a same-chain limit order has an explicit limitPrice — the dedicated
+    // Skipped when any limit order has an explicit limitPrice — the dedicated
     // limit-price effect below drives buyAmount in that case.
     useEffect(() => {
         if (!sellAmount || Number(sellAmount) <= 0) { setBuyAmount(''); return; }
-        if (swapType === 'same-chain' && orderType === 'limit' && limitPrice && Number(limitPrice) > 0) return;
+        if (orderType === 'limit' && limitPrice && Number(limitPrice) > 0) return;
         
         if (swapType === 'same-chain') {
             const isMainnet = wdk.bchNetwork === 'mainnet';
@@ -419,11 +419,9 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
         }
     }, [sellAmount, sellToken, buyToken, getTokenPrice, orderType, limitPrice, swapType, wdk.bchNetwork]);
 
-    // Same-chain limit order: explicit limitPrice drives buyAmount.
+    // Limit order: explicit limitPrice drives buyAmount across same-chain and cross-chain pairs.
     // limitPrice means "1 sellToken = N buyToken" (matches the on-screen mkt-ratio display).
-    // Scoped to same-chain to keep the cross-chain limit-order pricing unchanged.
     useEffect(() => {
-        if (swapType !== 'same-chain') return;
         if (orderType !== 'limit') return;
         if (!sellAmount || Number(sellAmount) <= 0) return;
         if (!limitPrice || Number(limitPrice) <= 0) return;
