@@ -9,6 +9,8 @@ import {
 import { cn } from '@/lib/utils';
 import type { Token, TwapQuoteResponse } from '@/types';
 import { useTWAP } from '@/hooks/useTWAP';
+import { ConnectWalletButton } from '@/components/connect-wallet-button';
+import { cashAddressToLockingBytecode, binToHex } from '@bitauth/libauth';
 import { toast } from 'sonner';
 
 interface TWAPOrderFormProps {
@@ -19,6 +21,27 @@ interface TWAPOrderFormProps {
   onOrderPlaced?: () => void;
   userAddress: string;
   userPkh: string;
+  isConnected?: boolean;
+  sellBalance?: number | null;
+}
+
+function derivePkhFromAddress(address: string): string {
+  if (!address) return '';
+  try {
+    const decoded = cashAddressToLockingBytecode(address);
+    if (typeof decoded !== 'string') {
+      if (decoded.bytecode.length === 25) {
+        return binToHex(decoded.bytecode.slice(3, 23));
+      } else if (decoded.bytecode.length === 23) {
+        return binToHex(decoded.bytecode.slice(2, 22));
+      } else {
+        return binToHex(decoded.bytecode.slice(3, 23));
+      }
+    }
+  } catch (e) {
+    console.warn('[TWAP] PKH derivation error:', e);
+  }
+  return '';
 }
 
 const SLICE_PRESETS = [
@@ -43,6 +66,8 @@ export function TWAPOrderForm({
   onOrderPlaced,
   userAddress,
   userPkh,
+  isConnected = true,
+  sellBalance = null,
 }: TWAPOrderFormProps) {
   const [numSlices, setNumSlices] = useState<number>(10);
   const [intervalSec, setIntervalSec] = useState<number>(60);
@@ -51,22 +76,33 @@ export function TWAPOrderForm({
 
   const { fetchQuote, submitOrder, currentQuote, quoteLoading, loading } = useTWAP();
 
-  const tokenIn = sellToken.categoryId || (sellToken.chain === 'bch' && sellToken.symbol === 'BCH' ? '0x' : '0x');
-  const tokenOut = buyToken.categoryId || (buyToken.chain === 'bch' && buyToken.symbol === 'BCH' ? '0x' : '0x');
+  const isSellBCH = sellToken.chain === 'bch' && (sellToken.symbol === 'BCH' || sellToken.type === 'native');
+  const isBuyBCH = buyToken.chain === 'bch' && (buyToken.symbol === 'BCH' || buyToken.type === 'native');
+
+  const tokenIn = isSellBCH 
+    ? '0x' 
+    : (sellToken.categoryId || (sellToken.type && sellToken.type !== 'native' ? sellToken.type : 'dfe50223c8d5cba8dcef8dff6d92b61deb88a8ba44947367f2b746487b56039b'));
+
+  const tokenOut = isBuyBCH 
+    ? '0x' 
+    : (buyToken.categoryId || (buyToken.type && buyToken.type !== 'native' ? buyToken.type : 'dfe50223c8d5cba8dcef8dff6d92b61deb88a8ba44947367f2b746487b56039b'));
+
+  const side: 'BUY' | 'SELL' = isSellBCH ? 'SELL' : 'BUY';
 
   // Trigger quote fetching when parameters change
   useEffect(() => {
     if (!sellAmount || Number(sellAmount) <= 0) return;
-    const baseUnits = Math.round(Number(sellAmount) * Math.pow(10, sellToken.decimals || 0));
+    const decimals = sellToken.decimals ?? (isSellBCH ? 8 : 0);
+    const baseUnits = Math.round(Number(sellAmount) * Math.pow(10, decimals));
     fetchQuote({
-      tokenIn: tokenIn || 'dfe50223c8d5cba8dcef8dff6d92b61deb88a8ba44947367f2b746487b56039b',
-      tokenOut: tokenOut || '0x',
+      tokenIn,
+      tokenOut,
       totalAmountIn: baseUnits.toString(),
       numSlices,
       intervalSec,
       maxPricePerUnit: limitProtection && maxPriceLimit ? maxPriceLimit : undefined,
     });
-  }, [sellAmount, numSlices, intervalSec, limitProtection, maxPriceLimit, tokenIn, tokenOut, sellToken.decimals, fetchQuote]);
+  }, [sellAmount, numSlices, intervalSec, limitProtection, maxPriceLimit, tokenIn, tokenOut, sellToken.decimals, isSellBCH, fetchQuote]);
 
   const sliceSize = useMemo(() => {
     if (!sellAmount || Number(sellAmount) <= 0) return '0';
@@ -81,7 +117,8 @@ export function TWAPOrderForm({
   }, [numSlices, intervalSec]);
 
   const handlePlaceTwap = async () => {
-    if (!userAddress || !userPkh) {
+    const effectivePkh = userPkh || derivePkhFromAddress(userAddress);
+    if (!userAddress || !effectivePkh) {
       toast.error('Connect your BCH wallet first to submit TWAP orders');
       return;
     }
@@ -89,15 +126,20 @@ export function TWAPOrderForm({
       toast.error('Enter a valid sell amount');
       return;
     }
+    if (sellBalance !== null && Number(sellAmount) > sellBalance) {
+      toast.error(`Insufficient ${sellToken.symbol} balance`);
+      return;
+    }
 
-    const baseUnits = Math.round(Number(sellAmount) * Math.pow(10, sellToken.decimals || 0));
+    const decimals = sellToken.decimals ?? (isSellBCH ? 8 : 0);
+    const baseUnits = Math.round(Number(sellAmount) * Math.pow(10, decimals));
 
     const res = await submitOrder({
-      creatorPkh: userPkh,
+      creatorPkh: effectivePkh,
       creatorAddress: userAddress,
-      side: 'BUY',
-      tokenIn: tokenIn || 'dfe50223c8d5cba8dcef8dff6d92b61deb88a8ba44947367f2b746487b56039b',
-      tokenOut: tokenOut || '0x',
+      side,
+      tokenIn,
+      tokenOut,
       totalAmountIn: baseUnits.toString(),
       numSlices,
       intervalSec,
@@ -208,20 +250,32 @@ export function TWAPOrderForm({
       </div>
 
       {/* ── 4. Submit CTA Button ── */}
-      <Button
-        className="w-full h-14 text-base font-semibold bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 rounded-2xl shadow-lg shadow-emerald-500/20 disabled:opacity-50 transition-all font-heading"
-        onClick={handlePlaceTwap}
-        disabled={loading || !sellAmount || Number(sellAmount) <= 0}
-      >
-        {loading ? (
-          <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Submitting TWAP Order…</>
-        ) : (
-          <>
-            <Clock className="w-4 h-4 mr-2" />
-            Place TWAP · {numSlices} Slices ({intervalSec}s)
-          </>
-        )}
-      </Button>
+      {!isConnected ? (
+        <ConnectWalletButton className="w-full h-14 rounded-2xl" />
+      ) : !sellAmount || Number(sellAmount) <= 0 ? (
+        <Button className="w-full h-14 text-base font-semibold rounded-2xl bg-white/[0.04] text-white/40 hover:bg-white/[0.04]" disabled>
+          Enter an amount
+        </Button>
+      ) : sellBalance !== null && Number(sellAmount) > sellBalance ? (
+        <Button className="w-full h-14 text-base font-semibold rounded-2xl bg-red-500/15 text-red-300 hover:bg-red-500/15" disabled>
+          Insufficient {sellToken.symbol} balance
+        </Button>
+      ) : (
+        <Button
+          className="w-full h-14 text-base font-semibold bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 rounded-2xl shadow-lg shadow-emerald-500/20 disabled:opacity-50 transition-all font-heading"
+          onClick={handlePlaceTwap}
+          disabled={loading || quoteLoading}
+        >
+          {loading ? (
+            <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Submitting TWAP Order…</>
+          ) : (
+            <>
+              <Clock className="w-4 h-4 mr-2" />
+              Place TWAP · {numSlices} Slices ({intervalSec}s)
+            </>
+          )}
+        </Button>
+      )}
     </div>
   );
 }

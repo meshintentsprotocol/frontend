@@ -139,13 +139,22 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
     const { detectSwapType, executeSwap, isLoading, swapStep } = useBCHSwap();
     const wdk = useWDK();
 
-    const userAddress = bchWallet.address || wdk.bchAddress || '';
+    const userAddress = isMainActive
+        ? (bchWallet.address || wdk.bchAddress || '')
+        : (activeExtWallet?.address || bchWallet.address || wdk.bchAddress || '');
+
     const userPkhHex = useMemo(() => {
         if (!userAddress) return '';
         try {
             const decoded = cashAddressToLockingBytecode(userAddress);
             if (typeof decoded !== 'string') {
-                return binToHex(decoded.bytecode.slice(3, 23));
+                if (decoded.bytecode.length === 25) {
+                    return binToHex(decoded.bytecode.slice(3, 23));
+                } else if (decoded.bytecode.length === 23) {
+                    return binToHex(decoded.bytecode.slice(2, 22));
+                } else {
+                    return binToHex(decoded.bytecode.slice(3, 23));
+                }
             }
         } catch {}
         return '';
@@ -1153,6 +1162,8 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                         }}
                         userAddress={userAddress}
                         userPkh={userPkhHex}
+                        isConnected={!!userAddress}
+                        sellBalance={sellBalance}
                     />
                 </div>
             ) : (

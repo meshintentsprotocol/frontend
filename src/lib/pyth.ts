@@ -2,8 +2,16 @@ import axios from 'axios';
 import { PriceData } from '@/types';
 
 // Pyth Hermes API Endpoint
-const HERMES_URL = "https://hermes.pyth.network";
+// In dev, requests are proxied through Vite to bypass CORS.
+// In production, use the direct Hermes URL (your deployment should handle CORS or use a server-side proxy).
+const HERMES_DIRECT = "https://hermes.pyth.network";
+const HERMES_PROXY = "/api/pyth";  // Vite dev server proxy → hermes.pyth.network
 
+// Use proxy in development, direct in production
+const HERMES_ENDPOINTS = [
+    import.meta.env.DEV ? HERMES_PROXY : HERMES_DIRECT,
+    HERMES_DIRECT,
+];
 // Price Feed IDs (Mainnet Beta)
 // Note: effectively using Mainnet prices for Testnet display is standard practice for demos unless specific testnet feeds are required/available.
 export const PRICE_FEEDS = {
@@ -22,46 +30,52 @@ export const PRICE_FEEDS = {
     "USDT.e": "0x2b89b9dc8fdf9f34709a5b106b472f0f39bb6ca9ce04b0fd7f2e971688e2e53b",
 };
 
+
 export const PriceService = {
     /**
-     * Fetch latest prices for all configured feeds
+     * Fetch latest prices for all configured feeds.
+     * Gracefully handles CORS / network errors by trying fallback endpoints
+     * and returning an empty map instead of throwing.
      */
     async getLatestPrices(): Promise<Record<string, PriceData>> {
-        try {
-            const ids = Array.from(new Set(Object.values(PRICE_FEEDS)));
+        const ids = Array.from(new Set(Object.values(PRICE_FEEDS)));
 
-            const response = await axios.get(`${HERMES_URL}/v2/updates/price/latest`, {
-                params: {
-                    ids: ids,
-                    encoding: "hex",
-                    parsed: true,
-                }
-            });
+        for (const endpoint of HERMES_ENDPOINTS) {
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-            const prices: Record<string, PriceData> = {};
+                const response = await axios.get(`${endpoint}/v2/updates/price/latest`, {
+                    params: {
+                        ids: ids,
+                        encoding: "hex",
+                        parsed: true,
+                    },
+                    signal: controller.signal,
+                });
+                clearTimeout(timeoutId);
 
-            // Map response back to symbols
-            // Map response back to symbols
-            const parsed = response.data.parsed;
-            // console.log("Pyth response parsed:", parsed);
+                const prices: Record<string, PriceData> = {};
+                const parsed = response.data.parsed;
 
-            if (parsed) {
-                // Determine which ID belongs to which symbol
-                for (const [symbol, id] of Object.entries(PRICE_FEEDS)) {
-                    const feed = parsed.find((p: any) => p.id === id.replace("0x", ""));
-                    if (feed) {
-                        prices[symbol] = feed.price;
-                    } else {
-                        console.warn(`No price feed found for ${symbol} (ID: ${id})`);
+                if (parsed) {
+                    for (const [symbol, id] of Object.entries(PRICE_FEEDS)) {
+                        const feed = parsed.find((p: any) => p.id === id.replace("0x", ""));
+                        if (feed) {
+                            prices[symbol] = feed.price;
+                        }
                     }
                 }
+                return prices;
+            } catch (_err) {
+                // Silently try next endpoint; CORS/network errors are expected in
+                // browser environments without a proxy.
             }
-            return prices;
-
-        } catch (error) {
-            console.error("Failed to fetch Pyth prices:", error);
-            return {};
         }
+
+        // All endpoints failed — return empty so the UI degrades gracefully
+        console.debug("[Pyth] All Hermes endpoints unreachable; price feeds unavailable.");
+        return {};
     },
 
     /**

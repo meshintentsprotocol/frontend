@@ -70,7 +70,13 @@ export default defineConfig({
                 changeOrigin: true,
                 rewrite: (path) => path.replace(/^\/api\/bardock/, ''),
                 secure: true,
-            }
+            },
+            '/api/pyth': {
+                target: 'https://hermes.pyth.network',
+                changeOrigin: true,
+                rewrite: (path) => path.replace(/^\/api\/pyth/, ''),
+                secure: true,
+            },
         }
     }
 })

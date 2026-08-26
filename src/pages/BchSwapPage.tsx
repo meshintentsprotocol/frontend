@@ -6,7 +6,7 @@ import { BCHOrderType } from '@/types';
 import { useBCHSwapOptional } from '@/context/BCHSwapContext';
 import { useLocation } from 'react-router-dom';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription } from '@/components/ui/drawer';
 
 // ============================================================================
 // BCH Swap Page — /bchswap, /trade, /twap
@@ -113,6 +113,9 @@ export default function BchSwapPage() {
                             <DrawerTitle className="text-white text-base">
                                 {orderType === 'twap' ? 'TWAP Execution Queue' : 'Orders & History'}
                             </DrawerTitle>
+                            <DrawerDescription className="sr-only">
+                                {orderType === 'twap' ? 'View and manage your active TWAP orders' : 'View your order history and pending limit orders'}
+                            </DrawerDescription>
                         </DrawerHeader>
                         <div className="overflow-y-auto px-4 pb-6">
                             {orderType === 'twap' ? <TWAPOrderHistory /> : <LimitOrderHistory />}
