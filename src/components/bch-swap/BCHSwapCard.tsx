@@ -27,6 +27,8 @@ import {
 } from '@/components/ui/popover';
 import { useActiveWallet } from '@/hooks/useActiveWallet';
 import { useExternalBCHWallet } from '@/context/ExternalBCHWalletProvider';
+import { TWAPOrderForm } from './TWAPOrderForm';
+import { cashAddressToLockingBytecode, binToHex } from '@bitauth/libauth';
 
 // ============================================================================
 // BCH Swap Card — Uniswap-style unified swap card
@@ -136,6 +138,18 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
     const bchWallet = useBCHWallet();
     const { detectSwapType, executeSwap, isLoading, swapStep } = useBCHSwap();
     const wdk = useWDK();
+
+    const userAddress = bchWallet.address || wdk.bchAddress || '';
+    const userPkhHex = useMemo(() => {
+        if (!userAddress) return '';
+        try {
+            const decoded = cashAddressToLockingBytecode(userAddress);
+            if (typeof decoded !== 'string') {
+                return binToHex(decoded.bytecode.slice(3, 23));
+            }
+        } catch {}
+        return '';
+    }, [userAddress]);
     const isMainnet = wdk.bchNetwork === 'mainnet';
     const portfolio = usePortfolio({ pollingMs: 30_000 });
 
@@ -708,6 +722,17 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                     >
                         Limit
                     </button>
+                    <button
+                        onClick={() => onOrderTypeChange('twap')}
+                        className={cn(
+                            'px-4 py-1.5 text-xs font-semibold rounded-full transition-all',
+                            orderType === 'twap'
+                                ? 'bg-white/[0.08] text-white shadow-sm'
+                                : 'text-white/50 hover:text-white/80'
+                        )}
+                    >
+                        TWAP
+                    </button>
                 </div>
 
                 <div className="flex items-center gap-1">
@@ -1115,62 +1140,81 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                 </div>
             )}
 
-            {/* ─── Route summary ─── */}
-            {sellAmount && Number(sellAmount) > 0 && (
-                <div className="mx-4 mt-3 rounded-2xl bg-white/[0.02] border border-white/[0.05] overflow-hidden">
-                    <button
-                        onClick={() => setRouteExpanded(v => !v)}
-                        className="w-full flex items-center justify-between px-4 py-3 text-xs hover:bg-white/[0.02] transition-colors"
-                    >
-                        <div className="flex items-center gap-2">
-                            <Badge variant="outline" className={cn("text-[10px] h-4 px-1.5 gap-1 border", typeInfo.color)}>
-                                {typeInfo.icon}{typeInfo.label}
-                            </Badge>
-                            <span className="font-mono text-white/70">
-                                1 {sellToken.symbol} ≈ {
-                                    getTokenPrice(sellToken) > 0 && getTokenPrice(buyToken) > 0
-                                        ? (getTokenPrice(sellToken) / getTokenPrice(buyToken)).toFixed(6)
-                                        : '…'
-                                } {buyToken.symbol}
-                            </span>
-                        </div>
-                        {routeExpanded ? <ChevronUp className="h-3 w-3 text-white/40" /> : <ChevronDown className="h-3 w-3 text-white/40" />}
-                    </button>
-                    {routeExpanded && (
-                        <div className="px-4 pb-3 space-y-1.5 text-sm border-t border-white/[0.04] pt-2 animate-in fade-in-50 duration-200">
-                            <div className="flex justify-between text-white/50">
-                                <span>Route</span>
-                                <span className="text-white/80">{typeInfo.desc}</span>
-                            </div>
-                            <div className="flex justify-between text-white/50">
-                                <span>Order type</span>
-                                <span className="text-white/80 capitalize">{orderType}{orderType === 'market' ? ' (Dutch auction)' : ''}</span>
-                            </div>
-                            {orderType === 'market' && (
-                                <div className="flex justify-between text-white/50">
-                                    <span>Auction duration</span>
-                                    <span className="text-white/80">{formatAuctionDuration(duration)}</span>
+            {/* ─── TWAP Form / Route summary / CTA ─── */}
+            {orderType === 'twap' ? (
+                <div className="mx-4 mt-2 mb-2">
+                    <TWAPOrderForm
+                        sellToken={sellToken}
+                        buyToken={buyToken}
+                        sellAmount={sellAmount}
+                        onSellAmountChange={setSellAmount}
+                        onOrderPlaced={() => {
+                            if (onToggleOrders && !ordersVisible) onToggleOrders();
+                        }}
+                        userAddress={userAddress}
+                        userPkh={userPkhHex}
+                    />
+                </div>
+            ) : (
+                <>
+                    {/* ─── Route summary ─── */}
+                    {sellAmount && Number(sellAmount) > 0 && (
+                        <div className="mx-4 mt-3 rounded-2xl bg-white/[0.02] border border-white/[0.05] overflow-hidden">
+                            <button
+                                onClick={() => setRouteExpanded(v => !v)}
+                                className="w-full flex items-center justify-between px-4 py-3 text-xs hover:bg-white/[0.02] transition-colors"
+                            >
+                                <div className="flex items-center gap-2">
+                                    <Badge variant="outline" className={cn("text-[10px] h-4 px-1.5 gap-1 border", typeInfo.color)}>
+                                        {typeInfo.icon}{typeInfo.label}
+                                    </Badge>
+                                    <span className="font-mono text-white/70">
+                                        1 {sellToken.symbol} ≈ {
+                                            getTokenPrice(sellToken) > 0 && getTokenPrice(buyToken) > 0
+                                                ? (getTokenPrice(sellToken) / getTokenPrice(buyToken)).toFixed(6)
+                                                : '…'
+                                        } {buyToken.symbol}
+                                    </span>
                                 </div>
-                            )}
-                            {orderType === 'limit' && limitPrice && (
-                                <div className="flex justify-between text-white/50">
-                                    <span>Limit price</span>
-                                    <span className="text-white/80">{limitPrice} {buyToken.symbol}</span>
-                                </div>
-                            )}
-                            {swapType !== 'same-chain' && (
-                                <div className="flex items-center gap-1 text-yellow-400/80 pt-1">
-                                    <AlertTriangle className="h-3 w-3" />
-                                    <span>Cross-chain — relies on solver/relayer fill</span>
+                                {routeExpanded ? <ChevronUp className="h-3 w-3 text-white/40" /> : <ChevronDown className="h-3 w-3 text-white/40" />}
+                            </button>
+                            {routeExpanded && (
+                                <div className="px-4 pb-3 space-y-1.5 text-sm border-t border-white/[0.04] pt-2 animate-in fade-in-50 duration-200">
+                                    <div className="flex justify-between text-white/50">
+                                        <span>Route</span>
+                                        <span className="text-white/80">{typeInfo.desc}</span>
+                                    </div>
+                                    <div className="flex justify-between text-white/50">
+                                        <span>Order type</span>
+                                        <span className="text-white/80 capitalize">{orderType}{orderType === 'market' ? ' (Dutch auction)' : ''}</span>
+                                    </div>
+                                    {orderType === 'market' && (
+                                        <div className="flex justify-between text-white/50">
+                                            <span>Auction duration</span>
+                                            <span className="text-white/80">{formatAuctionDuration(duration)}</span>
+                                        </div>
+                                    )}
+                                    {orderType === 'limit' && limitPrice && (
+                                        <div className="flex justify-between text-white/50">
+                                            <span>Limit price</span>
+                                            <span className="text-white/80">{limitPrice} {buyToken.symbol}</span>
+                                        </div>
+                                    )}
+                                    {swapType !== 'same-chain' && (
+                                        <div className="flex items-center gap-1 text-yellow-400/80 pt-1">
+                                            <AlertTriangle className="h-3 w-3" />
+                                            <span>Cross-chain — relies on solver/relayer fill</span>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
                     )}
-                </div>
-            )}
 
-            {/* ─── CTA ─── */}
-            <div className="p-4 pt-3">{renderCTA()}</div>
+                    {/* ─── CTA ─── */}
+                    <div className="p-4 pt-3">{renderCTA()}</div>
+                </>
+            )}
 
             {/* ─── In-progress step indicator ─── */}
             {isLoading && swapStep && (

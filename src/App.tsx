@@ -150,6 +150,15 @@ function App() {
                                                             </main>
                                                         </div>
                                                     } />
+                                                    <Route path="/twap" element={
+                                                        <div className="flex flex-col min-h-screen bg-[#050505]">
+                                                            <Header />
+                                                            <main className="flex-1 pt-24">
+                                                                <BchSwapPage />
+                                                            </main>
+                                                        </div>
+                                                    } />
+                                                    <Route path="/bchswap" element={<Navigate to="/trade" replace />} />
 
                                                     <Route path="/terms" element={<TermsOfService />} />
                                                     <Route path="/privacy" element={<PrivacyPolicy />} />

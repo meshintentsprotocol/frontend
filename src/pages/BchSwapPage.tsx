@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { BCHSwapCard } from '@/components/bch-swap/BCHSwapCard';
 import { LimitOrderHistory } from '@/components/bch-swap/LimitOrderHistory';
+import { TWAPOrderHistory } from '@/components/bch-swap/TWAPOrderHistory';
 import { BCHOrderType } from '@/types';
 import { useBCHSwapOptional } from '@/context/BCHSwapContext';
 import { useLocation } from 'react-router-dom';
@@ -8,16 +9,20 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 
 // ============================================================================
-// BCH Swap Page — /bchswap
+// BCH Swap Page — /bchswap, /trade, /twap
 // ============================================================================
-// Unified page for BCH same-chain (CashToken) and cross-chain (BCH↔Solana) swaps.
-// Layout mirrors the existing SwapPage pattern when 'market' is selected.
-// Expands to a two-column layout when 'limit' orders are selected or after a swap.
+// Unified page for BCH same-chain, cross-chain, limit orders, and TWAP execution.
+// Expands to a two-column layout when 'limit' or 'twap' mode is selected.
 
 export default function BchSwapPage() {
     const location = useLocation();
     const queryParams = new URLSearchParams(location.search);
-    const initialOrderType = queryParams.get('type') === 'limit' ? 'limit' : 'market';
+    const initialTypeParam = queryParams.get('type');
+    const initialOrderType: BCHOrderType = initialTypeParam === 'limit'
+        ? 'limit'
+        : initialTypeParam === 'twap' || location.pathname === '/twap'
+        ? 'twap'
+        : 'market';
 
     const [orderType, setOrderType] = useState<BCHOrderType>(initialOrderType);
     const isMobile = useIsMobile();
@@ -25,25 +30,27 @@ export default function BchSwapPage() {
     // Ensure orderType updates if URL param changes after initial mount
     useEffect(() => {
         const typeParam = new URLSearchParams(location.search).get('type');
-        setOrderType(typeParam === 'limit' ? 'limit' : 'market');
-    }, [location.search]);
+        if (typeParam === 'limit') setOrderType('limit');
+        else if (typeParam === 'twap' || location.pathname === '/twap') setOrderType('twap');
+        else setOrderType('market');
+    }, [location.search, location.pathname]);
 
     const [showOrders, setShowOrders] = useState(false);
 
-    // Limit mode needs the Open & Orders panel — show it by default there.
+    // Limit and TWAP modes need the History & Progress panel — show it by default
     useEffect(() => {
-        if (orderType === 'limit') setShowOrders(true);
+        if (orderType === 'limit' || orderType === 'twap') setShowOrders(true);
     }, [orderType]);
+
     const swapCtx = useBCHSwapOptional();
-    const prevPendingCount = useRef<number | null>(null); // null = not yet initialized
+    const prevPendingCount = useRef<number | null>(null);
     const swapCardRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
 
-    // Show orders panel ONLY when a NEW order is created (not from existing localStorage)
+    // Show orders panel when a new order is created
     useEffect(() => {
         const currentCount = (swapCtx?.pendingOrders?.length || 0) + (swapCtx?.completedOrders?.length || 0);
         if (prevPendingCount.current === null) {
-            // First render — capture existing count, don't show panel
             prevPendingCount.current = currentCount;
             return;
         }
@@ -89,10 +96,10 @@ export default function BchSwapPage() {
                         />
                     </div>
 
-                    {/* Orders Panel — desktop only: slides + scales in after swap or when limit mode is active */}
+                    {/* Orders Panel — desktop only: slides + scales in */}
                     {panelVisible && !isMobile && (
                         <div className="w-full lg:flex-1 animate-in fade-in slide-in-from-right-10 zoom-in-95 duration-500 ease-out fill-mode-both delay-100">
-                            <LimitOrderHistory />
+                            {orderType === 'twap' ? <TWAPOrderHistory /> : <LimitOrderHistory />}
                         </div>
                     )}
                 </div>
@@ -103,10 +110,12 @@ export default function BchSwapPage() {
                 <Drawer open={panelVisible} onOpenChange={setShowOrders}>
                     <DrawerContent className="max-h-[85vh]">
                         <DrawerHeader>
-                            <DrawerTitle className="text-white text-base">Orders & History</DrawerTitle>
+                            <DrawerTitle className="text-white text-base">
+                                {orderType === 'twap' ? 'TWAP Execution Queue' : 'Orders & History'}
+                            </DrawerTitle>
                         </DrawerHeader>
                         <div className="overflow-y-auto px-4 pb-6">
-                            <LimitOrderHistory />
+                            {orderType === 'twap' ? <TWAPOrderHistory /> : <LimitOrderHistory />}
                         </div>
                     </DrawerContent>
                 </Drawer>
