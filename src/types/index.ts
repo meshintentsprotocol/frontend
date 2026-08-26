@@ -37,7 +37,7 @@ export interface SwapParams {
 }
 
 export type BCHSwapType = 'same-chain' | 'bch-to-sol' | 'sol-to-bch' | 'bch-to-mov' | 'mov-to-bch' | 'sol-to-mov' | 'mov-to-sol' | 'bch-to-xmr' | 'xmr-to-bch' | 'eth-to-bch' | 'bch-to-eth';
-export type BCHOrderType = 'market' | 'limit';
+export type BCHOrderType = 'market' | 'limit' | 'twap';
 
 export interface BCHSwapParams {
     sellToken: Token;
@@ -48,10 +48,78 @@ export interface BCHSwapParams {
     orderType: BCHOrderType;
     duration?: number;     // Dutch auction duration (seconds)
     expiryTime?: number;   // Limit order expiry (unix timestamp)
+    twap?: {
+        numSlices: number;
+        intervalSec: number;
+        maxPricePerUnit?: string;
+    };
     xmr?: {
         viewKey: string;
         spendKey: string;
     };
+}
+
+// ── TWAP Interfaces ─────────────────────────────────────────────────────────
+
+export interface TwapSliceProjection {
+    sliceIndex:       number;
+    sliceAmountIn:    string;
+    estimatedTimeSec: number;
+    bestPoolAddress?: string;
+    projectedRate:    number;
+    estimatedOut:     string;
+    makerFeeSats:     string;
+}
+
+export interface TwapQuoteResponse {
+    tokenIn:                string;
+    tokenOut:               string;
+    totalAmountIn:          string;
+    numSlices:              number;
+    intervalSec:            number;
+    sliceAmountIn:          string;
+    totalDurationSec:       number;
+    estimatedTotalOut:      string;
+    averageRate:            number;
+    totalMakerFeeSats:      string;
+    estimatedNetworkFeeSats: string;
+    priceImpactSavingsPct:  number;
+    slices:                 TwapSliceProjection[];
+    eligiblePoolCount:      number;
+}
+
+export interface TwapSliceRecord {
+    sliceIndex:         number;
+    executedAt:         number;
+    txid:               string;
+    poolAddress:        string;
+    amountIn:           string;
+    amountOut:          string;
+    makerFeeSats:       string;
+    effectivePrice:     number;
+}
+
+export interface TwapOrderRecord {
+    orderId:            string;
+    creatorPkh:         string;
+    creatorAddress:     string;
+    side:               'BUY' | 'SELL';
+    tokenIn:            string;
+    tokenOut:           string;
+    totalAmountIn:      string;
+    sliceAmountIn:      string;
+    numSlices:          number;
+    intervalSec:        number;
+    startTime:          number;
+    maxPricePerUnit?:   string;
+    status:             'PENDING' | 'RUNNING' | 'PAUSED' | 'COMPLETED' | 'CANCELLED';
+    slicesCompleted:    number;
+    accumulatedAmountIn: string;
+    accumulatedAmountOut: string;
+    totalFeesPaidSats:  string;
+    sliceFills:         TwapSliceRecord[];
+    createdAt:          number;
+    updatedAt:          number;
 }
 
 /**
