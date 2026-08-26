@@ -36,8 +36,7 @@ export interface SwapParams {
     isLimitOrder?: boolean; // If true, treat as fixed price limit order
 }
 
-// BCH Swap Types
-export type BCHSwapType = 'same-chain' | 'bch-to-sol' | 'sol-to-bch' | 'bch-to-mov' | 'mov-to-bch' | 'bch-to-xmr' | 'xmr-to-bch' | 'eth-to-bch' | 'bch-to-eth';
+export type BCHSwapType = 'same-chain' | 'bch-to-sol' | 'sol-to-bch' | 'bch-to-mov' | 'mov-to-bch' | 'sol-to-mov' | 'mov-to-sol' | 'bch-to-xmr' | 'xmr-to-bch' | 'eth-to-bch' | 'bch-to-eth';
 export type BCHOrderType = 'market' | 'limit';
 
 export interface BCHSwapParams {
@@ -139,6 +138,8 @@ export interface BCHOrder {
     fillableUntil?: number;
     /** Unix seconds. When the permissionless cancel() refund becomes broadcastable. */
     refundableFrom?: number;
+    /** Unix seconds. Timelock of the source chain HTLC (used to determine refund eligibility). */
+    sourceTimelock?: number;
     /** Why an open order has not filled yet, categorised by the relayer. */
     lastSkipCategory?: 'unprofitable_spread' | 'slippage_too_high' | 'insufficient_capital'
         | 'no_pool' | 'quote_error' | 'other';
@@ -164,6 +165,7 @@ export interface BCHOrder {
         bchCovenantTimelock?: number;  // Alias for sourceTimelock used by BCH→EVM path
         pendingRefundTx?: string;      // Base64 unsigned Solana refund tx prebuilt by server
         refundTx?: string;             // Txid/sig once the refund is confirmed
+        escrowTxHash?: string;         // On-chain HTLC creation tx hash (Movement / Solana)
         /** Present when selling a CashToken (PUSD etc.) — passed to solver for covenant verification */
         bchToken?: { category: string; amount: string };
     };

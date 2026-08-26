@@ -35,6 +35,11 @@ import { SolanaWalletProvider } from "./context/SolanaWalletProvider"
 import { BCHWalletProvider, CashonizeProvider } from "./context/BCHWalletProvider"
 import { BCHSwapProvider } from "./context/BCHSwapContext"
 import BchSwapPage from "./pages/BchSwapPage"
+import OverviewPage from "./pages/OverviewPage"
+import MeshPage from "./pages/MeshPage"
+import MeshPoolDetailPage from "./pages/MeshPoolDetailPage"
+import MeshLandingPage from "./pages/MeshLandingPage"
+import OrderbookPage from "./pages/OrderbookPage"
 import { WDKProvider } from "./context/WDKProvider"
 import { ExternalBCHWalletProvider } from "./context/ExternalBCHWalletProvider"
 import { PWAUpdatePrompt } from "./components/common/PWAUpdatePrompt"
@@ -77,12 +82,37 @@ function App() {
                                                     } />
                                                     <Route path="/ecosystem" element={<EcosystemPage />} />
                                                     <Route path="/integrate" element={<IntegratePage />} />
+                                                     <Route path="/overview" element={
+                                                         <div className="flex flex-col min-h-screen">
+                                                             <Header />
+                                                             <main className="flex-1 pt-24"><OverviewPage /></main>
+                                                         </div>
+                                                     } />
                                                     <Route path="/portfolio" element={
                                                         <div className="flex flex-col min-h-screen">
                                                             <Header />
                                                             <main className="flex-1 pt-24"><PortfolioPage /></main>
                                                         </div>
                                                     } />
+                                                     <Route path="/mesh" element={
+                                                         <div className="flex flex-col min-h-screen">
+                                                             <Header />
+                                                             <main className="flex-1 pt-24"><MeshPage /></main>
+                                                         </div>
+                                                     } />
+                                                     <Route path="/mesh/pool/:txid/:vout" element={
+                                                         <div className="flex flex-col min-h-screen">
+                                                             <Header />
+                                                             <main className="flex-1 pt-24"><MeshPoolDetailPage /></main>
+                                                         </div>
+                                                     } />
+                                                     <Route path="/mesh-landing" element={<MeshLandingPage />} />
+                                                     <Route path="/orderbook" element={
+                                                         <div className="flex flex-col min-h-screen bg-[#050505]">
+                                                             <Header />
+                                                             <main className="flex-1 pt-24"><OrderbookPage /></main>
+                                                         </div>
+                                                     } />
                                                     <Route path="/portfolio/referral" element={
                                                         <div className="flex flex-col min-h-screen">
                                                             <Header />

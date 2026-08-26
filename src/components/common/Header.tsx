@@ -11,6 +11,8 @@ import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 import { useWDK } from '@/context/WDKProvider';
 
+import { MeshNavDropdown, MESH_PAGES } from '@/components/common/MeshNavDropdown';
+
 // Define Social Icons
 const XIcon = () => (
     <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z" /></svg>
@@ -28,6 +30,7 @@ const APP_VERSION = '0.1.0';
 
 export function Header() {
     const [isOpen, setIsOpen] = useState(false);
+    const [meshMobileOpen, setMeshMobileOpen] = useState(true);
     const [searchOpen, setSearchOpen] = useState(false);
     const location = useLocation();
     const wdk = useWDK();
@@ -41,16 +44,15 @@ export function Header() {
     }, []);
 
     // Determine if it's a marketing/landing page
-    const isLandingPage = ['/', '/home', '/ecosystem', '/integrate', '/features'].includes(location.pathname);
+    const isLandingPage = ['/', '/home', '/ecosystem', '/integrate', '/features', '/mesh-landing'].includes(location.pathname);
 
     // Launch App Nav Items
     const appPrimaryNavItems: { name: string; path: string; icon: LucideIcon }[] = [
+        { name: 'Overview', path: '/overview', icon: Compass },
         { name: 'Trade', path: '/trade', icon: ArrowLeftRight },
-        { name: 'Explore', path: '/explore', icon: Compass },
         { name: 'Portfolio', path: '/portfolio', icon: Wallet },
-        { name: 'Knowledge Base', path: '/kb', icon: BookOpen },
+        { name: 'Explore', path: '/explore', icon: Compass },
     ];
-
 
     const landingNavItems: { name: string; path: string; icon: LucideIcon }[] = [
         { name: 'Trade', path: '/trade', icon: ArrowLeftRight },
@@ -86,6 +88,66 @@ export function Header() {
                     </div>
 
                     <nav className="flex flex-col gap-1">
+                        {/* Mesh Dropdown for Mobile */}
+                        <div className="flex flex-col">
+                            <button
+                                type="button"
+                                onClick={() => setMeshMobileOpen(!meshMobileOpen)}
+                                className={cn(
+                                    "flex items-center justify-between w-full px-3 py-2.5 rounded-xl transition-all duration-300 group hover:translate-x-1",
+                                    MESH_PAGES.some(p => location.pathname === p.path)
+                                        ? "bg-gradient-to-r from-emerald-500/10 to-transparent border border-emerald-500/20"
+                                        : "hover:bg-white/[0.03] border border-transparent hover:border-white/[0.05]"
+                                )}
+                            >
+                                <div className="flex items-center gap-3">
+                                    <span className={cn(
+                                        "flex h-9 w-9 items-center justify-center rounded-lg transition-all duration-300 shrink-0",
+                                        MESH_PAGES.some(p => location.pathname === p.path)
+                                            ? "bg-emerald-500/20 text-emerald-400"
+                                            : "bg-[#111] text-zinc-400 border border-white/5 group-hover:text-emerald-400 group-hover:border-emerald-500/30"
+                                    )}>
+                                        <Zap className="h-4 w-4" />
+                                    </span>
+                                    <span className={cn(
+                                        "text-sm font-semibold tracking-wide transition-colors",
+                                        MESH_PAGES.some(p => location.pathname === p.path) ? "text-white" : "text-zinc-400 group-hover:text-zinc-200"
+                                    )}>
+                                        Mesh
+                                    </span>
+                                </div>
+                                <ChevronDown className={cn(
+                                    "h-4 w-4 text-zinc-500 transition-transform duration-200",
+                                    meshMobileOpen && "rotate-180 text-emerald-400"
+                                )} />
+                            </button>
+
+                            {meshMobileOpen && (
+                                <div className="flex flex-col gap-1 pl-6 mt-1 mb-1 border-l border-white/10 ml-6">
+                                    {MESH_PAGES.map((page) => {
+                                        const Icon = page.icon;
+                                        const isActive = location.pathname === page.path;
+                                        return (
+                                            <Link
+                                                key={page.path}
+                                                to={page.path}
+                                                onClick={() => setIsOpen(false)}
+                                                className={cn(
+                                                    "flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all duration-200",
+                                                    isActive
+                                                        ? "text-emerald-400 bg-emerald-500/10"
+                                                        : "text-zinc-400 hover:text-white hover:bg-white/[0.03]"
+                                                )}
+                                            >
+                                                <Icon className="h-3.5 w-3.5 shrink-0" />
+                                                <span>{page.name}</span>
+                                            </Link>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+
                         {(isLandingPage ? landingNavItems : appPrimaryNavItems).map((item) => {
                             const isActive = location.pathname === item.path;
                             return (
@@ -205,22 +267,64 @@ export function Header() {
                     {/* App Desktop Nav (Only shown if NOT landing page) */}
                     {!isLandingPage && (
                         <nav className="hidden lg:flex items-center gap-6 xl:gap-8">
-                            {appPrimaryNavItems.map((item) => (
-                                <Link
-                                    key={item.path}
-                                    to={item.path}
-                                    className={cn(
-                                        "text-[15px] font-semibold transition-all duration-300 hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)] relative group py-2",
-                                        location.pathname === item.path ? "text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]" : "text-zinc-300"
-                                    )}
-                                >
-                                    {item.name}
-                                    <span className={cn(
-                                        "absolute bottom-0 left-0 w-full h-[2px] bg-emerald-400 scale-x-0 transition-transform duration-300 group-hover:scale-x-100 origin-left shadow-[0_0_8px_rgba(52,211,153,0.8)]",
-                                        location.pathname === item.path && "scale-x-100"
-                                    )} />
-                                </Link>
-                            ))}
+                            <Link
+                                to="/overview"
+                                className={cn(
+                                    "text-[15px] font-semibold transition-all duration-300 hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)] relative group py-2",
+                                    location.pathname === '/overview' ? "text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]" : "text-zinc-300"
+                                )}
+                            >
+                                Overview
+                                <span className={cn(
+                                    "absolute bottom-0 left-0 w-full h-[2px] bg-emerald-400 scale-x-0 transition-transform duration-300 group-hover:scale-x-100 origin-left shadow-[0_0_8px_rgba(52,211,153,0.8)]",
+                                    location.pathname === '/overview' && "scale-x-100"
+                                )} />
+                            </Link>
+
+                            {/* Mesh Protocol Dropdown Menu */}
+                            <MeshNavDropdown variant="app" />
+
+                            <Link
+                                to="/trade"
+                                className={cn(
+                                    "text-[15px] font-semibold transition-all duration-300 hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)] relative group py-2",
+                                    location.pathname === '/trade' ? "text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]" : "text-zinc-300"
+                                )}
+                            >
+                                Trade
+                                <span className={cn(
+                                    "absolute bottom-0 left-0 w-full h-[2px] bg-emerald-400 scale-x-0 transition-transform duration-300 group-hover:scale-x-100 origin-left shadow-[0_0_8px_rgba(52,211,153,0.8)]",
+                                    location.pathname === '/trade' && "scale-x-100"
+                                )} />
+                            </Link>
+
+                            <Link
+                                to="/portfolio"
+                                className={cn(
+                                    "text-[15px] font-semibold transition-all duration-300 hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)] relative group py-2",
+                                    location.pathname === '/portfolio' ? "text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]" : "text-zinc-300"
+                                )}
+                            >
+                                Portfolio
+                                <span className={cn(
+                                    "absolute bottom-0 left-0 w-full h-[2px] bg-emerald-400 scale-x-0 transition-transform duration-300 group-hover:scale-x-100 origin-left shadow-[0_0_8px_rgba(52,211,153,0.8)]",
+                                    location.pathname === '/portfolio' && "scale-x-100"
+                                )} />
+                            </Link>
+
+                            <Link
+                                to="/explore"
+                                className={cn(
+                                    "text-[15px] font-semibold transition-all duration-300 hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)] relative group py-2",
+                                    location.pathname === '/explore' ? "text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]" : "text-zinc-300"
+                                )}
+                            >
+                                Explore
+                                <span className={cn(
+                                    "absolute bottom-0 left-0 w-full h-[2px] bg-emerald-400 scale-x-0 transition-transform duration-300 group-hover:scale-x-100 origin-left shadow-[0_0_8px_rgba(52,211,153,0.8)]",
+                                    location.pathname === '/explore' && "scale-x-100"
+                                )} />
+                            </Link>
                         </nav>
                     )}
                 </div>
@@ -229,6 +333,9 @@ export function Header() {
                 {isLandingPage ? (
                     <div className="hidden lg:flex flex-1 justify-center px-4">
                         <nav className="flex items-center gap-6 xl:gap-8">
+                            {/* Mesh Protocol Dropdown Menu */}
+                            <MeshNavDropdown variant="landing" />
+
                             {landingNavItems.map((item) => (
                                 <Link
                                     key={item.path}
