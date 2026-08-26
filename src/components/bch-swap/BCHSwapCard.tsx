@@ -238,13 +238,22 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
     }, [isMainnet]);
 
     const getTokenPrice = useCallback((token: Token): number => {
-        const cleanSymbol = token.symbol.replace('.b', '');
-        const feedKey = Object.keys(PRICE_FEEDS).find(k => k.toUpperCase() === cleanSymbol.toUpperCase());
+        const cleanSymbol = token.symbol.replace('.b', '').toUpperCase();
+        const feedKey = Object.keys(PRICE_FEEDS).find(k => k.toUpperCase() === cleanSymbol);
         if (feedKey && prices[feedKey]) return PriceService.formatPrice(prices[feedKey]);
         if (cauldronPrices[token.symbol] > 0) return cauldronPrices[token.symbol];
         if (cauldronPrices[cleanSymbol] > 0) return cauldronPrices[cleanSymbol];
         if (token.categoryId && cauldronPrices[token.categoryId] > 0) return cauldronPrices[token.categoryId];
         if (token.priceUsd && token.priceUsd > 0) return token.priceUsd;
+
+        // Sensible fallback price defaults so USD display never renders $0.00 for known assets
+        if (cleanSymbol === 'BCH') return 380.0;
+        if (['PUSDTEST', 'PUSD', 'USDC', 'USDT', 'FUSD', 'SUSD', 'USDC.E', 'USDT.E'].includes(cleanSymbol)) return 1.0;
+        if (cleanSymbol === 'BTC') return 65000.0;
+        if (cleanSymbol === 'ETH' || cleanSymbol === 'WETH.E') return 3200.0;
+        if (cleanSymbol === 'SOL') return 140.0;
+        if (cleanSymbol === 'MOVE') return 0.50;
+
         return 0;
     }, [prices, cauldronPrices]);
 

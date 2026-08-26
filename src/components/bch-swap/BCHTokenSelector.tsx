@@ -516,9 +516,9 @@ export function BCHTokenSelector({
                                             {section.label}
                                         </div>
                                         <div className="grid gap-0.5">
-                                            {sectionTokens.map(token => (
+                                            {sectionTokens.map((token, idx) => (
                                                 <TokenRow
-                                                    key={`${token.chain}-${token.categoryId || token.address || token.symbol}`}
+                                                    key={`${token.chain}-${token.symbol}-${token.categoryId || token.address || 'native'}-${idx}`}
                                                     token={token}
                                                 />
                                             ))}

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Drawer, DrawerContent, DrawerTrigger } from '@/components/ui/drawer';
+import { Drawer, DrawerContent, DrawerTrigger, DrawerTitle, DrawerDescription } from '@/components/ui/drawer';
 import { Menu, ChevronDown, BookOpen, ArrowLeftRight, ChevronRight, Compass, Wallet, Globe, Puzzle, FileText, Zap } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -70,6 +70,9 @@ export function Header() {
                 </Button>
             </DrawerTrigger>
             <DrawerContent className="px-5 pb-5">
+                {/* Screen-reader accessibility labels required by Radix Dialog */}
+                <DrawerTitle className="sr-only">Navigation Menu</DrawerTitle>
+                <DrawerDescription className="sr-only">Mobile navigation menu for BCH Intents</DrawerDescription>
                 <div className="flex flex-col gap-4 mt-1">
                     {/* Mobile menu logo header */}
                     <div className="flex items-center gap-2 pb-3 border-b border-white/10">

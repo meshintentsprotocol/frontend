@@ -75,9 +75,26 @@ export function usePrices() {
         const pythData = pyth.data ?? {};
         const changeData = coingecko.data ?? {};
         const merged: PriceMap = {};
-        for (const symbol of new Set([...Object.keys(pythData), ...Object.keys(changeData)])) {
+        
+        // Static fallback defaults so UI components never render $0.00 for known symbols when Pyth is loading/offline
+        const defaults: Record<string, number> = {
+            BCH: 380.0,
+            BTC: 65000.0,
+            ETH: 3200.0,
+            SOL: 140.0,
+            MOVE: 0.50,
+            USDC: 1.0,
+            USDT: 1.0,
+            PUSDTEST: 1.0,
+            PUSD: 1.0,
+            fUSD: 1.0,
+            sUSD: 1.0,
+        };
+
+        const allSymbols = new Set([...Object.keys(pythData), ...Object.keys(changeData), ...Object.keys(defaults)]);
+        for (const symbol of allSymbols) {
             merged[symbol] = {
-                price: pythData[symbol] ?? 0,
+                price: pythData[symbol] ?? defaults[symbol] ?? 0,
                 change24h: changeData[symbol] ?? 0,
             };
         }

@@ -19,7 +19,7 @@ import {
 import type { StoredNotification } from '@/lib/notifications';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { Drawer, DrawerContent } from '@/components/ui/drawer';
+import { Drawer, DrawerContent, DrawerTitle, DrawerDescription } from '@/components/ui/drawer';
 
 // ============================================================================
 // Wallet Popup — Multi-tab wallet panel for the navbar
@@ -420,6 +420,8 @@ export function WalletPopup({ open, onClose, initialTab }: WalletPopupProps) {
         return (
             <Drawer open={open} onOpenChange={(o) => !o && onClose()}>
                 <DrawerContent className="p-0 h-[88vh]">
+                    <DrawerTitle className="sr-only">Wallet</DrawerTitle>
+                    <DrawerDescription className="sr-only">Your wallet balances, orders and history</DrawerDescription>
                     <div className="flex flex-col flex-1 min-h-0 bg-[#0A0A0A] pb-[env(safe-area-inset-bottom)]">
                         {content}
                     </div>
