@@ -214,18 +214,16 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
             const pythData = await PriceService.getLatestPrices();
             setPrices(pythData);
 
+            const bchPriceUsd = pythData['BCH'] ? PriceService.formatPrice(pythData['BCH']) : 0;
+
             try {
                 const rawTokens = await CauldronService.getTopCashTokens(50, isMainnet);
-                // Cauldron's `price_now_usd` is already the USD price per WHOLE
-                // token — use it directly. No decimal scaling, no hard-coded
-                // stablecoin overrides; the indexer is the single source of truth.
                 const priceMap: Record<string, number> = {};
                 for (const t of rawTokens) {
                     const sym = (t.bcmr?.token?.symbol || t.display_symbol || '').toUpperCase();
-                    const priceUsd = t.price_now_usd || 0;
+                    const tokenBchPrice = t.price_now ? t.price_now / 1e8 : 0;
+                    const priceUsd = t.price_now_usd > 0 ? t.price_now_usd : (bchPriceUsd > 0 ? tokenBchPrice * bchPriceUsd : 0);
                     if (priceUsd <= 0) continue;
-                    // Keep the highest price when multiple tokens share a symbol
-                    // (e.g. duplicate PUSDTEST entries).
                     if (sym && priceUsd > (priceMap[sym] || 0)) priceMap[sym] = priceUsd;
                     if (t.token_id) priceMap[t.token_id] = priceUsd;
                 }
@@ -245,15 +243,6 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
         if (cauldronPrices[cleanSymbol] > 0) return cauldronPrices[cleanSymbol];
         if (token.categoryId && cauldronPrices[token.categoryId] > 0) return cauldronPrices[token.categoryId];
         if (token.priceUsd && token.priceUsd > 0) return token.priceUsd;
-
-        // Sensible fallback price defaults so USD display never renders $0.00 for known assets
-        if (cleanSymbol === 'BCH') return 380.0;
-        if (['PUSDTEST', 'PUSD', 'USDC', 'USDT', 'FUSD', 'SUSD', 'USDC.E', 'USDT.E'].includes(cleanSymbol)) return 1.0;
-        if (cleanSymbol === 'BTC') return 65000.0;
-        if (cleanSymbol === 'ETH' || cleanSymbol === 'WETH.E') return 3200.0;
-        if (cleanSymbol === 'SOL') return 140.0;
-        if (cleanSymbol === 'MOVE') return 0.50;
-
         return 0;
     }, [prices, cauldronPrices]);
 

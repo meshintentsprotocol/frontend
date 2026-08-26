@@ -77,8 +77,10 @@ export function TWAPOrderForm({
   const [maxPriceLimit, setMaxPriceLimit] = useState<string>('');
 
   const { prices } = usePrices();
-  const sellTokenPrice = prices[sellToken.symbol]?.price || (sellToken.symbol === 'BCH' ? 380 : 1.0);
-  const buyTokenPrice = prices[buyToken.symbol]?.price || 1.0;
+  const cleanSellSym = sellToken.symbol.replace('.b', '').toUpperCase();
+  const sellTokenPrice = prices[cleanSellSym]?.price || prices[sellToken.symbol]?.price || 0;
+  const cleanBuySym = buyToken.symbol.replace('.b', '').toUpperCase();
+  const buyTokenPrice = prices[cleanBuySym]?.price || prices[buyToken.symbol]?.price || 0;
 
   const { fetchQuote, submitOrder, currentQuote, quoteLoading, loading } = useTWAP();
 
@@ -228,7 +230,7 @@ export function TWAPOrderForm({
         <div className="flex items-center justify-between pb-2 border-b border-emerald-500/10">
           <span className="text-zinc-400 font-medium">Pyth Oracle Price</span>
           <span className="font-mono font-bold text-emerald-400">
-            ${sellTokenPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })} USD / {sellToken.symbol}
+            {sellTokenPrice > 0 ? `$${sellTokenPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })} USD / ${sellToken.symbol}` : 'Live feed syncing...'}
           </span>
         </div>
 
@@ -238,9 +240,11 @@ export function TWAPOrderForm({
             <span className="font-mono font-bold text-white block">
               {sliceSize} {sellToken.symbol}
             </span>
-            <span className="font-mono text-[10px] text-zinc-400 block">
-              ~${(Number(sliceSize) * sellTokenPrice).toFixed(2)} USD
-            </span>
+            {sellTokenPrice > 0 && (
+              <span className="font-mono text-[10px] text-zinc-400 block">
+                ~${(Number(sliceSize) * sellTokenPrice).toFixed(2)} USD
+              </span>
+            )}
           </div>
         </div>
 
@@ -262,7 +266,7 @@ export function TWAPOrderForm({
         <div className="flex items-center justify-between">
           <span className="text-zinc-400 font-medium">Total Value & Fees</span>
           <span className="font-mono text-zinc-300 text-right block">
-            ~${(Number(sellAmount || 0) * sellTokenPrice).toFixed(2)} USD ({numSlices * 1000} sats fee)
+            {sellTokenPrice > 0 ? `~$${(Number(sellAmount || 0) * sellTokenPrice).toFixed(2)} USD (${numSlices * 1000} sats fee)` : `${numSlices * 1000} sats fee`}
           </span>
         </div>
       </div>
