@@ -9,11 +9,14 @@ export interface ActivityRecord {
     assetOut?: string;        // E.g. 'MOVE' for swapping
     amountIn?: number;
     amountOut?: number;
-    valueUsd: number;         // Estimated USD value at time of tx
+    valueUsd?: number;        // Estimated USD value at time of tx
     txHash: string;
-    network: string;          // e.g. 'Movement', 'Solana', 'Bitcoin Cash'
+    network?: string;         // e.g. 'Movement', 'Solana', 'Bitcoin Cash'
     timestamp: number;        // Unix timestamp
     explorerUrl?: string;     // Link to view tx
+    description?: string;     // Human-readable summary of the activity
+    status?: string;          // e.g. 'confirmed', 'pending', 'failed'
+    metadata?: Record<string, any>; // Extra contextual key-values
 }
 
 const STORAGE_KEY = 'intent_protocol_activity_history';

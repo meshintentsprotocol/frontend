@@ -48,11 +48,38 @@ export const MOVEMENT_TOKENS: Token[] = [
     {
         symbol: "MOVE",
         name: "Movement",
-        icon: "https://raw.githubusercontent.com/kitelabs-io/mvmt-tokens/main/logos/MOVE.png",
+        icon: "/logos/movement.svg",
         decimals: 8,
         type: "0x1::aptos_coin::AptosCoin",
         chain: "movement",
         address: "0x1::aptos_coin::AptosCoin",
+    },
+    {
+        symbol: "USDC",
+        name: "USD Coin (Movement)",
+        icon: "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v/logo.png",
+        decimals: 6,
+        type: "0x1::aptos_coin::AptosCoin",
+        chain: "movement",
+        address: "0x1::aptos_coin::AptosCoin",
+    },
+    {
+        symbol: "USDT",
+        name: "Tether USD (Movement)",
+        icon: "/logos/usdt-svgrepo-com.svg",
+        decimals: 6,
+        type: "0x1::aptos_coin::AptosCoin",
+        chain: "movement",
+        address: "0x1::aptos_coin::AptosCoin",
+    },
+    {
+        symbol: "WETH",
+        name: "Wrapped Ether (Movement)",
+        icon: "/logos/ethereum-eth-logo.svg",
+        decimals: 8,
+        type: "0xf22bede237a07e121b56d91a491eb7bcdfd1f5907926a9e58338f964a01b17fa::asset::WETH",
+        chain: "movement",
+        address: "0xf22bede237a07e121b56d91a491eb7bcdfd1f5907926a9e58338f964a01b17fa::asset::WETH",
     },
 ];
 
@@ -214,6 +241,7 @@ export const MAINNET_SWAP_TOKENS: Token[] = [
     ...ARBITRUM_TOKENS,
     ...OPTIMISM_TOKENS,
     ...SOLANA_TOKENS,
+    ...MOVEMENT_TOKENS,
 ];
 
 // ============================================================================

@@ -58,6 +58,10 @@ function getWalletTokens(isMainnet: boolean): WalletTokenDef[] {
         { symbol: 'SOL', name: 'Solana', chain: 'Solana', icon: '/assets/solanaLogo.png', decimals: 9 },
         { symbol: 'USDC', name: 'USD Coin', chain: 'Solana', icon: '/logos/usd-coin-usdc-logo.svg', decimals: 6 },
         { symbol: 'USDT (SOL)', name: 'Tether USD', chain: 'Solana', icon: '/logos/usdt-svgrepo-com.svg', decimals: 6 },
+        { symbol: 'MOVE', name: 'Movement', chain: 'Movement', icon: '/logos/movement.svg', decimals: 8 },
+        { symbol: 'USDC (MOVE)', name: 'USD Coin (Movement)', chain: 'Movement', icon: '/logos/usd-coin-usdc-logo.svg', decimals: 6 },
+        { symbol: 'USDT (MOVE)', name: 'Tether USD (Movement)', chain: 'Movement', icon: '/logos/usdt-svgrepo-com.svg', decimals: 6 },
+        { symbol: 'WETH (MOVE)', name: 'Wrapped Ether (Movement)', chain: 'Movement', icon: '/logos/ethereum-eth-logo.svg', decimals: 8 },
     ];
 }
 

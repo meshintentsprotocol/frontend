@@ -29,6 +29,10 @@ const MAINNET_ASSETS: Asset[] = [
     { symbol: "BCH", name: "Bitcoin Cash", chain: "Bitcoin Cash", chainId: "bitcoin-cash", icon: "/logos/bitcoin-cash-bch-logo.svg" },
     { symbol: "BNB", name: "BNB", chain: "EVM", chainId: "bsc", icon: "/logos/bnb-bnb-logo.svg" },
     { symbol: "USDT", name: "Tether USD (BSC)", chain: "EVM", chainId: "bsc", icon: "/logos/usdt-svgrepo-com.svg" },
+    { symbol: "MOVE", name: "Movement", chain: "Movement", chainId: "movement", icon: "/logos/movement.svg" },
+    { symbol: "USDC (MOVE)", name: "USD Coin (Movement)", chain: "Movement", chainId: "movement", icon: "/logos/usd-coin-usdc-logo.svg" },
+    { symbol: "USDT (MOVE)", name: "Tether USD (Movement)", chain: "Movement", chainId: "movement", icon: "/logos/usdt-svgrepo-com.svg" },
+    { symbol: "WETH (MOVE)", name: "Wrapped Ether (Movement)", chain: "Movement", chainId: "movement", icon: "/logos/ethereum-eth-logo.svg" },
 ];
 
 const TESTNET_ASSETS: Asset[] = [
@@ -38,6 +42,9 @@ const TESTNET_ASSETS: Asset[] = [
     { symbol: "SOL", name: "Solana (Devnet)", chain: "Solana", chainId: "solana", icon: "/logos/solana.svg" },
     { symbol: "USDC", name: "USD Coin (Devnet)", chain: "Solana", chainId: "solana", icon: "/logos/usd-coin-usdc-logo.svg" },
     { symbol: "MOVE", name: "Movement", chain: "Movement", chainId: "movement", icon: "/logos/movement.svg" },
+    { symbol: "USDC (MOVE)", name: "USD Coin (Movement)", chain: "Movement", chainId: "movement", icon: "/logos/usd-coin-usdc-logo.svg" },
+    { symbol: "USDT (MOVE)", name: "Tether USD (Movement)", chain: "Movement", chainId: "movement", icon: "/logos/usdt-svgrepo-com.svg" },
+    { symbol: "WETH (MOVE)", name: "Wrapped Ether (Movement)", chain: "Movement", chainId: "movement", icon: "/logos/ethereum-eth-logo.svg" },
     { symbol: "XMR", name: "Monero", chain: "Monero", chainId: "monero", icon: "/logos/monero.svg" },
 ];
 

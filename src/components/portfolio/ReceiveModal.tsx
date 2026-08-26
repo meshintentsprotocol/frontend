@@ -67,6 +67,16 @@ export function ReceiveModal({ children }: { children?: React.ReactNode }) {
             borderColor: 'border-purple-500/20',
             bgColor: 'bg-purple-500/[0.04]',
         } : null,
+        wdk.movementAddress ? {
+            key: 'mov',
+            label: 'Movement',
+            sublabel: isMainnet ? 'Mainnet · MOVE, Tokens' : 'Bardock Testnet · MOVE, USDC, USDT',
+            address: wdk.movementAddress,
+            icon: '/logos/movement.svg',
+            explorerUrl: `https://explorer.movementnetwork.xyz/account/${wdk.movementAddress}?network=testnet`,
+            borderColor: 'border-yellow-500/20',
+            bgColor: 'bg-yellow-500/[0.04]',
+        } : null,
         wdk.btcAddress ? {
             key: 'btc',
             label: 'Bitcoin',

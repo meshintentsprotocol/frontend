@@ -1,7 +1,7 @@
 /**
  * usePortfolio — composed, cached, multi-chain portfolio.
  *
- * Three balance queries (EVM / Solana / BCH) run in parallel and independently,
+ * Parallel balance queries (EVM / Solana / BCH / BTC / Movement) run independently,
  * so a slow chain never blocks the others. Prices come from a single shared
  * source (`usePrices`). The token list and `totalValue` are derived from the
  * exact same data, so the header total is always the strict aggregate of the
@@ -50,6 +50,13 @@ interface SolBalances {
     usdt: number;
 }
 
+interface MovementBalances {
+    move: number;
+    usdc: number;
+    usdt: number;
+    weth: number;
+}
+
 const SOL_TOKEN_PROGRAM_ID = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
 const SOL_USDC_MINTS = [
     '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU', // devnet
@@ -85,7 +92,7 @@ export function usePortfolio(options?: { pollingMs?: number }) {
     const refetchInterval = pollingMs > 0 ? pollingMs : (false as const);
 
     const { connection: solanaConnection } = useConnection();
-    const { evmAddress, solanaAddress, bchNetwork, isInitialized: wdkConnected, bchAddress, btcAddress, btcAccount } = useWDK();
+    const { evmAddress, solanaAddress, movementAddress, bchNetwork, isInitialized: wdkConnected, bchAddress, btcAddress, btcAccount } = useWDK();
     const isMainnet = bchNetwork === 'mainnet';
 
     const chartAnchorRef = useRef<number>(Date.now());
@@ -103,8 +110,6 @@ export function usePortfolio(options?: { pollingMs?: number }) {
         initialData: () => readPersisted<EvmBalances>([...evmKey])?.data,
         initialDataUpdatedAt: () => readPersisted([...evmKey])?.updatedAt,
         queryFn: async (): Promise<EvmBalances> => {
-            // A failed RPC call throws (not caught into 0) so react-query keeps
-            // the previous balance instead of flashing 0 on a transient error.
             const evmCfg = getEvmConfig(isMainnet);
             const { JsonRpcProvider, Contract, formatUnits, formatEther } = await import('ethers');
             const provider = new JsonRpcProvider(evmCfg.rpc, evmCfg.chainId);
@@ -137,8 +142,6 @@ export function usePortfolio(options?: { pollingMs?: number }) {
         initialData: () => readPersisted<SolBalances>([...solKey])?.data,
         initialDataUpdatedAt: () => readPersisted([...solKey])?.updatedAt,
         queryFn: async (): Promise<SolBalances> => {
-            // A failed RPC call throws (not caught into 0) so react-query keeps
-            // the previous balance instead of flashing 0 on a transient error.
             const owner = new PublicKey(solanaAddress!);
             const [lamports, parsed] = await Promise.all([
                 solanaConnection.getBalance(owner),
@@ -158,6 +161,50 @@ export function usePortfolio(options?: { pollingMs?: number }) {
         },
     });
 
+    // ── Movement (Porto / Bardock testnet) ──────────────────────────────────
+    const movKey = ['movement-balances', movementAddress ?? ''] as const;
+    const movementQuery = useQuery<MovementBalances>({
+        queryKey: movKey,
+        enabled: !!movementAddress,
+        staleTime: 5_000,
+        refetchInterval,
+        placeholderData: keepPreviousData,
+        initialData: () => readPersisted<MovementBalances>([...movKey])?.data,
+        initialDataUpdatedAt: () => readPersisted([...movKey])?.updatedAt,
+        queryFn: async (): Promise<MovementBalances> => {
+            const movRpcUrl = 'https://testnet.movementnetwork.xyz/v1';
+            const res = await fetch(`${movRpcUrl}/accounts/${movementAddress}/resources`);
+            if (!res.ok) {
+                if (res.status === 404) return { move: 0, usdc: 0, usdt: 0, weth: 0 };
+                throw new Error(`Movement RPC error: ${res.statusText}`);
+            }
+            const resources = await res.json();
+            let moveBal = 0;
+            let usdcBal = 0;
+            let usdtBal = 0;
+            let wethBal = 0;
+
+            const USDC_MOVE_TYPE = '0x45142fb00dde90b950183d8ac2815597892f665c254c3f42b5768bc6ae4c8489';
+            const USDT_MOVE_TYPE = '0xa663e903b11931807045423e25847425466a0c9777021464e104e845e1123963';
+            const WETH_MOVE_TYPE = '0xf22bede237a07e121b56d91a491eb7bcdfd1f5907926a9e58338f964a01b17fa::asset::WETH';
+
+            for (const r of resources) {
+                const type = r.type || '';
+                if (type.includes('CoinStore<0x1::aptos_coin::AptosCoin>')) {
+                    moveBal = Number(r.data?.coin?.value || 0) / 1e8;
+                } else if (type.includes(`CoinStore<${USDC_MOVE_TYPE}>`) || type.toLowerCase().includes('usdc')) {
+                    usdcBal = Number(r.data?.coin?.value || 0) / 1e6;
+                } else if (type.includes(`CoinStore<${USDT_MOVE_TYPE}>`) || type.toLowerCase().includes('usdt')) {
+                    usdtBal = Number(r.data?.coin?.value || 0) / 1e6;
+                } else if (type.includes(`CoinStore<${WETH_MOVE_TYPE}>`) || type.toLowerCase().includes('weth')) {
+                    wethBal = Number(r.data?.coin?.value || 0) / 1e8;
+                }
+            }
+
+            return { move: moveBal, usdc: usdcBal, usdt: usdtBal, weth: wethBal };
+        },
+    });
+
     // ── Bitcoin (via WDK btc account) ─────────────────────────────────────────
     const btcKey = ['btc-balance', btcAddress ?? ''] as const;
     const btcQuery = useQuery<number>({
@@ -169,8 +216,6 @@ export function usePortfolio(options?: { pollingMs?: number }) {
         initialData: () => readPersisted<number>([...btcKey])?.data,
         initialDataUpdatedAt: () => readPersisted([...btcKey])?.updatedAt,
         queryFn: async (): Promise<number> => {
-            // WDK btc account getBalance() returns bigint satoshis. Throwing on
-            // failure keeps the previous balance instead of flashing 0.
             const sats = Number(await btcAccount.getBalance());
             if (!Number.isFinite(sats)) throw new Error('BTC getBalance returned a non-numeric value');
             return sats;
@@ -282,6 +327,63 @@ export function usePortfolio(options?: { pollingMs?: number }) {
             }
         }
 
+        // Movement
+        if (movementAddress && movementQuery.data) {
+            const movePrice = prices['MOVE']?.price || prices['APT']?.price || 0.5;
+            list.push({
+                symbol: 'MOVE',
+                name: 'Movement',
+                chain: 'Movement',
+                icon: '/logos/movement.svg',
+                balance: movementQuery.data.move,
+                price: movePrice,
+                valueUsd: movementQuery.data.move * movePrice,
+                change24h: prices['MOVE']?.change24h ?? 0,
+            });
+
+            if (movementQuery.data.usdc > 0) {
+                const usdcPrice = prices['USDC']?.price || 1;
+                list.push({
+                    symbol: 'USDC (MOVE)',
+                    name: 'USD Coin (Movement)',
+                    chain: 'Movement',
+                    icon: '/logos/usd-coin-usdc-logo.svg',
+                    balance: movementQuery.data.usdc,
+                    price: usdcPrice,
+                    valueUsd: movementQuery.data.usdc * usdcPrice,
+                    change24h: prices['USDC']?.change24h ?? 0,
+                });
+            }
+
+            if (movementQuery.data.usdt > 0) {
+                const usdtPrice = prices['USDT']?.price || 1;
+                list.push({
+                    symbol: 'USDT (MOVE)',
+                    name: 'Tether USD (Movement)',
+                    chain: 'Movement',
+                    icon: '/logos/usdt-svgrepo-com.svg',
+                    balance: movementQuery.data.usdt,
+                    price: usdtPrice,
+                    valueUsd: movementQuery.data.usdt * usdtPrice,
+                    change24h: prices['USDT']?.change24h ?? 0,
+                });
+            }
+
+            if (movementQuery.data.weth > 0) {
+                const ethPrice = prices['ETH']?.price || 2800;
+                list.push({
+                    symbol: 'WETH (MOVE)',
+                    name: 'Wrapped Ether (Movement)',
+                    chain: 'Movement',
+                    icon: '/logos/ethereum-eth-logo.svg',
+                    balance: movementQuery.data.weth,
+                    price: ethPrice,
+                    valueUsd: movementQuery.data.weth * ethPrice,
+                    change24h: prices['ETH']?.change24h ?? 0,
+                });
+            }
+        }
+
         // Bitcoin Cash
         if (bchAddress) {
             const bchPrice = prices['BCH']?.price ?? 0;
@@ -297,10 +399,6 @@ export function usePortfolio(options?: { pollingMs?: number }) {
                 change24h: prices['BCH']?.change24h ?? 0,
             });
 
-            // Held BCH CashTokens — Cauldron reports a ready USD price per whole
-            // token (`price_now_usd`), so we use that directly. If it is ever
-            // absent we fall back to converting the sats price (`price_now`,
-            // satoshis per whole token) with the Pyth BCH rate.
             const cauldronRaw = cauldronQuery.data ?? [];
             const cauldronMapped = CauldronService.mapToTokens(cauldronRaw);
             const metaByCategory = new Map(cauldronMapped.map(m => [m.categoryId, m]));
@@ -350,7 +448,7 @@ export function usePortfolio(options?: { pollingMs?: number }) {
 
         list.sort((a, b) => b.valueUsd - a.valueUsd);
         return list;
-    }, [evmAddress, solanaAddress, bchAddress, btcAddress, isMainnet, evmQuery.data, solQuery.data, bchQuery.data, btcQuery.data, cauldronQuery.data, prices]);
+    }, [evmAddress, solanaAddress, movementAddress, bchAddress, btcAddress, isMainnet, evmQuery.data, solQuery.data, movementQuery.data, bchQuery.data, btcQuery.data, cauldronQuery.data, prices]);
 
     // Total is the strict aggregate of the rendered token rows.
     const totalValue = useMemo(
@@ -366,24 +464,23 @@ export function usePortfolio(options?: { pollingMs?: number }) {
     const refetch = useCallback(() => {
         evmQuery.refetch();
         solQuery.refetch();
+        movementQuery.refetch();
         bchQuery.refetch();
         btcQuery.refetch();
         cauldronQuery.refetch();
-    }, [evmQuery.refetch, solQuery.refetch, bchQuery.refetch, btcQuery.refetch, cauldronQuery.refetch]);
+    }, [evmQuery.refetch, solQuery.refetch, movementQuery.refetch, bchQuery.refetch, btcQuery.refetch, cauldronQuery.refetch]);
 
-    // Show the skeleton only while there is genuinely NOTHING to display. As
-    // soon as any chain resolves a token, render what's ready rather than
-    // blocking on the slowest chain (or on prices).
     const anyChainLoading =
         (!!evmAddress && evmQuery.isLoading) ||
         (!!solanaAddress && solQuery.isLoading) ||
+        (!!movementAddress && movementQuery.isLoading) ||
         (!!bchAddress && bchQuery.isLoading) ||
         (!!btcAddress && btcQuery.isLoading) ||
         pricesLoading;
     const loading = tokens.length === 0 && anyChainLoading;
 
     const isRefetching =
-        evmQuery.isFetching || solQuery.isFetching || bchQuery.isFetching || btcQuery.isFetching || pricesFetching;
+        evmQuery.isFetching || solQuery.isFetching || movementQuery.isFetching || bchQuery.isFetching || btcQuery.isFetching || pricesFetching;
 
     return {
         tokens,

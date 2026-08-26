@@ -9,7 +9,7 @@ import { useConnection } from '@solana/wallet-adapter-react';
 import { Keypair, PublicKey, SystemProgram, Transaction } from '@solana/web3.js';
 import { BCHSwapParams, BCHSwapType, BCHOrder, isTerminalOrderStatus, splitOrders } from '@/types';
 import { useRelayerEvents, type RelayerEvent } from '@/hooks/useRelayerEvents';
-import { BCH_SOLANA_RELAYER_URL, CASHTOKEN_RELAYER_URL, CASHTOKEN_RELAYER_MAINNET_URL, SOL_BCH_ZK_SERVER_URL, SOL_BCH_ZK_SERVER_MAINNET_URL } from '@/lib/config';
+import { BCH_SOLANA_RELAYER_URL, CASHTOKEN_RELAYER_URL, CASHTOKEN_RELAYER_MAINNET_URL } from '@/lib/config';
 import axios from 'axios';
 import * as anchor from '@coral-xyz/anchor';
 import { getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, getAccount } from '@solana/spl-token';
@@ -186,6 +186,8 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
         if (sellChain === 'solana' && buyChain === 'bch') return 'sol-to-bch';
         if (sellChain === 'bch' && buyChain === 'movement') return 'bch-to-mov';
         if (sellChain === 'movement' && buyChain === 'bch') return 'mov-to-bch';
+        if (sellChain === 'solana' && buyChain === 'movement') return 'sol-to-mov';
+        if (sellChain === 'movement' && buyChain === 'solana') return 'mov-to-sol';
         if (sellChain === 'bch' && buyChain === 'xmr') return 'bch-to-xmr';
         if (sellChain === 'xmr' && buyChain === 'bch') return 'xmr-to-bch';
         if (isEvmChain(sellChain) && buyChain === 'bch') return 'eth-to-bch';
@@ -194,15 +196,14 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
     }, []);
 
     // =========================================================================
-    // BCH → Solana: ZK-only path via sol-bch-zk-server (no HTLC)
-    //   1. POST /swap/bch-to-sol — solver pre-signs SOL tx, returns bchCovenantAddr
-    //   2. Fund P2SH32 covenant via TransactionBuilder + raw lockingBytecode
-    //   3. Relayer detects funding, broadcasts SOL tx, generates FRI proof, claims BCH
+    // BCH → Solana: HTLC path via CashScript covenant on BCH & Anchor on Solana
+    //   1. User locks BCH in CashScript HTLC covenant
+    //   2. Notifies bch-solana-relayer on /swap/bch-to-sol
+    //   3. Relayer locks SOL / USDC on Solana Anchor program
+    //   4. User claims Solana escrow on-chain with secret
+    //   5. Relayer claims BCH covenant on Chipnet with secret
     // =========================================================================
     const executeBCHToSolana = async (params: BCHSwapParams, recipientSolAddress: string) => {
-        const { isMainActive, activeExtWallet } = activeWalletRef.current;
-        // if (!isMainActive) throw new Error('External wallets cannot sign advanced ZK swaps yet. Please use the WDK Main Wallet.');
-        
         const currentBchWallet = bchWalletRef.current;
         if (!currentBchWallet.address) throw new Error('Connect your BCH wallet first');
         if (!recipientSolAddress) throw new Error('Solana recipient address required');
@@ -210,416 +211,257 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
         const wif = currentBchWallet.getWIF();
         if (!wif) throw new Error('Cannot sign: WIF not available — please reconnect your BCH wallet');
 
-        const isMainnet = wdkRef.current.bchNetwork === 'mainnet';
-        const lamports = Math.floor(params.buyAmount * Math.pow(10, params.buyToken.decimals || 9));
+        const { secretHex, hashlockHex } = await generateHashlock();
+        const hashlockArray = Array.from(Buffer.from(hashlockHex.replace('0x', ''), 'hex'));
 
-        // CashToken → SOL when the BCH-side token carries a CashToken category id.
-        // Native BCH otherwise. For a CashToken covenant the swapped value lives
-        // in bchToken.amount, but the covenant UTXO still needs enough BCH to
-        // cover the solver's FRI claim fee (~5000 sats) — fund it with
-        // COVENANT_FUND_SATS, not bare token-dust.
-        const bchToken = params.sellToken.categoryId
-            ? {
-                category: params.sellToken.categoryId,
-                amount:   String(Math.floor(params.sellAmount * Math.pow(10, params.sellToken.decimals || 0))),
+        setSwapStep('Getting relayer info...');
+        let relayerBchAddress = 'bchtest:qzufsn0wtcmc4lhc3s3trhl0nxn6dgkpmgvzngkxl7';
+        try {
+            const healthRes = await axios.get(`${BCH_SOLANA_RELAYER_URL}/health`);
+            relayerBchAddress = healthRes.data?.pubkeys?.bch
+                || healthRes.data?.wallets?.bch?.address
+                || healthRes.data?.bch?.address
+                || relayerBchAddress;
+        } catch { }
+
+        setSwapStep('Deploying HTLC covenant on BCH...');
+        const { Contract, ElectrumNetworkProvider, SignatureTemplate } = await getCashScript();
+        const artifactModule = await import('@/lib/CrossChainHTLC.json');
+        const artifact = artifactModule.default || artifactModule;
+        const { cashAddressToLockingBytecode, decodePrivateKeyWif } = await import('@bitauth/libauth');
+
+        const derivePkh = (address: string): Uint8Array => {
+            const result = cashAddressToLockingBytecode(address);
+            if (typeof result === 'string') throw new Error(`Invalid BCH address: ${result}`);
+            const bytecode = result.bytecode;
+            if (bytecode.length === 25 && bytecode[0] === 0x76 && bytecode[1] === 0xa9 && bytecode[2] === 0x14) {
+                return bytecode.slice(3, 23);
             }
-            : undefined;
-        const TOKEN_DUST = 1000;          // dust for a plain token-change output
-        const COVENANT_FUND_SATS = 8000;  // sats the covenant UTXO carries (≥ FRI claim fee + dust)
-        const sats = bchToken ? COVENANT_FUND_SATS : Math.floor(params.sellAmount * 1e8);
-
-        // Solana leg delivers USDC (SPL) when the buy token is a non-SOL
-        // Solana token; the solver handles the SPL transfer server-side.
-        const buyTokenMint = (params.buyToken.chain === 'solana'
-            && params.buyToken.symbol !== 'SOL'
-            && params.buyToken.address)
-            ? params.buyToken.address
-            : undefined;
-
-        // 1. Create intent — solver pre-signs the Solana payment (~1-2s, live devnet)
-        const buyLabel = buyTokenMint ? params.buyToken.symbol : 'SOL';
-        setSwapStep(`Creating ZK swap intent (${bchToken ? 'CashToken' : 'BCH'} → ${buyLabel})...`);
-
-        const payload = {
-            makerAddress:     currentBchWallet.address,
-            recipientAddress: recipientSolAddress,
-            sellAmount:       String(sats),
-            buyAmount:        String(lamports),
-            sourceTimelock:   Math.floor(Date.now() / 1000) + 3600,
-            ...(bchToken ? { bchToken } : {}),
-            ...(buyTokenMint ? { buyToken: buyTokenMint } : {}),
+            throw new Error('Not a standard P2PKH address');
         };
-        console.log('[BCH→SOL ZK] Payload:', payload);
 
-        // Client-side pre-flight — tell the user which specific field is missing
-        for (const [k, v] of Object.entries(payload)) {
-            if (!v) throw new Error(`Missing required field for ZK swap: ${k}`);
-        }
+        const userPkh = derivePkh(currentBchWallet.address);
+        const relayerPkh = derivePkh(relayerBchAddress);
+        const timelock = BigInt(Math.floor(Date.now() / 1000) + 3600);
 
-        const zkUrl = isMainnet ? SOL_BCH_ZK_SERVER_MAINNET_URL : SOL_BCH_ZK_SERVER_URL;
-        const networkQuery = isMainnet ? '?network=mainnet' : '';
+        const isMainnet = wdkRef.current.bchNetwork === 'mainnet';
+        const provider = new ElectrumNetworkProvider(isMainnet ? 'mainnet' : 'chipnet');
+        const contract = new Contract(artifact, [userPkh, relayerPkh, hashlockArray, timelock], { provider });
 
-        let covenantAddr: string;
-        let covenantTokenAddr: string;
-        let intentId: string;
-        try {
-            const { data } = await axios.post(`${zkUrl}/swap/bch-to-sol${networkQuery}`, payload);
-            const intent = data.intent;
-            if (!intent?.id || !intent?.bchCovenantAddr) {
-                throw new Error('ZK server did not return covenant address');
-            }
-            covenantAddr      = intent.bchCovenantAddr;
-            covenantTokenAddr = intent.bchCovenantTokenAddr || intent.bchCovenantAddr;
-            intentId          = intent.id;
-            console.log('[BCH→SOL ZK] Covenant:', covenantAddr, bchToken ? `(token: ${covenantTokenAddr})` : '');
-        } catch (e: any) {
-            throw new Error(`ZK server error: ${e.response?.data?.error || e.message}`);
-        }
+        const sats = BigInt(Math.floor(params.sellAmount * 1e8));
+        const wifDecoded = decodePrivateKeyWif(wif);
+        if (typeof wifDecoded === 'string') throw new Error('Invalid WIF');
 
-        // 2. Fund the P2SH32 covenant. Native BCH funds the plain address; a
-        //    CashToken covenant funds the token-aware address with a token rider.
-        setSwapStep(`Funding ${bchToken ? 'CashToken' : 'BCH'} ZK covenant...`);
-        let fundTxId: string;
-        try {
-            const { TransactionBuilder, ElectrumNetworkProvider, SignatureTemplate } = await getCashScript();
-            const provider = new ElectrumNetworkProvider(isMainnet ? 'mainnet' : 'chipnet');
-            const allUtxos = await provider.getUtxos(currentBchWallet.address!);
-            const sigTemplate = new SignatureTemplate(wif);
-            // Dynamic fee: 2 sat/byte. P2PKH input ~148 bytes, output ~34 bytes, overhead 10 bytes.
-            // Avoids "min relay fee not met" when wallet has many small UTXOs.
-            const estimateFee = (numIn: number, numOut: number) =>
-                BigInt(Math.ceil((numIn * 148 + numOut * 34 + 10) * 2));
-            const builder = new TransactionBuilder({ provider });
+        setSwapStep('Locking BCH in HTLC covenant...');
+        const txDetails = await contract.functions
+            .fund()
+            .to(contract.address, sats)
+            .send();
 
-            let unlocker: any;
-            if (isMainActive) {
-                unlocker = new SignatureTemplate(wif).unlockP2PKH();
-            } else {
-                const { getDummyUnlocker } = await import('@/lib/wc2Serialize');
-                unlocker = await getDummyUnlocker(currentBchWallet.address!);
-            }
+        const bchTxHash = txDetails.txid;
+        toast.success('BCH locked in HTLC covenant!', { description: `Tx: ${bchTxHash.slice(0, 16)}...` });
 
-            let selected: any[] = [];
+        setSwapStep('Notifying relayer...');
+        const buyAmountLamports = Math.floor(params.buyAmount * Math.pow(10, params.buyToken.decimals || 9)).toString();
+        const response = await axios.post(`${BCH_SOLANA_RELAYER_URL}/swap/bch-to-sol`, {
+            makerAddress: currentBchWallet.address,
+            recipientAddress: recipientSolAddress,
+            sellAmount: sats.toString(),
+            buyAmount: buyAmountLamports,
+            buyToken: params.buyToken.address || params.buyToken.symbol,
+            hashlock: hashlockHex,
+            bchContractAddress: contract.address,
+            sourceTimelock: Number(timelock),
+            sourceLockTx: bchTxHash,
+        });
 
-            if (!bchToken) {
-                // ── Native-BCH covenant ─────────────────────────────────────
-                const { cashAddressToLockingBytecode } = await import('@bitauth/libauth');
-                const lockResult = cashAddressToLockingBytecode(covenantAddr);
-                if (typeof lockResult === 'string') throw new Error(`Invalid covenant address: ${lockResult}`);
-                // Select minimum UTXOs (largest-first) to keep fee low and tx small.
-                const sortedUtxos = allUtxos.filter((u: any) => !u.token)
-                    .sort((a: any, b: any) => Number(b.satoshis - a.satoshis));
-                if (!sortedUtxos.length) throw new Error('No plain BCH UTXOs available — fund your wallet or consolidate UTXOs first');
-                const amountSats = BigInt(sats);
-                let totalInput = 0n;
-                for (const u of sortedUtxos) {
-                    selected.push(u);
-                    totalInput += u.satoshis;
-                    if (totalInput >= amountSats + estimateFee(selected.length, 2)) break;
-                }
-                const fee = estimateFee(selected.length, 2);
-                const change = totalInput - amountSats - fee;
-                if (change < 0n) throw new Error('Insufficient BCH balance');
-                builder.addInputs(selected, unlocker);
-                builder.addOutput({ to: lockResult.bytecode, amount: amountSats });
-                if (change >= 546n) builder.addOutput({ to: currentBchWallet.address!, amount: change });
-            } else {
-                // ── CashToken covenant ──────────────────────────────────────
-                const dust = BigInt(TOKEN_DUST);
-                const tokAmount = BigInt(bchToken.amount);
-                const tokenUtxos = allUtxos.filter(
-                    (u: any) => u.token && u.token.category === bchToken.category && !u.token.nft,
-                ).sort((a: any, b: any) => Number(BigInt(b.token.amount) - BigInt(a.token.amount)));
-                const bchUtxos = allUtxos.filter((u: any) => !u.token)
-                    .sort((a: any, b: any) => Number(b.satoshis - a.satoshis));
-
-                let tokAcc = 0n, satAcc = 0n;
-                for (const u of tokenUtxos) {
-                    selected.push(u); tokAcc += BigInt(u.token.amount); satAcc += u.satoshis;
-                    if (tokAcc >= tokAmount) break;
-                }
-                if (tokAcc < tokAmount) throw new Error(`Insufficient ${params.sellToken.symbol} balance`);
-                const tokenChange = tokAcc - tokAmount;
-                const covenantSats = BigInt(sats);   // COVENANT_FUND_SATS — covers the solver's FRI claim fee
-                // numOut: covenant + optional token change + optional BCH change = up to 3
-                const numOut = 1 + (tokenChange > 0n ? 1 : 0) + 1;
-                for (const u of bchUtxos) {
-                    if (satAcc >= covenantSats + (tokenChange > 0n ? dust : 0n) + estimateFee(selected.length + 1, numOut)) break;
-                    selected.push(u); satAcc += u.satoshis;
-                }
-                const fee = estimateFee(selected.length, numOut);
-                const satsNeeded = covenantSats + (tokenChange > 0n ? dust : 0n) + fee;
-                if (satAcc < satsNeeded) throw new Error('Insufficient BCH balance to cover token covenant fees');
-
-                // Token change must return to a token-aware address — convert
-                // the user's plain cashaddr to its p2pkhWithTokens form.
-                const { cashAddressToLockingBytecode, lockingBytecodeToCashAddress } = await import('@bitauth/libauth');
-                const selfDecoded = cashAddressToLockingBytecode(currentBchWallet.address!);
-                if (typeof selfDecoded === 'string') throw new Error(`Invalid wallet address: ${selfDecoded}`);
-                const selfTokenAddr = lockingBytecodeToCashAddress({
-                    bytecode: selfDecoded.bytecode,
-                    prefix: (isMainnet ? 'bitcoincash' : 'bchtest') as any,
-                    tokenSupport: true,
-                });
-                if (typeof selfTokenAddr === 'string') throw new Error(`Cannot derive token address: ${selfTokenAddr}`);
-
-                builder.addInputs(selected, unlocker);
-                builder.addOutput({
-                    to: covenantTokenAddr,
-                    amount: covenantSats,
-                    token: { category: bchToken.category, amount: tokAmount },
-                });
-                let bchChange = satAcc - covenantSats - fee;
-                if (tokenChange > 0n) {
-                    builder.addOutput({
-                        to: selfTokenAddr.address,
-                        amount: dust,
-                        token: { category: bchToken.category, amount: tokenChange },
-                    });
-                    bchChange -= dust;
-                }
-                if (bchChange >= 546n) builder.addOutput({ to: currentBchWallet.address!, amount: bchChange });
-            }
-
-            if (isMainActive) {
-                const tx = await builder.send();
-                fundTxId = tx.txid;
-                console.log('[BCH→SOL ZK] Covenant funded:', fundTxId);
-                toast.success(`${bchToken ? params.sellToken.symbol : 'BCH'} locked in ZK covenant!`, { description: `Tx: ${fundTxId.slice(0, 16)}...` });
-            } else {
-                if (!activeExtWallet) throw new Error('No active external wallet found.');
-                const { buildWC2SourceOutputs, buildWC2Payload } = await import('@/lib/wc2Serialize');
-
-                setSwapStep('Waiting for wallet approval...');
-                toast.info('Check your external wallet to approve the transaction.', { duration: 8000 });
-
-                const utxoIndices = selected.map((_: any, i: number) => i);
-                const sourceOutputs = await buildWC2SourceOutputs(selected, utxoIndices, currentBchWallet.address!);
-                const unsignedHex = builder.build();
-
-                const payload = buildWC2Payload(
-                    unsignedHex,
-                    sourceOutputs,
-                    `Fund ZK covenant`
-                );
-
-                const result = await extBCHCtx.signTransaction(activeWalletId, payload);
-                fundTxId = result.signedTransactionHash;
-                console.log('[BCH→SOL ZK] Covenant funded via external wallet:', fundTxId);
-                toast.success(`${bchToken ? params.sellToken.symbol : 'BCH'} locked in ZK covenant!`);
-            }
-        } catch (e: any) {
-            throw new Error(`Failed to fund BCH covenant: ${e.message}`);
-        }
-
+        const intent = response.data.intent;
         const order: BCHOrder = {
-            id:               intentId,
-            swapType:         'bch-to-sol',
-            orderType:        params.orderType,
-            sellToken:        params.sellToken,
-            buyToken:         params.buyToken,
-            sellAmount:       params.sellAmount,
-            buyAmount:        params.buyAmount,
-            status:           'pending',
-            contractAddress:  covenantAddr,
-            txid:             fundTxId,
-            intentId,
+            id: intent?.id || `bch_sol_${Date.now()}`,
+            swapType: 'bch-to-sol',
+            orderType: params.orderType,
+            sellToken: params.sellToken,
+            buyToken: params.buyToken,
+            sellAmount: params.sellAmount,
+            buyAmount: params.buyAmount,
+            status: 'pending',
+            contractAddress: contract.address,
+            txid: bchTxHash,
+            intentId: intent?.id,
             explorerUrl: isMainnet
-                ? `https://blockchair.com/bitcoin-cash/transaction/${fundTxId}`
-                : `https://chipnet.chaingraph.cash/tx/${fundTxId}`,
-            createdAt:   Date.now(),
-            claimData:   { direction: 'BCH_TO_SOL' },
+                ? `https://blockchair.com/bitcoin-cash/transaction/${bchTxHash}`
+                : `https://chipnet.chaingraph.cash/tx/${bchTxHash}`,
+            createdAt: Date.now(),
+            claimData: {
+                hashlock: hashlockHex,
+                secret: secretHex,
+                bchContractAddress: contract.address,
+                destTimelock: Number(timelock),
+                direction: 'BCH_TO_SOL',
+            },
         };
 
         saveOrder(order);
         setSwapStep('');
-        toast.success('ZK swap initiated!', {
-            description: 'The solver will deliver SOL and claim your BCH covenant automatically via FRI proof.',
+        toast.success('Cross-chain swap initiated!', {
+            description: 'Relayer is locking funds on Solana. You can claim once locked.',
         });
     };
 
-
     // =========================================================================
-    // Solana → BCH: Trustless ZK path via Solana FRI escrow
-    //   1. POST /swap/sol-to-bch — solver pre-signs BCH tx, returns FRI escrow PDA
-    //   2. User calls lock_sol_fri — SOL locked on-chain in Solana FRI escrow
-    //   3. Solver detects funding, broadcasts BCH tx, generates FRI proof, claims SOL
+    // Solana → BCH: HTLC path via Anchor on Solana & CashScript on BCH
+    //   1. User locks SOL/SPL in Solana Escrow PDA
+    //   2. Notifies bch-solana-relayer on /swap/sol-to-bch
+    //   3. Relayer locks BCH in HTLC covenant on Chipnet
+    //   4. User claims BCH on Chipnet with secret
+    //   5. Relayer claims Solana escrow with secret
     // =========================================================================
     const executeSolanaToBCH = async (params: BCHSwapParams, recipientBCHAddress: string) => {
         const sw = solanaWalletRef.current;
-        if (!sw?.publicKey) throw new Error('Connect your WDK wallet first');
+        if (!sw?.publicKey) throw new Error('Connect your Solana / WDK wallet first');
         if (!recipientBCHAddress) throw new Error('BCH recipient address required');
 
-        const lamports = Math.floor(params.sellAmount * Math.pow(10, params.sellToken.decimals || 9));
+        const { secretHex, hashlockHex } = await generateHashlock();
+        const hashlockBytes = Buffer.from(hashlockHex.replace('0x', ''), 'hex');
 
-        // USDC → * when the Solana-side sell token is a non-SOL Solana token.
-        // The user then locks USDC via lock_token_fri instead of lock_sol_fri.
-        const sellTokenMint = (params.sellToken.chain === 'solana'
-            && params.sellToken.symbol !== 'SOL'
-            && params.sellToken.address)
-            ? params.sellToken.address
-            : undefined;
-
-        // SOL → CashToken when the BCH-side token carries a CashToken category.
-        // The solver delivers the token; the BCH leg only moves token-dust sats.
-        const bchToken = params.buyToken.categoryId
-            ? {
-                category: params.buyToken.categoryId,
-                amount:   String(Math.floor(params.buyAmount * Math.pow(10, params.buyToken.decimals || 0))),
-            }
-            : undefined;
-        const sats = bchToken ? 1000 : Math.floor(params.buyAmount * 1e8);
-        const isMainnet = wdkRef.current.bchNetwork === 'mainnet';
-
-        // A CashToken can only be delivered to a token-aware address — convert
-        // the user's plain cashaddr to its p2pkhWithTokens form when needed.
-        let deliveryAddress = recipientBCHAddress;
-        if (bchToken) {
-            const { cashAddressToLockingBytecode, lockingBytecodeToCashAddress } = await import('@bitauth/libauth');
-            const decoded = cashAddressToLockingBytecode(recipientBCHAddress);
-            if (typeof decoded === 'string') throw new Error(`Invalid BCH recipient address: ${decoded}`);
-            const tokenAddr = lockingBytecodeToCashAddress({
-                bytecode: decoded.bytecode,
-                prefix: (isMainnet ? 'bitcoincash' : 'bchtest') as any,
-                tokenSupport: true,
-            });
-            if (typeof tokenAddr === 'string') throw new Error(`Cannot derive token address: ${tokenAddr}`);
-            deliveryAddress = tokenAddr.address;
-        }
-        const zkUrl = isMainnet ? SOL_BCH_ZK_SERVER_MAINNET_URL : SOL_BCH_ZK_SERVER_URL;
-        const networkQuery = isMainnet ? '?network=mainnet' : '';
-
-        // 1. Create intent — server pre-signs BCH payment and returns FRI escrow info
-        setSwapStep('Creating ZK swap intent (server pre-signing BCH delivery)...');
-        let escrowPDA: string;
-        let bchTxSigHash: string;
-        let programHash: string;
-        let taker: string;
-        let intentId: string;
-        let intentTimelock: number;
-        let resolvedProgramId: string = SOLANA_PROGRAM_ID;
+        setSwapStep('Getting relayer info...');
+        let relayerSolAddress = 'VBmpGVzabx8AsptQXrA2okEwqFVjbuosHvR2NkuBoaS';
         try {
-            const { data } = await axios.post(`${zkUrl}/swap/sol-to-bch${networkQuery}`, {
-                makerAddress:     sw.publicKey.toBase58(),
-                recipientAddress: deliveryAddress,
-                sellAmount:       String(lamports),
-                buyAmount:        String(sats),
-                sourceTimelock:   Math.floor(Date.now() / 1000) + 3600,
-                ...(bchToken ? { bchToken } : {}),
-                ...(sellTokenMint ? { sellToken: sellTokenMint } : {}),
-            });
-            if (!data.escrow?.pda || !data.intent?.id) {
-                throw new Error('ZK server did not return FRI escrow info');
-            }
-            escrowPDA      = data.escrow.pda;
-            bchTxSigHash   = data.escrow.bchTxSigHash;
-            programHash    = data.escrow.programHash;
-            taker          = data.escrow.taker;
-            intentId       = data.intent.id;
-            intentTimelock = data.escrow.timelock || Math.floor(Date.now() / 1000) + 3600;
-            // Server returns the program ID for the active network (devnet/mainnet) so the
-            // frontend doesn't need to hardcode it per environment.
-            if (data.escrow.programId) resolvedProgramId = data.escrow.programId;
-            console.log('[SOL→BCH ZK] FRI escrow PDA:', escrowPDA);
-            console.log('[SOL→BCH ZK] bchTxSigHash:', bchTxSigHash);
-            console.log('[SOL→BCH ZK] programId:', resolvedProgramId);
-        } catch (e: any) {
-            throw new Error(`ZK server error: ${e.response?.data?.error || e.message}`);
+            const healthRes = await axios.get(`${BCH_SOLANA_RELAYER_URL}/health`);
+            relayerSolAddress = healthRes.data?.pubkeys?.solana
+                || healthRes.data?.wallets?.solana?.address
+                || healthRes.data?.solana?.address
+                || relayerSolAddress;
+        } catch { }
+
+        const { PublicKey, SystemProgram } = await import('@solana/web3.js');
+        const { getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, createSyncNativeInstruction, NATIVE_MINT, TOKEN_PROGRAM_ID } = await import('@solana/spl-token');
+        const anchor = await import('@coral-xyz/anchor');
+        const idlModule = await import('@/lib/intent_swap.json');
+        const idl = idlModule.default || idlModule;
+
+        const programId = new PublicKey(idl.address || '5JAWumq5L4B8WrpF3CFox36SZ2bJF4xQvskLksmHRgs2');
+        const relayerPubkey = new PublicKey(relayerSolAddress);
+
+        const isNativeSol = params.sellToken.chain === 'solana' && (params.sellToken.symbol === 'SOL' || params.sellToken.type === 'native');
+        const tokenMint = isNativeSol ? NATIVE_MINT : new PublicKey(params.sellToken.address || NATIVE_MINT.toBase58());
+        const sellAmountLamports = new anchor.BN(Math.floor(params.sellAmount * Math.pow(10, params.sellToken.decimals || 9)));
+
+        const [escrowPda] = PublicKey.findProgramAddressSync(
+            [Buffer.from("escrow"), sw.publicKey.toBuffer(), hashlockBytes],
+            programId
+        );
+        const [vaultPda] = PublicKey.findProgramAddressSync(
+            [Buffer.from("vault"), escrowPda.toBuffer()],
+            programId
+        );
+
+        const makerTokenAccount = await getAssociatedTokenAddress(tokenMint, sw.publicKey);
+
+        setSwapStep('Creating Solana Escrow...');
+        const timelockDuration = new anchor.BN(3600); // 1 hour
+
+        const provider = new anchor.AnchorProvider(
+            solanaConnection,
+            sw as any,
+            { preflightCommitment: 'confirmed' }
+        );
+        const program = new anchor.Program(idl as any, provider);
+
+        const preIxs = [];
+        const makerAtaInfo = await solanaConnection.getAccountInfo(makerTokenAccount);
+        if (!makerAtaInfo) {
+            preIxs.push(
+                createAssociatedTokenAccountInstruction(
+                    sw.publicKey,
+                    makerTokenAccount,
+                    sw.publicKey,
+                    tokenMint
+                )
+            );
+        }
+        if (tokenMint.equals(NATIVE_MINT)) {
+            preIxs.push(
+                SystemProgram.transfer({
+                    fromPubkey: sw.publicKey,
+                    toPubkey: makerTokenAccount,
+                    lamports: BigInt(sellAmountLamports.toString())
+                })
+            );
+            preIxs.push(createSyncNativeInstruction(makerTokenAccount));
         }
 
-        // 2. Lock funds in the Solana FRI escrow.
-        //    Native SOL → lock_sol_fri;  USDC (SPL) → lock_token_fri.
-        const lockKind = sellTokenMint ? 'USDC' : 'SOL';
-        setSwapStep(`Locking ${lockKind} in Solana FRI escrow...`);
-        let lockTxSig: string;
+        let solTxHash = '';
         try {
-            const programId    = new PublicKey(resolvedProgramId);
-            const takerPubkey  = new PublicKey(taker);
-            const escrowPubkey = new PublicKey(escrowPDA);
-
-            // Anchor discriminator = sha256("global:<ix_name>")[0..8]
-            const ixName = sellTokenMint ? 'global:lock_token_fri' : 'global:lock_sol_fri';
-            const hashBuf  = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(ixName) as unknown as BufferSource);
-            const discriminator = new Uint8Array(hashBuf).slice(0, 8);
-
-            // Borsh-serialize instruction args (identical for SOL + token locks)
-            const timelockBuf = Buffer.alloc(8); timelockBuf.writeBigInt64LE(BigInt(intentTimelock));
-            const amountBuf   = Buffer.alloc(8); amountBuf.writeBigUInt64LE(BigInt(lamports));
-            const ixData = Buffer.concat([
-                Buffer.from(discriminator),
-                Buffer.from(bchTxSigHash, 'hex'),
-                Buffer.from(programHash, 'hex'),
-                timelockBuf,
-                amountBuf,
-            ]);
-
-            let ix: anchor.web3.TransactionInstruction;
-            if (!sellTokenMint) {
-                ix = new anchor.web3.TransactionInstruction({
-                    programId,
-                    keys: [
-                        { pubkey: sw.publicKey,            isSigner: true,  isWritable: true  },
-                        { pubkey: takerPubkey,             isSigner: false, isWritable: false },
-                        { pubkey: escrowPubkey,            isSigner: false, isWritable: true  },
-                        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-                    ],
-                    data: ixData,
+            const builder = (program.methods as any)
+                .initialize(
+                    [...hashlockBytes],
+                    timelockDuration,
+                    sellAmountLamports
+                )
+                .accounts({
+                    maker: sw.publicKey,
+                    taker: relayerPubkey,
+                    tokenMint: tokenMint,
+                    escrow: escrowPda,
+                    makerTokenAccount: makerTokenAccount,
+                    vault: vaultPda,
+                    systemProgram: SystemProgram.programId,
+                    tokenProgram: TOKEN_PROGRAM_ID,
+                    rent: anchor.web3.SYSVAR_RENT_PUBKEY,
                 });
-            } else {
-                // lock_token_fri — accounts per the intent_swap IDL.
-                const { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID } = await import('@solana/spl-token');
-                const { SYSVAR_RENT_PUBKEY } = await import('@solana/web3.js');
-                const mint            = new PublicKey(sellTokenMint);
-                const makerTokenAcct  = getAssociatedTokenAddressSync(mint, sw.publicKey);
-                const [friVault]      = PublicKey.findProgramAddressSync(
-                    [new TextEncoder().encode('fri_vault'), escrowPubkey.toBuffer()], programId,
-                );
-                ix = new anchor.web3.TransactionInstruction({
-                    programId,
-                    keys: [
-                        { pubkey: sw.publicKey,            isSigner: true,  isWritable: true  },
-                        { pubkey: takerPubkey,             isSigner: false, isWritable: false },
-                        { pubkey: mint,                    isSigner: false, isWritable: false },
-                        { pubkey: escrowPubkey,            isSigner: false, isWritable: true  },
-                        { pubkey: makerTokenAcct,          isSigner: false, isWritable: true  },
-                        { pubkey: friVault,                isSigner: false, isWritable: true  },
-                        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-                        { pubkey: TOKEN_PROGRAM_ID,        isSigner: false, isWritable: false },
-                        { pubkey: SYSVAR_RENT_PUBKEY,      isSigner: false, isWritable: false },
-                    ],
-                    data: ixData,
-                });
+
+            if (preIxs.length > 0) {
+                builder.preInstructions(preIxs);
             }
 
-            const tx = new Transaction().add(ix);
-            lockTxSig = await sw.sendTransaction(tx, solanaConnection);
-            console.log(`[SOL→BCH ZK] ${lockKind} locked in FRI escrow:`, lockTxSig);
-            toast.success(`${lockKind} locked in FRI escrow!`, { description: `Tx: ${lockTxSig.slice(0, 16)}...` });
+            solTxHash = await builder.rpc();
+            console.log('[SOL→BCH] Solana Escrow Created:', solTxHash);
+            toast.success('Funds locked on Solana!', { description: `Escrow PDA: ${escrowPda.toBase58().slice(0, 12)}...` });
         } catch (e: any) {
-            throw new Error(`Failed to lock ${lockKind} in FRI escrow: ${e.message}`);
+            throw new Error(`Failed to create Solana Escrow: ${e.message}`);
         }
 
+        setSwapStep('Notifying relayer...');
+        const buyAmountSats = Math.floor(params.buyAmount * Math.pow(10, params.buyToken.decimals || 8)).toString();
+        const response = await axios.post(`${BCH_SOLANA_RELAYER_URL}/swap/sol-to-bch`, {
+            makerAddress: sw.publicKey.toBase58(),
+            recipientAddress: recipientBCHAddress,
+            sellAmount: sellAmountLamports.toString(),
+            sellToken: params.sellToken.address || params.sellToken.symbol,
+            buyAmount: buyAmountSats,
+            buyToken: params.buyToken.address || params.buyToken.symbol,
+            hashlock: hashlockHex,
+            solanaEscrowPda: escrowPda.toBase58(),
+            escrowTxHash: solTxHash,
+            sourceTimelock: Math.floor(Date.now() / 1000) + 3600,
+        });
+
+        const intent = response.data.intent;
         const order: BCHOrder = {
-            id:              intentId,
-            swapType:        'sol-to-bch',
-            orderType:       params.orderType,
-            sellToken:       params.sellToken,
-            buyToken:        params.buyToken,
-            sellAmount:      params.sellAmount,
-            buyAmount:       params.buyAmount,
-            status:          'pending',
-            contractAddress: escrowPDA,
-            txid:            lockTxSig,
-            intentId,
-            explorerUrl: `https://explorer.solana.com/tx/${lockTxSig}?cluster=devnet`,
-            createdAt:   Date.now(),
-            claimData:   { direction: 'SOL_TO_BCH' },
+            id: intent?.id || `sol_bch_${Date.now()}`,
+            swapType: 'sol-to-bch',
+            orderType: params.orderType,
+            sellToken: params.sellToken,
+            buyToken: params.buyToken,
+            sellAmount: params.sellAmount,
+            buyAmount: params.buyAmount,
+            status: 'pending',
+            intentId: intent?.id,
+            explorerUrl: `https://explorer.solana.com/tx/${solTxHash}?cluster=devnet`,
+            createdAt: Date.now(),
+            claimData: {
+                hashlock: hashlockHex,
+                secret: secretHex,
+                solanaEscrowPda: escrowPda.toBase58(),
+                direction: 'SOL_TO_BCH',
+            },
         };
 
         saveOrder(order);
         setSwapStep('');
-        toast.success('ZK swap initiated!', {
-            description: 'SOL locked in FRI escrow. Solver will deliver BCH and claim SOL via FRI proof automatically.',
+        toast.success('Cross-chain swap initiated!', {
+            description: 'Relayer is locking BCH on Chipnet.',
         });
     };
 
@@ -1178,11 +1020,15 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
         setSwapStep('Getting relayer info...');
         let relayerBchAddress: string;
         try {
-            const healthRes = await axios.get(`${BCH_SOLANA_RELAYER_URL}/orders`);
-            const anyIntent = [...(healthRes.data.active || []), ...(healthRes.data.completed || [])]
-                .find((i: any) => i.direction?.includes('BCH'));
-            relayerBchAddress = anyIntent?.takerAddress || 'bchtest:qzufsn0wtcmc4lhc3s3trhl0nxn6dgkpmgvzngkxl7';
+            const healthRes = await axios.get(`${BCH_SOLANA_RELAYER_URL}/health`);
+            relayerBchAddress = healthRes.data?.pubkeys?.bch
+                || healthRes.data?.wallets?.bch?.address
+                || healthRes.data?.bch?.address
+                || '';
         } catch {
+            relayerBchAddress = '';
+        }
+        if (!relayerBchAddress || !relayerBchAddress.includes(':')) {
             relayerBchAddress = 'bchtest:qzufsn0wtcmc4lhc3s3trhl0nxn6dgkpmgvzngkxl7';
         }
         console.log('[BCH→MOV] Relayer BCH address:', relayerBchAddress);
@@ -1297,8 +1143,10 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 recipientAddress: recipientMovAddress,
                 sellAmount: Math.floor(params.sellAmount * 1e8).toString(),
                 buyAmount: Math.floor(params.buyAmount * Math.pow(10, params.buyToken.decimals || 8)).toString(),
+                buyToken: params.buyToken.address || params.buyToken.symbol,
                 hashlock: hashlockHex,
                 bchContractAddress: contractAddress,
+                sourceTimelock: Number(timelock),
             });
 
             const intent = response.data.intent;
@@ -1336,23 +1184,135 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
     };
 
     // =========================================================================
-    // Movement → BCH: Notify relayer (Movement escrow created externally or via wallet)
+    // Movement → BCH: Create on-chain HTLC escrow on Movement, notify relayer
     // =========================================================================
     const executeMovementToBCH = async (params: BCHSwapParams, recipientBCHAddress: string) => {
-        // Movement wallet connection is handled by the main wallet context
-        // The relayer handles the on-chain escrow detection
-        const { secretHex, hashlockHex } = await generateHashlock();
-        console.log('[MOV→BCH] Starting Movement to BCH swap');
+        const currentWdk = wdkRef.current;
 
+        // Require WDK Movement account
+        if (!currentWdk.movementAddress || !currentWdk.movementAccount) {
+            throw new Error('Connect your WDK wallet first — Movement account not available');
+        }
+        if (!recipientBCHAddress) throw new Error('BCH recipient address required');
+
+        const { secretHex, hashlockHex, hashlockArray } = await generateHashlock();
+        console.log('[MOV→BCH] Starting Movement to BCH swap, hashlock:', hashlockHex);
+
+        // 1. Fetch relayer BCH address and Movement address from /health
+        setSwapStep('Getting relayer info...');
+        let relayerMovementAddress = '';
+        try {
+            const healthRes = await axios.get(`${BCH_SOLANA_RELAYER_URL}/health`);
+            relayerMovementAddress =
+                healthRes.data.movement?.address ||
+                healthRes.data.wallets?.movement?.address ||
+                healthRes.data.pubkeys?.movement ||
+                '';
+        } catch {
+            // Fallback — relayer address should come from health check
+            console.warn('[MOV→BCH] Could not fetch relayer health, proceeding without relayer Movement address');
+        }
+
+        if (!relayerMovementAddress) {
+            throw new Error('Relayer Movement address not available — ensure bch-solana-relayer is running');
+        }
+
+        // 2. Create HTLC escrow on Movement
+        setSwapStep('Creating HTLC escrow on Movement...');
+        const MOVEMENT_HTLC_ADDR = '0x485ca1c12b5dfa01c282b9c7ef09fdfebbf877ed729bf999ce61a8ec5c5e69bd';
+        const amountOctas = Math.floor(params.sellAmount * Math.pow(10, params.sellToken.decimals || 8));
+        let coinType = '0x1::aptos_coin::AptosCoin';
+        if (params.sellToken.address && params.sellToken.address.includes('::')) {
+            coinType = params.sellToken.address;
+        } else if (params.sellToken.type && params.sellToken.type.includes('::')) {
+            coinType = params.sellToken.type;
+        } else if (params.sellToken.symbol?.includes('ETH') || params.sellToken.symbol?.includes('WETH')) {
+            coinType = '0xf22bede237a07e121b56d91a491eb7bcdfd1f5907926a9e58338f964a01b17fa::asset::WETH';
+        }
+
+        let sourceEscrowId = 0;
+        let escrowTxHash = '';
+        try {
+            const { Aptos, AptosConfig, Network } = await import('@aptos-labs/ts-sdk');
+            const aptosClient = new Aptos(new AptosConfig({
+                network: Network.CUSTOM,
+                fullnode: 'https://testnet.movementnetwork.xyz/v1',
+            }));
+
+            // Get current escrow count BEFORE creating (to predict new ID)
+            try {
+                const registryStats = await aptosClient.view({
+                    payload: {
+                        function: `${MOVEMENT_HTLC_ADDR}::htlc_escrow::get_registry_stats`,
+                        typeArguments: [coinType],
+                        functionArguments: [MOVEMENT_HTLC_ADDR],
+                    },
+                });
+                sourceEscrowId = parseInt(registryStats[0] as string);
+                console.log('[MOV→BCH] Predicted escrow ID:', sourceEscrowId);
+            } catch (e) {
+                console.warn('[MOV→BCH] Could not get registry stats, using 0 as fallback:', e);
+            }
+
+            // Get chain time for expiry
+            const ledgerInfo = await aptosClient.getLedgerInfo();
+            const chainTime = Math.floor(parseInt(ledgerInfo.ledger_timestamp) / 1000000);
+            const expireTimestamp = chainTime + 600; // 10 min tx window
+
+            // Build and submit the create_escrow transaction signed by the WDK Movement account
+            const rawTx = await aptosClient.transaction.build.simple({
+                sender: currentWdk.movementAccount.accountAddress,
+                data: {
+                    function: `${MOVEMENT_HTLC_ADDR}::htlc_escrow::create_escrow`,
+                    typeArguments: [coinType],
+                    functionArguments: [
+                        MOVEMENT_HTLC_ADDR,
+                        hashlockArray,
+                        relayerMovementAddress,
+                        amountOctas.toString(),
+                        3600, // 1 hour timelock
+                    ],
+                },
+                options: { expireTimestamp },
+            });
+
+            const pendingTx = await aptosClient.signAndSubmitTransaction({
+                signer: currentWdk.movementAccount,
+                transaction: rawTx,
+            });
+            escrowTxHash = pendingTx.hash;
+            console.log('[MOV→BCH] Escrow TX submitted:', escrowTxHash);
+
+            // Wait for confirmation and refine escrow ID from events if available
+            const confirmed = await aptosClient.waitForTransaction({ transactionHash: escrowTxHash });
+            console.log('[MOV→BCH] Escrow TX confirmed:', (confirmed as any).success ? 'SUCCESS' : 'FAILED');
+            if ('events' in confirmed) {
+                const escrowEvent = (confirmed.events as any[]).find((e: any) =>
+                    e.type?.includes('::htlc_escrow::NewEscrowEvent')
+                );
+                if (escrowEvent?.data?.escrow_id !== undefined) {
+                    sourceEscrowId = Number(escrowEvent.data.escrow_id);
+                    console.log('[MOV→BCH] ✅ Confirmed on-chain Escrow ID:', sourceEscrowId);
+                }
+            }
+
+            toast.success(`${params.sellToken.symbol} locked in HTLC escrow!`, { description: `Tx: ${escrowTxHash.slice(0, 16)}...` });
+        } catch (e: any) {
+            throw new Error(`Failed to create Movement HTLC escrow: ${e.message}`);
+        }
+
+        // 3. Notify relayer — it will watch the escrow and deliver BCH
         setSwapStep('Notifying relayer...');
         try {
             const response = await axios.post(`${BCH_SOLANA_RELAYER_URL}/swap/move-to-bch`, {
-                makerAddress: 'movement-user', // Will be filled by Movement wallet
+                makerAddress: currentWdk.movementAddress,
                 recipientAddress: recipientBCHAddress,
-                sellAmount: Math.floor(params.sellAmount * Math.pow(10, params.sellToken.decimals || 8)).toString(),
+                sellAmount: amountOctas.toString(),
+                sellToken: params.sellToken.address || params.sellToken.symbol,
                 buyAmount: Math.floor(params.buyAmount * 1e8).toString(),
                 hashlock: hashlockHex,
-                sourceEscrowId: `mov_escrow_${Date.now()}`, // Placeholder until on-chain escrow is implemented
+                sourceEscrowId: sourceEscrowId,
+                escrowTxHash,
             });
 
             const intent = response.data.intent;
@@ -1366,12 +1326,13 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 buyAmount: params.buyAmount,
                 status: 'pending',
                 intentId: intent?.id,
-                explorerUrl: intent?.movementEscrowId ? `https://explorer.movementnetwork.xyz/txn/${intent.movementEscrowId}?network=testnet` : undefined,
+                explorerUrl: `https://explorer.movementnetwork.xyz/txn/${escrowTxHash}?network=testnet`,
                 createdAt: Date.now(),
                 claimData: {
                     hashlock: hashlockHex,
                     secret: secretHex,
-                    movementEscrowId: intent?.movementEscrowId,
+                    movementEscrowId: String(sourceEscrowId),
+                    escrowTxHash,
                     direction: 'MOV_TO_BCH',
                 },
             };
@@ -1379,12 +1340,321 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
             saveOrder(order);
             setSwapStep('');
             toast.success('Cross-chain swap initiated!', {
-                description: 'The relayer will fill your order on BCH.'
+                description: 'The relayer will deliver BCH to your address.',
             });
         } catch (e: any) {
             throw new Error(`Relayer error: ${e.response?.data?.error || e.message}`);
         }
     };
+
+    // =========================================================================
+    // Solana → Movement: HTLC path via Anchor on Solana & Move module on Movement
+    // =========================================================================
+    const executeSolanaToMovement = async (params: BCHSwapParams, recipientMovAddress: string) => {
+        const sw = solanaWalletRef.current;
+        if (!sw?.publicKey) throw new Error('Connect your Solana / WDK wallet first');
+        if (!recipientMovAddress) throw new Error('Movement recipient address required');
+
+        const { secretHex, hashlockHex } = await generateHashlock();
+        const hashlockBytes = Buffer.from(hashlockHex.replace('0x', ''), 'hex');
+
+        setSwapStep('Getting relayer info...');
+        let relayerSolAddress = '';
+        try {
+            const healthRes = await axios.get(`${BCH_SOLANA_RELAYER_URL}/health`);
+            relayerSolAddress = healthRes.data?.pubkeys?.solana
+                || healthRes.data?.wallets?.solana?.address
+                || healthRes.data?.solana?.address
+                || '';
+        } catch { }
+        if (!relayerSolAddress) {
+            relayerSolAddress = 'VBmpGVzabx8AsptQXrA2okEwqFVjbuosHvR2NkuBoaS';
+        }
+
+        const { PublicKey, SystemProgram } = await import('@solana/web3.js');
+        const { getAssociatedTokenAddress, createSyncNativeInstruction, NATIVE_MINT, TOKEN_PROGRAM_ID } = await import('@solana/spl-token');
+        const anchor = await import('@coral-xyz/anchor');
+        const idlModule = await import('@/lib/intent_swap.json');
+        const idl = idlModule.default || idlModule;
+
+        const programId = new PublicKey(idl.address || '5JAWumq5L4B8WrpF3CFox36SZ2bJF4xQvskLksmHRgs2');
+        const relayerPubkey = new PublicKey(relayerSolAddress);
+
+        const isNativeSol = params.sellToken.chain === 'solana' && (params.sellToken.symbol === 'SOL' || params.sellToken.type === 'native');
+        const tokenMint = isNativeSol ? NATIVE_MINT : new PublicKey(params.sellToken.address || NATIVE_MINT.toBase58());
+        const sellAmountLamports = new anchor.BN(Math.floor(params.sellAmount * Math.pow(10, params.sellToken.decimals || 9)));
+
+        const [escrowPda] = PublicKey.findProgramAddressSync(
+            [Buffer.from("escrow"), sw.publicKey.toBuffer(), hashlockBytes],
+            programId
+        );
+        const [vaultPda] = PublicKey.findProgramAddressSync(
+            [Buffer.from("vault"), escrowPda.toBuffer()],
+            programId
+        );
+
+        const makerTokenAccount = await getAssociatedTokenAddress(tokenMint, sw.publicKey);
+
+        setSwapStep('Creating Solana Escrow...');
+        const timelockDuration = new anchor.BN(3600); // 1 hour
+
+        const provider = new anchor.AnchorProvider(
+            solanaConnection,
+            sw as any,
+            { preflightCommitment: 'confirmed' }
+        );
+        const program = new anchor.Program(idl as any, provider);
+
+        const preIxs = [];
+        const makerAtaInfo = await solanaConnection.getAccountInfo(makerTokenAccount);
+        if (!makerAtaInfo) {
+            const { createAssociatedTokenAccountInstruction } = await import('@solana/spl-token');
+            preIxs.push(
+                createAssociatedTokenAccountInstruction(
+                    sw.publicKey,
+                    makerTokenAccount,
+                    sw.publicKey,
+                    tokenMint
+                )
+            );
+        }
+        if (tokenMint.equals(NATIVE_MINT)) {
+            preIxs.push(
+                SystemProgram.transfer({
+                    fromPubkey: sw.publicKey,
+                    toPubkey: makerTokenAccount,
+                    lamports: BigInt(sellAmountLamports.toString())
+                })
+            );
+            preIxs.push(createSyncNativeInstruction(makerTokenAccount));
+        }
+
+        let solTxHash = '';
+        try {
+            const builder = (program.methods as any)
+                .initialize(
+                    [...hashlockBytes],
+                    timelockDuration,
+                    sellAmountLamports
+                )
+                .accounts({
+                    maker: sw.publicKey,
+                    taker: relayerPubkey,
+                    tokenMint: tokenMint,
+                    escrow: escrowPda,
+                    makerTokenAccount: makerTokenAccount,
+                    vault: vaultPda,
+                    systemProgram: SystemProgram.programId,
+                    tokenProgram: TOKEN_PROGRAM_ID,
+                    rent: anchor.web3.SYSVAR_RENT_PUBKEY,
+                });
+
+            if (preIxs.length > 0) {
+                builder.preInstructions(preIxs);
+            }
+
+            solTxHash = await builder.rpc();
+            console.log('[SOL→MOV] Solana Escrow Created:', solTxHash);
+            toast.success('Funds locked on Solana!', { description: `Escrow PDA: ${escrowPda.toBase58().slice(0, 12)}...` });
+        } catch (e: any) {
+            throw new Error(`Failed to create Solana Escrow: ${e.message}`);
+        }
+
+        setSwapStep('Notifying relayer...');
+        try {
+            const buyAmountOctas = Math.floor(params.buyAmount * Math.pow(10, params.buyToken.decimals || 8)).toString();
+            const response = await axios.post(`${BCH_SOLANA_RELAYER_URL}/swap/sol-to-move`, {
+                makerAddress: sw.publicKey.toBase58(),
+                recipientAddress: recipientMovAddress,
+                sellAmount: sellAmountLamports.toString(),
+                sellToken: params.sellToken.address || params.sellToken.symbol,
+                buyAmount: buyAmountOctas,
+                buyToken: params.buyToken.address || params.buyToken.symbol,
+                hashlock: hashlockHex,
+                solanaEscrowPda: escrowPda.toBase58(),
+                escrowTxHash: solTxHash,
+                sourceTimelock: Math.floor(Date.now() / 1000) + 3600,
+            });
+
+            const intent = response.data.intent;
+            const order: BCHOrder = {
+                id: intent?.id || `sol_mov_${Date.now()}`,
+                swapType: 'sol-to-mov',
+                orderType: params.orderType,
+                sellToken: params.sellToken,
+                buyToken: params.buyToken,
+                sellAmount: params.sellAmount,
+                buyAmount: params.buyAmount,
+                status: 'pending',
+                intentId: intent?.id,
+                explorerUrl: `https://explorer.solana.com/tx/${solTxHash}?cluster=devnet`,
+                createdAt: Date.now(),
+                claimData: {
+                    hashlock: hashlockHex,
+                    secret: secretHex,
+                    solanaEscrowPda: escrowPda.toBase58(),
+                    direction: 'SOL_TO_MOV',
+                },
+            };
+
+            saveOrder(order);
+            setSwapStep('');
+            toast.success('Cross-chain swap initiated!', {
+                description: 'Relayer is locking funds on Movement.',
+            });
+        } catch (e: any) {
+            throw new Error(`Relayer error: ${e.response?.data?.error || e.message}`);
+        }
+    };
+
+    // =========================================================================
+    // Movement → Solana: HTLC path via Move module on Movement & Anchor on Solana
+    // =========================================================================
+    const executeMovementToSolana = async (params: BCHSwapParams, recipientSolAddress: string) => {
+        const currentWdk = wdkRef.current;
+        if (!currentWdk.movementAddress || !currentWdk.movementAccount) {
+            throw new Error('Connect your WDK wallet first — Movement account not available');
+        }
+        if (!recipientSolAddress) throw new Error('Solana recipient address required');
+
+        const { secretHex, hashlockHex, hashlockArray } = await generateHashlock();
+
+        setSwapStep('Getting relayer info...');
+        let relayerMovementAddress = '';
+        try {
+            const healthRes = await axios.get(`${BCH_SOLANA_RELAYER_URL}/health`);
+            relayerMovementAddress = healthRes.data?.wallets?.movement?.address
+                || healthRes.data?.pubkeys?.movement
+                || healthRes.data?.movement?.address
+                || '';
+        } catch { }
+        if (!relayerMovementAddress) {
+            relayerMovementAddress = '0xd57dba6e185993b1bdff1bd947b619d274690eecca18310f1fc911d7e35f1de6';
+        }
+
+        setSwapStep(`Locking ${params.sellToken.symbol} on Movement...`);
+        const { Aptos, AptosConfig, Network } = await import('@aptos-labs/ts-sdk');
+        const aptosClient = new Aptos(new AptosConfig({
+            network: Network.CUSTOM,
+            fullnode: 'https://testnet.movementnetwork.xyz/v1',
+        }));
+
+        const MOVEMENT_HTLC_ADDR = '0x485ca1c12b5dfa01c282b9c7ef09fdfebbf877ed729bf999ce61a8ec5c5e69bd';
+        const decimals = params.sellToken.decimals || 8;
+        const amountOctas = BigInt(Math.floor(params.sellAmount * Math.pow(10, decimals)));
+
+        let coinType = '0x1::aptos_coin::AptosCoin';
+        if (params.sellToken.address && params.sellToken.address.includes('::')) {
+            coinType = params.sellToken.address;
+        } else if (params.sellToken.symbol?.includes('ETH') || params.sellToken.symbol?.includes('WETH')) {
+            coinType = '0xf22bede237a07e121b56d91a491eb7bcdfd1f5907926a9e58338f964a01b17fa::asset::WETH';
+        }
+
+        let sourceEscrowId = 0;
+        let escrowTxHash = '';
+        try {
+            try {
+                const registryStats = await aptosClient.view({
+                    payload: {
+                        function: `${MOVEMENT_HTLC_ADDR}::htlc_escrow::get_registry_stats`,
+                        typeArguments: [coinType],
+                        functionArguments: [MOVEMENT_HTLC_ADDR],
+                    },
+                });
+                sourceEscrowId = parseInt(registryStats[0] as string);
+            } catch (e) {
+                console.warn('[MOV→SOL] Could not get registry stats, using 0 as fallback:', e);
+            }
+
+            const ledgerInfo = await aptosClient.getLedgerInfo();
+            const chainTime = Math.floor(parseInt(ledgerInfo.ledger_timestamp) / 1000000);
+            const expireTimestamp = chainTime + 600;
+
+            const rawTx = await aptosClient.transaction.build.simple({
+                sender: currentWdk.movementAccount.accountAddress,
+                data: {
+                    function: `${MOVEMENT_HTLC_ADDR}::htlc_escrow::create_escrow`,
+                    typeArguments: [coinType],
+                    functionArguments: [
+                        MOVEMENT_HTLC_ADDR,
+                        hashlockArray,
+                        relayerMovementAddress,
+                        amountOctas.toString(),
+                        3600,
+                    ],
+                },
+                options: { expireTimestamp },
+            });
+
+            const pendingTx = await aptosClient.signAndSubmitTransaction({
+                signer: currentWdk.movementAccount,
+                transaction: rawTx,
+            });
+            escrowTxHash = pendingTx.hash;
+
+            const confirmed = await aptosClient.waitForTransaction({ transactionHash: escrowTxHash });
+            if ('events' in confirmed) {
+                const escrowEvent = (confirmed.events as any[]).find((e: any) =>
+                    e.type?.includes('::htlc_escrow::NewEscrowEvent')
+                );
+                if (escrowEvent?.data?.escrow_id !== undefined) {
+                    sourceEscrowId = Number(escrowEvent.data.escrow_id);
+                }
+            }
+
+            toast.success(`${params.sellToken.symbol} locked in HTLC escrow!`, { description: `Tx: ${escrowTxHash.slice(0, 16)}...` });
+        } catch (e: any) {
+            throw new Error(`Failed to create Movement HTLC escrow: ${e.message}`);
+        }
+
+        setSwapStep('Notifying relayer...');
+        try {
+            const buyAmountLamports = Math.floor(params.buyAmount * Math.pow(10, params.buyToken.decimals || 9)).toString();
+            const response = await axios.post(`${BCH_SOLANA_RELAYER_URL}/swap/move-to-sol`, {
+                makerAddress: currentWdk.movementAddress,
+                recipientAddress: recipientSolAddress,
+                sellAmount: amountOctas.toString(),
+                sellToken: params.sellToken.address || params.sellToken.symbol,
+                buyAmount: buyAmountLamports,
+                buyToken: params.buyToken.address || params.buyToken.symbol,
+                hashlock: hashlockHex,
+                sourceEscrowId: sourceEscrowId,
+                escrowTxHash,
+                sourceTimelock: Math.floor(Date.now() / 1000) + 3600,
+            });
+
+            const intent = response.data.intent;
+            const order: BCHOrder = {
+                id: intent?.id || `mov_sol_${Date.now()}`,
+                swapType: 'mov-to-sol',
+                orderType: params.orderType,
+                sellToken: params.sellToken,
+                buyToken: params.buyToken,
+                sellAmount: params.sellAmount,
+                buyAmount: params.buyAmount,
+                status: 'pending',
+                intentId: intent?.id,
+                explorerUrl: `https://explorer.movementnetwork.xyz/txn/${escrowTxHash}?network=testnet`,
+                createdAt: Date.now(),
+                claimData: {
+                    hashlock: hashlockHex,
+                    secret: secretHex,
+                    movementEscrowId: String(sourceEscrowId),
+                    escrowTxHash,
+                    direction: 'MOV_TO_SOL',
+                },
+            };
+
+            saveOrder(order);
+            setSwapStep('');
+            toast.success('Cross-chain swap initiated!', {
+                description: 'Relayer is locking funds on Solana.',
+            });
+        } catch (e: any) {
+            throw new Error(`Relayer error: ${e.response?.data?.error || e.message}`);
+        }
+    };
+
 
     // =========================================================================
     // ETH → BCH: Create STARK escrow on Sepolia, notify bsc-bch-server (ZK, auto-complete)
@@ -2027,54 +2297,26 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                             }
                             // Other errors (network down etc.) → silently skip this cycle
                         }
-                    } else if (order.swapType === 'bch-to-sol' || order.swapType === 'sol-to-bch') {
-                        // ZK path — poll sol-bch-zk-server; auto-completes, no manual claim
-                        const zkServerUrl = wdkRef.current.bchNetwork === 'mainnet'
-                            ? SOL_BCH_ZK_SERVER_MAINNET_URL
-                            : SOL_BCH_ZK_SERVER_URL;
-                        const res = await axios.get(`${zkServerUrl}/intents/${order.intentId}`);
-                        const intent = res.data.intent;
-                        if (intent) {
-                            if (intent.status === 'COMPLETED') {
-                                order.status = 'filled';
-                                if (order.swapType === 'sol-to-bch' && intent.destClaimTx) {
-                                    order.fillTxid = intent.destClaimTx;
-                                    order.destExplorerUrl = buildExplorerUrl(intent.destClaimTx, 'bch');
-                                } else if (order.swapType === 'bch-to-sol' && intent.sourceLockTx) {
-                                    order.fillTxid = intent.sourceLockTx;
-                                    order.destExplorerUrl = buildExplorerUrl(intent.sourceLockTx, 'solana');
-                                }
-                                updated = true;
-                                toast.success(`${order.sellToken?.symbol} → ${order.buyToken?.symbol} swap complete!`, {
-                                    description: order.fillTxid
-                                        ? `Delivery tx: ${order.fillTxid.slice(0, 16)}...`
-                                        : 'Tokens delivered automatically.',
-                                });
-                            } else if (intent.status === 'FAILED' || intent.status === 'REFUNDED') {
-                                order.status = intent.status === 'REFUNDED' ? 'refunded' : 'failed';
-                                // Capture refund metadata so the UI can offer the refund button
-                                order.claimData = {
-                                    ...order.claimData,
-                                    sourceTimelock: intent.bchCovenantTimelock ?? intent.sourceTimelock,
-                                    pendingRefundTx: intent.pendingRefundTx,
-                                };
-                                updated = true;
-                                if (intent.status === 'FAILED') {
-                                    toast.info(`Swap timed out — refund available`, {
-                                        description: `${order.sellToken?.symbol} can be recovered via the Refund button.`,
-                                        duration: 10000,
-                                    });
-                                }
-                            }
-                        }
                     } else {
-                        // Poll cross-chain relayer (HTLC path for other directions)
+                        // Poll cross-chain relayer (HTLC path for all cross-chain pairs)
                         const res = await axios.get(`${BCH_SOLANA_RELAYER_URL}/intents/${order.intentId}`);
                         const intent = res.data.intent;
                         if (intent) {
                             // DEST_FILLED = relayer filled on destination, user can claim
-                            if (intent.status === 'DEST_FILLED' && order.status === 'pending') {
-                                order.status = 'claimable';
+                            if (intent.status === 'DEST_FILLED') {
+                                if (order.status !== 'claimable') {
+                                    order.status = 'claimable';
+                                    updated = true;
+                                    // 🔔 Toast notification with Claim button
+                                    toast.info(`Your ${order.sellToken?.symbol} → ${order.buyToken?.symbol} swap is ready!`, {
+                                        description: 'Click to claim your tokens on the destination chain.',
+                                        duration: 30000,
+                                        action: {
+                                            label: '⚡ Claim Now',
+                                            onClick: () => claimOrder(order.id),
+                                        },
+                                    });
+                                }
                                 order.fillTxid = intent.destFillTx;
                                 // Store claim data from relayer
                                 order.claimData = {
@@ -2082,24 +2324,17 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                                     destFillTx: intent.destFillTx,
                                     solanaEscrowPda: intent.solanaEscrowPda || order.claimData?.solanaEscrowPda,
                                     bchContractAddress: intent.bchContractAddress || order.claimData?.bchContractAddress,
-                                    movementEscrowId: intent.movementEscrowId || order.claimData?.movementEscrowId,
+                                    movementEscrowId: String(intent.movementEscrowId || order.claimData?.movementEscrowId || ''),
                                     destTimelock: intent.destTimelock || order.claimData?.destTimelock,
                                 };
-                                // Build destination explorer URL (HTLC path — always BCH destination here)
+                                // Build destination explorer URL
                                 if (intent.destFillTx) {
-                                    order.destExplorerUrl = buildExplorerUrl(intent.destFillTx, 'bch');
+                                    const _st = order.swapType as string;
+                                    const destChain = (_st === 'bch-to-mov' || _st === 'sol-to-mov') ? 'movement'
+                                        : (_st === 'bch-to-sol' || _st === 'mov-to-sol') ? 'solana'
+                                        : 'bch';
+                                    order.destExplorerUrl = buildExplorerUrl(intent.destFillTx, destChain);
                                 }
-                                updated = true;
-
-                                // 🔔 Toast notification with Claim button
-                                toast.info(`Your ${order.sellToken?.symbol} → ${order.buyToken?.symbol} swap is ready!`, {
-                                    description: 'Click to claim your tokens on the destination chain.',
-                                    duration: 30000,
-                                    action: {
-                                        label: '⚡ Claim Now',
-                                        onClick: () => claimOrder(order.id),
-                                    },
-                                });
                             }
 
                             // COMPLETED = fully done
@@ -2108,7 +2343,11 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                                     order.status = 'filled';
                                     if (intent.destFillTx && !order.fillTxid) order.fillTxid = intent.destFillTx;
                                     if (intent.destClaimTx) {
-                                        order.destExplorerUrl = buildExplorerUrl(intent.destClaimTx, 'bch');
+                                        const _st2 = order.swapType as string;
+                                        const destChain = (_st2 === 'bch-to-mov' || _st2 === 'sol-to-mov') ? 'movement'
+                                            : (_st2 === 'bch-to-sol' || _st2 === 'mov-to-sol') ? 'solana'
+                                            : 'bch';
+                                        order.destExplorerUrl = buildExplorerUrl(intent.destClaimTx, destChain);
                                     }
                                     updated = true;
                                 }
@@ -2259,6 +2498,10 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
             const direction = order.claimData.direction || (
                 order.swapType === 'bch-to-sol' ? 'BCH_TO_SOL' :
                 order.swapType === 'sol-to-bch' ? 'SOL_TO_BCH' :
+                order.swapType === 'bch-to-mov' ? 'BCH_TO_MOV' :
+                order.swapType === 'mov-to-bch' ? 'MOV_TO_BCH' :
+                order.swapType === 'sol-to-mov' ? 'SOL_TO_MOV' :
+                order.swapType === 'mov-to-sol' ? 'MOV_TO_SOL' :
                 order.swapType === 'bch-to-eth' ? 'BCH_TO_ETH' :
                 order.swapType === 'eth-to-bch' ? 'ETH_TO_BCH' : 'BCH_TO_SOL'
             );
@@ -2280,9 +2523,30 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 }
             }
 
+            // If it's a Movement/Solana swap, hydrate missing claim metadata from the relayer
+            if ((order.swapType === 'bch-to-mov' || order.swapType === 'mov-to-bch' || order.swapType === 'sol-to-mov' || order.swapType === 'mov-to-sol' || order.swapType === 'bch-to-sol' || order.swapType === 'sol-to-bch' || direction === 'BCH_TO_MOV' || direction === 'MOV_TO_BCH' || direction === 'SOL_TO_MOV' || direction === 'MOV_TO_SOL' || direction === 'BCH_TO_SOL' || direction === 'SOL_TO_BCH') && order.intentId) {
+                try {
+                    const movRes = await axios.get(`${BCH_SOLANA_RELAYER_URL}/intents/${order.intentId}`);
+                    const intent = movRes.data?.intent;
+                    if (intent) {
+                        order.claimData = {
+                            ...order.claimData,
+                            movementEscrowId: String(intent.movementEscrowId || order.claimData?.movementEscrowId || ''),
+                            solanaEscrowPda: intent.solanaEscrowPda || order.claimData?.solanaEscrowPda,
+                            bchContractAddress: intent.bchContractAddress || order.claimData?.bchContractAddress,
+                            destTimelock: intent.destTimelock || order.claimData?.destTimelock,
+                            hashlock: intent.hashlock || order.claimData?.hashlock,
+                            destFillTx: intent.destFillTx || order.claimData?.destFillTx,
+                        };
+                    }
+                } catch (hydrateErr) {
+                    console.warn('[Claim] Could not fetch intent from server:', hydrateErr);
+                }
+            }
+
             let claimTxid: string | undefined;
 
-            if (direction === 'BCH_TO_SOL') {
+            if (direction === 'BCH_TO_SOL' || direction === 'MOV_TO_SOL') {
                 // User claims on Solana (destination)
                 setSwapStep('Claiming on Solana...');
 
@@ -2401,8 +2665,103 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                     throw new Error(`Transaction failed: ${err.message}`);
                 }
 
+            } else if (direction === 'BCH_TO_MOV' || direction === 'SOL_TO_MOV') {
+                // User claims on Movement (destination) — applies to both BCH→MOV and SOL→MOV
+                setSwapStep('Claiming on Movement...');
+                const currentWdk = wdkRef.current;
+                if (!currentWdk.movementAddress || !currentWdk.movementAccount) {
+                    throw new Error('Connect your WDK wallet first — Movement account unavailable');
+                }
+
+                const escrowIdStr = order.claimData?.movementEscrowId;
+                if (!escrowIdStr) {
+                    throw new Error('Movement Escrow ID not available yet. Please wait a few seconds for the relayer to lock funds.');
+                }
+                const escrowId = parseInt(escrowIdStr);
+                if (isNaN(escrowId)) {
+                    throw new Error(`Invalid Movement Escrow ID: ${escrowIdStr}`);
+                }
+
+                console.log(`[Claim] Claiming Movement Escrow ID ${escrowId} with secret...`);
+                const MOVEMENT_HTLC_ADDR = '0x485ca1c12b5dfa01c282b9c7ef09fdfebbf877ed729bf999ce61a8ec5c5e69bd';
+                const secretBytes = Array.from(Buffer.from(secret.replace('0x', ''), 'hex'));
+
+                let coinType = '0x1::aptos_coin::AptosCoin';
+                if (order.buyToken.address && order.buyToken.address.includes('::')) {
+                    coinType = order.buyToken.address;
+                } else if (order.buyToken.type && order.buyToken.type.includes('::')) {
+                    coinType = order.buyToken.type;
+                } else if (order.buyToken.symbol?.includes('ETH') || order.buyToken.symbol?.includes('WETH')) {
+                    coinType = '0xf22bede237a07e121b56d91a491eb7bcdfd1f5907926a9e58338f964a01b17fa::asset::WETH';
+                }
+
+                try {
+                    const { Aptos, AptosConfig, Network } = await import('@aptos-labs/ts-sdk');
+                    const aptosClient = new Aptos(new AptosConfig({
+                        network: Network.CUSTOM,
+                        fullnode: 'https://testnet.movementnetwork.xyz/v1',
+                    }));
+
+                    const rawTx = await aptosClient.transaction.build.simple({
+                        sender: currentWdk.movementAccount.accountAddress,
+                        data: {
+                            function: `${MOVEMENT_HTLC_ADDR}::htlc_escrow::claim`,
+                            typeArguments: [coinType],
+                            functionArguments: [
+                                MOVEMENT_HTLC_ADDR,
+                                escrowId,
+                                secretBytes,
+                            ],
+                        },
+                    });
+
+                    const pendingTx = await aptosClient.signAndSubmitTransaction({
+                        signer: currentWdk.movementAccount,
+                        transaction: rawTx,
+                    });
+                    claimTxid = pendingTx.hash;
+                    console.log('[Claim] Movement claim submitted:', claimTxid);
+
+                    setSwapStep('Waiting for confirmation...');
+                    await aptosClient.waitForTransaction({ transactionHash: claimTxid });
+                    console.log('[Claim] Movement claim confirmed!');
+
+                    // Notify relayer so it completes the BCH claim side immediately
+                    try {
+                        await axios.post(`${BCH_SOLANA_RELAYER_URL}/claim`, {
+                            intentId: order.intentId || orderId,
+                            secret,
+                        });
+                    } catch { }
+
+                } catch (claimErr: any) {
+                    const msg = claimErr?.message || '';
+                    if (msg.includes('ALREADY_CLAIMED') || msg.includes('already claimed')) {
+                        console.log('[Claim] Movement escrow was already claimed on-chain!');
+                        claimTxid = order.fillTxid || 'already-claimed';
+                    } else if (msg.includes('ETIMELOCK_EXPIRED') || msg.includes('0x8') || msg.includes('Timelock has expired')) {
+                        console.warn('[Claim] Escrow timelock expired on Movement:', msg);
+                        order.status = 'expired';
+                        localStorage.setItem(claimKey, JSON.stringify(all));
+                        const split = splitOrders(all);
+                        setPendingOrders(split.pending);
+                        setCompletedOrders(split.completed);
+                        toast.error('Escrow timelock expired', {
+                            description: 'The claim window has passed. You can refund your locked BCH.',
+                            action: {
+                                label: '⚡ Refund Now',
+                                onClick: () => requestRefund(order.id),
+                            },
+                            duration: 20000,
+                        });
+                        return;
+                    } else {
+                        throw claimErr;
+                    }
+                }
+
             } else if (direction === 'SOL_TO_BCH' || direction === 'MOV_TO_BCH' || direction === 'ETH_TO_BCH') {
-                // User claims on BCH (destination)
+                // User claims on BCH (destination) — SOL→BCH, MOV→BCH, ETH→BCH
                 setSwapStep('Claiming on BCH...');
                 if (!bchWallet.connected || !order.claimData?.bchContractAddress) {
                     throw new Error('BCH Wallet not connected or contract address missing');
@@ -2429,13 +2788,18 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                         const solverInfo = await getSolverInfo(wdkRef.current.bchNetwork === 'mainnet');
                         relayerBchAddress = solverInfo.wallets?.bch?.address || '';
                     } catch { }
-                    if (!relayerBchAddress) relayerBchAddress = 'bchtest:qzufsn0wtcmc4lhc3s3trhl0nxn6dgkpmgvzngkxl7';
+                    if (!relayerBchAddress || !relayerBchAddress.includes(':')) relayerBchAddress = 'bchtest:qzufsn0wtcmc4lhc3s3trhl0nxn6dgkpmgvzngkxl7';
                 } else {
                     try {
                         const healthRes = await axios.get(`${BCH_SOLANA_RELAYER_URL}/health`);
-                        relayerBchAddress = healthRes.data?.pubkeys?.bch || '';
+                        relayerBchAddress = healthRes.data?.pubkeys?.bch
+                            || healthRes.data?.wallets?.bch?.address
+                            || healthRes.data?.bch?.address
+                            || '';
                     } catch { }
-                    if (!relayerBchAddress) throw new Error('Could not fetch Relayer BCH address');
+                    if (!relayerBchAddress || !relayerBchAddress.includes(':')) {
+                        relayerBchAddress = 'bchtest:qzufsn0wtcmc4lhc3s3trhl0nxn6dgkpmgvzngkxl7';
+                    }
                 }
 
                 const makerPkh = derivePkh(relayerBchAddress);
@@ -2558,13 +2922,17 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
             if (claimTxid && claimTxid !== 'auto-claim-pending' && claimTxid !== 'relayer-claim-submitted' && claimTxid !== 'already-claimed') {
                 const destChain = (order.swapType === 'bch-to-eth')
                     ? (order.buyToken.chain || 'ethereum')
-                    : (order.swapType === 'bch-to-sol' ? 'solana' : 'bch');
+                    : (order.swapType === 'bch-to-mov' || order.swapType === 'sol-to-mov') ? 'movement'
+                    : (order.swapType === 'bch-to-sol' || order.swapType === 'mov-to-sol') ? 'solana'
+                    : 'bch';
                 order.destExplorerUrl = buildExplorerUrl(claimTxid, destChain);
                 order.fillTxid = claimTxid;
             } else if (!order.destExplorerUrl && order.fillTxid) {
                 const destChain = (order.swapType === 'bch-to-eth')
                     ? (order.buyToken.chain || 'ethereum')
-                    : (order.swapType === 'bch-to-sol' ? 'solana' : 'bch');
+                    : (order.swapType === 'bch-to-mov' || order.swapType === 'sol-to-mov') ? 'movement'
+                    : (order.swapType === 'bch-to-sol' || order.swapType === 'mov-to-sol') ? 'solana'
+                    : 'bch';
                 order.destExplorerUrl = buildExplorerUrl(order.fillTxid, destChain);
             }
 
@@ -2606,85 +2974,12 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
             const order = all.find(o => o.id === orderId);
             if (!order || !order.intentId) throw new Error('Order not found');
 
-            const zkUrl = wdkRef.current.bchNetwork === 'mainnet'
-                ? SOL_BCH_ZK_SERVER_MAINNET_URL
-                : SOL_BCH_ZK_SERVER_URL;
             const isMainnet = wdkRef.current.bchNetwork === 'mainnet';
 
             let refundTxid: string | undefined;
             let refundExplorerUrl: string | undefined;
 
-            if (order.swapType === 'bch-to-sol') {
-                // ── BCH covenant refund via OP_ELSE (CLTV) branch ─────────────
-                const currentBchWallet = bchWalletRef.current;
-                if (!currentBchWallet.address) throw new Error('Connect your BCH wallet to claim the refund');
-                const wif = currentBchWallet.getWIF();
-                if (!wif) throw new Error('WIF not available — reconnect your BCH wallet');
-
-                setSwapStep('Fetching BCH refund transaction...');
-                const { data } = await axios.get(`${zkUrl}/intents/${order.intentId}/refund-bch`);
-                if (!data.timelockPassed) {
-                    const mins = Math.ceil((data.timelock - Date.now() / 1000) / 60);
-                    throw new Error(`Timelock not yet passed — available in ~${mins} min`);
-                }
-
-                // Sign the BIP143 sighash with user's BCH key via libauth secp256k1
-                const { secp256k1: sec, decodePrivateKeyWif, hexToBin, binToHex } = await import('@bitauth/libauth');
-                const wifResult = decodePrivateKeyWif(wif);
-                if (typeof wifResult === 'string') throw new Error(`Invalid WIF: ${wifResult}`);
-                const privKey = wifResult.privateKey;
-                const pubKey = sec.derivePublicKeyCompressed(privKey);
-                if (typeof pubKey === 'string') throw new Error(`Key derivation failed: ${pubKey}`);
-                const sighash = hexToBin(data.sighashHex);
-                const derSig = sec.signMessageHashDER(privKey, sighash);
-                if (typeof derSig === 'string') throw new Error(`Signing failed: ${derSig}`);
-                const userSig = new Uint8Array([...derSig, 0x41]); // SIGHASH_ALL|FORKID
-
-                setSwapStep('Broadcasting BCH refund...');
-                let refundData: any;
-                try {
-                    const res = await axios.post(
-                        `${zkUrl}/intents/${order.intentId}/refund-bch`,
-                        { userPk: binToHex(pubKey), userSig: binToHex(userSig) },
-                    );
-                    refundData = res.data;
-                } catch (postErr: any) {
-                    const serverMsg = postErr?.response?.data?.error ?? postErr.message;
-                    throw new Error(serverMsg);
-                }
-                refundTxid = refundData.txid;
-                refundExplorerUrl = isMainnet
-                    ? `https://blockchair.com/bitcoin-cash/transaction/${refundTxid}`
-                    : `https://chipnet.chaingraph.cash/tx/${refundTxid}`;
-
-            } else if (order.swapType === 'sol-to-bch') {
-                // ── Solana FRI escrow refund — sign prebuilt unsigned tx ───────
-                const sw = solanaWalletRef.current;
-                if (!sw?.publicKey) throw new Error('Connect your Solana wallet to claim the refund');
-
-                setSwapStep('Fetching Solana refund transaction...');
-                const { data } = await axios.get(`${zkUrl}/intents/${order.intentId}/refund-tx`);
-                if (!data.timelockPassed) {
-                    const mins = Math.ceil((data.timelock - Date.now() / 1000) / 60);
-                    throw new Error(`Timelock not yet passed — available in ~${mins} min`);
-                }
-
-                setSwapStep('Sign the refund in your wallet...');
-                const { Transaction } = await import('@solana/web3.js');
-                const tx = Transaction.from(Buffer.from(data.refundTx, 'base64'));
-
-                // Refresh blockhash — prebuilt tx may have a stale one
-                const { blockhash, lastValidBlockHeight } = await solanaConnection.getLatestBlockhash();
-                tx.recentBlockhash = blockhash;
-                tx.feePayer = sw.publicKey;
-
-                const signedTx = await sw.signTransaction(tx);
-                setSwapStep('Submitting Solana refund...');
-                const sig = await solanaConnection.sendRawTransaction(signedTx.serialize());
-                await solanaConnection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
-                refundTxid = sig;
-                refundExplorerUrl = `https://explorer.solana.com/tx/${sig}?cluster=${isMainnet ? 'mainnet-beta' : 'devnet'}`;
-            } else if (order.swapType === 'bch-to-eth') {
+            if (order.swapType === 'bch-to-eth') {
                 // ── BCH→EVM covenant refund via OP_ELSE (CLTV) branch ─────────
                 const currentBchWallet = bchWalletRef.current;
                 if (!currentBchWallet.address) throw new Error('Connect your BCH wallet to claim the refund');
@@ -2753,6 +3048,238 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                     throw new Error(`Refund transaction failed: ${msg}`);
                 }
 
+            } else if (order.swapType === 'bch-to-mov' || order.swapType === 'bch-to-sol') {
+                // ── BCH→Movement / BCH→Solana refund: recover locked BCH from Chipnet covenant ──
+                const currentBchWallet = bchWalletRef.current;
+                if (!currentBchWallet.address) throw new Error('Connect your BCH wallet to claim the refund');
+                const wif = currentBchWallet.getWIF();
+                if (!wif) throw new Error('WIF not available — reconnect your BCH wallet');
+
+                // Try relayer manual refund first (triggers relayer to mark refund or refund movement escrow)
+                if (order.intentId) {
+                    try {
+                        const relayerRes = await axios.post(`${BCH_SOLANA_RELAYER_URL}/refund/${order.intentId}`);
+                        if (relayerRes.data?.refundTx) {
+                            refundTxid = relayerRes.data.refundTx;
+                            refundExplorerUrl = isMainnet
+                                ? `https://blockchair.com/bitcoin-cash/transaction/${refundTxid}`
+                                : `https://chipnet.chaingraph.cash/tx/${refundTxid}`;
+                        }
+                    } catch { }
+                }
+
+                if (!refundTxid) {
+                    setSwapStep('Refunding BCH from covenant...');
+                    const { Contract, ElectrumNetworkProvider, SignatureTemplate } = await getCashScript();
+                    const artifactModule = await import('@/lib/CrossChainHTLC.json');
+                    const artifact = artifactModule.default || artifactModule;
+                    const { cashAddressToLockingBytecode, decodePrivateKeyWif, secp256k1 } = await import('@bitauth/libauth');
+
+                    const derivePkh = (address: string): Uint8Array => {
+                        const result = cashAddressToLockingBytecode(address);
+                        if (typeof result === 'string') throw new Error(`Invalid BCH address: ${result}`);
+                        const bytecode = result.bytecode;
+                        if (bytecode.length === 25 && bytecode[0] === 0x76 && bytecode[1] === 0xa9 && bytecode[2] === 0x14) {
+                            return bytecode.slice(3, 23);
+                        }
+                        throw new Error('Not a standard P2PKH address');
+                    };
+
+                    const userPkh = derivePkh(currentBchWallet.address);
+                    let relayerBchAddress = 'bchtest:qzufsn0wtcmc4lhc3s3trhl0nxn6dgkpmgvzngkxl7';
+                    try {
+                        const healthRes = await axios.get(`${BCH_SOLANA_RELAYER_URL}/health`);
+                        relayerBchAddress = healthRes.data?.pubkeys?.bch || relayerBchAddress;
+                    } catch { }
+                    const relayerPkh = derivePkh(relayerBchAddress);
+
+                    const hashlockHex = order.claimData?.hashlock || (order as any).hashlock || '';
+                    const hashlockArray = Array.from(Buffer.from(hashlockHex.replace('0x', ''), 'hex'));
+                    const timelock = BigInt(order.sourceTimelock || (order.claimData as any)?.sourceTimelock || (Math.floor(order.createdAt / 1000) + 7200));
+
+                    const bchNet = wdkRef.current.bchNetwork === 'mainnet' ? 'mainnet' : 'chipnet';
+                    const provider = new ElectrumNetworkProvider(bchNet);
+                    const contract = new Contract(artifact, [userPkh, relayerPkh, hashlockArray, timelock], { provider });
+
+                    const wifDecoded = decodePrivateKeyWif(wif);
+                    if (typeof wifDecoded === 'string') throw new Error('Invalid WIF');
+                    const sigTemplate = new SignatureTemplate(wifDecoded.privateKey);
+                    const pubKey = secp256k1.derivePublicKeyCompressed(wifDecoded.privateKey);
+
+                    const utxos = await contract.getUtxos();
+                    if (!utxos || utxos.length === 0) {
+                        // If contract has no UTXOs, it was already refunded/claimed
+                        refundTxid = order.fillTxid || order.txid || 'refund-processed';
+                        refundExplorerUrl = isMainnet
+                            ? `https://blockchair.com/bitcoin-cash/address/${contract.address}`
+                            : `https://chipnet.chaingraph.cash/address/${contract.address}`;
+                    } else {
+                        const totalSats = utxos.reduce((sum: bigint, u: { satoshis: bigint }) => sum + u.satoshis, 0n);
+                        const fee = 1000n;
+                        if (totalSats <= fee) throw new Error('Insufficient covenant balance for refund fee');
+
+                        const txDetails = await contract.functions
+                            .refund(pubKey, sigTemplate)
+                            .to(currentBchWallet.address, totalSats - fee)
+                            .send();
+
+                        refundTxid = txDetails.txid;
+                        refundExplorerUrl = isMainnet
+                            ? `https://blockchair.com/bitcoin-cash/transaction/${refundTxid}`
+                            : `https://chipnet.chaingraph.cash/tx/${refundTxid}`;
+                    }
+                }
+
+            } else if (order.swapType === 'mov-to-bch') {
+                // ── Movement→BCH refund: user recovers locked MOVE from Movement escrow ──
+                const currentWdk = wdkRef.current;
+                if (!currentWdk.movementAddress || !currentWdk.movementAccount) {
+                    throw new Error('Connect your WDK wallet first — Movement account not available');
+                }
+
+                const escrowIdStr = order.claimData?.movementEscrowId || (order as any).sourceEscrowId || (order as any).movementEscrowId;
+                if (!escrowIdStr) throw new Error('Movement Escrow ID missing — cannot refund');
+                const escrowId = parseInt(String(escrowIdStr));
+                if (isNaN(escrowId)) throw new Error(`Invalid Movement Escrow ID: ${escrowIdStr}`);
+
+                let coinType = '0x1::aptos_coin::AptosCoin';
+                if (order.sellToken?.address && order.sellToken.address.includes('::')) {
+                    coinType = order.sellToken.address;
+                } else if (order.sellToken?.symbol?.includes('ETH') || order.sellToken?.symbol?.includes('WETH')) {
+                    coinType = '0xf22bede237a07e121b56d91a491eb7bcdfd1f5907926a9e58338f964a01b17fa::asset::WETH';
+                }
+
+                setSwapStep('Submitting refund on Movement...');
+                const { Aptos, AptosConfig, Network } = await import('@aptos-labs/ts-sdk');
+                const aptosClient = new Aptos(new AptosConfig({
+                    network: Network.CUSTOM,
+                    fullnode: 'https://testnet.movementnetwork.xyz/v1',
+                }));
+
+                const MOVEMENT_HTLC_ADDR = '0x485ca1c12b5dfa01c282b9c7ef09fdfebbf877ed729bf999ce61a8ec5c5e69bd';
+                const rawTx = await aptosClient.transaction.build.simple({
+                    sender: currentWdk.movementAccount.accountAddress,
+                    data: {
+                        function: `${MOVEMENT_HTLC_ADDR}::htlc_escrow::refund`,
+                        typeArguments: [coinType],
+                        functionArguments: [
+                            MOVEMENT_HTLC_ADDR,
+                            escrowId,
+                        ],
+                    },
+                });
+
+                const pendingTx = await aptosClient.signAndSubmitTransaction({
+                    signer: currentWdk.movementAccount,
+                    transaction: rawTx,
+                });
+                const executedTx = await aptosClient.waitForTransaction({ transactionHash: pendingTx.hash });
+                refundTxid = executedTx.hash;
+                refundExplorerUrl = `https://explorer.movementnetwork.xyz/txn/${refundTxid}?network=testnet`;
+
+            } else if (order.swapType === 'sol-to-mov' || order.swapType === 'sol-to-bch') {
+                // ── SOL→MOV / SOL→BCH refund: recover locked SOL/token from Solana Anchor escrow ──
+                const sw = solanaWalletRef.current;
+                if (!sw?.publicKey) throw new Error('Connect your Solana wallet to refund');
+
+                const claimD = order.claimData ?? {};
+                const hashlockHex = (claimD as any).hashlock || '';
+                const hashlockBytes = Buffer.from(hashlockHex.replace('0x', ''), 'hex');
+
+                const { PublicKey } = await import('@solana/web3.js');
+                const { getAssociatedTokenAddress, NATIVE_MINT } = await import('@solana/spl-token');
+                const anchor = await import('@coral-xyz/anchor');
+
+                const programId = new PublicKey(SOLANA_PROGRAM_ID);
+
+                let escrowPda: typeof PublicKey.prototype;
+                if ((claimD as any).solanaEscrowPda) {
+                    escrowPda = new PublicKey((claimD as any).solanaEscrowPda);
+                } else {
+                    [escrowPda] = PublicKey.findProgramAddressSync(
+                        [Buffer.from('escrow'), sw.publicKey.toBuffer(), hashlockBytes],
+                        programId
+                    );
+                }
+
+                const [vaultPda] = PublicKey.findProgramAddressSync(
+                    [Buffer.from('vault'), escrowPda.toBuffer()],
+                    programId
+                );
+
+                const isNativeSol = !order.sellToken?.address || order.sellToken.address === 'So11111111111111111111111111111111111111112';
+                const tokenMint = isNativeSol ? NATIVE_MINT : new PublicKey(order.sellToken.address!);
+                const makerTokenAccount = await getAssociatedTokenAddress(tokenMint, sw.publicKey);
+
+                const REFUND_DISCRIMINATOR = Buffer.from([2, 96, 183, 251, 63, 208, 46, 46]);
+
+                const ix = new anchor.web3.TransactionInstruction({
+                    programId,
+                    keys: [
+                        { pubkey: sw.publicKey, isSigner: true, isWritable: true },
+                        { pubkey: escrowPda, isSigner: false, isWritable: true },
+                        { pubkey: vaultPda, isSigner: false, isWritable: true },
+                        { pubkey: makerTokenAccount, isSigner: false, isWritable: true },
+                        { pubkey: new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA'), isSigner: false, isWritable: false },
+                    ],
+                    data: REFUND_DISCRIMINATOR,
+                });
+
+                const { blockhash, lastValidBlockHeight } = await solanaConnection.getLatestBlockhash();
+                const tx = new anchor.web3.Transaction().add(ix);
+                tx.recentBlockhash = blockhash;
+                tx.feePayer = sw.publicKey;
+
+                setSwapStep('Sign the refund in your Solana wallet...');
+                const sig = await sw.sendTransaction(tx, solanaConnection);
+                await solanaConnection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
+                refundTxid = sig;
+                refundExplorerUrl = `https://explorer.solana.com/tx/${sig}?cluster=devnet`;
+
+            } else if (order.swapType === 'mov-to-sol') {
+                // ── MOV→SOL refund: recover locked MOVE/token from Movement HTLC escrow ──
+                const currentWdk = wdkRef.current;
+                if (!currentWdk.movementAddress || !currentWdk.movementAccount) {
+                    throw new Error('Connect your WDK wallet first — Movement account not available');
+                }
+
+                const escrowIdStr = order.claimData?.movementEscrowId || (order as any).sourceEscrowId || (order as any).movementEscrowId;
+                if (!escrowIdStr) throw new Error('Movement Escrow ID missing — cannot refund');
+                const escrowId = parseInt(String(escrowIdStr));
+                if (isNaN(escrowId)) throw new Error(`Invalid Movement Escrow ID: ${escrowIdStr}`);
+
+                let coinType = '0x1::aptos_coin::AptosCoin';
+                if (order.sellToken?.address && order.sellToken.address.includes('::')) {
+                    coinType = order.sellToken.address;
+                } else if (order.sellToken?.symbol?.includes('ETH') || order.sellToken?.symbol?.includes('WETH')) {
+                    coinType = '0xf22bede237a07e121b56d91a491eb7bcdfd1f5907926a9e58338f964a01b17fa::asset::WETH';
+                }
+
+                setSwapStep('Submitting refund on Movement...');
+                const { Aptos: Aptos2, AptosConfig: AptosConfig2, Network: Network2 } = await import('@aptos-labs/ts-sdk');
+                const aptosClient2 = new Aptos2(new AptosConfig2({
+                    network: Network2.CUSTOM,
+                    fullnode: 'https://testnet.movementnetwork.xyz/v1',
+                }));
+
+                const MOVEMENT_HTLC_ADDR = '0x485ca1c12b5dfa01c282b9c7ef09fdfebbf877ed729bf999ce61a8ec5c5e69bd';
+                const rawTx2 = await aptosClient2.transaction.build.simple({
+                    sender: currentWdk.movementAccount.accountAddress,
+                    data: {
+                        function: `${MOVEMENT_HTLC_ADDR}::htlc_escrow::refund`,
+                        typeArguments: [coinType],
+                        functionArguments: [MOVEMENT_HTLC_ADDR, escrowId],
+                    },
+                });
+
+                const pendingTx2 = await aptosClient2.signAndSubmitTransaction({
+                    signer: currentWdk.movementAccount,
+                    transaction: rawTx2,
+                });
+                const executedTx2 = await aptosClient2.waitForTransaction({ transactionHash: pendingTx2.hash });
+                refundTxid = executedTx2.hash;
+                refundExplorerUrl = `https://explorer.movementnetwork.xyz/txn/${refundTxid}?network=testnet`;
+
             } else {
                 throw new Error(`Refund not available for swap type: ${order.swapType}`);
             }
@@ -2807,6 +3334,12 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                     break;
                 case 'mov-to-bch':
                     await executeMovementToBCH(params, recipientAddress);
+                    break;
+                case 'sol-to-mov':
+                    await executeSolanaToMovement(params, recipientAddress);
+                    break;
+                case 'mov-to-sol':
+                    await executeMovementToSolana(params, recipientAddress);
                     break;
                 case 'bch-to-xmr':
                     await executeBCHToXMR(params, recipientAddress);

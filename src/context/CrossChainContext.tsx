@@ -1,15 +1,16 @@
 import { createContext, useContext, useState, ReactNode } from 'react';
 import { useWallet as useAptosWallet } from '@/context/wallet-provider';
 import { useWallet as useSolanaWallet, useConnection } from "@solana/wallet-adapter-react";
-import { PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL, Keypair } from "@solana/web3.js";
 import { signAndSubmitTransaction } from "@/lib/wallet/adapter";
-import { Aptos, AptosConfig, Network } from '@aptos-labs/ts-sdk';
+import { Aptos, AptosConfig, Network, AccountAddress } from '@aptos-labs/ts-sdk';
 import axios from 'axios';
 import { CROSS_CHAIN_RELAYER_URL } from '../lib/config';
 import { DEFAULT_NETWORK } from '../lib/wallet/networks';
 import * as anchor from '@coral-xyz/anchor';
 import { notifyToast as toast } from '@/lib/notify-toast';
 import { createCloseAccountInstruction, getAssociatedTokenAddress, NATIVE_MINT } from '@solana/spl-token';
+import { useWDK } from '@/context/WDKProvider';
 
 interface CrossChainContextType {
     isLoading: boolean;
@@ -32,6 +33,7 @@ const CrossChainContext = createContext<CrossChainContextType | undefined>(undef
 export function CrossChainProvider({ children }: { children: ReactNode }) {
     const aptos = useAptosWallet();
     const solana = useSolanaWallet();
+    const wdk = useWDK();
     const { connection: solanaConnection } = useConnection();
     const [isLoading, setIsLoading] = useState(false);
 
@@ -45,7 +47,7 @@ export function CrossChainProvider({ children }: { children: ReactNode }) {
         const hashlockArray = Array.from(new Uint8Array(hashlockBuffer));
         const hashlockHex = "0x" + hashlockArray.map(b => b.toString(16).padStart(2, '0')).join('');
 
-        return { secretHex, hashlockHex, hashlockBytes: hashlockArray }; // Return array for move calls
+        return { secretHex, hashlockHex, hashlockBytes: hashlockArray };
     };
 
     const savePendingSwap = (hashlockHex: string, data: any) => {
@@ -56,7 +58,10 @@ export function CrossChainProvider({ children }: { children: ReactNode }) {
     };
 
     const createMovementToSolanaSwap = async (sellAmount: string, buyAmount: string, userSolanaAddress: string) => {
-        if (!aptos.account || !aptos.wallet) throw new Error("Movement wallet not connected");
+        const isWdkMovement = !!wdk.movementAccount;
+        if (!isWdkMovement && (!aptos.account || !aptos.wallet)) {
+            throw new Error("Movement wallet not connected");
+        }
         setIsLoading(true);
 
         try {
@@ -65,7 +70,6 @@ export function CrossChainProvider({ children }: { children: ReactNode }) {
             const amountOctas = parseFloat(sellAmount) * 1e8; // MOVE has 8 decimals
 
             console.log("Generated Hashlock:", hashlockHex);
-            // Store pending state
             const pendingSwap = {
                 secret: secretHex,
                 hashlock: hashlockHex,
@@ -82,7 +86,7 @@ export function CrossChainProvider({ children }: { children: ReactNode }) {
             let relayerAddress = "";
             try {
                 const healthRes = await axios.get(`${CROSS_CHAIN_RELAYER_URL}/health`);
-                relayerAddress = healthRes.data.movement.address;
+                relayerAddress = healthRes.data.movement?.address || healthRes.data.wallets?.movement?.address || healthRes.data.pubkeys?.movement || "";
             } catch (e) {
                 console.error("Relayer health check failed", e);
                 throw new Error("Relayer unavailable");
@@ -91,16 +95,13 @@ export function CrossChainProvider({ children }: { children: ReactNode }) {
             // Init Client for time & stats
             const aptosClient = new Aptos(new AptosConfig({
                 network: Network.CUSTOM,
-                fullnode: DEFAULT_NETWORK.url // Use consistent network
+                fullnode: DEFAULT_NETWORK.url
             }));
 
-            // Fetch ledger info to ensure expiration is valid (User clock is 3h behind)
             const ledgerInfo = await aptosClient.getLedgerInfo();
             const chainTime = Math.floor(parseInt(ledgerInfo.ledger_timestamp) / 1000000);
-            const expireTimestamp = chainTime + 600; // 10 minutes from CHAIN time
+            const expireTimestamp = chainTime + 600;
 
-            // 2. GET PREDICTED ESCROW ID (Registry Stats) - BEFORE creating escrow
-            //    The contract doesn't emit NewEscrowEvent, so we must predict the ID.
             let predictedEscrowId = 0;
             try {
                 const registryStats = await aptosClient.view({
@@ -118,38 +119,56 @@ export function CrossChainProvider({ children }: { children: ReactNode }) {
                 throw new Error("Could not get registry stats");
             }
 
-            // 3. Submit Transaction
             console.log("Creating Escrow on Movement...");
+            let txHash = '';
 
-            // 4. Create Escrow on Movement
-            const response = await signAndSubmitTransaction(aptos.wallet, {
-                function: `${MOVEMENT_HTLC_ADDR}::htlc_escrow::create_escrow`,
-                typeArguments: ["0x1::aptos_coin::AptosCoin"],
-                functionArguments: [
-                    MOVEMENT_HTLC_ADDR,
-                    hashlockBytes, // Pass as number[] (u8 vector) to avoid string ambiguity
-                    relayerAddress,
-                    amountOctas.toString(),
-                    3600 // timelock 1hr (Duration) - Tested working
-                ],
-                options: {
-                    expireTimestamp: expireTimestamp
+            if (isWdkMovement) {
+                const rawTx = await aptosClient.transaction.build.simple({
+                    sender: wdk.movementAccount.accountAddress,
+                    data: {
+                        function: `${MOVEMENT_HTLC_ADDR}::htlc_escrow::create_escrow`,
+                        typeArguments: ["0x1::aptos_coin::AptosCoin"],
+                        functionArguments: [
+                            MOVEMENT_HTLC_ADDR,
+                            hashlockBytes,
+                            relayerAddress,
+                            amountOctas.toString(),
+                            3600
+                        ],
+                    },
+                    options: { expireTimestamp }
+                });
+                const pendingTx = await aptosClient.signAndSubmitTransaction({
+                    signer: wdk.movementAccount,
+                    transaction: rawTx,
+                });
+                txHash = pendingTx.hash;
+            } else {
+                const response = await signAndSubmitTransaction(aptos.wallet!, {
+                    function: `${MOVEMENT_HTLC_ADDR}::htlc_escrow::create_escrow`,
+                    typeArguments: ["0x1::aptos_coin::AptosCoin"],
+                    functionArguments: [
+                        MOVEMENT_HTLC_ADDR,
+                        hashlockBytes,
+                        relayerAddress,
+                        amountOctas.toString(),
+                        3600
+                    ],
+                    options: {
+                        expireTimestamp: expireTimestamp
+                    }
+                });
+                if (!response || response.status === 'Rejected' || !response.hash) {
+                    throw new Error("Transaction rejected by wallet.");
                 }
-            });
-            console.log("Movement Lock Tx:", response);
-
-            // Check if transaction was rejected or failed
-            if (!response || response.status === 'Rejected' || !response.hash) {
-                throw new Error("Transaction rejected by wallet. Please ensure you have sufficient MOVE balance for the deposit and gas fees.");
+                txHash = response.hash;
             }
 
-            // 5. Wait for confirmation and use predicted ID
             let sourceEscrowId = predictedEscrowId;
             try {
-                const pendingTx = await aptosClient.waitForTransaction({ transactionHash: response.hash });
+                const pendingTx = await aptosClient.waitForTransaction({ transactionHash: txHash });
                 console.log("Transaction confirmed:", (pendingTx as any).success ? "SUCCESS" : "FAILED");
 
-                // Try to find NewEscrowEvent (in case contract is updated later)
                 if ('events' in pendingTx) {
                     const events = pendingTx.events;
                     const escrowEvent = events.find((e: any) => e.type.includes("::htlc_escrow::NewEscrowEvent"));
@@ -170,106 +189,83 @@ export function CrossChainProvider({ children }: { children: ReactNode }) {
             const now = Math.floor(Date.now() / 1000);
             const intent = {
                 maker: new PublicKey(userSolanaAddress),
-                sellToken: new PublicKey("11111111111111111111111111111111"), // Placeholder logic from existing code
+                sellToken: new PublicKey("11111111111111111111111111111111"), // Native SOL
                 buyToken: new PublicKey("11111111111111111111111111111111"),
-                sellAmount: new anchor.BN((parseFloat(buyAmount) * 1e9).toString()),
-                startAmount: new anchor.BN((parseFloat(buyAmount) * 1e9).toString()),
-                endAmount: new anchor.BN((parseFloat(buyAmount) * 1e9).toString()),
-                startTime: new anchor.BN(now - 60),
+                sellAmount: new anchor.BN(amountOctas),
+                startAmount: new anchor.BN(parseFloat(buyAmount) * 1e9),
+                endAmount: new anchor.BN(parseFloat(buyAmount) * 1e9),
+                startTime: new anchor.BN(now),
                 endTime: new anchor.BN(now + 3600),
-                nonce: new anchor.BN(Date.now())
+                nonce: new anchor.BN(now),
             };
 
-            // Manual intent serialization (Borsh layout)
-
-            let encodedIntent;
+            let encodedIntent: Buffer;
             try {
-                // Encode Intent for Signing MANUALLY
-                // Anchor's coder failed to find "Intent" type for some reason.
-                // We can manually serialize the struct (Borsh/Layout equivalent).
-                // IDL Layout:
-                // maker (32), sell_token (32), buy_token (32)
-                // sell_amount (8), start_amount (8), end_amount (8)
-                // start_time (8), end_time (8), nonce (8)
-                // Total: 144 bytes
-
-                const buffer = Buffer.alloc(144);
+                const buffer = Buffer.alloc(32 + 32 + 32 + 8 + 8 + 8 + 8 + 8 + 8);
                 let offset = 0;
 
-                // 1. maker (Pubkey)
                 const makerBuf = intent.maker.toBuffer();
                 makerBuf.copy(buffer, offset);
                 offset += 32;
 
-                // 2. sell_token (Pubkey)
                 const sellTokenBuf = intent.sellToken.toBuffer();
                 sellTokenBuf.copy(buffer, offset);
                 offset += 32;
 
-                // 3. buy_token (Pubkey)
                 const buyTokenBuf = intent.buyToken.toBuffer();
                 buyTokenBuf.copy(buffer, offset);
                 offset += 32;
 
-                // 4. sell_amount (u64)
                 const sellAmountBuf = intent.sellAmount.toArrayLike(Buffer, 'le', 8);
                 sellAmountBuf.copy(buffer, offset);
                 offset += 8;
 
-                // 5. start_amount (u64)
                 const startAmountBuf = intent.startAmount.toArrayLike(Buffer, 'le', 8);
                 startAmountBuf.copy(buffer, offset);
                 offset += 8;
 
-                // 6. end_amount (u64)
                 const endAmountBuf = intent.endAmount.toArrayLike(Buffer, 'le', 8);
                 endAmountBuf.copy(buffer, offset);
                 offset += 8;
 
-                // 7. start_time (i64)
                 const startTimeBuf = intent.startTime.toArrayLike(Buffer, 'le', 8);
                 startTimeBuf.copy(buffer, offset);
                 offset += 8;
 
-                // 8. end_time (i64)
                 const endTimeBuf = intent.endTime.toArrayLike(Buffer, 'le', 8);
                 endTimeBuf.copy(buffer, offset);
                 offset += 8;
 
-                // 9. nonce (u64)
                 const nonceBuf = intent.nonce.toArrayLike(Buffer, 'le', 8);
                 nonceBuf.copy(buffer, offset);
                 offset += 8;
 
                 encodedIntent = buffer;
-                console.log("Serialized Intent (Manual):", encodedIntent.toString('hex'));
-
             } catch (e) {
                 console.error("Manual encoding failed", e);
                 throw new Error("Failed to encode Intent data for signing");
             }
 
-            if (!solana.signMessage) throw new Error("Wallet does not support signMessage");
-
-            // MATCHING REFERENCE IMPLEMENTATION (cross-chain-telegram/src/bot/commands.ts)
-            // The signature is expected to be over a Text Message containing the Intent Hex.
-            // This avoids "WalletSignMessageError" for binary data and matches the Relayer/Program expectations.
-
             const intentHex = encodedIntent.toString('hex');
             const messageText = `Intent Protocol Swap\n\nIntent (hex): ${intentHex}`;
             const messageToSign = new TextEncoder().encode(messageText);
 
-            console.log("Signing Message Text:", messageText);
+            let signature = "";
+            if (wdk.solanaSigner?.secretKey) {
+                const keypair = Keypair.fromSecretKey(wdk.solanaSigner.secretKey);
+                const nacl = await import('tweetnacl');
+                const sig = nacl.default.sign.detached(messageToSign, keypair.secretKey);
+                signature = "0x" + Buffer.from(sig).toString('hex');
+            } else if (solana.signMessage) {
+                const signatureBytes = await solana.signMessage(messageToSign);
+                signature = "0x" + Buffer.from(signatureBytes).toString('hex');
+            }
 
-            const signatureBytes = await solana.signMessage(messageToSign);
-            const signature = "0x" + Buffer.from(signatureBytes).toString('hex');
+            const userMovAddress = isWdkMovement ? wdk.movementAddress : aptos.account?.address;
 
-            console.log("Solana Signature:", signature);
-
-
-            // 4. Send to Relayer
+            // Send to Relayer
             await axios.post(`${CROSS_CHAIN_RELAYER_URL}/swap/movement-to-solana`, {
-                makerAddress: aptos.account.address,
+                makerAddress: userMovAddress,
                 recipientAddress: userSolanaAddress,
                 sellAmount: amountOctas.toString(),
                 buyAmount: (parseFloat(buyAmount) * 1e9).toString(), // Lamports
@@ -306,14 +302,13 @@ export function CrossChainProvider({ children }: { children: ReactNode }) {
     };
 
     const createSolanaToMovementSwap = async (sellAmount: string, buyAmount: string, userMovementAddress: string) => {
-        // Logic for SOL -> MOV
-        if (!solana.publicKey) throw new Error("Solana wallet not connected");
+        const isWdkSolana = !!wdk.solanaSigner?.secretKey;
+        if (!isWdkSolana && !solana.publicKey) throw new Error("Solana wallet not connected");
         setIsLoading(true);
 
         try {
             const { secretHex, hashlockHex } = await generateHashlock();
 
-            // Store pending
             const pendingSwap = {
                 secret: secretHex,
                 hashlock: hashlockHex,
@@ -325,43 +320,56 @@ export function CrossChainProvider({ children }: { children: ReactNode }) {
             savePendingSwap(hashlockHex, pendingSwap);
 
             const amountLamports = Math.floor(parseFloat(sellAmount) * LAMPORTS_PER_SOL);
-
-            // 1. Get Relayer SOL address
-            // Ideally fetch from relayer health, but hardcoded fallback for now in case of issues, or use what was in existing code
             const RELAYER_SOL_ADDR = new PublicKey("Crgx1n8HxZe8fq3d3vYhYrLDuKJ3pJZN4gfeSKuNarub");
 
-            // 2. Transfer SOL (Lock)
-            const transaction = new Transaction().add(
-                SystemProgram.transfer({
-                    fromPubkey: solana.publicKey,
-                    toPubkey: RELAYER_SOL_ADDR,
-                    lamports: amountLamports,
-                })
-            );
+            let userSolPubkey: PublicKey;
+            let signature = '';
 
-            const { blockhash, lastValidBlockHeight } = await solanaConnection.getLatestBlockhash();
-            transaction.recentBlockhash = blockhash;
-            transaction.feePayer = solana.publicKey;
+            if (isWdkSolana) {
+                const keypair = Keypair.fromSecretKey(wdk.solanaSigner.secretKey);
+                userSolPubkey = keypair.publicKey;
+                const transaction = new Transaction().add(
+                    SystemProgram.transfer({
+                        fromPubkey: keypair.publicKey,
+                        toPubkey: RELAYER_SOL_ADDR,
+                        lamports: amountLamports,
+                    })
+                );
+                const { blockhash } = await solanaConnection.getLatestBlockhash();
+                transaction.recentBlockhash = blockhash;
+                transaction.feePayer = keypair.publicKey;
+                signature = await solanaConnection.sendTransaction(transaction, [keypair]);
+                await solanaConnection.confirmTransaction(signature, "confirmed");
+            } else {
+                userSolPubkey = solana.publicKey!;
+                const transaction = new Transaction().add(
+                    SystemProgram.transfer({
+                        fromPubkey: solana.publicKey!,
+                        toPubkey: RELAYER_SOL_ADDR,
+                        lamports: amountLamports,
+                    })
+                );
+                const { blockhash, lastValidBlockHeight } = await solanaConnection.getLatestBlockhash();
+                transaction.recentBlockhash = blockhash;
+                transaction.feePayer = solana.publicKey!;
 
-            if (!solana.signTransaction) throw new Error("Wallet does not support signTransaction");
-
-            const signedTransaction = await solana.signTransaction(transaction);
-            const signature = await solanaConnection.sendRawTransaction(signedTransaction.serialize());
+                if (!solana.signTransaction) throw new Error("Wallet does not support signTransaction");
+                const signedTransaction = await solana.signTransaction(transaction);
+                signature = await solanaConnection.sendRawTransaction(signedTransaction.serialize());
+                await solanaConnection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, "confirmed");
+            }
 
             console.log("Solana Lock Tx:", signature);
-            await solanaConnection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, "confirmed");
 
-            // 3. Call Relayer
             await axios.post(`${CROSS_CHAIN_RELAYER_URL}/swap/solana-to-movement`, {
-                makerAddress: solana.publicKey.toString(),
+                makerAddress: userSolPubkey.toString(),
                 recipientAddress: userMovementAddress,
                 sellAmount: amountLamports.toString(),
-                buyAmount: (parseFloat(buyAmount) * 1e8).toString(), // MOVE octas
+                buyAmount: (parseFloat(buyAmount) * 1e8).toString(),
                 hashlock: hashlockHex,
-                sourceEscrowPda: signature // Use tx signature as ID
+                sourceEscrowPda: signature
             });
 
-            // Update storage
             pendingSwap.status = 'LOCKED_ON_SOURCE';
             savePendingSwap(hashlockHex, pendingSwap);
 
@@ -376,16 +384,14 @@ export function CrossChainProvider({ children }: { children: ReactNode }) {
     };
 
     const unwrapWSOL = async () => {
-        if (!solana.publicKey || !solana.signTransaction) {
+        const solPubkey = wdk.solanaSigner ? new PublicKey(wdk.solanaAddress!) : solana.publicKey;
+        if (!solPubkey) {
             toast.error("Solana wallet not connected");
             return;
         }
         setIsLoading(true);
         try {
-            // 1. Get WSOL Address
-            const wsolAddress = await getAssociatedTokenAddress(NATIVE_MINT, solana.publicKey);
-
-            // 2. Check if account exists
+            const wsolAddress = await getAssociatedTokenAddress(NATIVE_MINT, solPubkey);
             const accountInfo = await solanaConnection.getAccountInfo(wsolAddress);
             if (!accountInfo) {
                 toast.info("No WSOL account found to unwrap.");
@@ -394,23 +400,29 @@ export function CrossChainProvider({ children }: { children: ReactNode }) {
 
             toast.info("Unwrapping WSOL...");
 
-            // 3. Create Close Account Instruction
             const tx = new Transaction().add(
                 createCloseAccountInstruction(
-                    wsolAddress,       // Account to close
-                    solana.publicKey,  // Destination for lamports
-                    solana.publicKey   // Owner
+                    wsolAddress,
+                    solPubkey,
+                    solPubkey
                 )
             );
 
             const { blockhash } = await solanaConnection.getLatestBlockhash();
             tx.recentBlockhash = blockhash;
-            tx.feePayer = solana.publicKey;
+            tx.feePayer = solPubkey;
 
-            const signedTx = await solana.signTransaction(tx);
-            const signature = await solanaConnection.sendRawTransaction(signedTx.serialize());
+            let signature = '';
+            if (wdk.solanaSigner?.secretKey) {
+                const keypair = Keypair.fromSecretKey(wdk.solanaSigner.secretKey);
+                signature = await solanaConnection.sendTransaction(tx, [keypair]);
+                await solanaConnection.confirmTransaction(signature);
+            } else if (solana.signTransaction) {
+                const signedTx = await solana.signTransaction(tx);
+                signature = await solanaConnection.sendRawTransaction(signedTx.serialize());
+                await solanaConnection.confirmTransaction(signature);
+            }
 
-            await solanaConnection.confirmTransaction(signature);
             toast.success("Unwrapped WSOL successfully!");
         } catch (e: any) {
             console.error("Unwrap failed", e);

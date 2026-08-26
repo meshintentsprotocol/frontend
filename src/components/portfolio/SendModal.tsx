@@ -14,7 +14,7 @@ import { USDT_SEPOLIA, USDT_BSC, getEvmConfig } from '@/lib/intentHTLC';
 // Types
 // ============================================================================
 
-type ChainId = 'eth' | 'bch' | 'sol' | 'btc';
+type ChainId = 'eth' | 'bch' | 'sol' | 'btc' | 'move';
 type SendStep = 'chain' | 'token' | 'form';
 
 interface SendToken {
@@ -44,6 +44,7 @@ function getChainMeta(isMainnet: boolean): Record<ChainId, { name: string; label
             icon: '/logos/bitcoin-cash-bch-logo.svg',
         },
         sol: { name: 'Solana', label: 'Devnet', icon: '/assets/solanaLogo.png' },
+        move: { name: 'Movement', label: isMainnet ? 'Mainnet' : 'Bardock Testnet', icon: '/logos/movement.svg' },
         btc: { name: 'Bitcoin', label: 'Testnet', icon: '/logos/bitcoin-btc-logo.svg' },
     };
 }
@@ -51,6 +52,7 @@ function getChainMeta(isMainnet: boolean): Record<ChainId, { name: string; label
 function getExplorerUrl(chain: ChainId, txHash: string, isMainnet: boolean) {
     if (chain === 'eth') return isMainnet ? `https://bscscan.com/tx/${txHash}` : `https://sepolia.etherscan.io/tx/${txHash}`;
     if (chain === 'bch') return isMainnet ? `https://blockchair.com/bitcoin-cash/transaction/${txHash}` : `https://chipnet.imaginary.cash/tx/${txHash}`;
+    if (chain === 'move') return `https://explorer.movementnetwork.xyz/txn/${txHash}?network=testnet`;
     if (chain === 'btc') return `https://blockstream.info/testnet/tx/${txHash}`;
     return `https://solscan.io/tx/${txHash}?cluster=devnet`;
 }
@@ -79,10 +81,11 @@ export function SendModal({ children }: { children?: React.ReactNode }) {
         () => ([
             wdk.evmAddress ? 'eth' : null,
             bchWallet.connected ? 'bch' : null,
+            wdk.movementAddress ? 'move' : null,
             wdk.btcAddress ? 'btc' : null,
             wdk.solanaAddress ? 'sol' : null,
         ] as (ChainId | null)[]).filter((c): c is ChainId => !!c),
-        [wdk.evmAddress, bchWallet.connected, wdk.btcAddress, wdk.solanaAddress]
+        [wdk.evmAddress, bchWallet.connected, wdk.movementAddress, wdk.btcAddress, wdk.solanaAddress]
     );
 
     // Token list for the selected chain, with live balances
@@ -131,21 +134,39 @@ export function SendModal({ children }: { children?: React.ReactNode }) {
             return tokens;
         }
 
-        if (selectedChain === 'btc') {
-            const btcBal = portfolioTokens.find(t => t.symbol === 'BTC')?.balance ?? 0;
+        if (selectedChain === 'sol') {
+            const solBal = portfolioTokens.find(t => t.symbol === 'SOL')?.balance ?? 0;
+            const usdcBal = portfolioTokens.find(t => t.symbol === 'USDC')?.balance ?? 0;
+            const usdtBal = portfolioTokens.find(t => t.symbol === 'USDT (SOL)')?.balance ?? 0;
             return [
-                { id: 'btc', symbol: 'BTC', name: 'Bitcoin', icon: '/logos/bitcoin-btc-logo.svg', decimals: 8, chain: 'btc', balance: btcBal },
+                { id: 'sol-native', symbol: 'SOL', name: 'Solana', icon: '/assets/solanaLogo.png', decimals: 9, chain: 'sol', balance: solBal },
+                { id: 'sol-usdc', symbol: 'USDC', name: 'USD Coin', icon: '/logos/usd-coin-usdc-logo.svg', decimals: 6, chain: 'sol', balance: usdcBal },
+                { id: 'sol-usdt', symbol: 'USDT', name: 'Tether USD', icon: '/logos/usdt-svgrepo-com.svg', decimals: 6, chain: 'sol', balance: usdtBal },
             ];
         }
 
-        // sol
-        const solBal = portfolioTokens.find(t => t.symbol === 'SOL')?.balance ?? 0;
-        return [
-            { id: 'sol', symbol: 'SOL', name: 'Solana', icon: '/assets/solanaLogo.png', decimals: 9, chain: 'sol', balance: solBal },
-        ];
-    }, [selectedChain, portfolioTokens, bchWallet.balance, bchWallet.tokenBalances]);
+        if (selectedChain === 'move') {
+            const moveBal = portfolioTokens.find(t => t.symbol === 'MOVE')?.balance ?? 0;
+            const usdcBal = portfolioTokens.find(t => t.symbol === 'USDC (MOVE)')?.balance ?? 0;
+            const usdtBal = portfolioTokens.find(t => t.symbol === 'USDT (MOVE)')?.balance ?? 0;
+            return [
+                { id: 'move-native', symbol: 'MOVE', name: 'Movement', icon: '/logos/movement.svg', decimals: 8, chain: 'move', balance: moveBal },
+                { id: 'move-usdc', symbol: 'USDC', name: 'USD Coin (Movement)', icon: '/logos/usd-coin-usdc-logo.svg', decimals: 6, chain: 'move', balance: usdcBal },
+                { id: 'move-usdt', symbol: 'USDT', name: 'Tether USD (Movement)', icon: '/logos/usdt-svgrepo-com.svg', decimals: 6, chain: 'move', balance: usdtBal },
+            ];
+        }
 
-    const resetState = () => {
+        if (selectedChain === 'btc') {
+            const btcBal = portfolioTokens.find(t => t.symbol === 'BTC')?.balance ?? 0;
+            return [
+                { id: 'btc-native', symbol: 'BTC', name: 'Bitcoin', icon: '/logos/bitcoin-btc-logo.svg', decimals: 8, chain: 'btc', balance: btcBal },
+            ];
+        }
+
+        return [];
+    }, [selectedChain, isMainnet, portfolioTokens, bchWallet.balance, bchWallet.tokenBalances]);
+
+    const reset = () => {
         setStep('chain');
         setSelectedChain(null);
         setSelectedToken(null);
@@ -248,62 +269,101 @@ export function SendModal({ children }: { children?: React.ReactNode }) {
                 const { blockhash } = await connection.getLatestBlockhash();
                 tx.recentBlockhash = blockhash;
                 tx.feePayer = keypair.publicKey;
-                tx.sign(keypair);
-                const sig = await connection.sendRawTransaction(tx.serialize());
-                await connection.confirmTransaction(sig, 'processed');
-                txHash = sig;
+                txHash = await connection.sendTransaction(tx, [keypair]);
+                await connection.confirmTransaction(txHash, 'confirmed');
+
+            } else if (selectedChain === 'move') {
+                if (!wdk.movementAccount) throw new Error('Movement account not available');
+                const { Aptos, AptosConfig, Network, AccountAddress } = await import('@aptos-labs/ts-sdk');
+                const aptos = new Aptos(new AptosConfig({
+                    network: Network.CUSTOM,
+                    fullnode: 'https://testnet.movementnetwork.xyz/v1'
+                }));
+                const rawAmount = Math.floor(parsedAmount * Math.pow(10, selectedToken.decimals));
+                const coinType = (selectedToken.address && selectedToken.address.includes('::'))
+                    ? selectedToken.address
+                    : (selectedToken.symbol.includes('USDC')
+                        ? '0x45142fb00dde90b950183d8ac2815597892f665c254c3f42b5768bc6ae4c8489'
+                        : (selectedToken.symbol.includes('USDT')
+                            ? '0xa663e903b11931807045423e25847425466a0c9777021464e104e845e1123963'
+                            : (selectedToken.symbol.includes('ETH') || selectedToken.symbol.includes('WETH')
+                                ? '0xf22bede237a07e121b56d91a491eb7bcdfd1f5907926a9e58338f964a01b17fa::asset::WETH'
+                                : '0x1::aptos_coin::AptosCoin')));
+
+                const transaction = await aptos.transferCoinTransaction({
+                    sender: wdk.movementAccount.accountAddress,
+                    recipient: AccountAddress.fromString(recipient),
+                    amount: rawAmount,
+                    coinType: coinType as any,
+                });
+                const pendingTx = await aptos.signAndSubmitTransaction({
+                    signer: wdk.movementAccount,
+                    transaction,
+                });
+                const executedTx = await aptos.waitForTransaction({ transactionHash: pendingTx.hash });
+                txHash = executedTx.hash;
 
             } else if (selectedChain === 'btc') {
                 if (!wdk.btcAccount) throw new Error('Bitcoin account not available');
-                const sats = BigInt(Math.round(parsedAmount * 1e8));
-                const result = await wdk.btcAccount.sendTransaction({ to: recipient, value: sats });
-                txHash = (result as any)?.hash ?? '';
+                const satoshis = BigInt(Math.round(parsedAmount * 1e8));
+                const res = await wdk.btcAccount.sendTransaction({
+                    recipient,
+                    amount: satoshis,
+                });
+                txHash = res.txId ?? res.hash ?? '';
             }
 
-            const explorerUrl = getExplorerUrl(selectedChain, txHash, isMainnet);
+            // Log activity
             ActivityService.addActivity({
                 type: 'send',
-                asset: selectedToken.symbol,
-                amount: parsedAmount,
-                valueUsd: 0,
+                description: `Sent ${amount} ${selectedToken.symbol} on ${CHAIN_META[selectedChain].name}`,
                 txHash,
-                network: CHAIN_META[selectedChain].name,
-                explorerUrl,
+                status: 'confirmed',
+                metadata: {
+                    recipient,
+                    amount,
+                    token: selectedToken.symbol,
+                    chain: selectedChain,
+                },
             });
 
             toast.success(
-                <div className="flex flex-col gap-0.5">
-                    <span>Sent {amount} {selectedToken.symbol}</span>
-                    {explorerUrl && (
-                        <a href={explorerUrl} target="_blank" rel="noreferrer" className="text-xs text-primary underline">
+                <div>
+                    <p className="font-semibold">Transaction Sent!</p>
+                    <p className="text-xs text-muted-foreground">
+                        {amount} {selectedToken.symbol} sent to {recipient.slice(0, 8)}…
+                    </p>
+                    {txHash && (
+                        <a
+                            href={getExplorerUrl(selectedChain, txHash, isMainnet)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-primary underline mt-1 inline-block"
+                        >
                             View on Explorer →
                         </a>
                     )}
                 </div>
             );
-            setIsOpen(false);
-            setTimeout(resetState, 300);
 
+            setIsOpen(false);
+            reset();
+            wdk.refreshBalances();
         } catch (e: any) {
-            console.error('[Send]', e);
-            toast.error('Transaction failed', { description: e.message });
+            console.error('[Send] Error:', e);
+            toast.error(e.message ?? 'Transaction failed');
         } finally {
             setIsSending(false);
         }
     };
 
-    const parsedAmt = parseFloat(amount);
-    const amountValid = !isNaN(parsedAmt) && parsedAmt > 0;
-    const canSend = !isSending && !!recipient && amountValid && !!selectedToken && parsedAmt <= selectedToken.balance;
-    const stepIndex = STEPS.indexOf(step);
-
     return (
-        <Dialog open={isOpen} onOpenChange={(v) => { setIsOpen(v); if (!v) setTimeout(resetState, 300); }}>
+        <Dialog open={isOpen} onOpenChange={open => { setIsOpen(open); if (!open) reset(); }}>
             <DialogTrigger asChild>
                 {children ?? (
                     <button className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-white/[0.03] border border-white/[0.05] hover:bg-white/[0.06] transition-colors group">
-                        <div className="text-primary group-hover:-translate-y-0.5 transition-transform">
-                            <Navigation className="h-5 w-5" />
+                        <div className="text-primary group-hover:scale-110 transition-transform">
+                            <Navigation className="h-5 w-5 rotate-45" />
                         </div>
                         <span className="text-sm font-medium text-foreground">Send</span>
                     </button>
@@ -311,137 +371,177 @@ export function SendModal({ children }: { children?: React.ReactNode }) {
             </DialogTrigger>
 
             <DialogContent className="sm:max-w-md bg-[#0A0A0A] border-white/10 rounded-2xl p-0 overflow-hidden">
-                <div className="p-6">
-                    <DialogHeader className="mb-5">
-                        <DialogTitle className="flex items-center gap-2 text-lg font-semibold">
-                            {step !== 'chain' && (
-                                <button onClick={goBack} className="text-muted-foreground hover:text-foreground transition-colors -ml-1">
-                                    <ChevronLeft className="h-5 w-5" />
-                                </button>
-                            )}
-                            {step === 'chain' && 'Send Assets'}
-                            {step === 'token' && `Send on ${selectedChain ? CHAIN_META[selectedChain].name : ''}`}
-                            {step === 'form' && `Send ${selectedToken?.symbol ?? ''}`}
+                {/* Header */}
+                <div className="p-5 border-b border-white/5 flex items-center gap-3">
+                    {step !== 'chain' && (
+                        <button
+                            onClick={goBack}
+                            className="h-8 w-8 rounded-lg bg-white/5 hover:bg-white/10 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                            <ChevronLeft className="h-4 w-4" />
+                        </button>
+                    )}
+                    <div>
+                        <DialogTitle className="text-lg font-semibold">
+                            {step === 'chain' && 'Select Network'}
+                            {step === 'token' && `Select Token · ${selectedChain ? CHAIN_META[selectedChain].name : ''}`}
+                            {step === 'form' && `Send ${selectedToken?.symbol}`}
                         </DialogTitle>
-                        {/* Progress bar */}
-                        <div className="flex gap-1.5 mt-2">
-                            {STEPS.map((s, i) => (
-                                <div
-                                    key={s}
-                                    className={`h-0.5 flex-1 rounded-full transition-colors duration-300 ${i <= stepIndex ? 'bg-emerald-500' : 'bg-white/10'}`}
-                                />
-                            ))}
-                        </div>
-                    </DialogHeader>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                            {step === 'chain' && 'Choose the network to send assets from'}
+                            {step === 'token' && 'Choose which token to send'}
+                            {step === 'form' && `Enter recipient and amount on ${selectedChain ? CHAIN_META[selectedChain].name : ''}`}
+                        </p>
+                    </div>
+                </div>
 
-                    {!wdk.isInitialized ? (
-                        <div className="text-center py-10 text-sm text-muted-foreground">
-                            Connect a WDK wallet to send assets.
-                        </div>
-                    ) : step === 'chain' ? (
-                        <div className="space-y-2 animate-in fade-in-50 duration-200">
-                            <p className="text-xs text-muted-foreground mb-3 uppercase tracking-wider font-medium">Select chain</p>
-                            {availableChains.length === 0 ? (
-                                <p className="text-sm text-center text-muted-foreground py-6">No chains available in your WDK wallet.</p>
-                            ) : availableChains.map(chainId => {
+                {/* Step indicator */}
+                <div className="flex gap-1 px-5 pt-3">
+                    {STEPS.map((s, i) => (
+                        <div
+                            key={s}
+                            className={`h-1 flex-1 rounded-full transition-colors ${
+                                STEPS.indexOf(step) >= i ? 'bg-primary' : 'bg-white/10'
+                            }`}
+                        />
+                    ))}
+                </div>
+
+                <div className="p-5">
+                    {/* STEP 1: Select Chain */}
+                    {step === 'chain' && (
+                        <div className="space-y-2">
+                            {availableChains.map(chainId => {
                                 const meta = CHAIN_META[chainId];
                                 return (
                                     <button
                                         key={chainId}
                                         onClick={() => selectChain(chainId)}
-                                        className="flex items-center gap-3 p-4 w-full bg-white/[0.03] border border-white/10 rounded-xl hover:bg-white/[0.07] hover:border-emerald-500/30 transition-all group text-left"
+                                        className="w-full flex items-center justify-between p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.05] hover:bg-white/[0.05] hover:border-primary/30 transition-all text-left group"
                                     >
-                                        <img src={meta.icon} alt={meta.name} className="w-9 h-9 rounded-full bg-white/10 p-1 object-contain group-hover:scale-105 transition-transform" />
-                                        <div className="flex-1">
-                                            <div className="font-semibold text-sm">{meta.name}</div>
-                                            <div className="text-[11px] text-muted-foreground">{meta.label}</div>
+                                        <div className="flex items-center gap-3">
+                                            <img src={meta.icon} alt={meta.name} className="h-8 w-8 object-contain rounded-full p-1 bg-white/5" />
+                                            <div>
+                                                <p className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">
+                                                    {meta.name}
+                                                </p>
+                                                <p className="text-xs text-muted-foreground">{meta.label}</p>
+                                            </div>
                                         </div>
-                                        <ArrowRight className="h-4 w-4 text-muted-foreground/40 group-hover:text-emerald-400 transition-colors" />
+                                        <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
                                     </button>
                                 );
                             })}
                         </div>
+                    )}
 
-                    ) : step === 'token' ? (
-                        <div className="space-y-2 animate-in fade-in-50 duration-200">
-                            <p className="text-xs text-muted-foreground mb-3 uppercase tracking-wider font-medium">Select token</p>
-                            {availableTokens.map(token => {
-                                const balDisplay = token.balance.toFixed(Math.min(token.decimals, 6));
-                                return (
+                    {/* STEP 2: Select Token */}
+                    {step === 'token' && (
+                        <div className="space-y-2">
+                            {availableTokens.length === 0 ? (
+                                <p className="text-center text-sm text-muted-foreground py-8">
+                                    No tokens found with balance on this network.
+                                </p>
+                            ) : (
+                                availableTokens.map(token => (
                                     <button
                                         key={token.id}
                                         onClick={() => selectToken(token)}
-                                        className="flex items-center gap-3 p-3.5 w-full bg-white/[0.03] border border-white/10 rounded-xl hover:bg-white/[0.07] hover:border-emerald-500/30 transition-all group text-left"
+                                        className="w-full flex items-center justify-between p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.05] hover:bg-white/[0.05] hover:border-primary/30 transition-all text-left group"
                                     >
-                                        <img src={token.icon} alt={token.symbol} className="w-8 h-8 rounded-full bg-white/10 p-0.5 object-contain" />
-                                        <div className="flex-1">
-                                            <div className="font-semibold text-sm">{token.symbol}</div>
-                                            <div className="text-[11px] text-muted-foreground">{token.name}</div>
+                                        <div className="flex items-center gap-3">
+                                            <img src={token.icon} alt={token.symbol} className="h-8 w-8 object-contain rounded-full p-1 bg-white/5" />
+                                            <div>
+                                                <p className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">
+                                                    {token.name}
+                                                </p>
+                                                <p className="text-xs text-muted-foreground">{token.symbol}</p>
+                                            </div>
                                         </div>
                                         <div className="text-right">
-                                            <div className="text-sm font-mono tabular-nums">{balDisplay}</div>
-                                            <div className="text-[10px] text-muted-foreground">balance</div>
+                                            <p className="text-sm font-mono font-medium text-foreground">
+                                                {token.balance.toFixed(token.decimals > 6 ? 4 : 2)}
+                                            </p>
+                                            <p className="text-xs text-muted-foreground">Available</p>
                                         </div>
                                     </button>
-                                );
-                            })}
+                                ))
+                            )}
                         </div>
+                    )}
 
-                    ) : (
-                        <div className="space-y-4 animate-in fade-in-50 duration-200">
+                    {/* STEP 3: Form */}
+                    {step === 'form' && selectedToken && (
+                        <div className="space-y-4">
                             {/* Selected token pill */}
-                            <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.08]">
-                                <img src={selectedToken?.icon} alt={selectedToken?.symbol} className="w-6 h-6 rounded-full object-contain" />
-                                <span className="text-sm font-semibold">{selectedToken?.symbol}</span>
-                                <span className="text-[11px] text-muted-foreground ml-auto font-mono">
-                                    {selectedToken?.balance.toFixed(Math.min(selectedToken.decimals, 6))} available
+                            <div className="flex items-center justify-between p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+                                <div className="flex items-center gap-2.5">
+                                    <img src={selectedToken.icon} alt={selectedToken.symbol} className="h-6 w-6 object-contain" />
+                                    <span className="text-sm font-medium">{selectedToken.name}</span>
+                                </div>
+                                <span className="text-xs font-mono text-muted-foreground">
+                                    Bal: {selectedToken.balance.toFixed(4)} {selectedToken.symbol}
                                 </span>
                             </div>
 
+                            {/* Recipient */}
                             <div className="space-y-1.5">
-                                <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Recipient address</label>
+                                <label className="text-xs font-medium text-muted-foreground">Recipient Address</label>
                                 <Input
                                     placeholder={
-                                        selectedChain === 'eth' ? '0x...' :
-                                        selectedChain === 'bch' ? 'bitcoincash:q...' :
-                                        selectedChain === 'btc' ? 'tb1q...' : 'Solana address'
+                                        selectedChain === 'bch' ? 'bchtest:...' :
+                                        selectedChain === 'sol' ? 'Solana public key...' :
+                                        selectedChain === 'move' ? '0x... (Movement address)' :
+                                        selectedChain === 'btc' ? 'tb1q... or 2N...' :
+                                        '0x...'
                                     }
                                     value={recipient}
-                                    onChange={e => setRecipient(e.target.value)}
-                                    className="bg-white/[0.03] border-white/10 h-11 rounded-xl focus-visible:ring-1 focus-visible:ring-emerald-500/50 font-mono text-[13px]"
+                                    onChange={e => setRecipient(e.target.value.trim())}
+                                    className="bg-white/5 border-white/10 font-mono text-xs h-10"
                                 />
                             </div>
 
+                            {/* Amount */}
                             <div className="space-y-1.5">
                                 <div className="flex justify-between items-center">
-                                    <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Amount</label>
+                                    <label className="text-xs font-medium text-muted-foreground">Amount</label>
                                     <button
-                                        onClick={() => selectedToken && setAmount(selectedToken.balance.toFixed(Math.min(selectedToken.decimals, 8)))}
-                                        className="text-[11px] text-emerald-400 hover:text-emerald-300 font-semibold"
+                                        type="button"
+                                        onClick={() => setAmount(selectedToken.balance.toString())}
+                                        className="text-xs text-primary hover:underline"
                                     >
-                                        MAX
+                                        Max ({selectedToken.balance.toFixed(4)})
                                     </button>
                                 </div>
-                                <Input
-                                    type="number"
-                                    placeholder="0.0"
-                                    value={amount}
-                                    onChange={e => setAmount(e.target.value)}
-                                    className="bg-white/[0.03] border-white/10 h-14 text-2xl font-bold rounded-xl focus-visible:ring-1 focus-visible:ring-emerald-500/50"
-                                />
-                                {amount && selectedToken && parsedAmt > selectedToken.balance && (
-                                    <p className="text-xs text-red-400">Amount exceeds balance</p>
-                                )}
+                                <div className="relative">
+                                    <Input
+                                        type="number"
+                                        step="any"
+                                        placeholder="0.0"
+                                        value={amount}
+                                        onChange={e => setAmount(e.target.value)}
+                                        className="bg-white/5 border-white/10 font-mono text-sm h-10 pr-16"
+                                    />
+                                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-muted-foreground">
+                                        {selectedToken.symbol}
+                                    </span>
+                                </div>
                             </div>
 
+                            {/* Submit */}
                             <Button
-                                className="w-full h-12 mt-1 text-base font-semibold bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 rounded-xl disabled:opacity-40"
                                 onClick={handleSend}
-                                disabled={!canSend}
+                                disabled={isSending || !recipient || !amount || parseFloat(amount) <= 0}
+                                className="w-full h-11 bg-primary hover:bg-primary/90 text-primary-foreground font-semibold rounded-xl"
                             >
-                                {isSending
-                                    ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sending…</>
-                                    : `Send ${selectedToken?.symbol ?? ''}`}
+                                {isSending ? (
+                                    <>
+                                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                        Sending...
+                                    </>
+                                ) : (
+                                    `Send ${selectedToken.symbol}`
+                                )}
                             </Button>
                         </div>
                     )}

@@ -2,8 +2,12 @@
  * WDK Wallet Provider — Browser-compatible
  *
  * Uses @tetherto/wdk for seed phrase generation/validation.
- * BCH is derived from the same BIP-39 mnemonic via mainnet-js.
- * Two BCH wallets are derived (Chipnet / Mainnet) and the user toggles between them.
+ * Multi-chain derivations from single BIP-39 mnemonic:
+ * - EVM: m/44'/60'/0'/0/0 (ethers)
+ * - Solana: Ed25519 (wdk-wallet-solana)
+ * - Bitcoin: BIP-84 (wdk-wallet-btc)
+ * - Bitcoin Cash: Chipnet & Mainnet (mainnet-js)
+ * - Movement / Aptos: m/44'/637'/0'/0'/0' (@aptos-labs/ts-sdk)
  *
  * Session: volatile seed in sessionStorage (15-min auto-lock on inactivity).
  * Persistence: AES-GCM encrypted seed in localStorage (unlocked with password).
@@ -27,6 +31,7 @@ interface WDKWalletState {
     btcAddress: string | null;
     bchChipnetAddress: string | null;
     bchMainnetAddress: string | null;
+    movementAddress: string | null;
     bchNetwork: BchNetwork;
     evmSigner: any | null;
     solanaSigner: any | null;
@@ -36,12 +41,16 @@ interface WDKWalletState {
     btcManager: any | null;
     bchChipnetWallet: any | null;
     bchMainnetWallet: any | null;
+    movementAccount: any | null;
     evmBalance: string | null;
     solanaBalance: string | null;
+    movementBalance: string | null;
     /** Symbol → human-readable balance for EVM tokens (ETH, USDC, USDT). */
     evmTokenBalances: Record<string, number>;
     /** Symbol → human-readable balance for Solana tokens (SOL, USDC, USDT). */
     solanaTokenBalances: Record<string, number>;
+    /** Symbol → human-readable balance for Movement tokens (MOVE, USDC, USDT). */
+    movementTokenBalances: Record<string, number>;
     error: string | null;
 }
 
@@ -54,7 +63,7 @@ interface WDKContextType extends WDKWalletState {
     unlockWallet: (password: string) => Promise<boolean>;
     saveWallet: (password: string) => Promise<void>;
     disconnect: () => void;
-    /** Refetch all EVM + Solana token balances immediately. */
+    /** Refetch all EVM + Solana + Movement token balances immediately. */
     refreshBalances: () => Promise<void>;
     hasStoredWallet: boolean;
 }
@@ -148,12 +157,29 @@ async function deriveBchWallets(seedPhrase: string) {
     return { chipnetWallet, mainnetWallet, chipnetAddress, mainnetAddress };
 }
 
+async function deriveMovementAccount(seedPhrase: string): Promise<{ account: any; address: string } | null> {
+    try {
+        const { Account } = await import('@aptos-labs/ts-sdk');
+        const account = Account.fromDerivationPath({
+            path: "m/44'/637'/0'/0'/0'",
+            mnemonic: seedPhrase,
+        });
+        const address = account.accountAddress.toString();
+        console.log('[WDK] Movement Address:', address);
+        return { account, address };
+    } catch (e: any) {
+        console.warn('[WDK] Movement derivation failed:', e.message);
+        return null;
+    }
+}
+
 async function initializeWallet(seedPhrase: string) {
-    const [evmSigner, solanaResult, btcResult, bchResult] = await Promise.all([
+    const [evmSigner, solanaResult, btcResult, bchResult, movementResult] = await Promise.all([
         deriveEvmWallet(seedPhrase),
         deriveSolanaSigner(seedPhrase),
         deriveBtcSigner(seedPhrase),
         deriveBchWallets(seedPhrase),
+        deriveMovementAccount(seedPhrase),
     ]);
     return {
         evmSigner,
@@ -164,11 +190,13 @@ async function initializeWallet(seedPhrase: string) {
         btcManager: btcResult?.manager ?? null,
         bchChipnetWallet: bchResult.chipnetWallet,
         bchMainnetWallet: bchResult.mainnetWallet,
+        movementAccount: movementResult?.account ?? null,
         evmAddress: evmSigner?.address ?? null,
         solanaAddress: solanaResult?.signer?.address ?? null,
         btcAddress: btcResult?.address ?? null,
         bchChipnetAddress: bchResult.chipnetAddress,
         bchMainnetAddress: bchResult.mainnetAddress,
+        movementAddress: movementResult?.address ?? null,
     };
 }
 
@@ -192,6 +220,7 @@ const EMPTY_STATE: WDKWalletState = {
     btcAddress: null,
     bchChipnetAddress: null,
     bchMainnetAddress: null,
+    movementAddress: null,
     bchNetwork: 'chipnet',
     evmSigner: null,
     solanaSigner: null,
@@ -201,10 +230,13 @@ const EMPTY_STATE: WDKWalletState = {
     btcManager: null,
     bchChipnetWallet: null,
     bchMainnetWallet: null,
+    movementAccount: null,
     evmBalance: null,
     solanaBalance: null,
+    movementBalance: null,
     evmTokenBalances: {},
     solanaTokenBalances: {},
+    movementTokenBalances: {},
     error: null,
 };
 
@@ -338,10 +370,10 @@ export function WDKProvider({ children }: { children: ReactNode }) {
     const fetchBalancesRef = useRef<(() => Promise<void>) | null>(null);
 
     const fetchBalances = useCallback(async () => {
-        const { evmAddress, solanaAddress, bchNetwork } = state;
+        const { evmAddress, solanaAddress, movementAddress, bchNetwork } = state;
         const isMainnet = bchNetwork === 'mainnet';
 
-        // EVM balances (ETH + USDC + USDT)
+        // 1. EVM balances (ETH + USDC + USDT)
         if (evmAddress) {
             try {
                 const { JsonRpcProvider, Contract, formatUnits, formatEther } = await import('ethers');
@@ -372,7 +404,7 @@ export function WDKProvider({ children }: { children: ReactNode }) {
             }
         }
 
-        // Solana balances (SOL + SPL tokens: USDC, USDT)
+        // 2. Solana balances (SOL + SPL tokens: USDC, USDT)
         if (solanaAddress) {
             try {
                 const { Connection, PublicKey } = await import('@solana/web3.js');
@@ -411,7 +443,52 @@ export function WDKProvider({ children }: { children: ReactNode }) {
                 console.warn('[WDK] Solana balance fetch failed:', e.message);
             }
         }
-    }, [state.evmAddress, state.solanaAddress, state.bchNetwork]);
+
+        // 3. Movement balances (MOVE + Movement USDC / USDT)
+        if (movementAddress) {
+            try {
+                const movRpcUrl = 'https://testnet.movementnetwork.xyz/v1';
+                const res = await fetch(`${movRpcUrl}/accounts/${movementAddress}/resources`);
+                if (res.ok) {
+                    const resources = await res.json();
+                    let moveBal = 0;
+                    let usdcBal = 0;
+                    let usdtBal = 0;
+                    let wethBal = 0;
+
+                    const USDC_MOVE_TYPE = '0x45142fb00dde90b950183d8ac2815597892f665c254c3f42b5768bc6ae4c8489';
+                    const USDT_MOVE_TYPE = '0xa663e903b11931807045423e25847425466a0c9777021464e104e845e1123963';
+                    const WETH_MOVE_TYPE = '0xf22bede237a07e121b56d91a491eb7bcdfd1f5907926a9e58338f964a01b17fa::asset::WETH';
+
+                    for (const r of resources) {
+                        const type = r.type || '';
+                        if (type.includes('CoinStore<0x1::aptos_coin::AptosCoin>')) {
+                            moveBal = Number(r.data?.coin?.value || 0) / 1e8;
+                        } else if (type.includes(`CoinStore<${USDC_MOVE_TYPE}>`) || type.toLowerCase().includes('usdc')) {
+                            usdcBal = Number(r.data?.coin?.value || 0) / 1e6;
+                        } else if (type.includes(`CoinStore<${USDT_MOVE_TYPE}>`) || type.toLowerCase().includes('usdt')) {
+                            usdtBal = Number(r.data?.coin?.value || 0) / 1e6;
+                        } else if (type.includes(`CoinStore<${WETH_MOVE_TYPE}>`) || type.toLowerCase().includes('weth')) {
+                            wethBal = Number(r.data?.coin?.value || 0) / 1e8;
+                        }
+                    }
+
+                    setState(s => ({
+                        ...s,
+                        movementBalance: moveBal.toString(),
+                        movementTokenBalances: {
+                            MOVE: moveBal,
+                            USDC: usdcBal,
+                            USDT: usdtBal,
+                            WETH: wethBal,
+                        },
+                    }));
+                }
+            } catch (e: any) {
+                console.warn('[WDK] Movement balance fetch failed:', e.message);
+            }
+        }
+    }, [state.evmAddress, state.solanaAddress, state.movementAddress, state.bchNetwork]);
 
     fetchBalancesRef.current = fetchBalances;
 
@@ -421,7 +498,7 @@ export function WDKProvider({ children }: { children: ReactNode }) {
         fetchBalancesRef.current?.();
         const id = setInterval(() => fetchBalancesRef.current?.(), 30_000);
         return () => clearInterval(id);
-    }, [state.isInitialized, state.evmAddress, state.solanaAddress, state.bchNetwork]);
+    }, [state.isInitialized, state.evmAddress, state.solanaAddress, state.movementAddress, state.bchNetwork]);
 
     const refreshBalances = useCallback(async () => {
         await fetchBalancesRef.current?.();

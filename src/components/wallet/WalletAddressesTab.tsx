@@ -209,7 +209,7 @@ export function WalletAddressesTab({ onChangePassword, onConnectExternal }: Wall
     // Active BCH address tracks the currently-selected network (driven by the navbar toggle)
     const activeBchAddress = isMainnet ? wdk.bchMainnetAddress : wdk.bchChipnetAddress;
 
-    const connectedChainCount = [wdk.evmAddress, activeBchAddress, wdk.solanaAddress, wdk.btcAddress]
+    const connectedChainCount = [wdk.evmAddress, activeBchAddress, wdk.solanaAddress, wdk.btcAddress, wdk.movementAddress]
         .filter(Boolean).length;
 
     return (
@@ -306,6 +306,26 @@ export function WalletAddressesTab({ onChangePassword, onConnectExternal }: Wall
                                 ? `https://explorer.solana.com/address/${wdk.solanaAddress}`
                                 : `https://explorer.solana.com/address/${wdk.solanaAddress}?cluster=devnet`}
                             onCopy={() => copyAddress(wdk.solanaAddress!, 'Solana')}
+                        />
+                    )}
+
+                    {/* Movement */}
+                    {wdk.movementAddress && (
+                        <ChainAddressRow
+                            icon="/logos/movement.svg"
+                            chainName="Movement"
+                            networkLabel={isMainnet ? 'Mainnet' : 'Bardock Testnet'}
+                            networkColor="yellow"
+                            address={wdk.movementAddress}
+                            explorerUrl={`https://explorer.movementnetwork.xyz/account/${wdk.movementAddress}?network=testnet`}
+                            onCopy={() => copyAddress(wdk.movementAddress!, 'Movement')}
+                            balance={wdk.movementBalance ? `${Number(wdk.movementBalance).toFixed(4)} MOVE` : undefined}
+                            footer={!isMainnet && (
+                                <a href="https://faucet.movementnetwork.xyz" target="_blank" rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-[10px] text-yellow-400 hover:text-yellow-300 transition-colors">
+                                    <ExternalLink className="h-2.5 w-2.5" /> Get Bardock MOVE (Faucet)
+                                </a>
+                            )}
                         />
                     )}
 

@@ -32,6 +32,8 @@ function getChainFromSwapType(swapType: string, side: 'sell' | 'buy'): string | 
         'sol-to-bch': ['solana', 'bch'],
         'bch-to-mov': ['bch', 'movement'],
         'mov-to-bch': ['movement', 'bch'],
+        'sol-to-mov': ['solana', 'movement'],
+        'mov-to-sol': ['movement', 'solana'],
         'eth-to-bch': ['eth', 'bch'],
         'bch-to-eth': ['bch', 'eth'],
     };
@@ -65,6 +67,8 @@ function swapTypeBadge(order: BCHOrder) {
         'sol-to-bch': 'SOL → BCH',
         'bch-to-mov': 'BCH → MOVE',
         'mov-to-bch': 'MOVE → BCH',
+        'sol-to-mov': 'SOL → MOVE',
+        'mov-to-sol': 'MOVE → SOL',
         'eth-to-bch': 'ETH → BCH',
         'bch-to-eth': 'BCH → ETH',
     };
@@ -268,17 +272,21 @@ function OrderRow({ order, onClaim, isClaiming, onRefund, isRefunding, onCancel,
 
     const refundExplorerUrl = order.status === 'refunded'
         ? (order.destExplorerUrl
-            || (order.fillTxid && order.swapType === 'sol-to-bch'
-                ? `https://explorer.solana.com/tx/${order.fillTxid}?cluster=devnet`
-                : order.fillTxid
-                    ? `https://chipnet.chaingraph.cash/tx/${order.fillTxid}`
-                    : undefined))
+            || (order.fillTxid && (order.swapType === 'sol-to-bch' || order.swapType === 'bch-to-sol' || order.swapType === 'sol-to-mov' || order.swapType === 'mov-to-sol')
+                ? (order.swapType === 'sol-to-mov' || order.swapType === 'mov-to-sol'
+                    ? `https://explorer.movementnetwork.xyz/txn/${order.fillTxid}?network=testnet`
+                    : `https://explorer.solana.com/tx/${order.fillTxid}?cluster=devnet`)
+                : order.fillTxid && (order.swapType === 'bch-to-mov' || order.swapType === 'mov-to-bch')
+                    ? `https://explorer.movementnetwork.xyz/txn/${order.fillTxid}?network=testnet`
+                    : order.fillTxid
+                        ? `https://chipnet.chaingraph.cash/tx/${order.fillTxid}`
+                        : undefined))
         : undefined;
 
     const destExplorerUrl = refundExplorerUrl || (order.destExplorerUrl
-        || (order.fillTxid && order.swapType === 'bch-to-sol'
+        || (order.fillTxid && (order.swapType === 'bch-to-sol' || order.swapType === 'mov-to-sol')
             ? `https://explorer.solana.com/tx/${order.fillTxid}?cluster=devnet`
-            : order.fillTxid && order.swapType === 'bch-to-mov'
+            : order.fillTxid && (order.swapType === 'bch-to-mov' || order.swapType === 'sol-to-mov')
                 ? `https://explorer.movementnetwork.xyz/txn/${order.fillTxid}?network=testnet`
                 : order.fillTxid && order.swapType === 'bch-to-eth'
                     ? `https://sepolia.etherscan.io/tx/${order.fillTxid}`
@@ -358,7 +366,7 @@ function OrderRow({ order, onClaim, isClaiming, onRefund, isRefunding, onCancel,
                     </Button>
                 )}
 
-                {(order.status === 'failed' || order.status === 'expired' || (order.status === 'pending' && order.expiryTime && Date.now() / 1000 > order.expiryTime)) && onRefund && (order.swapType === 'bch-to-sol' || order.swapType === 'sol-to-bch' || order.swapType === 'bch-to-eth' || order.swapType === 'eth-to-bch') && (
+                {(order.status === 'failed' || order.status === 'expired' || (order.status === 'pending' && order.expiryTime && Date.now() / 1000 > order.expiryTime)) && onRefund && (
                     <Button
                         size="sm"
                         variant="outline"

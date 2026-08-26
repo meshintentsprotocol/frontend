@@ -270,7 +270,7 @@ export function PortfolioActivity() {
                                 tx.type === 'send' ? `Sent ${tx.asset}` :
                                     `Bridged ${tx.asset}`,
                         subtitle: tx.type === 'swap' ? `${tx.amountIn} ${tx.assetIn} → ${tx.amountOut} ${tx.assetOut}` : `${tx.amount} ${tx.asset}`,
-                        valueUsd: tx.valueUsd,
+                        valueUsd: tx.valueUsd ?? 0,
                         timestamp: tx.timestamp,
                         explorerUrl: tx.explorerUrl,
                     });

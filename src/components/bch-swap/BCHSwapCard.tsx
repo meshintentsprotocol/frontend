@@ -17,7 +17,7 @@ import { ConnectWalletButton } from '@/components/connect-wallet-button';
 import { useLocation } from 'react-router-dom';
 import { PriceService, PRICE_FEEDS } from '@/lib/pyth';
 import { CauldronService } from '@/lib/cauldron';
-import { CASHTOKEN_RELAYER_URL, CASHTOKEN_RELAYER_MAINNET_URL, EVM_RELAYER_URL, EVM_RELAYER_MAINNET_URL, SOL_BCH_ZK_SERVER_URL, SOL_BCH_ZK_SERVER_MAINNET_URL } from '@/lib/config';
+import { CASHTOKEN_RELAYER_URL, CASHTOKEN_RELAYER_MAINNET_URL, EVM_RELAYER_URL, EVM_RELAYER_MAINNET_URL, BCH_SOLANA_RELAYER_URL } from '@/lib/config';
 import axios from 'axios';
 import { AUCTION_DURATION, AUCTION_DURATION_PRESETS, formatAuctionDuration, getDefaultAuctionDuration } from '@/lib/appSettings';
 import { PriceData } from '@/types';
@@ -248,36 +248,76 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
     const [fillableRatio, setFillableRatio] = useState(0);
     const [quoteUnavailable, setQuoteUnavailable] = useState(false);
 
+    const getRelayerTokenSymbol = useCallback((token: Token) => {
+        if (token.chain === 'solana') {
+            return token.symbol === 'SOL' ? 'SOL' : (token.address || 'SOL');
+        }
+        if (token.chain === 'movement') {
+            return token.symbol === 'MOVE' ? 'MOVE' : (token.address || 'MOVE');
+        }
+        if (token.chain === 'bch') {
+            return token.symbol === 'BCH' ? 'BCH' : (token.categoryId || 'BCH');
+        }
+        return token.symbol;
+    }, []);
+
     useEffect(() => {
-        if (swapType !== 'same-chain' || !sellAmount || Number(sellAmount) <= 0) {
+        if (!sellAmount || Number(sellAmount) <= 0) {
             setFillableRatio(0);
             setQuoteUnavailable(false);
             return;
         }
         let cancelled = false;
         const isMainnet = wdk.bchNetwork === 'mainnet';
-        const relayerUrl = isMainnet ? CASHTOKEN_RELAYER_MAINNET_URL : CASHTOKEN_RELAYER_URL;
-        const sellCategoryId = sellToken.categoryId || 'BCH';
-        const buyCategoryId = buyToken.categoryId || 'BCH';
-        const sellBaseUnits = Math.floor(Number(sellAmount) * Math.pow(10, sellToken.decimals || 0));
+        const isRelayerCross = ['bch-to-sol', 'sol-to-bch', 'bch-to-mov', 'mov-to-bch', 'sol-to-mov', 'mov-to-sol'].includes(swapType);
 
-        axios.post(`${relayerUrl}/router/quote`, {
-            sellToken: sellCategoryId || 'BCH',
-            buyToken: buyCategoryId || 'BCH',
-            sellAmount: sellBaseUnits.toString(),
-            network: isMainnet ? 'mainnet' : 'chipnet',
-        }).then(res => {
-            if (cancelled) return;
-            const units = Number(res.data?.buyAmount ?? 0) / Math.pow(10, buyToken.decimals || 0);
-            setFillableRatio(units > 0 ? units / Number(sellAmount) : 0);
-            setQuoteUnavailable(false);
-        }).catch(() => {
-            if (cancelled) return;
+        if (swapType === 'same-chain') {
+            const relayerUrl = isMainnet ? CASHTOKEN_RELAYER_MAINNET_URL : CASHTOKEN_RELAYER_URL;
+            const sellCategoryId = sellToken.categoryId || 'BCH';
+            const buyCategoryId = buyToken.categoryId || 'BCH';
+            const sellBaseUnits = Math.floor(Number(sellAmount) * Math.pow(10, sellToken.decimals || 0));
+
+            axios.post(`${relayerUrl}/router/quote`, {
+                sellToken: sellCategoryId || 'BCH',
+                buyToken: buyCategoryId || 'BCH',
+                sellAmount: sellBaseUnits.toString(),
+                network: isMainnet ? 'mainnet' : 'chipnet',
+            }).then(res => {
+                if (cancelled) return;
+                const units = Number(res.data?.buyAmount ?? 0) / Math.pow(10, buyToken.decimals || 0);
+                setFillableRatio(units > 0 ? units / Number(sellAmount) : 0);
+                setQuoteUnavailable(false);
+            }).catch(() => {
+                if (cancelled) return;
+                setFillableRatio(0);
+                setQuoteUnavailable(true);
+            });
+        } else if (isRelayerCross) {
+            const sellSym = getRelayerTokenSymbol(sellToken);
+            const buySym = getRelayerTokenSymbol(buyToken);
+            const sellBaseUnits = Math.floor(Number(sellAmount) * Math.pow(10, sellToken.decimals || 0));
+
+            axios.post(`${BCH_SOLANA_RELAYER_URL}/quote`, {
+                sellToken: sellSym,
+                buyToken: buySym,
+                sellAmount: sellBaseUnits.toString(),
+            }).then(res => {
+                if (cancelled) return;
+                const units = Number(res.data?.buyAmount ?? 0) / Math.pow(10, buyToken.decimals || 0);
+                setFillableRatio(units > 0 ? units / Number(sellAmount) : 0);
+                setQuoteUnavailable(false);
+            }).catch(() => {
+                if (cancelled) return;
+                setFillableRatio(0);
+                setQuoteUnavailable(false);
+            });
+        } else {
             setFillableRatio(0);
-            setQuoteUnavailable(true);
-        });
+            setQuoteUnavailable(false);
+        }
+
         return () => { cancelled = true; };
-    }, [swapType, sellAmount, sellToken, buyToken, wdk.bchNetwork]);
+    }, [swapType, sellAmount, sellToken, buyToken, wdk.bchNetwork, getRelayerTokenSymbol]);
 
     /** What the limit-price input and its presets are anchored to. */
     const referenceRatio = fillableRatio > 0 ? fillableRatio : currentMarketRatio;
@@ -376,21 +416,19 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
             return;
         }
 
-        // SOL ↔ BCH / CashToken cross-chain: hit the zk-server /quote endpoint
-        const isSolCross = (sellToken.chain === 'solana' || buyToken.chain === 'solana');
-        if (isSolCross) {
-            const relayerUrl = isMainnet ? SOL_BCH_ZK_SERVER_MAINNET_URL : SOL_BCH_ZK_SERVER_URL;
-            const sellCat = sellToken.chain === 'solana'
-                ? (sellToken.symbol === 'SOL' ? 'SOL' : sellToken.address || 'SOL')
-                : (sellToken.categoryId || 'BCH');
-            const buyCat = buyToken.chain === 'solana'
-                ? (buyToken.symbol === 'SOL' ? 'SOL' : buyToken.address || 'SOL')
-                : (buyToken.categoryId || 'BCH');
+        // SOL ↔ BCH ↔ Movement cross-chain: hit bch-solana-relayer /quote endpoint
+        const isRelayerCross = ['bch-to-sol', 'sol-to-bch', 'bch-to-mov', 'mov-to-bch', 'sol-to-mov', 'mov-to-sol'].includes(swapType)
+            || sellToken.chain === 'solana' || buyToken.chain === 'solana'
+            || sellToken.chain === 'movement' || buyToken.chain === 'movement';
+
+        if (isRelayerCross) {
+            const sellSym = getRelayerTokenSymbol(sellToken);
+            const buySym = getRelayerTokenSymbol(buyToken);
             const sellBaseUnits = Math.floor(Number(sellAmount) * Math.pow(10, sellToken.decimals || 0));
 
-            axios.post(`${relayerUrl}/quote`, {
-                sellToken: sellCat,
-                buyToken:  buyCat,
+            axios.post(`${BCH_SOLANA_RELAYER_URL}/quote`, {
+                sellToken: sellSym,
+                buyToken: buySym,
                 sellAmount: sellBaseUnits.toString()
             }).then(res => {
                 const quoteBuyAmount = res.data.buyAmount;
@@ -401,8 +439,16 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                     setBuyAmount('0');
                 }
             }).catch(e => {
-                console.error('Failed to get cross-chain SOL quote', e);
-                setBuyAmount('0');
+                console.warn('Relayer quote endpoint error, using fallback oracle price:', e?.message);
+                const sellPrice = getTokenPrice(sellToken);
+                const buyPrice = getTokenPrice(buyToken);
+                if (sellPrice > 0 && buyPrice > 0) {
+                    const usdValue = Number(sellAmount) * sellPrice;
+                    let estimated = (usdValue / buyPrice) * 0.997; // 0.3% fee
+                    setBuyAmount(estimated.toFixed(6));
+                } else {
+                    setBuyAmount('0');
+                }
             });
             return;
         }
@@ -460,12 +506,14 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
     const needsBCHWallet = sellToken.chain === 'bch' || buyToken.chain === 'bch';
     const needsSolanaWallet = sellToken.chain === 'solana' || buyToken.chain === 'solana';
     const needsEthWallet = isEvmChain(sellToken.chain) || isEvmChain(buyToken.chain);
-    
+    const needsMovementWallet = sellToken.chain === 'movement' || buyToken.chain === 'movement';
+
     // bchConnected represents if there's any active BCH wallet
     const bchConnected = isMainActive ? bchWallet.connected : !!activeExtWallet;
     
     const solanaConnected = !!wdk.solanaAddress;
     const ethConnected = !!wdk.evmAddress;
+    const movementConnected = !!wdk.movementAddress;
 
     const canSubmit = useMemo(() => {
         if (!sellAmount || Number(sellAmount) <= 0) return false;
@@ -473,10 +521,11 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
         if (needsBCHWallet && !bchConnected) return false;
         if (needsSolanaWallet && !solanaConnected) return false;
         if (needsEthWallet && !ethConnected) return false;
+        if (needsMovementWallet && !movementConnected) return false;
         if (swapType === 'bch-to-xmr' && (!xmrAddress || !xmrViewKey || !xmrSpendKey)) return false;
         if (swapType === 'xmr-to-bch' && !bchConnected) return false;
         return true;
-    }, [sellAmount, buyAmount, needsBCHWallet, bchConnected, needsSolanaWallet, solanaConnected, needsEthWallet, ethConnected, swapType, xmrAddress, xmrViewKey, xmrSpendKey]);
+    }, [sellAmount, buyAmount, needsBCHWallet, bchConnected, needsSolanaWallet, solanaConnected, needsEthWallet, ethConnected, needsMovementWallet, movementConnected, swapType, xmrAddress, xmrViewKey, xmrSpendKey]);
 
     const parseCustomExpiry = (val: string): number => {
         const str = val.trim().toLowerCase();
@@ -507,6 +556,9 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
         };
         let recipientAddress: string | undefined;
         if (swapType === 'bch-to-sol' && wdk.solanaAddress) recipientAddress = wdk.solanaAddress;
+        else if (swapType === 'bch-to-mov' && wdk.movementAddress) recipientAddress = wdk.movementAddress;
+        else if (swapType === 'sol-to-mov' && wdk.movementAddress) recipientAddress = wdk.movementAddress;
+        else if (swapType === 'mov-to-sol' && wdk.solanaAddress) recipientAddress = wdk.solanaAddress;
         else if (swapType === 'bch-to-xmr' && xmrAddress) recipientAddress = xmrAddress;
         else if ((swapType === 'sol-to-bch' || swapType === 'mov-to-bch' || swapType === 'xmr-to-bch') && bchWallet.address) recipientAddress = bchWallet.address;
         else if (swapType === 'eth-to-bch' && wdk.bchAddress) recipientAddress = wdk.bchAddress;
@@ -525,6 +577,8 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
         'sol-to-bch': { icon: <Sparkles className="h-3 w-3" />, label: 'ZK Swap', color: 'text-violet-400 bg-violet-500/10 border-violet-500/20', desc: `FRI ZK Solana → BCH (auto, ${isMainnet ? 'devnet' : 'devnet'})` },
         'bch-to-mov': { icon: <Globe className="h-3 w-3" />, label: 'Cross Chain', color: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20', desc: 'HTLC relay BCH → Movement' },
         'mov-to-bch': { icon: <Globe className="h-3 w-3" />, label: 'Cross Chain', color: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20', desc: 'HTLC relay Movement → BCH' },
+        'sol-to-mov': { icon: <Globe className="h-3 w-3" />, label: 'Cross Chain', color: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20', desc: 'HTLC relay Solana → Movement' },
+        'mov-to-sol': { icon: <Globe className="h-3 w-3" />, label: 'Cross Chain', color: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20', desc: 'HTLC relay Movement → Solana' },
         'bch-to-xmr': { icon: <Sparkles className="h-3 w-3" />, label: 'Adaptor Sig', color: 'text-orange-400 bg-orange-500/10 border-orange-500/20', desc: 'Adaptor signature swap BCH → XMR' },
         'xmr-to-bch': { icon: <Sparkles className="h-3 w-3" />, label: 'Adaptor Sig', color: 'text-orange-400 bg-orange-500/10 border-orange-500/20', desc: 'Adaptor signature swap XMR → BCH' },
         'eth-to-bch': { icon: <Sparkles className="h-3 w-3" />, label: 'ZK Swap', color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20', desc: `FRI ZK swap ${activeEvmLabel} → BCH (auto)` },
@@ -558,6 +612,13 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
             if (sellToken.type === 'native') return 0; // we don't track native balance in external provider currently either, fallback
             return null;
         }
+        // Movement (MOVE/USDC/USDT) — look up directly in WDK Movement token balances
+        if (sellToken.chain === 'movement' && wdk.movementAddress) {
+            const sym = sellToken.symbol?.toUpperCase();
+            if (sym === 'MOVE') return wdk.movementTokenBalances?.MOVE ?? null;
+            if (sym === 'USDC') return wdk.movementTokenBalances?.USDC ?? null;
+            if (sym === 'USDT') return wdk.movementTokenBalances?.USDT ?? null;
+        }
         // EVM (ETH/USDC/USDT) and Solana (SOL/USDC) — look up in portfolio
         const portfolioChain = sellToken.chain ? PORTFOLIO_CHAIN[sellToken.chain] : undefined;
         if (portfolioChain && portfolio.tokens.length > 0) {
@@ -567,7 +628,7 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
             return entry?.balance ?? null;
         }
         return null;
-    }, [sellToken, bchConnected, bchWallet.balance, bchWallet.tokenBalances, PORTFOLIO_CHAIN, portfolio.tokens]);
+    }, [sellToken, bchConnected, bchWallet.balance, bchWallet.tokenBalances, PORTFOLIO_CHAIN, portfolio.tokens, wdk.movementAddress, wdk.movementTokenBalances]);
 
     const setPercent = (pct: number) => {
         if (sellBalance === null) return;

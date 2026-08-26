@@ -6,8 +6,7 @@
 import {
     CASHTOKEN_RELAYER_URL,
     CASHTOKEN_RELAYER_MAINNET_URL,
-    SOL_BCH_ZK_SERVER_URL,
-    SOL_BCH_ZK_SERVER_MAINNET_URL,
+    BCH_SOLANA_RELAYER_URL,
 } from './config';
 
 const BSC_BCH_SERVER_URL = import.meta.env.VITE_BSC_BCH_SERVER_URL || 'http://localhost:3005';
@@ -220,7 +219,7 @@ export async function fetchBscBchTxs(isMainnet: boolean): Promise<ProtocolTx[]> 
 }
 
 export async function fetchSolBchTxs(isMainnet: boolean): Promise<ProtocolTx[]> {
-    const base = isMainnet ? SOL_BCH_ZK_SERVER_MAINNET_URL : SOL_BCH_ZK_SERVER_URL;
+    const base = BCH_SOLANA_RELAYER_URL;
     const network = isMainnet ? 'mainnet' : 'testnet';
     const data = await safeFetch<{ active?: RawSolIntent[]; completed?: RawSolIntent[] }>(
         `${base}/orders?network=${network}`, { active: [], completed: [] }
