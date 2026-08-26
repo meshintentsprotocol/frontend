@@ -9,6 +9,7 @@ export const SOL_BCH_ZK_SERVER_URL         = import.meta.env.VITE_SOL_BCH_ZK_SER
 export const SOL_BCH_ZK_SERVER_MAINNET_URL = import.meta.env.VITE_SOL_BCH_ZK_SERVER_MAINNET_URL  || "http://localhost:3007";
 export const EVM_RELAYER_URL               = import.meta.env.VITE_EVM_RELAYER_URL                || "http://localhost:3005";
 export const EVM_RELAYER_MAINNET_URL       = import.meta.env.VITE_EVM_RELAYER_MAINNET_URL        || "http://localhost:3005";
+export const BCH_MESH_SERVER_URL           = import.meta.env.VITE_MESH_SERVER_URL                || import.meta.env.VITE_MESH_API_URL || "http://localhost:3001";
 export const SOLANA_RPC_URL = "https://devnet.helius-rpc.com/?api-key=7ceb6609-616a-4e84-ba92-5ee3d04eb5e7";
 export const BCH_NETWORK = "chipnet";
 

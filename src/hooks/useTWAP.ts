@@ -2,8 +2,9 @@ import { useState, useCallback, useEffect } from 'react';
 import type { TwapQuoteResponse, TwapOrderRecord } from '@/types';
 import { useWDK } from '@/context/WDKProvider';
 import { useBCHWallet } from '@/context/BCHWalletProvider';
+import { BCH_MESH_SERVER_URL } from '@/lib/config';
 
-const MESH_API_URL = import.meta.env.VITE_MESH_API_URL || 'http://localhost:3001';
+const MESH_API_URL = BCH_MESH_SERVER_URL;
 
 export function useTWAP(pollIntervalMs: number = 5000) {
   const wdk = useWDK();
