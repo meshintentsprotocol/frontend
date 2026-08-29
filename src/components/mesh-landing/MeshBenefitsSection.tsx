@@ -1,286 +1,321 @@
 import { motion, useInView } from 'framer-motion';
-import { useRef, useState, useEffect, type ReactNode } from 'react';
-import { Shield, Zap, Layers, Activity } from 'lucide-react';
+import { useRef, useState, useEffect } from 'react';
+import {
+  Shield,
+  Zap,
+  Layers,
+  Activity,
+  CheckCircle2,
+  XCircle,
+  Sparkles,
+  TrendingUp,
+  RefreshCw,
+  Lock,
+  DollarSign,
+  ArrowRight,
+  Sliders,
+  Flame,
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
 
-// Animated sats counter
-function SatsCounter({ target, inView }: { target: number; inView: boolean }) {
-  const [value, setValue] = useState(0);
+// ─── Animated Savings Counter ────────────────────────────────────────────────
+
+function SavingsCounter({ inView }: { inView: boolean }) {
+  const [bchCost, setBchCost] = useState(0);
+  const [evmCost, setEvmCost] = useState(0);
 
   useEffect(() => {
     if (!inView) return;
-    const duration = 1200;
+    const duration = 1400;
     const start = Date.now();
     const step = () => {
       const elapsed = Date.now() - start;
       const progress = Math.min(elapsed / duration, 1);
       const eased = 1 - Math.pow(1 - progress, 3);
-      setValue(Math.round(eased * target));
+      setBchCost(Number((eased * 0.008).toFixed(3)));
+      setEvmCost(Math.round(eased * 68));
       if (progress < 1) requestAnimationFrame(step);
     };
     requestAnimationFrame(step);
-  }, [inView, target]);
-
-  return <span className="font-black font-mono text-3xl text-white">~{value.toLocaleString()}</span>;
-}
-
-// Animated fill bar
-function FillBar({ inView }: { inView: boolean }) {
-  const segments = [
-    { pct: 72, label: 'Your Pool (Partial Fill)', color: 'bg-emerald-500' },
-    { pct: 28, label: 'Remainder (Auto-Recoined)', color: 'bg-teal-600/50' },
-  ];
-  return (
-    <div className="space-y-2 mt-2">
-      {segments.map((seg, i) => (
-        <div key={i}>
-          <div className="flex justify-between text-[10px] font-mono text-zinc-500 mb-1">
-            <span>{seg.label}</span>
-            <span>{seg.pct}%</span>
-          </div>
-          <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
-            <motion.div
-              className={`h-full rounded-full ${seg.color}`}
-              initial={{ width: 0 }}
-              animate={inView ? { width: `${seg.pct}%` } : {}}
-              transition={{ duration: 1.0, delay: 0.3 + i * 0.2, ease: 'easeOut' }}
-            />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// Scrolling price feed
-function PriceFeed() {
-  const rows = [
-    { pair: 'BCH/pUSD', price: '324.40', change: '+2.4%', up: true },
-    { pair: 'BCH/mUSD', price: '323.91', change: '+1.8%', up: true },
-    { pair: 'pUSD/BCH', price: '0.003082', change: '-0.1%', up: false },
-    { pair: 'BCH/pUSD', price: '324.55', change: '+2.5%', up: true },
-    { pair: 'BCH/mUSD', price: '323.88', change: '+1.7%', up: true },
-  ];
+  }, [inView]);
 
   return (
-    <div className="relative overflow-hidden h-24 mt-3">
-      <div
-        className="absolute inset-0 flex flex-col gap-1.5"
-        style={{ animation: 'feed-scroll 4s linear infinite' }}
-      >
-        {[...rows, ...rows].map((r, i) => (
-          <div key={i} className="flex items-center justify-between text-xs shrink-0">
-            <span className="font-mono text-zinc-400">{r.pair}</span>
-            <span className="font-mono font-bold text-white">{r.price}</span>
-            <span className={`font-mono text-[11px] ${r.up ? 'text-emerald-400' : 'text-red-400'}`}>{r.change}</span>
-          </div>
-        ))}
+    <div className="grid grid-cols-2 gap-3 mt-4">
+      <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-center">
+        <div className="text-2xl font-black font-mono text-emerald-400">${bchCost}</div>
+        <div className="text-[11px] text-zinc-400 font-medium mt-0.5">BCHMesh Bulk Rebalance</div>
+        <div className="text-[10px] text-emerald-500/80 font-mono">~1,500 sats flat</div>
       </div>
-      <div className="absolute inset-x-0 top-0 h-4 bg-gradient-to-b from-[#0C1610] to-transparent pointer-events-none" />
-      <div className="absolute inset-x-0 bottom-0 h-4 bg-gradient-to-t from-[#0C1610] to-transparent pointer-events-none" />
-      <style>{`
-        @keyframes feed-scroll {
-          0%   { transform: translateY(0); }
-          100% { transform: translateY(-50%); }
-        }
-      `}</style>
-    </div>
-  );
-}
-
-// ─── Card A: Non-Custodial ─────────────────────────────────────────────────
-function CardNonCustodial() {
-  return (
-    <div className="mt-4 space-y-3">
-      <p className="text-sm text-zinc-400 leading-relaxed">
-        Your keys, your funds. The covenant contract lives on-chain and{' '}
-        <strong className="text-white">only you can dock</strong> (withdraw).
-        No admin keys. No upgradeable proxies. Pure CashScript logic.
-      </p>
-      <div className="flex flex-wrap gap-2 mt-4">
-        {['P2SH32', 'CashScript', 'Non-upgradeable'].map(tag => (
-          <span key={tag} className="px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 text-[10px] font-bold border border-emerald-500/15">
-            {tag}
-          </span>
-        ))}
-      </div>
-      <div className="relative flex items-center justify-center h-20 mt-2">
-        <div className="w-16 h-16 rounded-full bg-emerald-500/10 flex items-center justify-center animate-pulse">
-          <Shield className="w-8 h-8 text-emerald-400" />
-        </div>
-        <div className="absolute inset-0 rounded-full bg-emerald-500/5 animate-ping" style={{ animationDuration: '2s' }} />
+      <div className="p-3.5 rounded-2xl bg-red-500/10 border border-red-500/20 text-center">
+        <div className="text-2xl font-black font-mono text-red-400">${evmCost}</div>
+        <div className="text-[11px] text-zinc-400 font-medium mt-0.5">EVM (Uniswap v3/v4)</div>
+        <div className="text-[10px] text-red-400/80 font-mono">20 rungs @ 35 gwei</div>
       </div>
     </div>
   );
 }
 
-// ─── Card B: Sub-Cent Fees ─────────────────────────────────────────────────
-function CardSubCentFees({ inView }: { inView: boolean }) {
-  return (
-    <div className="mt-3">
-      <SatsCounter target={1500} inView={inView} />
-      <p className="text-xs text-zinc-500 mt-1">sats per spawn transaction</p>
-      <p className="text-sm text-zinc-400 mt-3">
-        Rebalance an entire grid in one flat tx. No gas auctions. No priority fees.
-      </p>
-    </div>
-  );
-}
+// ─── Partial Fill Auto-Recycle Bar ───────────────────────────────────────────
 
-// ─── Card C: Partial Fill ──────────────────────────────────────────────────
-function CardPartialFill({ inView }: { inView: boolean }) {
+function AutoRecycleVisualizer({ inView }: { inView: boolean }) {
   return (
-    <div className="mt-3">
-      <p className="text-sm text-zinc-400">
-        Takers can partially fill your pool. The remainder{' '}
-        <strong className="text-white">auto-recreates</strong> the covenant UTXO.
-      </p>
-      <FillBar inView={inView} />
-    </div>
-  );
-}
-
-// ─── Card D: Live Oracle ───────────────────────────────────────────────────
-function CardLiveOracle() {
-  return (
-    <div className="mt-3 grid sm:grid-cols-2 gap-4">
-      <p className="text-sm text-zinc-400 leading-relaxed">
-        Tracks <strong className="text-white">Cauldron DEX spot prices</strong> and Pyth oracle feeds
-        in real-time. Your Oracle Curved strategy adapts dynamically — always competitive, never stale.
-      </p>
-      <div className="rounded-xl bg-emerald-500/5 border border-emerald-500/10 px-3 py-2 overflow-hidden">
-        <p className="text-[10px] font-mono text-emerald-400 mb-1 uppercase tracking-widest">Live Prices</p>
-        <PriceFeed />
+    <div className="space-y-3 mt-4">
+      <div className="flex justify-between text-xs font-mono">
+        <span className="text-zinc-400">Taker Fill (Captured Fee)</span>
+        <span className="text-emerald-400 font-bold">65% Filled</span>
+      </div>
+      <div className="h-3 rounded-full bg-white/5 overflow-hidden p-0.5 border border-white/10 flex">
+        <motion.div
+          className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400"
+          initial={{ width: 0 }}
+          animate={inView ? { width: '65%' } : {}}
+          transition={{ duration: 1.2, ease: 'easeOut' }}
+        />
+        <motion.div
+          className="h-full rounded-full bg-cyan-500/30"
+          initial={{ width: 0 }}
+          animate={inView ? { width: '35%' } : {}}
+          transition={{ duration: 1.2, delay: 0.2, ease: 'easeOut' }}
+        />
+      </div>
+      <div className="flex justify-between text-[10px] font-mono text-zinc-500">
+        <span className="text-emerald-400">● 6.5 BCH Executed (Maker fee earned)</span>
+        <span className="text-cyan-400">● 3.5 BCH Auto-Recoined to Covenant</span>
       </div>
     </div>
   );
 }
 
-// ─── Shared card shell props ───────────────────────────────────────────────
-interface BentoCardProps {
-  icon: ReactNode;
-  title: string;
-  iconBg: string;
-  border: string;
-  glow: string;
-  children: ReactNode;
-  className?: string;
-  delay?: number;
-  inView: boolean;
-  animDir?: 'left' | 'right' | 'up';
-}
-
-function BentoCard({ icon, title, iconBg, border, glow, children, className = '', delay = 0, inView, animDir = 'up' }: BentoCardProps) {
-  const initial = animDir === 'left' ? { opacity: 0, x: -30 } : animDir === 'right' ? { opacity: 0, x: 30 } : { opacity: 0, y: 30 };
-  return (
-    <motion.div
-      initial={initial}
-      animate={inView ? { opacity: 1, x: 0, y: 0 } : {}}
-      transition={{ duration: 0.6, delay, ease: 'easeOut' }}
-      className={`rounded-3xl border bg-[#0C0C0F] backdrop-blur-xl p-6 transition-all duration-500 shadow-lg ${border} ${glow} ${className}`}
-    >
-      <div className={`w-11 h-11 rounded-xl ${iconBg} flex items-center justify-center mb-4`}>
-        {icon}
-      </div>
-      <h3 className="text-xl font-black text-white mb-1">{title}</h3>
-      {children}
-    </motion.div>
-  );
-}
+// ─── Main Benefits Section ───────────────────────────────────────────────────
 
 export function MeshBenefitsSection() {
   const ref = useRef(null);
-  const inView = useInView(ref, { once: true, margin: '-80px' });
+  const inView = useInView(ref, { once: true, margin: '-60px' });
 
   return (
-    <section ref={ref} className="relative py-24 lg:py-32 bg-[#0D0D0E] overflow-hidden">
-      {/* Background */}
+    <section ref={ref} className="relative py-28 lg:py-36 bg-[#050505] overflow-hidden border-t border-white/5">
+      {/* Background Lighting */}
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute bottom-0 left-1/3 w-[500px] h-[500px] bg-emerald-500/4 rounded-full blur-[150px]" />
-        <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-10 mix-blend-overlay" />
+        <div className="absolute top-1/3 left-1/4 w-[600px] h-[600px] bg-emerald-500/5 rounded-full blur-[180px]" />
+        <div className="absolute bottom-10 right-1/4 w-[500px] h-[500px] bg-cyan-500/5 rounded-full blur-[160px]" />
+        <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-15 mix-blend-overlay" />
       </div>
 
-      <div className="container mx-auto px-4 relative z-10">
+      <div className="container mx-auto px-4 relative z-10 max-w-7xl">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 24 }}
           animate={inView ? { opacity: 1, y: 0 } : {}}
           transition={{ duration: 0.6 }}
-          className="text-center mb-16"
+          className="text-center mb-16 md:mb-20 max-w-3xl mx-auto"
         >
-          <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-white/10 bg-white/[0.03] text-[11px] font-bold uppercase tracking-widest text-zinc-400 mb-6">
+          <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-xs font-bold uppercase tracking-widest text-emerald-300 mb-4 backdrop-blur-md">
+            <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
             Why BCHMesh
           </span>
-          <h2 className="text-4xl md:text-6xl font-black tracking-tighter text-white">
-            Built for{' '}
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-400">
-              Real LPs
-            </span>
+          <h2 className="text-4xl sm:text-5xl md:text-6xl font-black tracking-tight text-white leading-tight">
+            Eradicating{' '}
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400">
+              Impermanent Loss
+            </span>{' '}
+            & Capital Fragmentation
           </h2>
-          <p className="mt-4 text-lg text-zinc-400 max-w-xl mx-auto">
-            No custodians. No wrapped tokens. No permission needed. Just your capital, on-chain, earning.
+          <p className="mt-4 text-base sm:text-lg text-zinc-400 leading-relaxed">
+            Traditional AMMs dilute your yield, split your inventory fractionally across pools, and bleed you with gas.
+            BCHMesh introduces a unified concentrated liquidity standard built on Bitcoin Cash covenants.
           </p>
         </motion.div>
 
-        {/* Bento grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          {/* Row 1 left: tall card (Non-Custodial) — spans 2 rows */}
-          <BentoCard
-            inView={inView}
-            delay={0}
-            animDir="left"
-            icon={<Shield className="w-5 h-5 text-emerald-400" />}
-            title="Non-Custodial"
-            iconBg="bg-emerald-500/10"
-            border="border-emerald-500/10 hover:border-emerald-500/30"
-            glow="hover:shadow-emerald-500/10"
-            className="md:row-span-2"
-          >
-            <CardNonCustodial />
-          </BentoCard>
+        {/* ─── 1. Head-to-Head Comparison Matrix (BCHMesh vs Traditional AMMs) ─── */}
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={inView ? { opacity: 1, y: 0 } : {}}
+          transition={{ duration: 0.7, delay: 0.1 }}
+          className="mb-16 rounded-3xl border border-white/10 bg-[#0c0c10] overflow-hidden shadow-2xl backdrop-blur-xl"
+        >
+          <div className="p-6 md:p-8 border-b border-white/5 bg-white/[0.02] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <span className="text-xs uppercase tracking-widest text-emerald-400 font-mono font-semibold">
+                Architecture Breakdown
+              </span>
+              <h3 className="text-2xl font-bold text-white mt-1">BCHMesh vs. Traditional EVM AMMs</h3>
+            </div>
+            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-300 font-semibold">
+              <Zap className="w-3.5 h-3.5 text-emerald-400" />
+              N× Virtual Capital Efficiency Multiplier
+            </div>
+          </div>
 
-          {/* Row 1 right: Sub-Cent Fees */}
-          <BentoCard
-            inView={inView}
-            delay={0.1}
-            animDir="right"
-            icon={<Zap className="w-5 h-5 text-teal-400" />}
-            title="Sub-Cent Fees"
-            iconBg="bg-teal-500/10"
-            border="border-teal-500/10 hover:border-teal-500/30"
-            glow="hover:shadow-teal-500/10"
-          >
-            <CardSubCentFees inView={inView} />
-          </BentoCard>
+          <div className="divide-y divide-white/5 overflow-x-auto text-sm">
+            {[
+              {
+                dimension: 'Multi-Market Liquidity Deployment',
+                mesh: '100% of single BCH deposit available to ALL trading pairs simultaneously (Mode 4 shared depth)',
+                meshHighlight: true,
+                trad: 'Must split capital fractionally (e.g. 33% / 33% / 33%) across isolated pools',
+              },
+              {
+                dimension: 'High-Frequency Grid Rebalance Fee',
+                mesh: '< $0.01 flat fee to re-center 20+ rungs in 1 transaction (~1,500 sats)',
+                meshHighlight: true,
+                trad: '$50 – $100+ gas on Ethereum / L2 priority bidding wars',
+              },
+              {
+                dimension: 'Paired Token Inventory Requirement',
+                mesh: '0% Paired Inventory: Hold pure single-asset BCH with zero unwanted token exposure',
+                meshHighlight: true,
+                trad: 'Mandatory 50/50 token pair holding (subject to token rug-pulls and decay)',
+              },
+              {
+                dimension: 'Impermanent Loss Exposure',
+                mesh: 'Zero IL on unrouted capital; single-sided fills execute purely as profitable limit orders',
+                meshHighlight: true,
+                trad: 'Constant arbitrage bleed and toxic flow to MEV searchers',
+              },
+              {
+                dimension: 'Smart Contract & Reentrancy Security',
+                mesh: 'Stateless CashScript UTXO covenants (CHIP-2021-02) with zero reentrancy attack vectors',
+                meshHighlight: true,
+                trad: 'Complex EVM state storage susceptible to reentrancy and proxy governance hacks',
+              },
+            ].map((row, i) => (
+              <div key={i} className="grid grid-cols-1 md:grid-cols-12 p-5 md:p-6 gap-4 items-center hover:bg-white/[0.01] transition-colors">
+                <div className="md:col-span-4 font-bold text-white flex items-center gap-2.5">
+                  <div className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+                  {row.dimension}
+                </div>
+                <div className="md:col-span-4 flex items-start gap-2.5 text-emerald-300 font-medium">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                  <span>{row.mesh}</span>
+                </div>
+                <div className="md:col-span-4 flex items-start gap-2.5 text-zinc-500">
+                  <XCircle className="w-4 h-4 text-red-400/70 shrink-0 mt-0.5" />
+                  <span>{row.trad}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </motion.div>
 
-          {/* Row 2 right: Partial Fill */}
-          <BentoCard
-            inView={inView}
-            delay={0.18}
-            animDir="right"
-            icon={<Layers className="w-5 h-5 text-cyan-400" />}
-            title="Partial Fill Support"
-            iconBg="bg-cyan-500/10"
-            border="border-cyan-500/10 hover:border-cyan-500/30"
-            glow="hover:shadow-cyan-500/10"
-          >
-            <CardPartialFill inView={inView} />
-          </BentoCard>
-
-          {/* Row 3: Wide card — Oracle (spans 2 cols) */}
+        {/* ─── 2. 4 Core Pillars Bento Grid ─────────────────────────────────── */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Pillar 1: Single-Asset Multi-Market */}
           <motion.div
-            initial={{ opacity: 0, y: 30 }}
+            initial={{ opacity: 0, y: 25 }}
             animate={inView ? { opacity: 1, y: 0 } : {}}
-            transition={{ duration: 0.6, delay: 0.26, ease: 'easeOut' }}
-            className="md:col-span-2 rounded-3xl border border-amber-500/10 hover:border-amber-500/30 bg-gradient-to-br from-[#0C1610] to-[#0C0C0F] backdrop-blur-xl p-6 transition-all duration-500 shadow-lg hover:shadow-amber-500/10"
+            transition={{ duration: 0.6, delay: 0.2 }}
+            className="p-8 rounded-3xl bg-[#0c0c10] border border-emerald-500/20 hover:border-emerald-500/40 transition-all flex flex-col justify-between"
           >
-            <div className="flex items-start gap-4">
-              <div className="w-11 h-11 rounded-xl bg-amber-500/10 flex items-center justify-center shrink-0">
-                <Activity className="w-5 h-5 text-amber-400" />
+            <div>
+              <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mb-6">
+                <Layers className="w-6 h-6 text-emerald-400" />
               </div>
-              <div className="flex-1">
-                <h3 className="text-xl font-black text-white mb-1">Live Oracle Integration</h3>
-                <CardLiveOracle />
+              <span className="text-xs uppercase tracking-widest text-emerald-400 font-mono font-semibold">
+                Pillar 01
+              </span>
+              <h3 className="text-2xl font-bold text-white mt-1 mb-3">
+                100% Shared Multi-Market Liquidity
+              </h3>
+              <p className="text-sm text-zinc-400 leading-relaxed">
+                Deposit pure BCH once via <code className="text-emerald-300 bg-emerald-500/10 px-1.5 py-0.5 rounded font-mono">ship()</code>.
+                Your entire balance is simultaneously available to <code className="text-zinc-200">BCH ➔ pUSD</code>,{' '}
+                <code className="text-zinc-200">BCH ➔ mUSD</code>, and <code className="text-zinc-200">BCH ➔ FUR</code> with an $N\times$ virtual depth multiplier.
+              </p>
+            </div>
+
+            <div className="mt-6 p-4 rounded-2xl bg-white/[0.02] border border-white/5 space-y-2 text-xs font-mono">
+              <div className="flex justify-between text-zinc-400">
+                <span>Deposited Capital:</span>
+                <span className="text-white font-bold">10 BCH ($3,244)</span>
               </div>
+              <div className="flex justify-between text-emerald-400 font-semibold">
+                <span>Active Network Depth:</span>
+                <span>30 BCH ($9,732 Virtual Depth)</span>
+              </div>
+            </div>
+          </motion.div>
+
+          {/* Pillar 2: Sub-Cent Rebalancing */}
+          <motion.div
+            initial={{ opacity: 0, y: 25 }}
+            animate={inView ? { opacity: 1, y: 0 } : {}}
+            transition={{ duration: 0.6, delay: 0.3 }}
+            className="p-8 rounded-3xl bg-[#0c0c10] border border-teal-500/20 hover:border-teal-500/40 transition-all flex flex-col justify-between"
+          >
+            <div>
+              <div className="w-12 h-12 rounded-2xl bg-teal-500/10 border border-teal-500/20 flex items-center justify-center mb-6">
+                <Zap className="w-6 h-6 text-teal-400" />
+              </div>
+              <span className="text-xs uppercase tracking-widest text-teal-400 font-mono font-semibold">
+                Pillar 02
+              </span>
+              <h3 className="text-2xl font-bold text-white mt-1 mb-3">
+                Sub-Cent ($0.01) High-Frequency Rebalancing
+              </h3>
+              <p className="text-sm text-zinc-400 leading-relaxed">
+                Active market making on Ethereum is crippled by gas costs. On Bitcoin Cash, an automated grid bot can cancel and spawn 20+ strategy UTXOs for a flat fee of ~1,500 sats ($0.008).
+              </p>
+            </div>
+
+            <SavingsCounter inView={inView} />
+          </motion.div>
+
+          {/* Pillar 3: Partial Fills & Auto-Recycling */}
+          <motion.div
+            initial={{ opacity: 0, y: 25 }}
+            animate={inView ? { opacity: 1, y: 0 } : {}}
+            transition={{ duration: 0.6, delay: 0.4 }}
+            className="p-8 rounded-3xl bg-[#0c0c10] border border-cyan-500/20 hover:border-cyan-500/40 transition-all flex flex-col justify-between"
+          >
+            <div>
+              <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center mb-6">
+                <RefreshCw className="w-6 h-6 text-cyan-400" />
+              </div>
+              <span className="text-xs uppercase tracking-widest text-cyan-400 font-mono font-semibold">
+                Pillar 03
+              </span>
+              <h3 className="text-2xl font-bold text-white mt-1 mb-3">
+                Autonomous Recycled Liquidity Loop
+              </h3>
+              <p className="text-sm text-zinc-400 leading-relaxed">
+                When a taker partially fills your pool, the covenant contract automatically recreates the remaining funds as a new UTXO. Your liquidity compounds and recycles continuously on-chain.
+              </p>
+            </div>
+
+            <AutoRecycleVisualizer inView={inView} />
+          </motion.div>
+
+          {/* Pillar 4: Non-Custodial Stateless Covenants */}
+          <motion.div
+            initial={{ opacity: 0, y: 25 }}
+            animate={inView ? { opacity: 1, y: 0 } : {}}
+            transition={{ duration: 0.6, delay: 0.5 }}
+            className="p-8 rounded-3xl bg-[#0c0c10] border border-violet-500/20 hover:border-violet-500/40 transition-all flex flex-col justify-between"
+          >
+            <div>
+              <div className="w-12 h-12 rounded-2xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center mb-6">
+                <Shield className="w-6 h-6 text-violet-400" />
+              </div>
+              <span className="text-xs uppercase tracking-widest text-violet-400 font-mono font-semibold">
+                Pillar 04
+              </span>
+              <h3 className="text-2xl font-bold text-white mt-1 mb-3">
+                Stateless P2SH32 CashScript Security
+              </h3>
+              <p className="text-sm text-zinc-400 leading-relaxed">
+                Your keys, your funds. The covenant contract lives on Bitcoin Cash Layer-1. Only you hold the docking key to withdraw your deposit. No admin multisigs, no pause buttons, no upgradeable proxies.
+              </p>
+            </div>
+
+            <div className="mt-6 flex flex-wrap gap-2">
+              {['P2SH32 32-Byte Hash', 'CHIP-2021-02 CashTokens', 'Zero Reentrancy Attack Surface', 'Non-Upgradeable Logic'].map((tag) => (
+                <span
+                  key={tag}
+                  className="px-3 py-1.5 rounded-full bg-violet-500/10 text-violet-300 text-[11px] font-semibold border border-violet-500/20"
+                >
+                  {tag}
+                </span>
+              ))}
             </div>
           </motion.div>
         </div>
@@ -288,3 +323,4 @@ export function MeshBenefitsSection() {
     </section>
   );
 }
+
