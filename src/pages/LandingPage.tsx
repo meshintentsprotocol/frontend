@@ -5,8 +5,7 @@ import { BentoSection } from '@/components/landing/bento';
 import { LiveOnSection } from '@/components/landing/LiveOnSection';
 import { HeroStatsSection } from '@/components/landing/HeroStatsSection';
 import { RoadmapSection } from '@/components/landing/roadmap/RoadmapSection';
-
-
+import { KnowledgeBaseLandingSection } from '@/components/landing/KnowledgeBaseLandingSection';
 
 export default function LandingPage() {
     return (
@@ -25,6 +24,9 @@ export default function LandingPage() {
 
                 {/* The Road to 2026 */}
                 <RoadmapSection />
+
+                {/* Knowledge Base & Deep-Dive Articles */}
+                <KnowledgeBaseLandingSection />
 
                 <FAQ />
             </main>

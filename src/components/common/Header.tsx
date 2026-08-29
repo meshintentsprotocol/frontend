@@ -59,6 +59,7 @@ export function Header() {
         { name: 'Features', path: '/features', icon: Zap },
         { name: 'Ecosystem', path: '/ecosystem', icon: Globe },
         { name: 'Integrate', path: '/integrate', icon: Puzzle },
+        { name: 'Knowledge Base', path: '/kb', icon: BookOpen },
     ];
 
     const renderMobileMenu = () => (

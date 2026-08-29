@@ -21,6 +21,7 @@ const footerLinks = {
         { label: 'Monitor', href: '/monitor' },
     ],
     resources: [
+        { label: 'Knowledge Base', href: '/kb' },
         { label: 'Documentation', href: 'https://docs.intentsprotocol.xyz/', external: true },
         { label: 'GitHub', href: 'https://github.com/Intents-Swaps', external: true },
         { label: 'API Reference', href: 'https://docs.intentsprotocol.xyz/', external: true },

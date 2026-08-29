@@ -2,22 +2,43 @@
     {
         "id": "getting-started",
         "title": "Getting Started",
-        "description": "Learn the basics of BCH Intent Protocol and DeFi",
-        "articleCount": 2,
+        "description": "Learn the basics of BCH Intent Protocol and decentralized trading",
+        "articleCount": 1,
         "icon": "book-open"
     },
     {
+        "id": "bchmesh",
+        "title": "BCHMesh & Liquidity",
+        "description": "Non-custodial concentrated liquidity, 100% shared multi-route mesh, and sub-cent rebalancing",
+        "articleCount": 2,
+        "icon": "layers"
+    },
+    {
+        "id": "cross-chain",
+        "title": "Cross-Chain & Monero",
+        "description": "Trustless atomic swaps across Solana, EVM, Movement, and Monero (XMR)",
+        "articleCount": 2,
+        "icon": "globe"
+    },
+    {
+        "id": "developers",
+        "title": "Developers & Monetization",
+        "description": "SDK integration, 1-line wallet monetization, and zero-inventory solver networks",
+        "articleCount": 2,
+        "icon": "code"
+    },
+    {
         "id": "features",
-        "title": "Features",
-        "description": "Explore platform capabilities",
+        "title": "Protocol Features",
+        "description": "Dutch auctions, HTLC atomic locks, and CashScript covenant mechanics",
         "articleCount": 2,
         "icon": "lightbulb"
     },
     {
         "id": "documentation",
         "title": "Documentation",
-        "description": "Technical specs and developer guides",
+        "description": "Technical specifications and architectural references",
         "articleCount": 1,
         "icon": "file-text"
     }
-]
+]
