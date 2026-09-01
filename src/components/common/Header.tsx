@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import { useWDK } from '@/context/WDKProvider';
 
 import { MeshNavDropdown, MESH_PAGES } from '@/components/common/MeshNavDropdown';
+import { TradeNavDropdown } from '@/components/common/TradeNavDropdown';
 
 // Define Social Icons
 const XIcon = () => (
@@ -48,8 +49,6 @@ export function Header() {
 
     // Launch App Nav Items
     const appPrimaryNavItems: { name: string; path: string; icon: LucideIcon }[] = [
-        { name: 'Overview', path: '/overview', icon: Compass },
-        { name: 'Trade', path: '/trade', icon: ArrowLeftRight },
         { name: 'Portfolio', path: '/portfolio', icon: Wallet },
         { name: 'Explore', path: '/explore', icon: Compass },
     ];
@@ -275,36 +274,11 @@ export function Header() {
                     {/* App Desktop Nav (Only shown if NOT landing page) */}
                     {!isLandingPage && (
                         <nav className="hidden lg:flex items-center gap-6 xl:gap-8">
-                            <Link
-                                to="/overview"
-                                className={cn(
-                                    "text-[15px] font-semibold transition-all duration-300 hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)] relative group py-2",
-                                    location.pathname === '/overview' ? "text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]" : "text-zinc-300"
-                                )}
-                            >
-                                Overview
-                                <span className={cn(
-                                    "absolute bottom-0 left-0 w-full h-[2px] bg-emerald-400 scale-x-0 transition-transform duration-300 group-hover:scale-x-100 origin-left shadow-[0_0_8px_rgba(52,211,153,0.8)]",
-                                    location.pathname === '/overview' && "scale-x-100"
-                                )} />
-                            </Link>
-
                             {/* Mesh Protocol Dropdown Menu */}
                             <MeshNavDropdown variant="app" />
 
-                            <Link
-                                to="/trade"
-                                className={cn(
-                                    "text-[15px] font-semibold transition-all duration-300 hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)] relative group py-2",
-                                    location.pathname === '/trade' ? "text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]" : "text-zinc-300"
-                                )}
-                            >
-                                Trade
-                                <span className={cn(
-                                    "absolute bottom-0 left-0 w-full h-[2px] bg-emerald-400 scale-x-0 transition-transform duration-300 group-hover:scale-x-100 origin-left shadow-[0_0_8px_rgba(52,211,153,0.8)]",
-                                    location.pathname === '/trade' && "scale-x-100"
-                                )} />
-                            </Link>
+                            {/* Trade Dropdown (Swap / Limit / TWAP) */}
+                            <TradeNavDropdown />
 
                             <Link
                                 to="/portfolio"

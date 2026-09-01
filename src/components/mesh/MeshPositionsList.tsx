@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   RefreshCw,
   PlusCircle,
@@ -118,6 +118,7 @@ interface MeshPositionsListProps {
 
 export function MeshPositionsList({ onCreateNew }: MeshPositionsListProps) {
   const wdk = useWDK();
+  const navigate = useNavigate();
   const isConnected = Boolean(wdk.bchAddress || wdk.bchWallet);
   const { positions, loading, refresh, bchUsdPrice } = useMeshServer(12_000);
   const { data: bchSats = 0 } = useBchBalances(10_000);
@@ -724,7 +725,8 @@ export function MeshPositionsList({ onCreateNew }: MeshPositionsListProps) {
                                   return (
                                     <div
                                       key={`${pos.raw.txid}:${pos.raw.vout}:${pos.focusSymbol}`}
-                                      className="grid grid-cols-12 gap-3 items-center p-3 rounded-2xl bg-white/[0.02] hover:bg-white/[0.05] border border-white/5 transition-all text-xs"
+                                      onClick={() => navigate(`/mesh/pool/${pos.raw.txid}/${pos.raw.vout}`)}
+                                      className="grid grid-cols-12 gap-3 items-center p-3 rounded-2xl bg-white/[0.02] hover:bg-emerald-500/[0.04] border border-white/5 hover:border-emerald-500/20 transition-all text-xs cursor-pointer group/row"
                                     >
                                       {/* Col 1: Pair Icons, Name & Strategy Badges */}
                                       <div className="col-span-3 flex items-center gap-3">
@@ -838,10 +840,11 @@ export function MeshPositionsList({ onCreateNew }: MeshPositionsListProps) {
                                           <span>{pos.quoteCoveragePct}% {pos.quoteSymbol}</span>
                                         </div>
 
-                                        {/* Manage Link */}
+                                        {/* Manage Link — row itself is also clickable */}
                                         <Link
                                           to={`/mesh/pool/${pos.raw.txid}/${pos.raw.vout}`}
-                                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 transition-colors mt-0.5"
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 transition-colors mt-0.5 group-hover/row:text-emerald-300"
                                         >
                                           <span>Manage</span>
                                           <ChevronRight className="w-3 h-3" />

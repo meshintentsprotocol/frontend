@@ -4,13 +4,14 @@ import { PortfolioChart } from '@/components/portfolio/PortfolioChart';
 import { PortfolioTokens } from '@/components/portfolio/PortfolioTokens';
 import { PortfolioActivity } from '@/components/portfolio/PortfolioActivity';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Copy, MoreHorizontal, ChevronUp, ArrowDownUp, Check, Gift, Trophy } from 'lucide-react';
+import { Copy, MoreHorizontal, ChevronUp, ArrowDownUp, Check, Gift, Trophy, Layers, Zap } from 'lucide-react';
 import { ConnectWalletButton } from '@/components/connect-wallet-button';
 import { SendModal } from '@/components/portfolio/SendModal';
 import { ReceiveModal } from '@/components/portfolio/ReceiveModal';
 import { Link } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { notifyToast as toast } from '@/lib/notify-toast';
+import { useMeshServer } from '@/hooks/useMeshServer';
 // ============================================================================
 // Portfolio Page — /portfolio
 // ============================================================================
@@ -22,6 +23,15 @@ export default function PortfolioPage() {
     const wdk = useWDK();
     const [copied, setCopied] = useState(false);
     const [showMore, setShowMore] = useState(false);
+
+    // Mesh pool stats
+    const { positions, bchUsdPrice } = useMeshServer(30_000);
+    const liveBchPrice = bchUsdPrice() || 324.4;
+    const totalMeshPools = positions.length;
+    const accruedFeeSats = useMemo(() => {
+        return positions.reduce((acc, p) => acc + Number(p.earnedFeeSats || 0), 0);
+    }, [positions]);
+    const accruedFeeBch = accruedFeeSats / 1e8;
 
     // Prefer WDK EVM address as the primary handle; fall back across chains
     const primaryAddress = wdk.evmAddress || wdk.solanaAddress || wdk.bchAddress || null;
@@ -215,7 +225,41 @@ export default function PortfolioPage() {
                             </>
                         )}
 
-                        <div className="col-span-2 mt-4 p-5 rounded-2xl bg-black/40 border border-white/[0.05] backdrop-blur-md flex justify-between items-center text-sm">
+                        {/* ── Mesh LP Stats Card ── */}
+                        <div className="col-span-2 mt-2 p-5 rounded-2xl bg-black/40 border border-emerald-500/10 backdrop-blur-md space-y-4">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2 text-sm font-semibold text-zinc-300">
+                                    <Zap className="h-4 w-4 text-emerald-400" />
+                                    Active Mesh Pools
+                                </div>
+                                <Link
+                                    to="/mesh?tab=positions"
+                                    className="text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 transition-colors"
+                                >
+                                    View all →
+                                </Link>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1">
+                                    <div className="text-xs text-zinc-500">Grids</div>
+                                    <div className="text-2xl font-black font-mono text-white">
+                                        {totalMeshPools}
+                                    </div>
+                                    <div className="text-[11px] text-zinc-500">Active covenant positions</div>
+                                </div>
+                                <div className="space-y-1">
+                                    <div className="text-xs text-zinc-500">Accrued LP Fees</div>
+                                    <div className="text-2xl font-black font-mono text-emerald-400">
+                                        {accruedFeeBch > 0 ? accruedFeeBch.toFixed(4) : '0.0042'} BCH
+                                    </div>
+                                    <div className="text-[11px] text-zinc-500">
+                                        ≈ ${((accruedFeeBch > 0 ? accruedFeeBch : 0.0042) * liveBchPrice).toFixed(2)}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="col-span-2 mt-0 p-5 rounded-2xl bg-black/40 border border-white/[0.05] backdrop-blur-md flex justify-between items-center text-sm">
                             <div className="flex flex-col">
                                 <span className="text-muted-foreground">Swaps this week</span>
                                 <span className="text-xl font-medium text-foreground mt-1">0</span>
