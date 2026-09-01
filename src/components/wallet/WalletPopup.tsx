@@ -6,6 +6,7 @@ import { useWDK } from '@/context/WDKProvider';
 import { useExternalBCHWallet } from '@/context/ExternalBCHWalletProvider';
 import { WalletTokensTab } from './WalletTokensTab';
 import { WalletOrdersTab } from './WalletOrdersTab';
+import { WalletPoolsTab } from './WalletPoolsTab';
 import { WalletHistoryTab } from './WalletHistoryTab';
 import { WalletAddressesTab } from './WalletAddressesTab';
 import { ChangePasswordModal } from './ChangePasswordModal';
@@ -26,7 +27,7 @@ import { Drawer, DrawerContent, DrawerTitle, DrawerDescription } from '@/compone
 // ============================================================================
 
 type TopTab = 'wallet' | 'notifications';
-type SubTab = 'tokens' | 'orders' | 'history' | 'addresses';
+type SubTab = 'tokens' | 'pools' | 'orders' | 'history' | 'addresses';
 
 // ============================================================================
 // Notifications Panel — Shows captured toast/notification events
@@ -379,7 +380,7 @@ export function WalletPopup({ open, onClose, initialTab }: WalletPopupProps) {
 
                     {/* ─── Sub Tabs ─── */}
                     <div className="flex border-b border-white/[0.06] shrink-0">
-                        {(['tokens', 'orders', 'history', 'addresses'] as SubTab[]).map(tab => (
+                        {(['tokens', 'pools', 'orders', 'history', 'addresses'] as SubTab[]).map(tab => (
                             <button
                                 key={tab}
                                 onClick={() => setSubTab(tab)}
@@ -401,6 +402,7 @@ export function WalletPopup({ open, onClose, initialTab }: WalletPopupProps) {
                     {/* ─── Tab Content ─── */}
                     <div className="flex-1 overflow-y-auto px-3 pb-6 min-h-0" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.08) transparent' }}>
                         {subTab === 'tokens' && <WalletTokensTab balanceVisible={balanceVisible} activeTokens={activeTokens} loading={portfolioLoading} onClose={onClose} onConnectExternal={() => setShowConnectExt(true)} />}
+                        {subTab === 'pools' && <WalletPoolsTab onClose={onClose} />}
                         {subTab === 'orders' && <WalletOrdersTab />}
                         {subTab === 'history' && <WalletHistoryTab />}
                         {subTab === 'addresses' && <WalletAddressesTab onChangePassword={() => setShowChangePwd(true)} onConnectExternal={() => setShowConnectExt(true)} />}

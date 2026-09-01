@@ -99,7 +99,7 @@ export function Header() {
                                 onClick={() => setMeshMobileOpen(!meshMobileOpen)}
                                 className={cn(
                                     "flex items-center justify-between w-full px-3 py-2.5 rounded-xl transition-all duration-300 group hover:translate-x-1",
-                                    MESH_PAGES.some(p => location.pathname === p.path)
+                                    location.pathname.startsWith('/mesh') || location.pathname === '/orderbook'
                                         ? "bg-gradient-to-r from-emerald-500/10 to-transparent border border-emerald-500/20"
                                         : "hover:bg-white/[0.03] border border-transparent hover:border-white/[0.05]"
                                 )}
@@ -107,7 +107,7 @@ export function Header() {
                                 <div className="flex items-center gap-3">
                                     <span className={cn(
                                         "flex h-9 w-9 items-center justify-center rounded-lg transition-all duration-300 shrink-0",
-                                        MESH_PAGES.some(p => location.pathname === p.path)
+                                        location.pathname.startsWith('/mesh') || location.pathname === '/orderbook'
                                             ? "bg-emerald-500/20 text-emerald-400"
                                             : "bg-[#111] text-zinc-400 border border-white/5 group-hover:text-emerald-400 group-hover:border-emerald-500/30"
                                     )}>
@@ -115,7 +115,7 @@ export function Header() {
                                     </span>
                                     <span className={cn(
                                         "text-sm font-semibold tracking-wide transition-colors",
-                                        MESH_PAGES.some(p => location.pathname === p.path) ? "text-white" : "text-zinc-400 group-hover:text-zinc-200"
+                                        location.pathname.startsWith('/mesh') || location.pathname === '/orderbook' ? "text-white" : "text-zinc-400 group-hover:text-zinc-200"
                                     )}>
                                         Mesh
                                     </span>
@@ -130,7 +130,11 @@ export function Header() {
                                 <div className="flex flex-col gap-1 pl-6 mt-1 mb-1 border-l border-white/10 ml-6">
                                     {MESH_PAGES.map((page) => {
                                         const Icon = page.icon;
-                                        const isActive = location.pathname === page.path;
+                                        const currentUrl = location.pathname + location.search;
+                                        const isActive =
+                                            currentUrl === page.path ||
+                                            (page.path === '/mesh?tab=positions' && location.pathname === '/mesh' && !location.search) ||
+                                            (page.path === location.pathname);
                                         return (
                                             <Link
                                                 key={page.path}

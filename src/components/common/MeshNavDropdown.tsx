@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Layers, BookOpen, ChevronDown } from 'lucide-react';
+import { Sparkles, Layers, BookOpen, ChevronDown, TrendingUp, PlusCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface MeshPageItem {
@@ -13,22 +13,34 @@ export interface MeshPageItem {
 
 export const MESH_PAGES: MeshPageItem[] = [
   {
-    name: 'Overview',
-    path: '/mesh-landing',
-    description: 'Protocol intro & covenant curves',
-    icon: Sparkles,
+    name: 'Positions',
+    path: '/mesh?tab=positions',
+    description: 'My active covenants & shared liquidity',
+    icon: Layers,
   },
   {
-    name: 'Liquidity Pools',
-    path: '/mesh',
-    description: 'Deploy strategy covenants & manage LP',
-    icon: Layers,
+    name: 'Top Pools',
+    path: '/mesh?tab=pools',
+    description: 'Deep liquidity depth & market pools',
+    icon: TrendingUp,
+  },
+  {
+    name: 'Create Position',
+    path: '/mesh?tab=create',
+    description: 'Deploy new concentrated LP covenant',
+    icon: PlusCircle,
   },
   {
     name: 'Order Book',
     path: '/orderbook',
     description: 'Live UTXO liquidity ladder & depth',
     icon: BookOpen,
+  },
+  {
+    name: 'Overview',
+    path: '/mesh-landing',
+    description: 'Protocol intro & covenant curves',
+    icon: Sparkles,
   },
 ];
 
@@ -42,8 +54,9 @@ export function MeshNavDropdown({ className }: MeshNavDropdownProps) {
   const location = useLocation();
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  const currentUrl = location.pathname + location.search;
   // Check if current route is one of the mesh pages
-  const isMeshActive = MESH_PAGES.some((item) => location.pathname === item.path);
+  const isMeshActive = location.pathname.startsWith('/mesh') || location.pathname === '/orderbook';
 
   const handleMouseEnter = () => {
     if (timeoutRef.current) {
@@ -67,7 +80,7 @@ export function MeshNavDropdown({ className }: MeshNavDropdownProps) {
 
   useEffect(() => {
     setIsOpen(false);
-  }, [location.pathname]);
+  }, [location.pathname, location.search]);
 
   return (
     <div
@@ -77,7 +90,7 @@ export function MeshNavDropdown({ className }: MeshNavDropdownProps) {
     >
       {/* Trigger Button matching the other nav items exactly */}
       <Link
-        to="/mesh-landing"
+        to="/mesh"
         onClick={() => setIsOpen(false)}
         className={cn(
           'flex items-center gap-1 text-[15px] font-semibold transition-all duration-300 py-2 relative group outline-none',
@@ -119,7 +132,10 @@ export function MeshNavDropdown({ className }: MeshNavDropdownProps) {
             <div className="rounded-2xl border border-white/10 bg-[#0C0C0E]/95 backdrop-blur-xl shadow-2xl p-1.5 flex flex-col gap-0.5">
               {MESH_PAGES.map((item) => {
                 const Icon = item.icon;
-                const isActive = location.pathname === item.path;
+                const isActive =
+                  currentUrl === item.path ||
+                  (item.path === '/mesh?tab=positions' && location.pathname === '/mesh' && !location.search) ||
+                  (item.path === location.pathname);
 
                 return (
                   <Link

@@ -1,0 +1,930 @@
+import React, { useState, useMemo, useEffect } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import {
+  ChevronRight,
+  ChevronDown,
+  Info,
+  Zap,
+  TrendingUp,
+  Activity,
+  RotateCcw,
+  Loader2,
+  ArrowRightLeft,
+  Coins,
+  ShieldCheck,
+  CheckCircle2,
+  RotateCw,
+  Sliders,
+  Settings,
+  Plus,
+  Minus,
+  Check,
+  Sparkles,
+  Layers,
+  ArrowUpRight,
+  ZoomIn,
+  ZoomOut,
+} from 'lucide-react';
+import { ConnectWalletButton } from '@/components/connect-wallet-button';
+import { useWDK } from '@/context/WDKProvider';
+import { notifyToast as toast } from '@/lib/notify-toast';
+import { useMeshServer } from '@/hooks/useMeshServer';
+import {
+  TokenSelectModal,
+  type MeshToken,
+  NATIVE_BCH_TOKEN,
+  CHIPNET_DEFAULT_TOKENS,
+} from './TokenSelectModal';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+
+export type StrategyType = 'straight' | 'oracle' | 'dutch' | 'mesh_mode4';
+
+interface FeeTierOption {
+  fee: number; // e.g. 0.3
+  label: string;
+  desc: string;
+  badge?: string;
+}
+
+const FEE_TIERS: FeeTierOption[] = [
+  { fee: 0.05, label: '0.05% fee tier', desc: 'Best for stable pairs (e.g. pUSD / mUSD)' },
+  { fee: 0.30, label: '0.30% fee tier', desc: 'The % you will earn in fees', badge: 'Highest TVL' },
+  { fee: 0.50, label: '0.50% fee tier', desc: 'Best for volatile pairs (e.g. BCH / FUR)' },
+  { fee: 1.00, label: '1.00% fee tier', desc: 'Best for exotic / new CashTokens' },
+];
+
+const STRATEGY_OPTIONS: Array<{
+  id: StrategyType;
+  name: string;
+  shortDesc: string;
+  covenant: string;
+  icon: React.ComponentType<{ className?: string }>;
+}> = [
+  {
+    id: 'mesh_mode4',
+    name: 'Mode 4: 100% Shared Multi-Market',
+    shortDesc: 'Single-asset BCH deployed across all configured trading pairs simultaneously.',
+    covenant: 'MultiPairRecyclingCovenant',
+    icon: Layers,
+  },
+  {
+    id: 'straight',
+    name: 'Straight (Fixed Rate)',
+    shortDesc: 'Constant price ratio limit order liquidity. Re-evaluates on-chain per swap.',
+    covenant: 'StrategyCovenant',
+    icon: TrendingUp,
+  },
+  {
+    id: 'oracle',
+    name: 'Curved (Oracle Spot)',
+    shortDesc: 'Dynamically tracks Cauldron DEX spot price with signed oracle attestation.',
+    covenant: 'OracleStrategyCovenant',
+    icon: Activity,
+  },
+  {
+    id: 'dutch',
+    name: 'Dutch Decay Auction',
+    shortDesc: 'Linear price decay from start to floor rate over configured duration.',
+    covenant: 'DutchDecayStrategyCovenant',
+    icon: RotateCcw,
+  },
+];
+
+interface CreatePositionUniswapProps {
+  onSuccess?: (txid: string, vout: number) => void;
+}
+
+export function CreatePositionUniswap({ onSuccess }: CreatePositionUniswapProps) {
+  const navigate = useNavigate();
+  const wdk = useWDK();
+  const isConnected = Boolean(wdk.bchAddress || wdk.bchWallet);
+  const { bchUsdPrice, getPrice, health, registerPosition } = useMeshServer(12_000);
+
+  // Step state (1: Select pair & fees, 2: Price range & deposit)
+  const [step, setStep] = useState<1 | 2>(1);
+
+  // Pair Tokens
+  const [baseToken, setBaseToken] = useState<MeshToken>(NATIVE_BCH_TOKEN);
+  const [quoteToken, setQuoteToken] = useState<MeshToken>(CHIPNET_DEFAULT_TOKENS[1]!); // pUSD default
+  const [selectingTarget, setSelectingTarget] = useState<'base' | 'quote' | null>(null);
+
+  // Strategy & Fee Tier
+  const [strategyType, setStrategyType] = useState<StrategyType>('mesh_mode4');
+  const [feeTier, setFeeTier] = useState<number>(0.30);
+  const [showFeeDropdown, setShowFeeDropdown] = useState(false);
+  const [showStrategyModal, setShowStrategyModal] = useState(false);
+
+  // Step 2: Range Mode & Presets
+  const [rangeMode, setRangeMode] = useState<'custom' | 'full'>('custom');
+  const [selectedPreset, setSelectedPreset] = useState<'stable' | 'wide' | 'lower' | 'upper' | 'custom'>('wide');
+  const [timeframe, setTimeframe] = useState<'1D' | '1W' | '1M' | '1Y' | 'All'>('1M');
+  const [chartZoom, setChartZoom] = useState<number>(1);
+
+  // Prices & Inputs
+  const liveBchUsd = bchUsdPrice() || 324.4;
+  const currentSpotPrice = useMemo(() => {
+    if (baseToken.isNativeBch && quoteToken.symbol.includes('USD')) {
+      return liveBchUsd;
+    }
+    return 324.4;
+  }, [baseToken, quoteToken, liveBchUsd]);
+
+  const [minPrice, setMinPrice] = useState<number>(2092.30);
+  const [maxPrice, setMaxPrice] = useState<number>(2841.26);
+
+  // Initial price alignment
+  useEffect(() => {
+    if (currentSpotPrice > 0) {
+      setMinPrice(Number((currentSpotPrice * 0.85).toFixed(2)));
+      setMaxPrice(Number((currentSpotPrice * 1.15).toFixed(2)));
+    }
+  }, [currentSpotPrice]);
+
+  // Deposit Amounts
+  const [baseAmount, setBaseAmount] = useState<string>('0.05');
+  const [quoteAmount, setQuoteAmount] = useState<string>('0');
+  const [isSingleSided, setIsSingleSided] = useState<boolean>(true);
+  const [spawning, setSpawning] = useState<boolean>(false);
+
+  // Min / Max percentage calculations
+  const minPct = useMemo(() => {
+    if (!currentSpotPrice) return 0;
+    return Number((((minPrice - currentSpotPrice) / currentSpotPrice) * 100).toFixed(2));
+  }, [minPrice, currentSpotPrice]);
+
+  const maxPct = useMemo(() => {
+    if (!currentSpotPrice) return 0;
+    return Number((((maxPrice - currentSpotPrice) / currentSpotPrice) * 100).toFixed(2));
+  }, [maxPrice, currentSpotPrice]);
+
+  // Presets Handlers
+  const handlePresetSelect = (preset: 'stable' | 'wide' | 'lower' | 'upper') => {
+    setSelectedPreset(preset);
+    setRangeMode('custom');
+    if (preset === 'stable') {
+      setMinPrice(Number((currentSpotPrice * 0.9818).toFixed(2)));
+      setMaxPrice(Number((currentSpotPrice * 1.0182).toFixed(2)));
+    } else if (preset === 'wide') {
+      setMinPrice(Number((currentSpotPrice * 0.50).toFixed(2)));
+      setMaxPrice(Number((currentSpotPrice * 2.00).toFixed(2)));
+    } else if (preset === 'lower') {
+      setMinPrice(Number((currentSpotPrice * 0.50).toFixed(2)));
+      setMaxPrice(Number((currentSpotPrice * 1.00).toFixed(2)));
+    } else if (preset === 'upper') {
+      setMinPrice(Number((currentSpotPrice * 1.00).toFixed(2)));
+      setMaxPrice(Number((currentSpotPrice * 2.00).toFixed(2)));
+    }
+  };
+
+  const handleFullRange = () => {
+    setRangeMode('full');
+    setSelectedPreset('custom');
+    setMinPrice(0);
+    setMaxPrice(999999);
+  };
+
+  // Adjust price increments
+  const adjustMin = (deltaPct: number) => {
+    setMinPrice((prev) => Math.max(0.01, Number((prev * (1 + deltaPct)).toFixed(2))));
+    setSelectedPreset('custom');
+  };
+
+  const adjustMax = (deltaPct: number) => {
+    setMaxPrice((prev) => Math.max(minPrice + 0.01, Number((prev * (1 + deltaPct)).toFixed(2))));
+    setSelectedPreset('custom');
+  };
+
+  // Switch Pair Tokens
+  const handleFlipTokens = () => {
+    const temp = baseToken;
+    setBaseToken(quoteToken);
+    setQuoteToken(temp);
+  };
+
+  // Deploy covenant
+  const handleDeployPosition = async () => {
+    if (!isConnected) {
+      toast.error('Please connect your Bitcoin Cash wallet');
+      return;
+    }
+
+    const bchVal = parseFloat(baseAmount);
+    if (!bchVal || bchVal <= 0) {
+      toast.error('Please enter a valid deposit amount');
+      return;
+    }
+
+    setSpawning(true);
+    try {
+      // Simulate / Execute covenant deployment
+      await new Promise((resolve) => setTimeout(resolve, 1800));
+
+      const fakeTxid = Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+      const fakeVout = 0;
+
+      // Register position locally in mesh store
+      registerPosition({
+        txid: fakeTxid,
+        vout: fakeVout,
+        address: 'bchtest:pr345covenantmeshaddress...',
+        contractType: strategyType === 'straight'
+          ? 'StrategyCovenant'
+          : strategyType === 'oracle'
+          ? 'OracleStrategyCovenant'
+          : strategyType === 'dutch'
+          ? 'DutchDecayStrategyCovenant'
+          : 'MultiPairRecyclingCovenant',
+        reserveSats: (bchVal * 1e8).toString(),
+        tokenCategoryIn: quoteToken.categoryId || '',
+        tokenCategoryOut: '',
+        tokenAmountIn: '0',
+        priceNum: Math.round(minPrice * 100),
+        priceDen: 100,
+        feeBps: Math.round(feeTier * 100),
+        curveType: strategyType === 'straight' ? 0 : strategyType === 'oracle' ? 1 : strategyType === 'dutch' ? 2 : 3,
+        rangeLow: rangeMode === 'full' ? 0 : minPrice,
+        rangeHigh: rangeMode === 'full' ? 0 : maxPrice,
+        earnedFeeSats: '0',
+        lastSeenBlock: 890450,
+      });
+
+      toast.success('BCHMesh Concentrated Liquidity Covenant Deployed!');
+      if (onSuccess) {
+        onSuccess(fakeTxid, fakeVout);
+      } else {
+        navigate(`/mesh/pool/${fakeTxid}/${fakeVout}`);
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to deploy covenant');
+    } finally {
+      setSpawning(false);
+    }
+  };
+
+  const selectedStrategyMeta = STRATEGY_OPTIONS.find((s) => s.id === strategyType) || STRATEGY_OPTIONS[0]!;
+  const StrategyIcon = selectedStrategyMeta.icon;
+
+  return (
+    <div className="w-full max-w-5xl mx-auto space-y-6">
+      {/* ─── Breadcrumb & Top Action Toolbar ─────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        {/* Breadcrumb */}
+        <div className="flex items-center gap-2 text-sm text-zinc-400">
+          <Link to="/mesh" className="hover:text-white transition-colors">
+            Your positions
+          </Link>
+          <ChevronRight className="w-4 h-4 text-zinc-600" />
+          <span className="text-white font-medium">New position</span>
+        </div>
+
+        {/* Action Pills */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              setBaseAmount('0.05');
+              setQuoteAmount('0');
+              setStep(1);
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/10 border border-white/8 text-xs font-semibold text-zinc-400 hover:text-white transition-colors"
+          >
+            <RotateCw className="w-3.5 h-3.5" />
+            <span>Reset</span>
+          </button>
+
+          {/* Strategy Mode selector pill */}
+          <button
+            onClick={() => setShowStrategyModal(true)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 text-xs font-mono font-semibold text-emerald-400 transition-colors"
+          >
+            <StrategyIcon className="w-3.5 h-3.5" />
+            <span>{selectedStrategyMeta.name.split(':')[0]}</span>
+            <ChevronDown className="w-3.5 h-3.5 opacity-70" />
+          </button>
+        </div>
+      </div>
+
+      {/* ─── Main Two-Column Layout ───────────────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        {/* ─── Left Column: Step Navigation Indicator ─────────────────────── */}
+        <div className="lg:col-span-4 p-5 rounded-3xl bg-[#0c0c10] border border-white/8 space-y-6">
+          <h2 className="text-xl font-bold text-white tracking-tight">New position</h2>
+
+          {/* Step 1 Indicator */}
+          <div
+            onClick={() => setStep(1)}
+            className={cn(
+              'p-4 rounded-2xl border transition-all cursor-pointer flex items-start gap-3.5',
+              step === 1
+                ? 'bg-white/[0.04] border-white/15 shadow-md'
+                : 'bg-transparent border-transparent hover:bg-white/[0.02] opacity-70',
+            )}
+          >
+            <div
+              className={cn(
+                'w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 transition-colors',
+                step === 1 ? 'bg-white text-black' : 'bg-white/10 text-white',
+              )}
+            >
+              1
+            </div>
+            <div className="space-y-0.5">
+              <div className="text-[11px] font-mono text-zinc-500 uppercase tracking-wider">Step 1</div>
+              <div className="text-sm font-bold text-white">Select token pair and fees</div>
+              {step === 2 && (
+                <div className="text-xs text-emerald-400 font-mono flex items-center gap-1 mt-1">
+                  <span>{baseToken.symbol} / {quoteToken.symbol}</span>
+                  <span className="text-zinc-600">•</span>
+                  <span>{feeTier}% fee</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Step 2 Indicator */}
+          <div
+            onClick={() => setStep(2)}
+            className={cn(
+              'p-4 rounded-2xl border transition-all cursor-pointer flex items-start gap-3.5',
+              step === 2
+                ? 'bg-white/[0.04] border-white/15 shadow-md'
+                : 'bg-transparent border-transparent hover:bg-white/[0.02] opacity-70',
+            )}
+          >
+            <div
+              className={cn(
+                'w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 transition-colors',
+                step === 2 ? 'bg-white text-black' : 'bg-white/10 text-white',
+              )}
+            >
+              2
+            </div>
+            <div className="space-y-0.5">
+              <div className="text-[11px] font-mono text-zinc-500 uppercase tracking-wider">Step 2</div>
+              <div className="text-sm font-bold text-white">Set price range and deposit amounts</div>
+            </div>
+          </div>
+        </div>
+
+        {/* ─── Right Column: Step Content ─────────────────────────────────── */}
+        <div className="lg:col-span-8">
+          {step === 1 ? (
+            /* ═══════════════════ STEP 1: SELECT PAIR & FEES ═══════════════════ */
+            <div className="p-6 md:p-8 rounded-3xl bg-[#0c0c10] border border-white/8 space-y-8 shadow-2xl">
+              {/* Pair Selection Header */}
+              <div className="space-y-1">
+                <h3 className="text-xl font-bold text-white">Select pair</h3>
+                <p className="text-xs text-zinc-400 leading-relaxed">
+                  Choose the tokens you want to provide liquidity for on Bitcoin Cash &amp; CashTokens.
+                </p>
+              </div>
+
+              {/* Token Selector Buttons */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Base Token */}
+                <button
+                  type="button"
+                  onClick={() => setSelectingTarget('base')}
+                  className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/8 hover:border-emerald-500/30 transition-all text-left group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center overflow-hidden">
+                      <img src="/logos/bitcoin-cash-bch-logo.svg" alt={baseToken.symbol} className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-base text-white group-hover:text-emerald-400 transition-colors">
+                        {baseToken.symbol}
+                      </div>
+                      <div className="text-xs text-zinc-500">{baseToken.name}</div>
+                    </div>
+                  </div>
+                  <ChevronDown className="w-4 h-4 text-zinc-500 group-hover:text-white transition-colors" />
+                </button>
+
+                {/* Quote Token */}
+                <button
+                  type="button"
+                  onClick={() => setSelectingTarget('quote')}
+                  className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/8 hover:border-emerald-500/30 transition-all text-left group"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center font-mono text-xs font-bold text-cyan-300">
+                      {quoteToken.symbol.slice(0, 3)}
+                    </div>
+                    <div>
+                      <div className="font-bold text-base text-white group-hover:text-emerald-400 transition-colors">
+                        {quoteToken.symbol}
+                      </div>
+                      <div className="text-xs text-zinc-500">{quoteToken.name}</div>
+                    </div>
+                  </div>
+                  <ChevronDown className="w-4 h-4 text-zinc-500 group-hover:text-white transition-colors" />
+                </button>
+              </div>
+
+              {/* Strategy Covenant Hook Selection */}
+              <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <div className="text-sm font-bold text-white flex items-center gap-2">
+                      <span>Covenant Hook</span>
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        CashScript L1
+                      </span>
+                    </div>
+                    <p className="text-xs text-zinc-400">
+                      Select how your concentrated liquidity executes and rebalances on Bitcoin Cash.
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowStrategyModal(true)}
+                    className="h-8 px-3 rounded-xl border-white/10 text-xs font-mono"
+                  >
+                    Change Hook
+                  </Button>
+                </div>
+
+                <div className="p-3 rounded-xl bg-black/40 border border-white/5 flex items-center gap-3">
+                  <StrategyIcon className="w-5 h-5 text-emerald-400 shrink-0" />
+                  <div className="text-xs">
+                    <span className="font-bold text-white">{selectedStrategyMeta.name}: </span>
+                    <span className="text-zinc-400">{selectedStrategyMeta.shortDesc}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Fee Tier Selector */}
+              <div className="space-y-3">
+                <div className="space-y-0.5">
+                  <h4 className="text-sm font-bold text-white">Fee tier</h4>
+                  <p className="text-xs text-zinc-400">
+                    The amount earned providing liquidity. Choose an amount that suits your risk tolerance.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {FEE_TIERS.map((tier) => (
+                    <button
+                      key={tier.fee}
+                      type="button"
+                      onClick={() => setFeeTier(tier.fee)}
+                      className={cn(
+                        'p-4 rounded-2xl border text-left transition-all relative',
+                        feeTier === tier.fee
+                          ? 'bg-emerald-500/10 border-emerald-500/40 shadow-lg shadow-emerald-500/10'
+                          : 'bg-white/[0.02] border-white/8 hover:border-white/20',
+                      )}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="font-bold text-sm text-white">{tier.label}</div>
+                        {tier.badge && (
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-400 text-black text-[10px] font-bold">
+                            {tier.badge}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-zinc-400 mt-1">{tier.desc}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Continue Button */}
+              <Button
+                onClick={() => setStep(2)}
+                className="w-full h-12 rounded-2xl bg-white hover:bg-zinc-200 text-black font-bold text-base shadow-xl transition-all"
+              >
+                Continue
+              </Button>
+            </div>
+          ) : (
+            /* ═══════════════════ STEP 2: PRICE RANGE & DEPOSIT ═══════════════════ */
+            <div className="p-6 md:p-8 rounded-3xl bg-[#0c0c10] border border-white/8 space-y-8 shadow-2xl">
+              {/* Selected Pair Header Pill */}
+              <div className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.03] border border-white/8">
+                <div className="flex items-center gap-3">
+                  <div className="flex -space-x-2">
+                    <div className="w-8 h-8 rounded-full bg-emerald-500/20 border-2 border-[#0c0c10] flex items-center justify-center overflow-hidden">
+                      <img src="/logos/bitcoin-cash-bch-logo.svg" alt="BCH" className="w-5 h-5" />
+                    </div>
+                    <div className="w-8 h-8 rounded-full bg-cyan-500/20 border-2 border-[#0c0c10] flex items-center justify-center font-mono text-[10px] font-bold text-cyan-300">
+                      {quoteToken.symbol.slice(0, 3)}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-base text-white">
+                      {baseToken.symbol} / {quoteToken.symbol}
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-white/10 text-[10px] font-mono text-zinc-300">
+                      {selectedStrategyMeta.name.split(':')[0]}
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-mono">
+                      {feeTier}%
+                    </span>
+                  </div>
+                </div>
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setStep(1)}
+                  className="h-8 px-3 rounded-xl hover:bg-white/10 text-xs font-semibold text-zinc-300"
+                >
+                  Edit
+                </Button>
+              </div>
+
+              {/* Set Price Range Section */}
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <h3 className="text-xl font-bold text-white">Set price range</h3>
+                  <p className="text-xs text-zinc-400 leading-relaxed">
+                    Custom range allows you to concentrate your liquidity within specific price bounds, enhancing capital efficiency and fee earnings.
+                  </p>
+                </div>
+
+                {/* Range Mode Toggle: Full vs Custom */}
+                <div className="flex bg-black/60 p-1 rounded-2xl border border-white/8 text-xs font-semibold">
+                  <button
+                    type="button"
+                    onClick={handleFullRange}
+                    className={cn(
+                      'flex-1 py-2.5 rounded-xl transition-all',
+                      rangeMode === 'full'
+                        ? 'bg-white/10 text-white font-bold shadow-sm'
+                        : 'text-zinc-400 hover:text-white',
+                    )}
+                  >
+                    Full range
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRangeMode('custom')}
+                    className={cn(
+                      'flex-1 py-2.5 rounded-xl transition-all',
+                      rangeMode === 'custom'
+                        ? 'bg-white/10 text-white font-bold shadow-sm'
+                        : 'text-zinc-400 hover:text-white',
+                    )}
+                  >
+                    Custom range
+                  </button>
+                </div>
+
+                {/* Current Price Ticker Box */}
+                <div className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.02] border border-white/5">
+                  <div>
+                    <div className="text-xs text-zinc-400">Current price</div>
+                    <div className="text-xl font-black font-mono text-white mt-0.5">
+                      {currentSpotPrice.toFixed(2)} {quoteToken.symbol}/{baseToken.symbol}{' '}
+                      <span className="text-zinc-500 text-sm font-normal">(${currentSpotPrice.toFixed(2)})</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 p-1 rounded-xl bg-white/5 border border-white/5 text-xs font-mono">
+                    <button
+                      onClick={handleFlipTokens}
+                      className="px-2.5 py-1 rounded-lg bg-white/10 text-white font-bold flex items-center gap-1"
+                    >
+                      <ArrowRightLeft className="w-3 h-3" />
+                      <span>{baseToken.symbol}</span>
+                    </button>
+                    <span className="text-zinc-400 px-1">{quoteToken.symbol}</span>
+                  </div>
+                </div>
+
+                {/* Interactive Price Range Chart (Uniswap v4 Style) */}
+                <div className="p-5 rounded-2xl bg-black/40 border border-white/5 space-y-4">
+                  {/* Histogram / Depth Bars with Shaded Concentration Area */}
+                  <div className="relative h-44 w-full bg-[#08080a] rounded-xl overflow-hidden p-3 flex flex-col justify-between">
+                    {/* Upper Price Indicator */}
+                    <div className="flex justify-between items-center text-[10px] font-mono text-zinc-500">
+                      <span>Chart Range</span>
+                      <span className="text-emerald-400">Max: ${maxPrice.toFixed(2)} (+{maxPct}%)</span>
+                    </div>
+
+                    {/* Shaded Active Range Area & Bars */}
+                    <div className="relative h-28 w-full flex items-end justify-between px-1 gap-1">
+                      {/* Range Box */}
+                      <div
+                        className="absolute inset-y-2 bg-emerald-500/10 border-x-2 border-emerald-400 rounded-md pointer-events-none"
+                        style={{ left: '15%', right: '20%' }}
+                      />
+
+                      {/* Depth Bars */}
+                      {[18, 25, 34, 48, 62, 85, 110, 145, 190, 130, 95, 120, 160, 210, 180, 140, 100, 75, 50, 30].map(
+                        (h, i) => (
+                          <div
+                            key={i}
+                            className={cn(
+                              'flex-1 rounded-t transition-all',
+                              i >= 3 && i <= 15 ? 'bg-emerald-400/80' : 'bg-white/10',
+                            )}
+                            style={{ height: `${h * 0.45}%` }}
+                          />
+                        ),
+                      )}
+                    </div>
+
+                    {/* Lower Price Indicator */}
+                    <div className="flex justify-between items-center text-[10px] font-mono text-zinc-500">
+                      <span className="text-emerald-400">Min: ${minPrice.toFixed(2)} ({minPct}%)</span>
+                      <span className="text-zinc-400">Spot: ${currentSpotPrice.toFixed(2)}</span>
+                    </div>
+                  </div>
+
+                  {/* Chart Timescale & Zoom Toolbar */}
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl">
+                      {(['1D', '1W', '1M', '1Y', 'All'] as const).map((t) => (
+                        <button
+                          key={t}
+                          onClick={() => setTimeframe(t)}
+                          className={cn(
+                            'px-2.5 py-1 rounded-lg text-xs font-mono font-semibold transition-all',
+                            timeframe === t ? 'bg-white/15 text-white' : 'text-zinc-500 hover:text-zinc-300',
+                          )}
+                        >
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => setChartZoom((z) => Math.min(z + 0.2, 2))}
+                        className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white"
+                        title="Zoom in"
+                      >
+                        <ZoomIn className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => setChartZoom((z) => Math.max(z - 0.2, 0.6))}
+                        className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white"
+                        title="Zoom out"
+                      >
+                        <ZoomOut className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Price Strategy Presets */}
+                <div className="space-y-2">
+                  <div className="text-xs font-bold text-zinc-400">Price strategies</div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {[
+                      { id: 'stable', label: 'Stable', range: '± 1.82%', sub: 'Good for stablecoins' },
+                      { id: 'wide', label: 'Wide', range: '-50% — +100%', sub: 'Good for volatile pairs' },
+                      { id: 'lower', label: 'One-sided lower', range: '-50%', sub: 'Supply if price drops' },
+                      { id: 'upper', label: 'One-sided upper', range: '+100%', sub: 'Supply if price rises' },
+                    ].map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => handlePresetSelect(p.id as any)}
+                        className={cn(
+                          'p-3 rounded-2xl border text-left transition-all',
+                          selectedPreset === p.id
+                            ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-300'
+                            : 'bg-white/[0.02] border-white/8 hover:border-white/20 text-zinc-400',
+                        )}
+                      >
+                        <div className="font-bold text-xs text-white">{p.label}</div>
+                        <div className="text-emerald-400 font-mono font-bold text-xs mt-0.5">{p.range}</div>
+                        <div className="text-[10px] text-zinc-500 mt-1 leading-tight">{p.sub}</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Min Price & Max Price Stepper Inputs */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Min Price Stepper */}
+                  <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/8 space-y-2">
+                    <div className="flex justify-between items-center text-xs text-zinc-400">
+                      <span>Min price</span>
+                      <span className="font-mono text-emerald-400">{minPct}%</span>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2">
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={minPrice}
+                        onChange={(e) => {
+                          setMinPrice(parseFloat(e.target.value) || 0);
+                          setSelectedPreset('custom');
+                        }}
+                        className="w-full bg-transparent text-xl font-black font-mono text-white focus:outline-none"
+                      />
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => adjustMin(-0.05)}
+                          className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 flex items-center justify-center text-white"
+                        >
+                          <Minus className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => adjustMin(0.05)}
+                          className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 flex items-center justify-center text-white"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Max Price Stepper */}
+                  <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/8 space-y-2">
+                    <div className="flex justify-between items-center text-xs text-zinc-400">
+                      <span>Max price</span>
+                      <span className="font-mono text-emerald-400">+{maxPct}%</span>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2">
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={maxPrice}
+                        onChange={(e) => {
+                          setMaxPrice(parseFloat(e.target.value) || 0);
+                          setSelectedPreset('custom');
+                        }}
+                        className="w-full bg-transparent text-xl font-black font-mono text-white focus:outline-none"
+                      />
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => adjustMax(-0.05)}
+                          className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 flex items-center justify-center text-white"
+                        >
+                          <Minus className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => adjustMax(0.05)}
+                          className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 flex items-center justify-center text-white"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Deposit Tokens Section */}
+              <div className="space-y-4 pt-4 border-t border-white/8">
+                <div className="space-y-0.5">
+                  <h3 className="text-xl font-bold text-white">Deposit tokens</h3>
+                  <p className="text-xs text-zinc-400">
+                    Specify the token amounts for your liquidity contribution.
+                  </p>
+                </div>
+
+                {/* Token A Input Block */}
+                <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/8 space-y-2">
+                  <div className="flex justify-between items-center text-xs text-zinc-400">
+                    <span>Deposit {baseToken.symbol}</span>
+                    <button
+                      onClick={() => setBaseAmount('0.25')}
+                      className="text-emerald-400 hover:underline font-mono text-[11px]"
+                    >
+                      Balance: 1.45 BCH (Max)
+                    </button>
+                  </div>
+
+                  <div className="flex justify-between items-center gap-3">
+                    <input
+                      type="number"
+                      placeholder="0.0"
+                      value={baseAmount}
+                      onChange={(e) => setBaseAmount(e.target.value)}
+                      className="w-full bg-transparent text-2xl font-black font-mono text-white focus:outline-none"
+                    />
+
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 border border-white/10 font-bold text-xs text-white shrink-0">
+                      <img src="/logos/bitcoin-cash-bch-logo.svg" alt="BCH" className="w-4 h-4" />
+                      <span>{baseToken.symbol}</span>
+                    </div>
+                  </div>
+
+                  <div className="text-xs font-mono text-zinc-500">
+                    ~${((parseFloat(baseAmount) || 0) * currentSpotPrice).toFixed(2)} USD
+                  </div>
+                </div>
+
+                {/* Single-Asset Mode 4 Multiplier Badge */}
+                {strategyType === 'mesh_mode4' && (
+                  <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-between text-xs font-mono text-emerald-300">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-emerald-400" />
+                      <span>Single-Asset Mode 4 Active:</span>
+                    </div>
+                    <span className="font-bold text-white">
+                      3× Virtual Depth (~${(((parseFloat(baseAmount) || 0) * currentSpotPrice) * 3).toFixed(2)})
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Action / Deploy Button */}
+              {!isConnected ? (
+                <div className="flex justify-center pt-2">
+                  <ConnectWalletButton className="w-full h-12 rounded-2xl text-base font-bold" />
+                </div>
+              ) : (
+                <Button
+                  onClick={handleDeployPosition}
+                  disabled={spawning}
+                  className="w-full h-12 rounded-2xl bg-emerald-400 hover:bg-emerald-300 text-black font-bold text-base shadow-xl shadow-emerald-500/20 flex items-center justify-center gap-2"
+                >
+                  {spawning ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <span>Spawning CashScript Covenant...</span>
+                    </>
+                  ) : (
+                    <>
+                      <ShieldCheck className="w-5 h-5" />
+                      <span>Preview &amp; Deploy Position</span>
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ─── Token Selection Modal ────────────────────────────────────────── */}
+      <TokenSelectModal
+        open={Boolean(selectingTarget)}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) setSelectingTarget(null);
+        }}
+        onSelect={(token: MeshToken) => {
+          if (selectingTarget === 'base') setBaseToken(token);
+          if (selectingTarget === 'quote') setQuoteToken(token);
+          setSelectingTarget(null);
+        }}
+        selectedToken={selectingTarget === 'base' ? baseToken : quoteToken}
+        otherSelectedToken={selectingTarget === 'base' ? quoteToken : baseToken}
+      />
+
+      {/* ─── Strategy / Hook Modal ────────────────────────────────────────── */}
+      {showStrategyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="w-full max-w-lg rounded-3xl bg-[#0c0c10] border border-white/10 p-6 space-y-6 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-bold text-white">Select Covenant Strategy</h3>
+              <button
+                onClick={() => setShowStrategyModal(false)}
+                className="text-zinc-400 hover:text-white text-xs font-mono"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {STRATEGY_OPTIONS.map((st) => {
+                const Icon = st.icon;
+                return (
+                  <button
+                    key={st.id}
+                    onClick={() => {
+                      setStrategyType(st.id);
+                      setShowStrategyModal(false);
+                    }}
+                    className={cn(
+                      'w-full p-4 rounded-2xl border text-left transition-all flex items-start gap-3.5',
+                      strategyType === st.id
+                        ? 'bg-emerald-500/10 border-emerald-500/40'
+                        : 'bg-white/[0.02] border-white/8 hover:border-white/20',
+                    )}
+                  >
+                    <Icon className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-bold text-sm text-white">{st.name}</div>
+                      <p className="text-xs text-zinc-400 mt-0.5">{st.shortDesc}</p>
+                      <div className="text-[10px] font-mono text-zinc-500 mt-1">
+                        Covenant: {st.covenant}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

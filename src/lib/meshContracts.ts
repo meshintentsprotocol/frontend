@@ -223,13 +223,108 @@ export interface LivePoolBalance {
   utxos: any[];
 }
 
+export interface TokenMetadata {
+  symbol: string;
+  name: string;
+  decimals: number;
+  icon: string;
+  color: string;
+  isStable?: boolean;
+}
+
+const KNOWN_TOKENS: Record<string, TokenMetadata> = {
+  bch: {
+    symbol: 'BCH',
+    name: 'Bitcoin Cash',
+    decimals: 8,
+    icon: '/logos/bitcoin-cash-bch-logo.svg',
+    color: '#0AC18E',
+  },
+  pusd: {
+    symbol: 'pUSD',
+    name: 'Pegged USD',
+    decimals: 2,
+    icon: '/logos/usd-coin-usdc-logo.svg',
+    color: '#2775CA',
+    isStable: true,
+  },
+  musd: {
+    symbol: 'mUSD',
+    name: 'Mesh USD',
+    decimals: 2,
+    icon: '/logos/usd-coin-usdc-logo.svg',
+    color: '#10B981',
+    isStable: true,
+  },
+  usdt: {
+    symbol: 'USDT',
+    name: 'Tether USD',
+    decimals: 6,
+    icon: '/logos/usdt-svgrepo-com.svg',
+    color: '#26A17B',
+    isStable: true,
+  },
+  usdc: {
+    symbol: 'USDC',
+    name: 'USD Coin',
+    decimals: 6,
+    icon: '/logos/usd-coin-usdc-logo.svg',
+    color: '#2775CA',
+    isStable: true,
+  },
+  wbtc: {
+    symbol: 'WBTC',
+    name: 'Wrapped Bitcoin',
+    decimals: 8,
+    icon: '/logos/bitcoin-btc-logo.svg',
+    color: '#F7931A',
+  },
+  fur: {
+    symbol: 'FUR',
+    name: 'Furry Token',
+    decimals: 2,
+    icon: '/logos/tokens/fur.svg',
+    color: '#EC4899',
+  },
+};
+
 export function tokenSymbol(categoryHex?: string): string {
-  if (!categoryHex || categoryHex === '0x' || categoryHex === '') return 'BCH';
+  if (!categoryHex || categoryHex === '0x' || categoryHex === '' || categoryHex.toLowerCase() === 'bch') return 'BCH';
   const clean = categoryHex.toLowerCase().replace(/^0x/, '');
-  if (clean.startsWith('dfe50223') || clean.includes('dfe50223c8d5cba8dcef8dff6d92b61deb88a8ba44947367f2b746487b56039b')) {
+  if (clean.startsWith('dfe50223') || clean.includes('dfe50223c8d5cba8dcef8dff6d92b61deb88a8ba44947367f2b746487b56039b') || clean.includes('pusd')) {
     return 'pUSD';
   }
+  if (clean.startsWith('90022421') || clean.startsWith('b4863d57') || clean.includes('musd')) {
+    return 'mUSD';
+  }
+  if (clean.includes('usdt')) {
+    return 'USDT';
+  }
+  if (clean.includes('usdc')) {
+    return 'USDC';
+  }
+  if (clean.includes('wbtc')) {
+    return 'WBTC';
+  }
+  if (clean.startsWith('c74f5192') || clean.includes('fur')) {
+    return 'FUR';
+  }
   return `CT-${clean.slice(0, 4)}…${clean.slice(-4)}`;
+}
+
+export function getTokenMetadata(categoryHexOrSymbol?: string): TokenMetadata {
+  const sym = tokenSymbol(categoryHexOrSymbol);
+  const key = sym.toLowerCase();
+  if (KNOWN_TOKENS[key]) {
+    return KNOWN_TOKENS[key];
+  }
+  return {
+    symbol: sym,
+    name: sym.startsWith('CT-') ? `CashToken ${sym}` : sym,
+    decimals: 2,
+    icon: '/logos/bitcoin-cash-bch-logo.svg',
+    color: '#10B981',
+  };
 }
 
 export async function fetchLivePoolBalance(
