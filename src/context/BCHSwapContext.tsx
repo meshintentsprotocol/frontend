@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useCallback, useEffect, useRef, ReactNode } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { notifyToast as toast } from '@/lib/notify-toast';
 import { useBCHWallet } from './BCHWalletProvider';
 import { useActiveWallet } from '@/hooks/useActiveWallet';
@@ -90,6 +91,7 @@ export const BCHSwapContext = createContext<BCHSwapContextType | undefined>(unde
 // Provider
 // ============================================================================
 export function BCHSwapProvider({ children }: { children: ReactNode }) {
+    const queryClient = useQueryClient();
     const bchWallet = useBCHWallet();
     const { activeWalletId, isMainActive, activeExtWallet } = useActiveWallet();
     const activeSigner = useActiveSigner();
@@ -493,7 +495,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 : 'No external BCH wallet connected — connect Cashonize or Paytaca first');
         }
 
-        setSwapStep(`Creating intent on CashToken relayer (${isMainnet ? 'mainnet' : 'chipnet'})...`);
+        setSwapStep(`Creating intent on BCHMesh server (${isMainnet ? 'mainnet' : 'chipnet'})...`);
 
         // Determine token category IDs
         const sellCategoryId = params.sellToken.categoryId || (params.sellToken.chain === 'bch' && params.sellToken.symbol !== 'BCH' ? params.sellToken.categoryId : 'BCH');
@@ -502,6 +504,9 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
         // Convert amounts to satoshis / token base units
         const sellBaseUnits = Math.floor(params.sellAmount * Math.pow(10, params.sellToken.decimals || 0));
         const buyBaseUnits = Math.floor(params.buyAmount * Math.pow(10, params.buyToken.decimals || 0));
+        const isLimit = params.orderType === 'limit';
+        const startBuyUnits = buyBaseUnits;
+        const endBuyUnits = Math.max(1, Math.floor(buyBaseUnits * 0.98));
 
         try {
             const response = await axios.post(`${relayerUrl}/intent/create`, {
@@ -510,7 +515,9 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 buyToken: buyCategoryId || 'BCH',
                 sellAmount: sellBaseUnits.toString(),
                 buyAmount: buyBaseUnits.toString(),
-                orderType: params.orderType === 'limit' ? 'limit' : 'dutch',
+                startBuyAmount: isLimit ? undefined : startBuyUnits.toString(),
+                endBuyAmount: isLimit ? undefined : endBuyUnits.toString(),
+                orderType: isLimit ? 'limit' : 'dutch',
                 duration: params.duration || 3600,
                 expiryTime: params.expiryTime || Math.floor(Date.now() / 1000) + 3600,
                 network: isMainnet ? 'mainnet' : 'chipnet',
@@ -791,6 +798,9 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
             };
 
             saveOrder(order);
+            queryClient.invalidateQueries({ queryKey: ['bch-balance'] });
+            queryClient.invalidateQueries({ queryKey: ['bch-tokens'] });
+            queryClient.invalidateQueries({ queryKey: ['portfolio'] });
             setSwapStep('');
             toast.success(
                 params.orderType === 'limit' ? 'Limit order created!' : 'Dutch auction created!',
@@ -2466,8 +2476,13 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
             toast.success(label, {
                 description: `${order.sellAmount} ${order.sellToken?.symbol} → ${order.buyAmount} ${order.buyToken?.symbol}`,
             });
+
+            // Trigger immediate refresh of wallet balances
+            queryClient.invalidateQueries({ queryKey: ['bch-balance'] });
+            queryClient.invalidateQueries({ queryKey: ['bch-tokens'] });
+            queryClient.invalidateQueries({ queryKey: ['portfolio'] });
         }
-    }, []);
+    }, [queryClient]);
 
     const { connected: relayerLive } = useRelayerEvents({
         network: wdk.bchNetwork === 'mainnet' ? 'mainnet' : 'chipnet',

@@ -238,11 +238,15 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
     const getTokenPrice = useCallback((token: Token): number => {
         const cleanSymbol = token.symbol.replace('.b', '').toUpperCase();
         const feedKey = Object.keys(PRICE_FEEDS).find(k => k.toUpperCase() === cleanSymbol);
-        if (feedKey && prices[feedKey]) return PriceService.formatPrice(prices[feedKey]);
+        if (feedKey && prices[feedKey]) {
+            const formatted = PriceService.formatPrice(prices[feedKey]);
+            if (formatted > 0) return formatted;
+        }
         if (cauldronPrices[token.symbol] > 0) return cauldronPrices[token.symbol];
         if (cauldronPrices[cleanSymbol] > 0) return cauldronPrices[cleanSymbol];
         if (token.categoryId && cauldronPrices[token.categoryId] > 0) return cauldronPrices[token.categoryId];
         if (token.priceUsd && token.priceUsd > 0) return token.priceUsd;
+        if (cleanSymbol === 'BCH') return 390.0;
         return 0;
     }, [prices, cauldronPrices]);
 
