@@ -8,6 +8,7 @@ export interface TokenDetail {
     symbol: string;
     name: string;
     icon: string;
+    decimals: number;
     chain: string;
     isCashToken: boolean;
     // price
@@ -110,10 +111,13 @@ export function useTokenDetail(
                     ? `https://explorer.bitcoinunlimited.info/token/${detail.token_id}`
                     : `https://${network}chaingraph.cash/token/${detail.token_id}`;
 
+                const decimals = (detail.bcmr?.token as any)?.decimals ?? (detail.bcmr as any)?.decimals ?? 0;
+
                 return {
                     symbol: (detail.bcmr?.token?.symbol || detail.display_symbol || '???').toUpperCase(),
                     name: detail.bcmr?.name || detail.display_name || 'Unknown Token',
                     icon: resolveIcon(detail.bcmr?.uris?.icon, detail.token_id),
+                    decimals,
                     chain: 'Bitcoin Cash',
                     isCashToken: true,
                     priceUsd,
@@ -160,6 +164,11 @@ export function useTokenDetail(
             const iconFallback = cg?.image || `/logos/${sym.toLowerCase()}.svg`;
             const icon = detail?.image?.large || detail?.image?.small || iconFallback;
 
+            const crossChainDecimals: Record<string, number> = {
+                BCH: 8, SOL: 9, USDC: 6, USDT: 6, ETH: 18, 'WETH.E': 8, MOVE: 8, XMR: 12, BNB: 18,
+            };
+            const decimals = crossChainDecimals[sym] ?? 8;
+
             // Safe access — CoinGecko may rate-limit; market_data fields may be absent
             const md = detail?.market_data;
             const links = detail?.links;
@@ -178,6 +187,7 @@ export function useTokenDetail(
                 symbol: sym,
                 name: detail?.name || cg?.name || sym,
                 icon,
+                decimals,
                 chain: resolveChain(sym, isMainnet),
                 isCashToken: false,
                 priceUsd,

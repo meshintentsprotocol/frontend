@@ -95,7 +95,7 @@ export function TokenDetailPage() {
         symbol: detail.symbol,
         name: detail.name,
         icon: detail.icon,
-        decimals: 8,
+        decimals: detail.decimals ?? (isCashToken ? 0 : 8),
         type: isCashToken ? 'cashtoken' : 'native',
         chain: isCashToken ? 'bch'
             : detail.chain === 'Solana' ? 'solana'
@@ -106,6 +106,8 @@ export function TokenDetailPage() {
         priceUsd: detail.priceUsd,
         priceSats: detail.priceSats,
     } : undefined;
+
+    const anchorSide: 'sell' | 'buy' = tokenId.toUpperCase() === 'BCH' ? 'sell' : 'buy';
 
     // Reset skeleton when navigating to a new token
     useEffect(() => {
@@ -284,7 +286,7 @@ export function TokenDetailPage() {
                                     orderType={orderType}
                                     onOrderTypeChange={setOrderType}
                                     anchorToken={anchorToken}
-                                    anchorSide="sell"
+                                    anchorSide={anchorSide}
                                     onAnchorTokenChange={handleAnchorTokenChange}
                                     compact
                                     transparent
@@ -322,7 +324,7 @@ export function TokenDetailPage() {
                                         orderType={orderType}
                                         onOrderTypeChange={setOrderType}
                                         anchorToken={anchorToken}
-                                        anchorSide="sell"
+                                        anchorSide={anchorSide}
                                         onAnchorTokenChange={handleAnchorTokenChange}
                                         compact
                                         transparent
