@@ -112,7 +112,7 @@ export function TradeNavDropdown({ className }: TradeNavDropdownProps) {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 4 }}
             transition={{ duration: 0.15, ease: 'easeOut' }}
-            className="absolute top-full left-1/2 -translate-x-1/2 pt-2 z-50 w-60 pointer-events-auto"
+            className="absolute top-full left-0 pt-2 z-50 w-60 pointer-events-auto"
           >
             {/* Invisible bridge */}
             <div className="absolute -top-2 left-0 right-0 h-2" />

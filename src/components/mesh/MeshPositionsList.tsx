@@ -121,7 +121,8 @@ export function MeshPositionsList({ onCreateNew }: MeshPositionsListProps) {
   const navigate = useNavigate();
   const isConnected = Boolean(wdk.bchAddress || wdk.bchWallet);
   const { positions, loading, refresh, bchUsdPrice } = useMeshServer(12_000);
-  const { data: bchSats = 0 } = useBchBalances(10_000);
+  const { data: bchBalances } = useBchBalances(10_000);
+  const bchSats = bchBalances?.sats ?? 0;
 
   const [filterMode, setFilterMode] = useState<'all' | 'mine'>('all');
   const [searchQuery, setSearchQuery] = useState('');

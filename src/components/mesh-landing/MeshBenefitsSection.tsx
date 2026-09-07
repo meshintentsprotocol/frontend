@@ -109,10 +109,7 @@ export function MeshBenefitsSection() {
           transition={{ duration: 0.6 }}
           className="text-center mb-16 md:mb-20 max-w-3xl mx-auto"
         >
-          <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-xs font-bold uppercase tracking-widest text-emerald-300 mb-4 backdrop-blur-md">
-            <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-            Why BCHMesh
-          </span>
+
           <h2 className="text-4xl sm:text-5xl md:text-6xl font-black tracking-tight text-white leading-tight">
             Eradicating{' '}
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400">
@@ -121,81 +118,11 @@ export function MeshBenefitsSection() {
             & Capital Fragmentation
           </h2>
           <p className="mt-4 text-base sm:text-lg text-zinc-400 leading-relaxed">
-            Traditional AMMs dilute your yield, split your inventory fractionally across pools, and bleed you with gas.
-            BCHMesh introduces a unified concentrated liquidity standard built on Bitcoin Cash covenants.
+            Traditional AMMs dilute your yield and split your inventory fractionally across pools.
+            Our protocol introduces a unified concentrated liquidity standard built on Bitcoin Cash covenants.
           </p>
         </motion.div>
 
-        {/* ─── 1. Head-to-Head Comparison Matrix (BCHMesh vs Traditional AMMs) ─── */}
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={inView ? { opacity: 1, y: 0 } : {}}
-          transition={{ duration: 0.7, delay: 0.1 }}
-          className="mb-16 rounded-3xl border border-white/10 bg-[#0c0c10] overflow-hidden shadow-2xl backdrop-blur-xl"
-        >
-          <div className="p-6 md:p-8 border-b border-white/5 bg-white/[0.02] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div>
-              <span className="text-xs uppercase tracking-widest text-emerald-400 font-mono font-semibold">
-                Architecture Breakdown
-              </span>
-              <h3 className="text-2xl font-bold text-white mt-1">BCHMesh vs. Traditional EVM AMMs</h3>
-            </div>
-            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-300 font-semibold">
-              <Zap className="w-3.5 h-3.5 text-emerald-400" />
-              N× Virtual Capital Efficiency Multiplier
-            </div>
-          </div>
-
-          <div className="divide-y divide-white/5 overflow-x-auto text-sm">
-            {[
-              {
-                dimension: 'Multi-Market Liquidity Deployment',
-                mesh: '100% of single BCH deposit available to ALL trading pairs simultaneously (Mode 4 shared depth)',
-                meshHighlight: true,
-                trad: 'Must split capital fractionally (e.g. 33% / 33% / 33%) across isolated pools',
-              },
-              {
-                dimension: 'High-Frequency Grid Rebalance Fee',
-                mesh: '< $0.01 flat fee to re-center 20+ rungs in 1 transaction (~1,500 sats)',
-                meshHighlight: true,
-                trad: '$50 – $100+ gas on Ethereum / L2 priority bidding wars',
-              },
-              {
-                dimension: 'Paired Token Inventory Requirement',
-                mesh: '0% Paired Inventory: Hold pure single-asset BCH with zero unwanted token exposure',
-                meshHighlight: true,
-                trad: 'Mandatory 50/50 token pair holding (subject to token rug-pulls and decay)',
-              },
-              {
-                dimension: 'Impermanent Loss Exposure',
-                mesh: 'Zero IL on unrouted capital; single-sided fills execute purely as profitable limit orders',
-                meshHighlight: true,
-                trad: 'Constant arbitrage bleed and toxic flow to MEV searchers',
-              },
-              {
-                dimension: 'Smart Contract & Reentrancy Security',
-                mesh: 'Stateless CashScript UTXO covenants (CHIP-2021-02) with zero reentrancy attack vectors',
-                meshHighlight: true,
-                trad: 'Complex EVM state storage susceptible to reentrancy and proxy governance hacks',
-              },
-            ].map((row, i) => (
-              <div key={i} className="grid grid-cols-1 md:grid-cols-12 p-5 md:p-6 gap-4 items-center hover:bg-white/[0.01] transition-colors">
-                <div className="md:col-span-4 font-bold text-white flex items-center gap-2.5">
-                  <div className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
-                  {row.dimension}
-                </div>
-                <div className="md:col-span-4 flex items-start gap-2.5 text-emerald-300 font-medium">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                  <span>{row.mesh}</span>
-                </div>
-                <div className="md:col-span-4 flex items-start gap-2.5 text-zinc-500">
-                  <XCircle className="w-4 h-4 text-red-400/70 shrink-0 mt-0.5" />
-                  <span>{row.trad}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </motion.div>
 
         {/* ─── 2. 4 Core Pillars Bento Grid ─────────────────────────────────── */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
