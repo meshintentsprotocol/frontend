@@ -77,6 +77,12 @@ export default defineConfig({
                 rewrite: (path) => path.replace(/^\/api\/pyth/, ''),
                 secure: true,
             },
+            '/api/coingecko': {
+                target: 'https://api.coingecko.com',
+                changeOrigin: true,
+                rewrite: (path) => path.replace(/^\/api\/coingecko/, ''),
+                secure: true,
+            },
         }
     }
 })

@@ -26,9 +26,10 @@ const CG_ID_MAP: Record<string, string> = {
     'BTC': 'bitcoin',
 };
 
-// Reusable instance with a small timeout
+// Reusable instance with proxy in dev to avoid CORS
+const CG_BASE = import.meta.env.DEV ? '/api/coingecko/api/v3' : 'https://api.coingecko.com/api/v3';
 const cgApi = axios.create({
-    baseURL: 'https://api.coingecko.com/api/v3',
+    baseURL: CG_BASE,
     timeout: 10000,
 });
 

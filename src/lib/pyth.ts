@@ -52,7 +52,6 @@ export const PriceService = {
             expo: -8,
             publish_time: now,
         });
-
         // 1. Primary: Local BCHMesh oracle service (port 3001)
         try {
             const meshRes = await axios.get(`${BCH_MESH_SERVER_URL}/api/v1/oracle/prices`, { timeout: 3000 });
@@ -66,17 +65,23 @@ export const PriceService = {
                         prices[baseSymbol] = makePriceData(baseSymbol, numPrice);
                     }
                 }
+                // Fill any missing mapped symbols
+                prices['WETH.e'] = prices['ETH'] || makePriceData('WETH.e', 2650.0);
+                prices['USDC.e'] = prices['USDC'] || makePriceData('USDC.e', 1.0);
+                prices['USDT.e'] = prices['USDT'] || makePriceData('USDT.e', 1.0);
+
                 if (prices['BCH']) {
                     return prices;
                 }
             }
-        } catch { /* continue to Hermes */ }
+        } catch { /* continue to proxy */ }
 
-        // 2. Pyth Hermes endpoints
-        for (const endpoint of HERMES_ENDPOINTS) {
+        // 2. Pyth Hermes endpoints (use Vite proxy in dev)
+        const endpoints = import.meta.env.DEV ? [HERMES_PROXY] : [HERMES_DIRECT];
+        for (const endpoint of endpoints) {
             try {
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 5000);
+                const timeoutId = setTimeout(() => controller.abort(), 4000);
 
                 const response = await axios.get(`${endpoint}/v2/updates/price/latest`, {
                     params: {
@@ -101,39 +106,25 @@ export const PriceService = {
                 }
                 if (prices['BCH']) return prices;
             } catch (_err) {
-                // Silently try next endpoint
+                // Silently fallback
             }
         }
 
-        // 3. Fallback to CoinGecko simple price API
-        try {
-            const cgRes = await axios.get('https://api.coingecko.com/api/v3/simple/price?ids=bitcoin-cash,solana,ethereum,usd-coin,tether,binancecoin,monero&vs_currencies=usd', { timeout: 4000 });
-            const cg = cgRes.data;
-            const prices: Record<string, PriceData> = {};
-
-            if (cg['bitcoin-cash']?.usd) prices['BCH'] = makePriceData('BCH', cg['bitcoin-cash'].usd);
-            if (cg['solana']?.usd) prices['SOL'] = makePriceData('SOL', cg['solana'].usd);
-            if (cg['ethereum']?.usd) prices['ETH'] = makePriceData('ETH', cg['ethereum'].usd);
-            if (cg['usd-coin']?.usd) prices['USDC'] = makePriceData('USDC', cg['usd-coin'].usd);
-            if (cg['tether']?.usd) prices['USDT'] = makePriceData('USDT', cg['tether'].usd);
-            if (cg['binancecoin']?.usd) prices['BNB'] = makePriceData('BNB', cg['binancecoin'].usd);
-            if (cg['monero']?.usd) prices['XMR'] = makePriceData('XMR', cg['monero'].usd);
-            if (prices['BCH']) return prices;
-        } catch {}
-
-        // 4. Baseline fallback map so UI never displays $0.00
-        const fallbackPrices: Record<string, PriceData> = {
-            BCH:  makePriceData('BCH', 390.0),
-            SOL:  makePriceData('SOL', 145.0),
-            ETH:  makePriceData('ETH', 2550.0),
+        // 3. Reliable baseline prices (zero CORS, zero freeze)
+        return {
+            MOVE: makePriceData('MOVE', 0.85),
+            SOL: makePriceData('SOL', 145.0),
+            ETH: makePriceData('ETH', 2650.0),
+            BTC: makePriceData('BTC', 68500.0),
+            BCH: makePriceData('BCH', 390.0),
             USDC: makePriceData('USDC', 1.0),
             USDT: makePriceData('USDT', 1.0),
-            BTC:  makePriceData('BTC', 87000.0),
-            BNB:  makePriceData('BNB', 580.0),
-            XMR:  makePriceData('XMR', 240.0),
-            MOVE: makePriceData('MOVE', 0.50),
+            BNB: makePriceData('BNB', 580.0),
+            XMR: makePriceData('XMR', 160.0),
+            "WETH.e": makePriceData('WETH.e', 2650.0),
+            "USDC.e": makePriceData('USDC.e', 1.0),
+            "USDT.e": makePriceData('USDT.e', 1.0),
         };
-        return fallbackPrices;
     },
 
     /**
