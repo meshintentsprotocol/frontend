@@ -223,7 +223,7 @@ export function TWAPOrderHistory() {
                             </div>
 
                             <a
-                              href={`https://chipnet.chaingraph.cash/tx/${fill.txid}`}
+                              href={`https://chipnet.imaginary.cash/tx/${fill.txid}`}
                               target="_blank"
                               rel="noreferrer"
                               className="p-1.5 bg-white/5 hover:bg-white/10 rounded-lg text-emerald-400 transition-colors"

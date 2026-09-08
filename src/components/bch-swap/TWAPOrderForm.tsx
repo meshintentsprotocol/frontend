@@ -29,8 +29,12 @@ interface TWAPOrderFormProps {
 
 function derivePkhFromAddress(address: string): string {
   if (!address) return '';
+  if (/^[0-9a-fA-F]{40}$/.test(address)) return address;
+  const fullAddr = address.includes(':')
+    ? address
+    : (address.startsWith('1') || address.startsWith('3') ? address : `bchtest:${address}`);
   try {
-    const decoded = cashAddressToLockingBytecode(address);
+    const decoded = cashAddressToLockingBytecode(fullAddr);
     if (typeof decoded !== 'string') {
       if (decoded.bytecode.length === 25) {
         return binToHex(decoded.bytecode.slice(3, 23));

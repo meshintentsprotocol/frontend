@@ -3,6 +3,7 @@ import type { TwapQuoteResponse, TwapOrderRecord } from '@/types';
 import { useWDK } from '@/context/WDKProvider';
 import { useBCHWallet } from '@/context/BCHWalletProvider';
 import { BCH_MESH_SERVER_URL } from '@/lib/config';
+import { toast } from 'sonner';
 
 const MESH_API_URL = BCH_MESH_SERVER_URL;
 
@@ -125,6 +126,56 @@ export function useTWAP(pollIntervalMs: number = 5000) {
     const interval = setInterval(refreshOrders, pollIntervalMs);
     return () => clearInterval(interval);
   }, [refreshOrders, pollIntervalMs]);
+
+  // Real-time WebSocket event listener for slice fills & completion
+  useEffect(() => {
+    let ws: WebSocket | null = null;
+    let reconnectTimeout: any = null;
+
+    const connectWs = () => {
+      try {
+        const wsUrl = `${MESH_API_URL.replace(/^http/, 'ws')}/ws`;
+        ws = new WebSocket(wsUrl);
+
+        ws.onmessage = (event) => {
+          try {
+            const msg = JSON.parse(event.data);
+            if (msg.type === 'twap:slice_filled' && msg.data) {
+              const d = msg.data;
+              toast.success(`TWAP Slice #${d.sliceIndex + 1}/${d.numSlices} Filled!`, {
+                description: d.txid && !d.txid.startsWith('sim_') ? `Tx: ${d.txid.slice(0, 12)}…` : 'Slice executed on-chain',
+                action: d.explorerUrl ? {
+                  label: 'View Tx',
+                  onClick: () => window.open(d.explorerUrl, '_blank'),
+                } : undefined,
+                duration: 6000,
+              });
+              void refreshOrders();
+            } else if (msg.type === 'twap:completed' && msg.data) {
+              const d = msg.data;
+              toast.success(`🎉 TWAP Order #${d.orderId.slice(0, 8)} Completed!`, {
+                description: `All ${d.numSlices} slices successfully executed on-chain.`,
+                duration: 8000,
+              });
+              void refreshOrders();
+            }
+          } catch {}
+        };
+
+        ws.onclose = () => {
+          reconnectTimeout = setTimeout(connectWs, 5000);
+        };
+      } catch {
+        reconnectTimeout = setTimeout(connectWs, 5000);
+      }
+    };
+
+    connectWs();
+    return () => {
+      if (ws) ws.close();
+      if (reconnectTimeout) clearTimeout(reconnectTimeout);
+    };
+  }, [refreshOrders]);
 
   return {
     orders,
