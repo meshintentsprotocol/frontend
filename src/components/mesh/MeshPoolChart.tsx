@@ -7,9 +7,11 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Maximize2,
+  ShieldCheck,
 } from 'lucide-react';
 import { type MeshPosition } from '@/hooks/useMeshServer';
 import { tokenSymbol } from '@/lib/meshContracts';
+import { MeshPoolStatsCard } from '@/components/mesh/MeshPoolStatsCard';
 import { cn } from '@/lib/utils';
 
 interface MeshPoolChartProps {
@@ -19,9 +21,12 @@ interface MeshPoolChartProps {
   effectiveReserveUsd: number;
   effectiveTokenAmount: bigint;
   volume24hUsd?: number;
+  totalFills?: number;
+  totalBchVolume?: number;
+  totalFeesEarnedBch?: number;
 }
 
-type ChartTab = 'price' | 'volume' | 'liquidity' | 'depth';
+type ChartTab = 'price' | 'volume' | 'liquidity' | 'depth' | 'stats';
 type Timeframe = '1H' | '1D' | '1W' | '1M' | '1Y' | 'All';
 
 export function MeshPoolChart({
@@ -31,6 +36,9 @@ export function MeshPoolChart({
   effectiveReserveUsd,
   effectiveTokenAmount,
   volume24hUsd = 28140,
+  totalFills = 14,
+  totalBchVolume = 48.25,
+  totalFeesEarnedBch = 0.0284,
 }: MeshPoolChartProps) {
   const [activeTab, setActiveTab] = useState<ChartTab>('volume');
   const [timeframe, setTimeframe] = useState<Timeframe>('1D');
@@ -134,16 +142,17 @@ export function MeshPoolChart({
   }, [activeTab, chartData, hoverIndex, activePoint, timeframe, baseRate, effectiveReserveUsd, effectiveTokenAmount, tokenOutName, effectiveReserveBch]);
 
   return (
-    <div className="p-6 bg-[#0c0c10] border border-white/[0.08] rounded-3xl space-y-6 shadow-2xl backdrop-blur-xl relative">
+    <div className="p-5 sm:p-6 bg-[#0c0c10] border border-white/[0.08] rounded-3xl space-y-6 shadow-2xl backdrop-blur-xl relative">
       {/* ─── Top View Switcher & Timeframe Tabs ─── */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        {/* Metric Views: Price, Volume, Liquidity, Depth */}
-        <div className="flex items-center gap-1.5 p-1 bg-white/[0.03] border border-white/5 rounded-2xl">
+        {/* Metric Views: Price, Volume, Liquidity, Depth, Stats & Health */}
+        <div className="flex items-center gap-1 p-1 bg-white/[0.03] border border-white/5 rounded-2xl overflow-x-auto max-w-full">
           {[
             { id: 'price', label: 'Price', icon: TrendingUp },
             { id: 'volume', label: 'Volume', icon: BarChart2 },
             { id: 'liquidity', label: 'Liquidity', icon: Layers },
             { id: 'depth', label: 'Depth', icon: Activity },
+            { id: 'stats', label: 'Stats & Health', icon: ShieldCheck },
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -152,9 +161,9 @@ export function MeshPoolChart({
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as ChartTab)}
                 className={cn(
-                  'px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5',
+                  'px-3 sm:px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap',
                   isActive
-                    ? 'bg-white/10 text-white shadow-md'
+                    ? 'bg-blue-600 text-white shadow-md'
                     : 'text-zinc-400 hover:text-zinc-200'
                 )}
               >
@@ -165,270 +174,290 @@ export function MeshPoolChart({
           })}
         </div>
 
-        {/* Timeframe Selectors: 1H, 1D, 1W, 1M, 1Y, All */}
-        <div className="flex items-center gap-1 p-1 bg-white/[0.03] border border-white/5 rounded-xl text-xs font-mono">
-          {(['1H', '1D', '1W', '1M', '1Y', 'All'] as Timeframe[]).map((tf) => (
-            <button
-              key={tf}
-              onClick={() => setTimeframe(tf)}
-              className={cn(
-                'px-2.5 py-1 rounded-lg transition-all font-semibold',
-                timeframe === tf
-                  ? 'bg-white/10 text-white shadow-sm'
-                  : 'text-zinc-500 hover:text-zinc-300'
-              )}
-            >
-              {tf}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* ─── Headline Metric Display ─── */}
-      <div className="space-y-1">
-        <div className="text-3xl sm:text-4xl font-black font-mono text-white tracking-tight">
-          {headlineDisplay.value}
-        </div>
-        <div className="flex items-center gap-2 text-xs">
-          <span
-            className={cn(
-              'font-semibold font-mono flex items-center gap-0.5',
-              headlineDisplay.positive ? 'text-emerald-400' : 'text-rose-400'
-            )}
-          >
-            {headlineDisplay.positive ? (
-              <ArrowUpRight className="w-3.5 h-3.5" />
-            ) : (
-              <ArrowDownRight className="w-3.5 h-3.5" />
-            )}
-            {headlineDisplay.label}
-          </span>
-          {hoverIndex !== null && (
-            <span className="text-zinc-500 font-mono">({activePoint.label})</span>
-          )}
-        </div>
-      </div>
-
-      {/* ─── Interactive SVG Chart Canvas ─── */}
-      <div
-        className="relative h-64 sm:h-72 w-full pt-4 cursor-crosshair select-none"
-        onMouseLeave={() => setHoverIndex(null)}
-      >
-        <svg
-          viewBox="0 0 600 240"
-          className="w-full h-full overflow-visible"
-          preserveAspectRatio="none"
-        >
-          <defs>
-            {/* Volume bar gradient */}
-            <linearGradient id="volGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#ec4899" stopOpacity="0.9" />
-              <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0.4" />
-            </linearGradient>
-
-            {/* Price area gradient */}
-            <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#10b981" stopOpacity="0.35" />
-              <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
-            </linearGradient>
-
-            {/* Depth staircase gradient */}
-            <linearGradient id="depthGradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.4" />
-              <stop offset="100%" stopColor="#06b6d4" stopOpacity="0.0" />
-            </linearGradient>
-          </defs>
-
-          {/* Background Grid Lines & Y-Axis Reference ticks */}
-          {[0.25, 0.5, 0.75].map((ratio, i) => (
-            <g key={i}>
-              <line
-                x1="0"
-                y1={240 * ratio}
-                x2="600"
-                y2={240 * ratio}
-                stroke="rgba(255,255,255,0.05)"
-                strokeDasharray="4 4"
-              />
-              <text
-                x="590"
-                y={240 * ratio - 6}
-                textAnchor="end"
-                fill="rgba(255,255,255,0.25)"
-                fontSize="10"
-                fontFamily="monospace"
+        {/* Timeframe Selectors (hidden when on stats tab) */}
+        {activeTab !== 'stats' && (
+          <div className="flex items-center gap-1 p-1 bg-white/[0.03] border border-white/5 rounded-xl text-xs font-mono">
+            {(['1H', '1D', '1W', '1M', '1Y', 'All'] as Timeframe[]).map((tf) => (
+              <button
+                key={tf}
+                onClick={() => setTimeframe(tf)}
+                className={cn(
+                  'px-2.5 py-1 rounded-lg transition-all font-semibold',
+                  timeframe === tf
+                    ? 'bg-white/10 text-white shadow-sm'
+                    : 'text-zinc-500 hover:text-zinc-300'
+                )}
               >
-                {activeTab === 'volume'
-                  ? `$${Math.round((maxVol * (1 - ratio)) / 1000)}K`
-                  : activeTab === 'price'
-                  ? `$${(minPrice + (maxPrice - minPrice) * (1 - ratio)).toFixed(0)}`
-                  : `${(maxDepth * (1 - ratio)).toFixed(1)} BCH`}
-              </text>
-            </g>
-          ))}
+                {tf}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
-          {/* ── Mode 1: Volume Histogram Bars (Matching Uniswap screenshot) ── */}
-          {activeTab === 'volume' && (
-            <g>
-              {chartData.map((d, idx) => {
-                const barWidth = 600 / chartData.length;
-                const barHeight = (d.volumeUsd / maxVol) * 200;
-                const x = idx * barWidth + barWidth * 0.35;
-                const y = 240 - barHeight;
-                const isHovered = hoverIndex === idx;
+      {/* ─── Body: Stats Card OR Headline Metric + Chart Canvas ─── */}
+      {activeTab === 'stats' ? (
+        <div className="pt-2">
+          <MeshPoolStatsCard
+            position={position}
+            effectiveReserveBch={effectiveReserveBch}
+            effectiveReserveUsd={effectiveReserveUsd}
+            effectiveTokenAmount={effectiveTokenAmount}
+            liveBchPrice={liveBchPrice}
+            totalFills={totalFills}
+            totalBchVolume={totalBchVolume}
+            totalFeesEarnedBch={totalFeesEarnedBch}
+          />
+        </div>
+      ) : (
+        <>
+          {/* ─── Headline Metric Display ─── */}
+          <div className="space-y-1">
+            <div className="text-3xl sm:text-4xl font-black font-mono text-white tracking-tight">
+              {headlineDisplay.value}
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              <span
+                className={cn(
+                  'font-semibold font-mono flex items-center gap-0.5',
+                  headlineDisplay.positive ? 'text-emerald-400' : 'text-rose-400'
+                )}
+              >
+                {headlineDisplay.positive ? (
+                  <ArrowUpRight className="w-3.5 h-3.5" />
+                ) : (
+                  <ArrowDownRight className="w-3.5 h-3.5" />
+                )}
+                {headlineDisplay.label}
+              </span>
+              {hoverIndex !== null && (
+                <span className="text-zinc-500 font-mono">({activePoint.label})</span>
+              )}
+            </div>
+          </div>
 
-                return (
-                  <g
-                    key={idx}
-                    onMouseEnter={() => setHoverIndex(idx)}
-                    className="transition-opacity duration-150"
-                  >
-                    {/* Invisible hover hitbox */}
-                    <rect
-                      x={idx * barWidth}
-                      y="0"
-                      width={barWidth}
-                      height="240"
-                      fill="transparent"
-                    />
-                    {/* Bar rectangle */}
-                    <rect
-                      x={x}
-                      y={y}
-                      width={Math.max(2, barWidth * 0.3)}
-                      height={barHeight}
-                      rx="2"
-                      fill={isHovered ? '#f43f5e' : 'url(#volGradient)'}
-                      className="transition-colors duration-150"
-                    />
-                  </g>
-                );
-              })}
-            </g>
-          )}
+          {/* ─── Interactive SVG Chart Canvas ─── */}
+          <div
+            className="relative h-48 sm:h-64 md:h-72 w-full pt-4 cursor-crosshair select-none overflow-hidden"
+            onMouseLeave={() => setHoverIndex(null)}
+          >
+            <svg
+              viewBox="0 0 600 240"
+              className="w-full h-full overflow-visible"
+              preserveAspectRatio="none"
+            >
+              <defs>
+                {/* Volume bar gradient */}
+                <linearGradient id="volGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#ec4899" stopOpacity="0.9" />
+                  <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0.4" />
+                </linearGradient>
 
-          {/* ── Mode 2: Price Line & Smooth Area ── */}
-          {activeTab === 'price' && (
-            <g>
-              {(() => {
-                const points = chartData.map((d, i) => {
-                  const x = (i / (chartData.length - 1)) * 600;
-                  const y = 240 - ((d.price - minPrice) / (maxPrice - minPrice)) * 200 - 20;
-                  return `${x},${y}`;
-                });
+                {/* Price area gradient */}
+                <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#10b981" stopOpacity="0.35" />
+                  <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
+                </linearGradient>
 
-                const pathD = `M ${points.join(' L ')}`;
-                const areaD = `M 0,240 L ${points.join(' L ')} L 600,240 Z`;
+                {/* Depth staircase gradient */}
+                <linearGradient id="depthGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.4" />
+                  <stop offset="100%" stopColor="#06b6d4" stopOpacity="0.0" />
+                </linearGradient>
+              </defs>
 
-                return (
-                  <>
-                    <path d={areaD} fill="url(#priceGradient)" />
-                    <path
-                      d={pathD}
-                      fill="none"
-                      stroke="#10b981"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                    />
-                  </>
-                );
-              })()}
-
-              {/* Hover Hitboxes */}
-              {chartData.map((d, idx) => {
-                const step = 600 / chartData.length;
-                return (
-                  <rect
-                    key={idx}
-                    x={idx * step}
-                    y="0"
-                    width={step}
-                    height="240"
-                    fill="transparent"
-                    onMouseEnter={() => setHoverIndex(idx)}
+              {/* Background Grid Lines & Y-Axis Reference ticks */}
+              {[0.25, 0.5, 0.75].map((ratio, i) => (
+                <g key={i}>
+                  <line
+                    x1="0"
+                    y1={240 * ratio}
+                    x2="600"
+                    y2={240 * ratio}
+                    stroke="rgba(255,255,255,0.05)"
+                    strokeDasharray="4 4"
                   />
-                );
-              })}
-            </g>
-          )}
+                  <text
+                    x="590"
+                    y={240 * ratio - 6}
+                    textAnchor="end"
+                    fill="rgba(255,255,255,0.25)"
+                    fontSize="10"
+                    fontFamily="monospace"
+                  >
+                    {activeTab === 'volume'
+                      ? `$${Math.round((maxVol * (1 - ratio)) / 1000)}K`
+                      : activeTab === 'price'
+                      ? `$${(minPrice + (maxPrice - minPrice) * (1 - ratio)).toFixed(0)}`
+                      : `${(maxDepth * (1 - ratio)).toFixed(1)} BCH`}
+                  </text>
+                </g>
+              ))}
 
-          {/* ── Mode 3 & 4: Liquidity / Depth Concentrated Ladder ── */}
-          {(activeTab === 'liquidity' || activeTab === 'depth') && (
-            <g>
-              {(() => {
-                const points = chartData.map((d, i) => {
-                  const x = (i / (chartData.length - 1)) * 600;
-                  const y = 240 - (d.depthBch / maxDepth) * 200 - 15;
-                  return `${x},${y}`;
-                });
+              {/* ── Mode 1: Volume Histogram Bars ── */}
+              {activeTab === 'volume' && (
+                <g>
+                  {chartData.map((d, idx) => {
+                    const barWidth = 600 / chartData.length;
+                    const barHeight = (d.volumeUsd / maxVol) * 200;
+                    const x = idx * barWidth + barWidth * 0.35;
+                    const y = 240 - barHeight;
+                    const isHovered = hoverIndex === idx;
 
-                const areaD = `M 0,240 L ${points.join(' L ')} L 600,240 Z`;
+                    return (
+                      <g
+                        key={idx}
+                        onMouseEnter={() => setHoverIndex(idx)}
+                        className="transition-opacity duration-150"
+                      >
+                        {/* Invisible hover hitbox */}
+                        <rect
+                          x={idx * barWidth}
+                          y="0"
+                          width={barWidth}
+                          height="240"
+                          fill="transparent"
+                        />
+                        {/* Bar rectangle */}
+                        <rect
+                          x={x}
+                          y={y}
+                          width={Math.max(2, barWidth * 0.3)}
+                          height={barHeight}
+                          rx="2"
+                          fill={isHovered ? '#f43f5e' : 'url(#volGradient)'}
+                          className="transition-colors duration-150"
+                        />
+                      </g>
+                    );
+                  })}
+                </g>
+              )}
 
-                return (
-                  <>
-                    <path d={areaD} fill="url(#depthGradient)" />
-                    <path
-                      d={`M ${points.join(' L ')}`}
-                      fill="none"
-                      stroke="#06b6d4"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
+              {/* ── Mode 2: Price Line & Smooth Area ── */}
+              {activeTab === 'price' && (
+                <g>
+                  {(() => {
+                    const points = chartData.map((d, i) => {
+                      const x = (i / (chartData.length - 1)) * 600;
+                      const y = 240 - ((d.price - minPrice) / (maxPrice - minPrice)) * 200 - 20;
+                      return `${x},${y}`;
+                    });
+
+                    const pathD = `M ${points.join(' L ')}`;
+                    const areaD = `M 0,240 L ${points.join(' L ')} L 600,240 Z`;
+
+                    return (
+                      <>
+                        <path d={areaD} fill="url(#priceGradient)" />
+                        <path
+                          d={pathD}
+                          fill="none"
+                          stroke="#10b981"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                        />
+                      </>
+                    );
+                  })()}
+
+                  {/* Hover Hitboxes */}
+                  {chartData.map((d, idx) => {
+                    const step = 600 / chartData.length;
+                    return (
+                      <rect
+                        key={idx}
+                        x={idx * step}
+                        y="0"
+                        width={step}
+                        height="240"
+                        fill="transparent"
+                        onMouseEnter={() => setHoverIndex(idx)}
+                      />
+                    );
+                  })}
+                </g>
+              )}
+
+              {/* ── Mode 3 & 4: Liquidity / Depth Concentrated Ladder ── */}
+              {(activeTab === 'liquidity' || activeTab === 'depth') && (
+                <g>
+                  {(() => {
+                    const points = chartData.map((d, i) => {
+                      const x = (i / (chartData.length - 1)) * 600;
+                      const y = 240 - (d.depthBch / maxDepth) * 200 - 15;
+                      return `${x},${y}`;
+                    });
+
+                    const areaD = `M 0,240 L ${points.join(' L ')} L 600,240 Z`;
+
+                    return (
+                      <>
+                        <path d={areaD} fill="url(#depthGradient)" />
+                        <path
+                          d={`M ${points.join(' L ')}`}
+                          fill="none"
+                          stroke="#06b6d4"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                        />
+                      </>
+                    );
+                  })()}
+
+                  {/* Active Concentrated Range Overlay */}
+                  {position.rangeLow > 0 && position.rangeHigh > 0 && (
+                    <rect
+                      x="200"
+                      y="20"
+                      width="200"
+                      height="200"
+                      fill="rgba(52, 211, 153, 0.05)"
+                      stroke="rgba(52, 211, 153, 0.3)"
+                      strokeDasharray="4 4"
                     />
-                  </>
-                );
-              })()}
+                  )}
 
-              {/* Active Concentrated Range Overlay */}
-              {position.rangeLow > 0 && position.rangeHigh > 0 && (
-                <rect
-                  x="200"
-                  y="20"
-                  width="200"
-                  height="200"
-                  fill="rgba(52, 211, 153, 0.05)"
-                  stroke="rgba(52, 211, 153, 0.3)"
-                  strokeDasharray="4 4"
+                  {chartData.map((d, idx) => {
+                    const step = 600 / chartData.length;
+                    return (
+                      <rect
+                        key={idx}
+                        x={idx * step}
+                        y="0"
+                        width={step}
+                        height="240"
+                        fill="transparent"
+                        onMouseEnter={() => setHoverIndex(idx)}
+                      />
+                    );
+                  })}
+                </g>
+              )}
+
+              {/* Active Hover Crosshair Line */}
+              {hoverIndex !== null && (
+                <line
+                  x1={(hoverIndex / (chartData.length - 1)) * 600}
+                  y1="0"
+                  x2={(hoverIndex / (chartData.length - 1)) * 600}
+                  y2="240"
+                  stroke="rgba(255,255,255,0.4)"
+                  strokeWidth="1"
+                  strokeDasharray="3 3"
                 />
               )}
+            </svg>
 
-              {chartData.map((d, idx) => {
-                const step = 600 / chartData.length;
-                return (
-                  <rect
-                    key={idx}
-                    x={idx * step}
-                    y="0"
-                    width={step}
-                    height="240"
-                    fill="transparent"
-                    onMouseEnter={() => setHoverIndex(idx)}
-                  />
-                );
-              })}
-            </g>
-          )}
-
-          {/* Active Hover Crosshair Line */}
-          {hoverIndex !== null && (
-            <line
-              x1={(hoverIndex / (chartData.length - 1)) * 600}
-              y1="0"
-              x2={(hoverIndex / (chartData.length - 1)) * 600}
-              y2="240"
-              stroke="rgba(255,255,255,0.4)"
-              strokeWidth="1"
-              strokeDasharray="3 3"
-            />
-          )}
-        </svg>
-
-        {/* X-Axis Time Labels */}
-        <div className="flex justify-between items-center text-[10px] font-mono text-zinc-500 pt-2 px-1">
-          <span>{chartData[0]?.label}</span>
-          <span>{chartData[Math.floor(chartData.length / 2)]?.label}</span>
-          <span>{chartData[chartData.length - 1]?.label}</span>
-        </div>
-      </div>
+            {/* X-Axis Time Labels */}
+            <div className="flex justify-between items-center text-[10px] font-mono text-zinc-500 pt-2 px-1">
+              <span>{chartData[0]?.label}</span>
+              <span>{chartData[Math.floor(chartData.length / 2)]?.label}</span>
+              <span>{chartData[chartData.length - 1]?.label}</span>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

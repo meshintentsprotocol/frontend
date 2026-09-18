@@ -3,9 +3,11 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useMeshServer, type MeshPosition } from '@/hooks/useMeshServer';
 import { useWDK } from '@/context/WDKProvider';
 import { usePoolFills } from '@/hooks/usePoolFills';
+import { useIsMobile } from '@/hooks/use-mobile';
 import {
   executeDockPosition,
   executeTopUpPosition,
+  executeRebalancePosition,
   fetchLivePoolBalance,
   tokenSymbol,
   getLocalPositionParams,
@@ -18,6 +20,20 @@ import { MeshPoolStatsCard } from '@/components/mesh/MeshPoolStatsCard';
 import { MeshPoolLinksCard } from '@/components/mesh/MeshPoolLinksCard';
 import { MeshPoolManageCard } from '@/components/mesh/MeshPoolManageCard';
 import { MeshPoolActivityTable } from '@/components/mesh/MeshPoolActivityTable';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerDescription,
+} from '@/components/ui/drawer';
 import {
   ShieldCheck,
   AlertTriangle,
@@ -35,12 +51,14 @@ export function MeshPoolDetailPage() {
 
   const [isDocking, setIsDocking] = useState<boolean>(false);
   const [isToppingUp, setIsToppingUp] = useState<boolean>(false);
+  const [isRebalancing, setIsRebalancing] = useState<boolean>(false);
+  const [isManageOpen, setIsManageOpen] = useState<boolean>(false);
+  const isMobile = useIsMobile();
+  const manageCardRef = useRef<HTMLDivElement>(null);
 
   // Live on-chain balance state
   const [liveBalance, setLiveBalance] = useState<LivePoolBalance | null>(null);
   const [isRefreshingBalance, setIsRefreshingBalance] = useState<boolean>(false);
-
-  const manageCardRef = useRef<HTMLDivElement | null>(null);
 
   const voutNum = Number(vout || 0);
 
@@ -251,6 +269,60 @@ export function MeshPoolDetailPage() {
     }
   };
 
+  // Execution: Single-Tx Atomic Strategy Rebalance
+  const handleRebalance = async (newParams: {
+    rangeLow?: number;
+    rangeHigh?: number;
+    spreadBps?: number;
+    feeBps?: number;
+  }) => {
+    if (!position || !wdk.bchWallet) {
+      toast.error('Connect your BCH wallet to rebalance this position');
+      return;
+    }
+
+    if (position.isMock) {
+      toast.error(
+        'This is a seeded demo position. Deploy your own pool to test live rebalancing on Chipnet.',
+        { duration: 8000 }
+      );
+      return;
+    }
+
+    setIsRebalancing(true);
+    toast.info('Executing atomic single-tx rebalance on Chipnet (< $0.01 fee)…');
+
+    try {
+      const res = await executeRebalancePosition(wdk.bchWallet, position, {
+        newRangeLow: newParams.rangeLow,
+        newRangeHigh: newParams.rangeHigh,
+        newSpreadBps: newParams.spreadBps ? BigInt(newParams.spreadBps) : undefined,
+        newFeeBps: newParams.feeBps ? BigInt(newParams.feeBps) : undefined,
+        network: (wdk.bchNetwork as any) || 'chipnet',
+      });
+
+      toast.success(
+        `🎉 Successfully rebalanced strategy! New TXID: ${res.txid.slice(0, 10)}…`,
+        {
+          duration: 9000,
+          action: {
+            label: 'View on Explorer',
+            onClick: () =>
+              window.open(`https://chipnet.chaingraph.cash/tx/${res.txid}`, '_blank'),
+          },
+        }
+      );
+
+      await Promise.all([refreshLiveBalance(), refreshServer(), refreshFills()]);
+      navigate(`/mesh/pool/${res.txid}/0`, { replace: true });
+    } catch (e: any) {
+      console.error('[Mesh] Rebalance execution failed:', e);
+      toast.error(`Rebalance failed: ${e?.message ?? 'Unknown error'}`);
+    } finally {
+      setIsRebalancing(false);
+    }
+  };
+
   const handleSyncAll = async () => {
     await Promise.all([refreshLiveBalance(), refreshServer(), refreshFills()]);
   };
@@ -285,20 +357,21 @@ export function MeshPoolDetailPage() {
         </div>
       ) : (
         <>
-          {/* ─── 1. Uniswap-Style Pool Header & Actions Bar ─── */}
+          {/* ─── 1. Pool Header & Actions Bar ─── */}
           <MeshPoolHeader
             position={position}
             isRefreshing={isRefreshingBalance}
             onRefresh={handleSyncAll}
             isDrained={isDrained}
-            onOpenAddLiquidity={handleScrollToManage}
+            onOpenManage={() => setIsManageOpen(true)}
+            onOpenAddLiquidity={() => setIsManageOpen(true)}
           />
 
-          {/* ─── 2. Uniswap 2-Column Workstation Layout ─── */}
+          {/* ─── 2. 2-Column Workstation Layout ─── */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
             {/* ── Left Column (7 cols): Interactive Chart & Transactions ── */}
             <div className="lg:col-span-7 space-y-6">
-              {/* Interactive Chart Card (Price / Volume / Liquidity / Depth) */}
+              {/* Interactive Chart Card (Price / Volume / Liquidity / Depth / Stats & Health) */}
               <MeshPoolChart
                 position={position}
                 liveBchPrice={livePrice}
@@ -306,9 +379,12 @@ export function MeshPoolDetailPage() {
                 effectiveReserveUsd={effectiveReserveUsd}
                 effectiveTokenAmount={effectiveTokenAmount}
                 volume24hUsd={28140}
+                totalFills={totalFills}
+                totalBchVolume={totalBchVolume}
+                totalFeesEarnedBch={totalFeesEarnedBch}
               />
 
-              {/* Transactions Feed (Matching Uniswap screenshot) */}
+              {/* Transactions Feed */}
               <MeshPoolActivityTable
                 fills={fills}
                 totalFills={totalFills}
@@ -331,25 +407,106 @@ export function MeshPoolDetailPage() {
                 liveBchPrice={livePrice}
                 isDocking={isDocking}
                 isToppingUp={isToppingUp}
+                isRebalancing={isRebalancing}
                 onDock={handleDock}
                 onTopUp={handleTopUp}
+                onRebalance={handleRebalance}
               />
 
-              {/* Stats Card (Uniswap Pool Balances, Split Ratio, APR, TVL, 24h Volume, 24h Fees) */}
-              <MeshPoolStatsCard
-                position={position}
-                effectiveReserveBch={effectiveReserveBch}
-                effectiveReserveUsd={effectiveReserveUsd}
-                effectiveTokenAmount={effectiveTokenAmount}
-                liveBchPrice={livePrice}
-                totalFills={totalFills}
-                totalBchVolume={totalBchVolume}
-                totalFeesEarnedBch={totalFeesEarnedBch}
-              />
+              {/* Stats Card (Desktop view — on mobile it's also available in top chart tabs) */}
+              <div className="hidden lg:block">
+                <MeshPoolStatsCard
+                  position={position}
+                  effectiveReserveBch={effectiveReserveBch}
+                  effectiveReserveUsd={effectiveReserveUsd}
+                  effectiveTokenAmount={effectiveTokenAmount}
+                  liveBchPrice={livePrice}
+                  totalFills={totalFills}
+                  totalBchVolume={totalBchVolume}
+                  totalFeesEarnedBch={totalFeesEarnedBch}
+                />
+              </div>
 
               {/* Links Card (Pair Address, BCH Native, CashToken Category ID) */}
               <MeshPoolLinksCard position={position} />
             </div>
+          </div>
+
+          {/* ─── 3. Desktop Modal Popup for Manage (Top-Up / Dock / Rebalance) ─── */}
+          <div className="hidden sm:block">
+            <Dialog open={isManageOpen} onOpenChange={setIsManageOpen}>
+              <DialogContent className="max-w-lg bg-[#0c0c10] border border-white/10 p-0 overflow-hidden rounded-3xl shadow-2xl text-white">
+                <DialogHeader className="sr-only">
+                  <DialogTitle>Manage Covenant Position</DialogTitle>
+                  <DialogDescription>Top-up, dock or rebalance your position</DialogDescription>
+                </DialogHeader>
+                <div className="max-h-[80vh] overflow-y-auto">
+                  <MeshPoolManageCard
+                    position={position}
+                    isConnected={isConnected}
+                    isDrained={isDrained}
+                    effectiveReserveSats={effectiveReserveSats}
+                    effectiveTokenAmount={effectiveTokenAmount}
+                    liveBchPrice={livePrice}
+                    isDocking={isDocking}
+                    isToppingUp={isToppingUp}
+                    isRebalancing={isRebalancing}
+                    onDock={async (p) => {
+                      await handleDock(p);
+                      setIsManageOpen(false);
+                    }}
+                    onTopUp={async (a) => {
+                      await handleTopUp(a);
+                      setIsManageOpen(false);
+                    }}
+                    onRebalance={async (params) => {
+                      await handleRebalance(params);
+                      setIsManageOpen(false);
+                    }}
+                  />
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
+
+          {/* ─── 4. Mobile Bottom Slide-Up Drawer for Manage (Top-Up / Dock / Rebalance) ─── */}
+          <div className="block sm:hidden">
+            <Drawer open={isManageOpen} onOpenChange={setIsManageOpen}>
+              <DrawerContent className="max-h-[90vh] bg-[#0c0c10] border-t border-white/10 rounded-t-3xl shadow-2xl text-white">
+                <DrawerHeader className="px-4 pt-3 pb-0">
+                  <div className="mx-auto w-10 h-1 rounded-full bg-zinc-600 mb-2" />
+                  <DrawerTitle className="text-sm font-bold text-white">Manage Position</DrawerTitle>
+                  <DrawerDescription className="text-xs text-zinc-400">
+                    Top-up, withdraw, or rebalance your covenant
+                  </DrawerDescription>
+                </DrawerHeader>
+                <div className="overflow-y-auto px-4 pb-6">
+                  <MeshPoolManageCard
+                    position={position}
+                    isConnected={isConnected}
+                    isDrained={isDrained}
+                    effectiveReserveSats={effectiveReserveSats}
+                    effectiveTokenAmount={effectiveTokenAmount}
+                    liveBchPrice={livePrice}
+                    isDocking={isDocking}
+                    isToppingUp={isToppingUp}
+                    isRebalancing={isRebalancing}
+                    onDock={async (p) => {
+                      await handleDock(p);
+                      setIsManageOpen(false);
+                    }}
+                    onTopUp={async (a) => {
+                      await handleTopUp(a);
+                      setIsManageOpen(false);
+                    }}
+                    onRebalance={async (params) => {
+                      await handleRebalance(params);
+                      setIsManageOpen(false);
+                    }}
+                  />
+                </div>
+              </DrawerContent>
+            </Drawer>
           </div>
         </>
       )}
