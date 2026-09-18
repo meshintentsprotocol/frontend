@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Layers, BookOpen, ChevronDown, TrendingUp, PlusCircle } from 'lucide-react';
+import { Sparkles, Layers, BookOpen, TrendingUp, PlusCircle, Trophy } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface MeshPageItem {
@@ -25,6 +25,12 @@ export const MESH_PAGES: MeshPageItem[] = [
     icon: TrendingUp,
   },
   {
+    name: 'Leaderboard',
+    path: '/mesh?tab=leaderboard',
+    description: 'Top LP makers ranked by volume & APY',
+    icon: Trophy,
+  },
+  {
     name: 'Create Position',
     path: '/mesh?tab=create',
     description: 'Deploy new concentrated LP covenant',
@@ -45,7 +51,6 @@ export const MESH_PAGES: MeshPageItem[] = [
 ];
 
 interface MeshNavDropdownProps {
-  variant?: 'landing' | 'app';
   className?: string;
 }
 
@@ -93,19 +98,13 @@ export function MeshNavDropdown({ className }: MeshNavDropdownProps) {
         to="/mesh"
         onClick={() => setIsOpen(false)}
         className={cn(
-          'flex items-center gap-1 text-[15px] font-semibold transition-all duration-300 py-2 relative group outline-none',
+          'flex items-center text-[15px] font-semibold transition-all duration-300 py-2 relative group outline-none',
           isMeshActive
             ? 'text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]'
             : 'text-zinc-300 hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]'
         )}
       >
         <span>Mesh</span>
-        <ChevronDown
-          className={cn(
-            'w-3.5 h-3.5 text-zinc-400 group-hover:text-white transition-transform duration-200',
-            isOpen && 'rotate-180 text-white'
-          )}
-        />
 
         {/* Bottom active/hover indicator line */}
         <span

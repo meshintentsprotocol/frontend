@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeftRight, ChevronDown, TrendingUp, Clock, Zap } from 'lucide-react';
+import { ArrowLeftRight, TrendingUp, Clock, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface TradePageItem {
@@ -81,19 +81,13 @@ export function TradeNavDropdown({ className }: TradeNavDropdownProps) {
         to="/trade"
         onClick={() => setIsOpen(false)}
         className={cn(
-          'flex items-center gap-1 text-[15px] font-semibold transition-all duration-300 py-2 relative group outline-none',
+          'flex items-center text-[15px] font-semibold transition-all duration-300 py-2 relative group outline-none',
           isTradeActive
             ? 'text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]'
             : 'text-zinc-300 hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]'
         )}
       >
         <span>Trade</span>
-        <ChevronDown
-          className={cn(
-            'w-3.5 h-3.5 text-zinc-400 group-hover:text-white transition-transform duration-200',
-            isOpen && 'rotate-180 text-white'
-          )}
-        />
 
         {/* Bottom active/hover indicator line */}
         <span
