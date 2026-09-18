@@ -39,6 +39,7 @@ import OverviewPage from "./pages/OverviewPage"
 import MeshPage from "./pages/MeshPage"
 import MeshPoolDetailPage from "./pages/MeshPoolDetailPage"
 import MeshLandingPage from "./pages/MeshLandingPage"
+import MeshProviderDetailPage from "./pages/MeshProviderDetailPage"
 import OrderbookPage from "./pages/OrderbookPage"
 import { WDKProvider } from "./context/WDKProvider"
 import { ExternalBCHWalletProvider } from "./context/ExternalBCHWalletProvider"
@@ -93,6 +94,19 @@ function App() {
                                                          <div className="flex flex-col min-h-screen bg-[#050505]">
                                                              <Header />
                                                              <main className="flex-1 pt-24"><MeshPage /></main>
+                                                         </div>
+                                                     } />
+                                                     <Route path="/mesh/leaderboard" element={<Navigate to="/mesh?tab=leaderboard" replace />} />
+                                                     <Route path="/mesh/provider/:address" element={
+                                                         <div className="flex flex-col min-h-screen bg-[#050505]">
+                                                             <Header />
+                                                             <main className="flex-1 pt-24"><MeshProviderDetailPage /></main>
+                                                         </div>
+                                                     } />
+                                                     <Route path="/mesh/leaderboard/:address" element={
+                                                         <div className="flex flex-col min-h-screen bg-[#050505]">
+                                                             <Header />
+                                                             <main className="flex-1 pt-24"><MeshProviderDetailPage /></main>
                                                          </div>
                                                      } />
                                                      <Route path="/mesh/pool/:txid/:vout" element={
