@@ -384,7 +384,7 @@ export function MeshHeroSection() {
             </div>
 
             {/* CTAs */}
-            <div className="flex flex-wrap gap-4 pt-2">
+            <div className="flex flex-wrap gap-3.5 pt-2">
               <Button
                 asChild
                 size="lg"
@@ -398,9 +398,19 @@ export function MeshHeroSection() {
                 asChild
                 size="lg"
                 variant="outline"
-                className="h-14 px-8 text-base font-bold rounded-full border-white/20 bg-white/5 hover:bg-white/10 backdrop-blur-md text-white"
+                className="h-14 px-6 text-base font-bold rounded-full border-blue-500/30 bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 backdrop-blur-md"
               >
-                <Link to="/orderbook">View Live Orderbook</Link>
+                <Link to="/mesh?tab=leaderboard">
+                  <Sparkles className="mr-2 w-4 h-4 text-yellow-300" /> Leaderboard
+                </Link>
+              </Button>
+              <Button
+                asChild
+                size="lg"
+                variant="outline"
+                className="h-14 px-6 text-base font-bold rounded-full border-white/20 bg-white/5 hover:bg-white/10 backdrop-blur-md text-white"
+              >
+                <Link to="/orderbook">Live Orderbook</Link>
               </Button>
             </div>
           </motion.div>

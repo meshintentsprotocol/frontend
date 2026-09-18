@@ -31,7 +31,8 @@ export function MeshStatsBar() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const res = await fetch('http://localhost:3001/api/v1/stats', { signal: AbortSignal.timeout(3000) });
+        const meshBase = import.meta.env.VITE_MESH_SERVER_URL || 'https://bchmesh-production.up.railway.app';
+        const res = await fetch(`${meshBase}/api/v1/stats`, { signal: AbortSignal.timeout(3000) });
         if (res.ok) {
           const data = await res.json();
           setStats({

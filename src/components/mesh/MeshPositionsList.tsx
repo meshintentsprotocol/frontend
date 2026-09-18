@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
   RefreshCw,
   PlusCircle,
+  ArrowDownToLine,
   Layers,
   TrendingUp,
   Activity,
@@ -23,11 +24,36 @@ import {
 import { useMeshServer, type MeshPosition } from '@/hooks/useMeshServer';
 import { useWDK } from '@/context/WDKProvider';
 import { useBchBalances } from '@/hooks/useBchBalances';
-import { derivePkh, tokenSymbol, getTokenMetadata, type TokenMetadata } from '@/lib/meshContracts';
+import {
+  executeDockPosition,
+  executeTopUpPosition,
+  executeRebalancePosition,
+  derivePkh,
+  tokenSymbol,
+  getTokenMetadata,
+  type TokenMetadata,
+} from '@/lib/meshContracts';
 import { binToHex, cashAddressToLockingBytecode } from '@bitauth/libauth';
 import { ConnectWalletButton } from '@/components/connect-wallet-button';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { notifyToast as toast } from '@/lib/notify-toast';
+import { MeshPoolManageCard } from '@/components/mesh/MeshPoolManageCard';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerDescription,
+} from '@/components/ui/drawer';
 
 // Strategy type styling and meta
 const COVENANT_META: Record<
@@ -124,12 +150,121 @@ export function MeshPositionsList({ onCreateNew }: MeshPositionsListProps) {
   const { data: bchBalances } = useBchBalances(10_000);
   const bchSats = bchBalances?.sats ?? 0;
 
+  const isMobile = useIsMobile();
+  const [selectedManagePosition, setSelectedManagePosition] = useState<MeshPosition | null>(null);
+  const [manageTab, setManageTab] = useState<'topup' | 'dock' | 'rebalance'>('topup');
+  const [isManageModalOpen, setIsManageModalOpen] = useState<boolean>(false);
+  const [isDocking, setIsDocking] = useState<boolean>(false);
+  const [isToppingUp, setIsToppingUp] = useState<boolean>(false);
+  const [isRebalancing, setIsRebalancing] = useState<boolean>(false);
+
   const [filterMode, setFilterMode] = useState<'all' | 'mine'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedTokens, setExpandedTokens] = useState<Record<string, boolean>>({});
   const [userPkhHex, setUserPkhHex] = useState<string>('');
   const [sortBy, setSortBy] = useState<'wallet' | 'shared' | 'fees' | 'ratio'>('shared');
   const [sortAsc, setSortAsc] = useState(false);
+
+  const handleOpenManage = (pos: MeshPosition | undefined, tab: 'topup' | 'dock' | 'rebalance') => {
+    if (!pos) {
+      if (onCreateNew) {
+        onCreateNew();
+      }
+      return;
+    }
+    setSelectedManagePosition(pos);
+    setManageTab(tab);
+    setIsManageModalOpen(true);
+  };
+
+  const handleDock = async (percent: number) => {
+    if (!selectedManagePosition || !wdk.bchWallet) {
+      toast.error('Connect your BCH wallet to withdraw from this covenant');
+      return;
+    }
+    setIsDocking(true);
+    toast.info(`Docking ${percent}% of covenant reserves…`);
+    try {
+      const txid = await executeDockPosition(wdk.bchWallet, selectedManagePosition, percent);
+      toast.success(`🎉 Withdrawn ${percent}%! TXID: ${txid.slice(0, 10)}…`, {
+        duration: 8000,
+        action: {
+          label: 'View on Explorer',
+          onClick: () => window.open(`https://chipnet.chaingraph.cash/tx/${txid}`, '_blank'),
+        },
+      });
+      setIsManageModalOpen(false);
+      void refresh();
+    } catch (e: any) {
+      console.error('[Mesh] Dock failed:', e);
+      toast.error(`Withdraw failed: ${e?.message ?? 'Unknown error'}`);
+    } finally {
+      setIsDocking(false);
+    }
+  };
+
+  const handleTopUp = async (amountBch: string) => {
+    if (!selectedManagePosition || !wdk.bchWallet) {
+      toast.error('Connect your BCH wallet to top-up');
+      return;
+    }
+    setIsToppingUp(true);
+    toast.info(`Sending ${amountBch} BCH to covenant address…`);
+    try {
+      const txid = await executeTopUpPosition(wdk.bchWallet, selectedManagePosition, amountBch);
+      toast.success(`🎉 Reserve topped up with ${amountBch} BCH! TXID: ${txid.slice(0, 10)}…`, {
+        duration: 8000,
+        action: {
+          label: 'View on Explorer',
+          onClick: () => window.open(`https://chipnet.chaingraph.cash/tx/${txid}`, '_blank'),
+        },
+      });
+      setIsManageModalOpen(false);
+      void refresh();
+    } catch (e: any) {
+      console.error('[Mesh] Top up failed:', e);
+      toast.error(`Top up failed: ${e?.message ?? 'Unknown error'}`);
+    } finally {
+      setIsToppingUp(false);
+    }
+  };
+
+  const handleRebalance = async (newParams: {
+    rangeLow?: number;
+    rangeHigh?: number;
+    spreadBps?: number;
+    feeBps?: number;
+  }) => {
+    if (!selectedManagePosition || !wdk.bchWallet) {
+      toast.error('Connect your BCH wallet to rebalance');
+      return;
+    }
+    setIsRebalancing(true);
+    toast.info('Executing atomic single-tx rebalance on Chipnet (< $0.01 fee)…');
+    try {
+      const res = await executeRebalancePosition(wdk.bchWallet, selectedManagePosition, {
+        newRangeLow: newParams.rangeLow,
+        newRangeHigh: newParams.rangeHigh,
+        newSpreadBps: newParams.spreadBps ? BigInt(newParams.spreadBps) : undefined,
+        newFeeBps: newParams.feeBps ? BigInt(newParams.feeBps) : undefined,
+        network: (wdk.bchNetwork as any) || 'chipnet',
+      });
+      toast.success(`🎉 Successfully rebalanced strategy! New TXID: ${res.txid.slice(0, 10)}…`, {
+        duration: 9000,
+        action: {
+          label: 'View on Explorer',
+          onClick: () => window.open(`https://chipnet.chaingraph.cash/tx/${res.txid}`, '_blank'),
+        },
+      });
+      setIsManageModalOpen(false);
+      void refresh();
+    } catch (e: any) {
+      console.error('[Mesh] Rebalance execution failed:', e);
+      toast.error(`Rebalance failed: ${e?.message ?? 'Unknown error'}`);
+    } finally {
+      setIsRebalancing(false);
+    }
+  };
 
   // Derive user PKH
   useEffect(() => {
@@ -442,17 +577,97 @@ export function MeshPositionsList({ onCreateNew }: MeshPositionsListProps) {
 
   return (
     <div className="space-y-6">
-      {/* ─── Top Control Toolbar (1inch Aqua Style) ─────────────────────────── */}
+      {/* ─── Aqua Electric Blue Hero Header ───────────────────────────────── */}
+      <div className="w-full bg-[#0038ff] rounded-3xl p-6 sm:p-8 text-white relative overflow-hidden shadow-2xl border border-blue-400/20">
+        <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-blue-400/20 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 border border-white/20 text-white text-xs font-mono font-semibold">
+              <Zap className="w-3.5 h-3.5 text-blue-200" />
+              100% Shared Liquidity Covenants
+            </div>
+            <h1 className="text-3xl sm:text-4xl font-extrabold text-white font-heading tracking-tight">
+              Liquidity Positions
+            </h1>
+            <p className="text-xs sm:text-sm text-blue-100 max-w-xl leading-relaxed">
+              Manage your non-custodial single-asset BCH liquidity covenants, monitor fees earned, and inspect multi-token cross routing.
+            </p>
+          </div>
+
+          {/* Quick Action Navigation Buttons */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            <Link to="/mesh?tab=pools">
+              <Button
+                variant="outline"
+                className="h-10 px-4 rounded-full border-white/20 bg-white/10 hover:bg-white/20 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition-all hover:scale-105"
+              >
+                <TrendingUp className="w-3.5 h-3.5 text-blue-200" />
+                <span>Top Pools</span>
+              </Button>
+            </Link>
+
+            <Link to="/mesh?tab=leaderboard">
+              <Button
+                variant="outline"
+                className="h-10 px-4 rounded-full border-white/20 bg-white/10 hover:bg-white/20 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition-all hover:scale-105"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
+                <span>Leaderboard</span>
+              </Button>
+            </Link>
+
+            {onCreateNew && (
+              <Button
+                onClick={onCreateNew}
+                className="h-10 px-5 rounded-full bg-white text-blue-900 hover:bg-blue-50 font-bold text-xs flex items-center gap-1.5 shadow-lg shadow-black/20 transition-all hover:scale-105"
+              >
+                <PlusCircle className="w-4 h-4 text-blue-700" />
+                <span>New Position</span>
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* Global Key Metrics Summary Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-6 mt-6 border-t border-white/10 font-mono">
+          <div>
+            <div className="text-[11px] text-blue-200 font-medium font-sans">Active Positions</div>
+            <div className="text-xl sm:text-2xl font-bold text-white">
+              {positions.length}
+            </div>
+          </div>
+          <div>
+            <div className="text-[11px] text-blue-200 font-medium font-sans">Total BCH Locked</div>
+            <div className="text-xl sm:text-2xl font-bold text-white">
+              {(positions.reduce((acc, p) => acc + (Number(p.reserveSats) || 0), 0) / 1e8).toFixed(2)} BCH
+            </div>
+          </div>
+          <div>
+            <div className="text-[11px] text-blue-200 font-medium font-sans">Protocol Fee Revenue</div>
+            <div className="text-xl sm:text-2xl font-bold text-emerald-300">
+              0.30% Avg
+            </div>
+          </div>
+          <div>
+            <div className="text-[11px] text-blue-200 font-medium font-sans">Rebalance Cost</div>
+            <div className="text-xl sm:text-2xl font-bold text-cyan-200">
+              &lt; $0.01 / Tx
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ─── Control Toolbar ──────────────────────────────────────────────── */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         {/* Left: Filter Mode Switcher */}
         <div className="flex items-center gap-3 w-full md:w-auto">
-          <div className="flex bg-black/60 p-1 rounded-2xl border border-white/8 text-xs font-medium">
+          <div className="flex bg-[#0b0c10] p-1 rounded-2xl border border-white/8 text-xs font-medium">
             <button
               onClick={() => setFilterMode('all')}
               className={cn(
                 'px-4 py-2 rounded-xl transition-all',
                 filterMode === 'all'
-                  ? 'bg-white/10 text-white font-bold shadow-sm'
+                  ? 'bg-blue-600 text-white font-bold shadow-sm'
                   : 'text-zinc-400 hover:text-white',
               )}
             >
@@ -463,13 +678,13 @@ export function MeshPositionsList({ onCreateNew }: MeshPositionsListProps) {
               className={cn(
                 'px-4 py-2 rounded-xl transition-all flex items-center gap-2',
                 filterMode === 'mine'
-                  ? 'bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30'
+                  ? 'bg-blue-600 text-white font-bold shadow-sm'
                   : 'text-zinc-400 hover:text-white',
               )}
             >
               <span>My Positions</span>
               {myPositions.length > 0 && (
-                <span className="px-2 py-0.5 text-[10px] rounded-full bg-emerald-400 text-black font-bold">
+                <span className="px-2 py-0.5 text-[10px] rounded-full bg-white text-blue-900 font-bold">
                   {myPositions.length}
                 </span>
               )}
@@ -581,12 +796,13 @@ export function MeshPositionsList({ onCreateNew }: MeshPositionsListProps) {
                   <th className="py-4 px-4 font-semibold text-right">APY, 7D</th>
                   <th
                     onClick={() => handleSort('ratio')}
-                    className="py-4 px-6 font-semibold text-right cursor-pointer hover:text-white transition-colors w-[180px]"
+                    className="py-4 px-4 font-semibold text-right cursor-pointer hover:text-white transition-colors w-[180px]"
                   >
                     <span className="inline-flex items-center gap-1">
                       Shared liquidity ratio <ArrowUpDown className="w-3 h-3 text-zinc-500" />
                     </span>
                   </th>
+                  <th className="py-4 px-6 font-semibold text-right w-[200px]">Actions</th>
                 </tr>
               </thead>
 
@@ -685,8 +901,8 @@ export function MeshPositionsList({ onCreateNew }: MeshPositionsListProps) {
                         </td>
 
                         {/* Shared Liquidity Ratio + Expand Indicator */}
-                        <td className="py-4 px-6 text-right">
-                          <div className="flex items-center justify-end gap-3">
+                        <td className="py-4 px-4 text-right">
+                          <div className="flex items-center justify-end gap-2">
                             <span className="font-mono font-bold text-white text-sm">
                               {tokenItem.sharedLiquidityRatio.toFixed(2)}×
                             </span>
@@ -699,12 +915,40 @@ export function MeshPositionsList({ onCreateNew }: MeshPositionsListProps) {
                             </div>
                           </div>
                         </td>
+
+                        {/* Actions (Top-up & Withdraw) */}
+                        <td className="py-4 px-6 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenManage(tokenItem.positions[0]?.raw, 'topup');
+                              }}
+                              className="w-[96px] h-8 px-2.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/30 text-emerald-400 hover:text-emerald-300 text-xs font-bold font-mono transition-all inline-flex items-center justify-center gap-1.5 shadow-sm hover:scale-105 active:scale-95 shrink-0"
+                              title="Top-up liquidity reserve"
+                            >
+                              <PlusCircle className="w-3.5 h-3.5 shrink-0" />
+                              <span>Top-up</span>
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenManage(tokenItem.positions[0]?.raw, 'dock');
+                              }}
+                              className="w-[96px] h-8 px-2.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-400 hover:text-rose-300 text-xs font-bold font-mono transition-all inline-flex items-center justify-center gap-1.5 shadow-sm hover:scale-105 active:scale-95 shrink-0"
+                              title="Withdraw covenant reserve"
+                            >
+                              <ArrowDownToLine className="w-3.5 h-3.5 shrink-0" />
+                              <span>Withdraw</span>
+                            </button>
+                          </div>
+                        </td>
                       </tr>
 
                       {/* ─── Expanded Nested Sub-Table (1inch Aqua Sub-Rows) ─── */}
                       {isExpanded && (
                         <tr>
-                          <td colSpan={6} className="p-0 bg-[#07070a]/90 border-t border-b border-white/5">
+                          <td colSpan={7} className="p-0 bg-[#07070a]/90 border-t border-b border-white/5">
                             <div className="px-6 py-4 space-y-3">
                               {/* Sub-Table Header */}
                               <div className="grid grid-cols-12 gap-3 text-[10px] font-mono text-zinc-500 uppercase tracking-wider pb-2 border-b border-white/5 px-2">
@@ -712,9 +956,8 @@ export function MeshPositionsList({ onCreateNew }: MeshPositionsListProps) {
                                 <div className="col-span-2 text-right">Current Balance</div>
                                 <div className="col-span-2 text-right">Opening Balance</div>
                                 <div className="col-span-1 text-right">Fees, 7D</div>
-                                <div className="col-span-1 text-right">APY, 7D</div>
-                                <div className="col-span-1 text-right">Volume, Total</div>
-                                <div className="col-span-2 text-right">Coverage &amp; Actions</div>
+                                <div className="col-span-1 text-right">Volume</div>
+                                <div className="col-span-3 text-right">Actions</div>
                               </div>
 
                               {/* Sub-Table Rows */}
@@ -786,70 +1029,30 @@ export function MeshPositionsList({ onCreateNew }: MeshPositionsListProps) {
                                         ${pos.fees7dUsd.toFixed(0)}
                                       </div>
 
-                                      {/* Col 5: APY, 7D */}
-                                      <div className="col-span-1 text-right font-mono text-zinc-400">
-                                        —
-                                      </div>
-
-                                      {/* Col 6: Total Volume */}
+                                      {/* Col 5: Total Volume */}
                                       <div className="col-span-1 text-right font-mono text-white">
                                         ${pos.volumeTotalUsd.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                       </div>
 
-                                      {/* Col 7: Coverage Multiplier, Status, Split Bar & Link */}
-                                      <div className="col-span-2 flex flex-col items-end gap-1.5">
-                                        {/* Coverage Indicator */}
-                                        <div className="flex items-center gap-2">
-                                          <span className="font-mono font-bold text-white text-xs">
-                                            {pos.coverageRatio.toFixed(2)}×
-                                          </span>
-                                          <span
-                                            className={cn(
-                                              'text-[10px] font-mono font-bold px-1.5 py-0.2 rounded',
-                                              pos.coverageLabel === 'Tight' &&
-                                                'text-amber-400 bg-amber-400/10',
-                                              pos.coverageLabel === 'Optimal' &&
-                                                'text-emerald-400 bg-emerald-400/10',
-                                              pos.coverageLabel === 'Wide' &&
-                                                'text-cyan-400 bg-cyan-400/10',
-                                              pos.coverageLabel === 'Out of Range' &&
-                                                'text-red-400 bg-red-400/10',
-                                            )}
-                                          >
-                                            {pos.coverageLabel}
-                                          </span>
-                                        </div>
-
-                                        {/* Split Dual-Asset Coverage Bar */}
-                                        <div className="w-full flex items-center gap-1">
-                                          <div className="w-full h-1.5 rounded-full overflow-hidden flex bg-white/5">
-                                            <div
-                                              style={{ width: `${pos.baseCoveragePct}%` }}
-                                              className="h-full bg-cyan-400"
-                                              title={`${pos.baseCoveragePct}% ${pos.baseSymbol}`}
-                                            />
-                                            <div
-                                              style={{ width: `${pos.quoteCoveragePct}%` }}
-                                              className="h-full bg-emerald-400"
-                                              title={`${pos.quoteCoveragePct}% ${pos.quoteSymbol}`}
-                                            />
-                                          </div>
-                                        </div>
-
-                                        <div className="flex items-center justify-between w-full text-[9px] font-mono text-zinc-500">
-                                          <span>{pos.baseCoveragePct}% {pos.baseSymbol}</span>
-                                          <span>{pos.quoteCoveragePct}% {pos.quoteSymbol}</span>
-                                        </div>
-
-                                        {/* Manage Link — row itself is also clickable */}
-                                        <Link
-                                          to={`/mesh/pool/${pos.raw.txid}/${pos.raw.vout}`}
-                                          onClick={(e) => e.stopPropagation()}
-                                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 transition-colors mt-0.5 group-hover/row:text-emerald-300"
+                                      {/* Col 6: Actions (Rebalance Button) */}
+                                      <div
+                                        className="col-span-3 flex items-center justify-end"
+                                        onClick={(e) => e.stopPropagation()}
+                                      >
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenManage(pos.raw, 'rebalance');
+                                          }}
+                                          className="px-3 py-1 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/30 text-cyan-400 hover:text-cyan-300 text-xs font-bold font-mono transition-all flex items-center gap-1.5 shadow-sm hover:scale-105 active:scale-95"
+                                          title="Atomic single-tx rebalance (< $0.01 fee)"
                                         >
-                                          <span>Manage</span>
-                                          <ChevronRight className="w-3 h-3" />
-                                        </Link>
+                                          <Sliders className="w-3 h-3" />
+                                          <span>Rebalance</span>
+                                          <span className="text-[9px] px-1 py-0.2 rounded bg-cyan-500/20 text-cyan-300 font-normal">
+                                            &lt; $0.01
+                                          </span>
+                                        </button>
                                       </div>
                                     </div>
                                   );
@@ -866,6 +1069,66 @@ export function MeshPositionsList({ onCreateNew }: MeshPositionsListProps) {
             </table>
           </div>
         </div>
+      )}
+
+      {/* ─── Manage Position: Mobile Slide-Up Drawer vs Desktop Modal Dialog ─── */}
+      {selectedManagePosition && (
+        isMobile ? (
+          <Drawer open={isManageModalOpen} onOpenChange={setIsManageModalOpen}>
+            <DrawerContent className="max-h-[90vh] bg-[#0c0c10] border-t border-white/10 rounded-t-3xl shadow-2xl text-white">
+              <DrawerHeader className="px-4 pt-3 pb-0">
+                <div className="mx-auto w-10 h-1 rounded-full bg-zinc-600 mb-2" />
+                <DrawerTitle className="text-sm font-bold text-white">Manage Position</DrawerTitle>
+                <DrawerDescription className="text-xs text-zinc-400">
+                  Top-up, withdraw, or rebalance your covenant
+                </DrawerDescription>
+              </DrawerHeader>
+              <div className="overflow-y-auto px-4 pb-6">
+                <MeshPoolManageCard
+                  position={selectedManagePosition}
+                  isConnected={isConnected}
+                  isDrained={false}
+                  effectiveReserveSats={BigInt(selectedManagePosition.reserveSats || '0')}
+                  effectiveTokenAmount={BigInt(selectedManagePosition.tokenCategoryIn !== '0x' ? '10000000000' : '0')}
+                  liveBchPrice={liveBchPrice}
+                  isDocking={isDocking}
+                  isToppingUp={isToppingUp}
+                  isRebalancing={isRebalancing}
+                  initialTab={manageTab}
+                  onDock={handleDock}
+                  onTopUp={handleTopUp}
+                  onRebalance={handleRebalance}
+                />
+              </div>
+            </DrawerContent>
+          </Drawer>
+        ) : (
+          <Dialog open={isManageModalOpen} onOpenChange={setIsManageModalOpen}>
+            <DialogContent className="max-w-lg bg-[#0c0c10] border border-white/10 p-0 overflow-hidden rounded-3xl shadow-2xl text-white">
+              <DialogHeader className="sr-only">
+                <DialogTitle>Manage Covenant Position</DialogTitle>
+                <DialogDescription>Top-up, dock or rebalance your position</DialogDescription>
+              </DialogHeader>
+              <div className="max-h-[85vh] overflow-y-auto">
+                <MeshPoolManageCard
+                  position={selectedManagePosition}
+                  isConnected={isConnected}
+                  isDrained={false}
+                  effectiveReserveSats={BigInt(selectedManagePosition.reserveSats || '0')}
+                  effectiveTokenAmount={BigInt(selectedManagePosition.tokenCategoryIn !== '0x' ? '10000000000' : '0')}
+                  liveBchPrice={liveBchPrice}
+                  isDocking={isDocking}
+                  isToppingUp={isToppingUp}
+                  isRebalancing={isRebalancing}
+                  initialTab={manageTab}
+                  onDock={handleDock}
+                  onTopUp={handleTopUp}
+                  onRebalance={handleRebalance}
+                />
+              </div>
+            </DialogContent>
+          </Dialog>
+        )
       )}
     </div>
   );
