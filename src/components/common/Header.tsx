@@ -27,19 +27,12 @@ const MediumIcon = () => (
 
 const APP_VERSION = '0.1.0';
 
-// ── Unified nav items (primary bar) ───────────────────────────────────────────
-const NAV_ITEMS: { name: string; path: string; icon: LucideIcon }[] = [
-    { name: 'Portfolio', path: '/portfolio', icon: Wallet },
-    { name: 'Explore', path: '/explore', icon: Compass },
-    { name: 'Knowledge Base', path: '/kb', icon: BookOpen },
-];
-
 // ── Mobile drawer: "Explore" section (marketing pages) ────────────────────────
 const MOBILE_EXPLORE_ITEMS: { name: string; path: string; icon: LucideIcon }[] = [
     { name: 'Features', path: '/features', icon: Zap },
     { name: 'Ecosystem', path: '/ecosystem', icon: Globe },
     { name: 'Integrate', path: '/integrate', icon: Puzzle },
-    { name: 'Mesh Overview', path: '/mesh-landing', icon: Sparkles },
+    { name: 'Pool Overview', path: '/mesh-landing', icon: Sparkles },
 ];
 
 export function Header() {
@@ -89,18 +82,21 @@ export function Header() {
                             alt="BCH Intents"
                             className="w-10 h-10 object-contain -ml-1 shrink-0"
                         />
-                        <span className="font-heading font-black text-base tracking-tighter text-white leading-tight">
-                            BCH <span className="text-emerald-500">Intents</span>
+                        <span className="font-heading font-black text-base tracking-tighter text-white leading-tight flex items-center">
+                            BCH <span className="text-emerald-500 ml-1">Intents</span>
+                            <span className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 ml-2">
+                                Beta
+                            </span>
                         </span>
                     </div>
 
-                    {/* ─── Section: APP ─── */}
+                    {/* ─── Section: APP (Order: Trade, Explore, Pool, Portfolio, Knowledgehub) ─── */}
                     <nav className="flex flex-col gap-1">
                         <div className="px-3 pb-1">
                             <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">App</span>
                         </div>
 
-                        {/* Trade link */}
+                        {/* 1. Trade link */}
                         <Link
                             to="/trade"
                             onClick={() => setIsOpen(false)}
@@ -131,7 +127,38 @@ export function Header() {
                             )} />
                         </Link>
 
-                        {/* Mesh expandable group */}
+                        {/* 2. Explore link */}
+                        <Link
+                            to="/explore"
+                            onClick={() => setIsOpen(false)}
+                            className={cn(
+                                "flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-300 group hover:translate-x-1",
+                                location.pathname === '/explore' || location.pathname.startsWith('/explore/')
+                                    ? "bg-gradient-to-r from-emerald-500/10 to-transparent border border-emerald-500/20"
+                                    : "hover:bg-white/[0.03] border border-transparent hover:border-white/[0.05]"
+                            )}
+                        >
+                            <span className={cn(
+                                "flex h-9 w-9 items-center justify-center rounded-lg transition-all duration-300 shrink-0",
+                                location.pathname === '/explore' || location.pathname.startsWith('/explore/')
+                                    ? "bg-emerald-500/20 text-emerald-400"
+                                    : "bg-[#111] text-zinc-400 border border-white/5 group-hover:text-emerald-400 group-hover:border-emerald-500/30"
+                            )}>
+                                <Compass className="h-4 w-4" />
+                            </span>
+                            <span className={cn(
+                                "flex-1 text-sm font-semibold tracking-wide transition-colors",
+                                location.pathname === '/explore' || location.pathname.startsWith('/explore/') ? "text-white" : "text-zinc-400 group-hover:text-zinc-200"
+                            )}>
+                                Explore
+                            </span>
+                            <ChevronRight className={cn(
+                                "h-4 w-4 transition-all duration-300",
+                                location.pathname === '/explore' || location.pathname.startsWith('/explore/') ? "text-emerald-400 opacity-100" : "text-zinc-600 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:text-emerald-400 group-hover:translate-x-0"
+                            )} />
+                        </Link>
+
+                        {/* 3. Pool expandable group */}
                         <div className="flex flex-col">
                             <button
                                 type="button"
@@ -156,7 +183,7 @@ export function Header() {
                                         "text-sm font-semibold tracking-wide transition-colors",
                                         location.pathname.startsWith('/mesh') || location.pathname === '/orderbook' ? "text-white" : "text-zinc-400 group-hover:text-zinc-200"
                                     )}>
-                                        Mesh
+                                        Pool
                                     </span>
                                 </div>
                                 <ChevronDown className={cn(
@@ -195,42 +222,67 @@ export function Header() {
                             )}
                         </div>
 
-                        {/* Remaining app nav items: Portfolio, Explore, Knowledge Base */}
-                        {NAV_ITEMS.map((item) => {
-                            const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
-                            return (
-                                <Link
-                                    key={item.path}
-                                    to={item.path}
-                                    onClick={() => setIsOpen(false)}
-                                    className={cn(
-                                        "flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-300 group hover:translate-x-1",
-                                        isActive
-                                            ? "bg-gradient-to-r from-emerald-500/10 to-transparent border border-emerald-500/20"
-                                            : "hover:bg-white/[0.03] border border-transparent hover:border-white/[0.05]"
-                                    )}
-                                >
-                                    <span className={cn(
-                                        "flex h-9 w-9 items-center justify-center rounded-lg transition-all duration-300 shrink-0",
-                                        isActive
-                                            ? "bg-emerald-500/20 text-emerald-400"
-                                            : "bg-[#111] text-zinc-400 border border-white/5 group-hover:text-emerald-400 group-hover:border-emerald-500/30"
-                                    )}>
-                                        <item.icon className="h-4 w-4" />
-                                    </span>
-                                    <span className={cn(
-                                        "flex-1 text-sm font-semibold tracking-wide transition-colors",
-                                        isActive ? "text-white" : "text-zinc-400 group-hover:text-zinc-200"
-                                    )}>
-                                        {item.name}
-                                    </span>
-                                    <ChevronRight className={cn(
-                                        "h-4 w-4 transition-all duration-300",
-                                        isActive ? "text-emerald-400 opacity-100" : "text-zinc-600 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:text-emerald-400 group-hover:translate-x-0"
-                                    )} />
-                                </Link>
-                            );
-                        })}
+                        {/* 4. Portfolio link */}
+                        <Link
+                            to="/portfolio"
+                            onClick={() => setIsOpen(false)}
+                            className={cn(
+                                "flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-300 group hover:translate-x-1",
+                                location.pathname === '/portfolio' || location.pathname.startsWith('/portfolio/')
+                                    ? "bg-gradient-to-r from-emerald-500/10 to-transparent border border-emerald-500/20"
+                                    : "hover:bg-white/[0.03] border border-transparent hover:border-white/[0.05]"
+                            )}
+                        >
+                            <span className={cn(
+                                "flex h-9 w-9 items-center justify-center rounded-lg transition-all duration-300 shrink-0",
+                                location.pathname === '/portfolio' || location.pathname.startsWith('/portfolio/')
+                                    ? "bg-emerald-500/20 text-emerald-400"
+                                    : "bg-[#111] text-zinc-400 border border-white/5 group-hover:text-emerald-400 group-hover:border-emerald-500/30"
+                            )}>
+                                <Wallet className="h-4 w-4" />
+                            </span>
+                            <span className={cn(
+                                "flex-1 text-sm font-semibold tracking-wide transition-colors",
+                                location.pathname === '/portfolio' || location.pathname.startsWith('/portfolio/') ? "text-white" : "text-zinc-400 group-hover:text-zinc-200"
+                            )}>
+                                Portfolio
+                            </span>
+                            <ChevronRight className={cn(
+                                "h-4 w-4 transition-all duration-300",
+                                location.pathname === '/portfolio' || location.pathname.startsWith('/portfolio/') ? "text-emerald-400 opacity-100" : "text-zinc-600 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:text-emerald-400 group-hover:translate-x-0"
+                            )} />
+                        </Link>
+
+                        {/* 5. Knowledgehub link */}
+                        <Link
+                            to="/kb"
+                            onClick={() => setIsOpen(false)}
+                            className={cn(
+                                "flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-300 group hover:translate-x-1",
+                                location.pathname === '/kb' || location.pathname.startsWith('/kb/')
+                                    ? "bg-gradient-to-r from-emerald-500/10 to-transparent border border-emerald-500/20"
+                                    : "hover:bg-white/[0.03] border border-transparent hover:border-white/[0.05]"
+                            )}
+                        >
+                            <span className={cn(
+                                "flex h-9 w-9 items-center justify-center rounded-lg transition-all duration-300 shrink-0",
+                                location.pathname === '/kb' || location.pathname.startsWith('/kb/')
+                                    ? "bg-emerald-500/20 text-emerald-400"
+                                    : "bg-[#111] text-zinc-400 border border-white/5 group-hover:text-emerald-400 group-hover:border-emerald-500/30"
+                            )}>
+                                <BookOpen className="h-4 w-4" />
+                            </span>
+                            <span className={cn(
+                                "flex-1 text-sm font-semibold tracking-wide transition-colors",
+                                location.pathname === '/kb' || location.pathname.startsWith('/kb/') ? "text-white" : "text-zinc-400 group-hover:text-zinc-200"
+                            )}>
+                                Knowledgehub
+                            </span>
+                            <ChevronRight className={cn(
+                                "h-4 w-4 transition-all duration-300",
+                                location.pathname === '/kb' || location.pathname.startsWith('/kb/') ? "text-emerald-400 opacity-100" : "text-zinc-600 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:text-emerald-400 group-hover:translate-x-0"
+                            )} />
+                        </Link>
                     </nav>
 
                     {/* ─── Section: EXPLORE (marketing pages) ─── */}
@@ -330,7 +382,7 @@ export function Header() {
 
                 {/* ── Left Section: Logo + Desktop Nav ── */}
                 <div className="flex items-center gap-0 md:gap-8 lg:gap-12 shrink-0">
-                    {/* Desktop: Full Logo with hoverable popup menu centered below */}
+                    {/* Desktop: Full Logo with hoverable popup menu starting from left-0 */}
                     <div className="hidden lg:flex items-center">
                         <LogoMenuDropdown />
                     </div>
@@ -351,33 +403,64 @@ export function Header() {
                         {renderMobileMenu()}
                     </div>
 
-                    {/* Desktop Nav — unified for all pages */}
+                    {/* Desktop Nav — unified order: Trade, Explore, Pool, Portfolio, Knowledgehub */}
                     <nav className="hidden lg:flex items-center gap-6 xl:gap-8">
-                        {/* Trade Dropdown */}
+                        {/* 1. Trade Dropdown */}
                         <TradeNavDropdown />
 
-                        {/* Mesh Protocol Dropdown Menu */}
+                        {/* 2. Explore */}
+                        <Link
+                            to="/explore"
+                            className={cn(
+                                "text-[15px] font-semibold transition-all duration-300 hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)] relative group py-2",
+                                (location.pathname === '/explore' || location.pathname.startsWith('/explore/'))
+                                    ? "text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]"
+                                    : "text-zinc-300"
+                            )}
+                        >
+                            Explore
+                            <span className={cn(
+                                "absolute bottom-0 left-0 w-full h-[2px] bg-emerald-400 scale-x-0 transition-transform duration-300 group-hover:scale-x-100 origin-left shadow-[0_0_8px_rgba(52,211,153,0.8)]",
+                                (location.pathname === '/explore' || location.pathname.startsWith('/explore/')) && "scale-x-100"
+                            )} />
+                        </Link>
+
+                        {/* 3. Pool Dropdown Menu */}
                         <MeshNavDropdown />
 
-                        {/* Static nav links */}
-                        {NAV_ITEMS.map((item) => (
-                            <Link
-                                key={item.path}
-                                to={item.path}
-                                className={cn(
-                                    "text-[15px] font-semibold transition-all duration-300 hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)] relative group py-2",
-                                    (location.pathname === item.path || location.pathname.startsWith(item.path + '/'))
-                                        ? "text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]"
-                                        : "text-zinc-300"
-                                )}
-                            >
-                                {item.name}
-                                <span className={cn(
-                                    "absolute bottom-0 left-0 w-full h-[2px] bg-emerald-400 scale-x-0 transition-transform duration-300 group-hover:scale-x-100 origin-left shadow-[0_0_8px_rgba(52,211,153,0.8)]",
-                                    (location.pathname === item.path || location.pathname.startsWith(item.path + '/')) && "scale-x-100"
-                                )} />
-                            </Link>
-                        ))}
+                        {/* 4. Portfolio */}
+                        <Link
+                            to="/portfolio"
+                            className={cn(
+                                "text-[15px] font-semibold transition-all duration-300 hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)] relative group py-2",
+                                (location.pathname === '/portfolio' || location.pathname.startsWith('/portfolio/'))
+                                    ? "text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]"
+                                    : "text-zinc-300"
+                            )}
+                        >
+                            Portfolio
+                            <span className={cn(
+                                "absolute bottom-0 left-0 w-full h-[2px] bg-emerald-400 scale-x-0 transition-transform duration-300 group-hover:scale-x-100 origin-left shadow-[0_0_8px_rgba(52,211,153,0.8)]",
+                                (location.pathname === '/portfolio' || location.pathname.startsWith('/portfolio/')) && "scale-x-100"
+                            )} />
+                        </Link>
+
+                        {/* 5. Knowledgehub */}
+                        <Link
+                            to="/kb"
+                            className={cn(
+                                "text-[15px] font-semibold transition-all duration-300 hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)] relative group py-2",
+                                (location.pathname === '/kb' || location.pathname.startsWith('/kb/'))
+                                    ? "text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]"
+                                    : "text-zinc-300"
+                            )}
+                        >
+                            Knowledgehub
+                            <span className={cn(
+                                "absolute bottom-0 left-0 w-full h-[2px] bg-emerald-400 scale-x-0 transition-transform duration-300 group-hover:scale-x-100 origin-left shadow-[0_0_8px_rgba(52,211,153,0.8)]",
+                                (location.pathname === '/kb' || location.pathname.startsWith('/kb/')) && "scale-x-100"
+                            )} />
+                        </Link>
                     </nav>
                 </div>
 

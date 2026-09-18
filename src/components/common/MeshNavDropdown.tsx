@@ -104,7 +104,7 @@ export function MeshNavDropdown({ className }: MeshNavDropdownProps) {
             : 'text-zinc-300 hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]'
         )}
       >
-        <span>Mesh</span>
+        <span>Pool</span>
 
         {/* Bottom active/hover indicator line */}
         <span

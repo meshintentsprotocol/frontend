@@ -3,5 +3,4 @@
 interface Window {
   dataLayer: any[];
   gtag: (...args: any[]) => void;
-  __splashStart?: number;
 }

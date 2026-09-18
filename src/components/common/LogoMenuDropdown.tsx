@@ -27,7 +27,7 @@ const EXPLORE_ITEMS: ExploreItem[] = [
     { name: 'Features', path: '/features', description: 'Core protocol capabilities', icon: Zap },
     { name: 'Ecosystem', path: '/ecosystem', description: 'Partners & integrations', icon: Globe },
     { name: 'Integrate', path: '/integrate', description: 'Add BCH Intents to your app', icon: Puzzle },
-    { name: 'Mesh Overview', path: '/mesh-landing', description: 'Curves & liquidity intro', icon: Sparkles },
+    { name: 'Pool Overview', path: '/mesh-landing', description: 'Curves & liquidity intro', icon: Sparkles },
 ];
 
 const SOCIAL_LINKS = [
@@ -86,8 +86,11 @@ export function LogoMenuDropdown() {
                         alt="BCH Intents Logo"
                         className="w-20 h-20 -ml-2 md:-ml-2 md:-mr-4 object-contain transition-transform group-hover:scale-105 duration-300"
                     />
-                    <span className="font-heading font-black text-2xl tracking-tighter text-white drop-shadow-sm group-hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.3)] transition-all">
-                        BCH <span className="text-emerald-500 group-hover:text-emerald-400 transition-colors">Intents</span>
+                    <span className="font-heading font-black text-2xl tracking-tighter text-white drop-shadow-sm group-hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.3)] transition-all flex items-baseline">
+                        BCH <span className="text-emerald-500 group-hover:text-emerald-400 transition-colors ml-1">Intents</span>
+                        <span className="relative -top-2.5 ml-1 px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded-[4px] shadow-[0_0_8px_rgba(16,185,129,0.2)] leading-none select-none">
+                            BETA
+                        </span>
                     </span>
                 </Link>
 
@@ -114,7 +117,7 @@ export function LogoMenuDropdown() {
                 </button>
             </div>
 
-            {/* Dropdown Panel — centered directly below the logo */}
+            {/* Dropdown Panel — displayed from where the logo starts (left-0) */}
             <AnimatePresence>
                 {isOpen && (
                     <motion.div
@@ -122,7 +125,7 @@ export function LogoMenuDropdown() {
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: 4, scale: 0.98 }}
                         transition={{ duration: 0.15, ease: 'easeOut' }}
-                        className="absolute top-full left-1/2 -translate-x-1/2 pt-2.5 z-50 w-[380px] pointer-events-auto"
+                        className="absolute top-full left-0 pt-2.5 z-50 w-[380px] pointer-events-auto"
                     >
                         {/* Invisible hover bridge to prevent mouse-leave jitter */}
                         <div className="absolute -top-3 left-0 right-0 h-3" />
