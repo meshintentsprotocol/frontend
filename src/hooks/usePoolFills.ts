@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 
-const MESH_BASE = import.meta.env.VITE_MESH_SERVER_URL ?? 'http://localhost:3001';
+const MESH_BASE = import.meta.env.VITE_MESH_SERVER_URL ?? 'https://bchmesh-production.up.railway.app';
 
 export interface PoolFillItem {
   id: string;

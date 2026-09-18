@@ -61,7 +61,7 @@ export function getElectrumProvider(network: 'chipnet' | 'mainnet' = 'chipnet'):
 }
 
 export interface StrategyDeploymentParams {
-  strategyType: 'straight' | 'oracle' | 'dutch';
+  strategyType: 'straight' | 'oracle' | 'dutch' | 'multi_pair' | 'mesh_mode4';
   ownerPkHex: string | Uint8Array | Buffer;
   tokenCategoryIn: string;   // Token to receive ('0x' for BCH, or 64-char hex)
   tokenCategoryOut: string;  // Token in reserve ('0x' for BCH, or 64-char hex)
@@ -78,6 +78,14 @@ export interface StrategyDeploymentParams {
   oraclePkHex?: string | Uint8Array;
   pairId?: bigint;
   spreadBps?: bigint;
+  // Multi-Pair specific
+  pUSDCategory?: string;
+  pUSDPriceNum?: bigint;
+  pUSDPriceDen?: bigint;
+  mUSDCategory?: string;
+  mUSDPriceNum?: bigint;
+  mUSDPriceDen?: bigint;
+  reverseScriptHash?: string;
   network?: 'chipnet' | 'mainnet';
 }
 
@@ -99,6 +107,41 @@ export function buildStrategyContract(params: StrategyDeploymentParams, provider
   const tokenOutLE = params.tokenCategoryOut === '0x' || !params.tokenCategoryOut
     ? '0x'
     : `0x${reverseHex(params.tokenCategoryOut)}`;
+
+  if (params.strategyType === 'multi_pair' || params.strategyType === 'mesh_mode4') {
+    const pUSDCat = params.pUSDCategory && params.pUSDCategory !== '0x'
+      ? `0x${reverseHex(params.pUSDCategory)}`
+      : '0xdfe50223c8d5cba8dcef8dff6d92b61deb88a8ba44947367f2b746487b56039b';
+    const mUSDCat = params.mUSDCategory && params.mUSDCategory !== '0x'
+      ? `0x${reverseHex(params.mUSDCategory)}`
+      : '0x900224217ff7510b642ec3a42eb651c6e1d528eb38e9c933923c6c0e862c954e';
+
+    const pUSDPriceNum = params.pUSDPriceNum ?? params.priceNum;
+    const pUSDPriceDen = params.pUSDPriceDen ?? params.priceDen;
+    const mUSDPriceNum = params.mUSDPriceNum ?? (params.priceNum + (params.priceNum / 100n)); // 1% spread default
+    const mUSDPriceDen = params.mUSDPriceDen ?? params.priceDen;
+
+    const reverseHash = params.reverseScriptHash
+      ? (params.reverseScriptHash.startsWith('0x') ? params.reverseScriptHash : `0x${params.reverseScriptHash}`)
+      : '0x' + '00'.repeat(32);
+
+    return new Contract(
+      MultiPairRecyclingCovenantArtifact as any,
+      [
+        ownerPkh,
+        tokenOutLE,
+        pUSDCat,
+        pUSDPriceNum,
+        pUSDPriceDen,
+        mUSDCat,
+        mUSDPriceNum,
+        mUSDPriceDen,
+        params.feeBps,
+        reverseHash,
+      ],
+      { provider }
+    );
+  }
 
   if (params.strategyType === 'oracle') {
     const oraclePk = toBytes(params.oraclePkHex || '02'.repeat(33));
@@ -171,6 +214,7 @@ export async function deployStrategyPosition(
   const contractType =
     params.strategyType === 'oracle' ? 'OracleStrategyCovenant'
     : params.strategyType === 'dutch' ? 'DutchDecayStrategyCovenant'
+    : (params.strategyType === 'multi_pair' || params.strategyType === 'mesh_mode4') ? 'MultiPairRecyclingCovenant'
     : 'StrategyCovenant';
 
   let txid = '';
@@ -678,4 +722,194 @@ export async function executeDockPosition(
     newVout: isPartial ? 1 : undefined,
   };
 }
+
+// ── Single-Tx Rebalance Position (Atomic Shift of Range / Spread) ────────────
+
+export interface RebalanceParams {
+  newPriceNum?: bigint;
+  newPriceDen?: bigint;
+  newFeeBps?: bigint;
+  newRangeLow?: number;
+  newRangeHigh?: number;
+  newSpreadBps?: bigint;
+  newFloorPriceNum?: bigint;
+  newDuration?: number;
+  network?: 'chipnet' | 'mainnet';
+}
+
+export interface RebalanceResult {
+  txid: string;
+  newAddress: string;
+  transferredSats: string;
+  transferredTokens?: string;
+  newVout: number;
+}
+
+export async function executeRebalancePosition(
+  bchWallet: any,
+  pos: MeshPosition,
+  params: RebalanceParams
+): Promise<RebalanceResult> {
+  if (!bchWallet) throw new Error('BCH Wallet not connected');
+
+  const network = params.network ?? 'chipnet';
+  const ownerPkRaw = await bchWallet.getPublicKey();
+  const ownerPkBytes = toBytes(ownerPkRaw);
+  const wif = bchWallet.privateKeyWif || (await bchWallet.getPrivateKeyWif?.());
+
+  if (!wif) throw new Error('Wallet WIF is required for signing rebalance transaction');
+
+  const provider = getElectrumProvider(network);
+  const sigTemplate = new SignatureTemplate(wif);
+
+  const localParams = getLocalPositionParams(pos.txid);
+
+  // Original parameters for old covenant resolution
+  const origStartTime = Math.round(Number(pos.startTime ?? localParams?.startTime ?? Math.floor(Date.now() / 1000)));
+  const origDuration = Math.round(Number(pos.duration ?? localParams?.duration ?? 3600));
+  const origFloor = pos.floorPriceNum ?? localParams?.floorPriceNum ?? (pos.priceNum > 0 ? (pos.priceNum * 80) / 100 : 1);
+  const origFloorPriceNum = Math.max(1, Math.round(Number(origFloor)));
+  const origOraclePkHex = pos.oraclePkHex ?? localParams?.oraclePkHex ?? ('02' + '00'.repeat(32));
+  const origPairId = Math.round(Number(pos.pairId ?? localParams?.pairId ?? 1));
+  const origSpreadBps = Math.round(Number(pos.spreadBps ?? localParams?.spreadBps ?? 50));
+  const origPriceNum = BigInt(Math.max(1, Math.round(Number(pos.priceNum || 1))));
+  const origPriceDen = BigInt(Math.max(1, Math.round(Number(pos.priceDen || 100))));
+  const origFeeBps = BigInt(Math.max(0, Math.round(Number(pos.feeBps || 30))));
+  const origReserveSats = BigInt(Math.max(546, Math.round(Number(pos.reserveSats) || 10000)));
+
+  // Old contract to unlock
+  const oldContract = buildStrategyContract(
+    {
+      strategyType: pos.contractType === 'OracleStrategyCovenant' ? 'oracle' : pos.contractType === 'DutchDecayStrategyCovenant' ? 'dutch' : (pos.contractType === 'MultiPairRecyclingCovenant' ? 'mesh_mode4' : 'straight'),
+      ownerPkHex: ownerPkBytes,
+      tokenCategoryIn: pos.tokenCategoryIn,
+      tokenCategoryOut: pos.tokenCategoryOut,
+      priceNum: origPriceNum,
+      priceDen: origPriceDen,
+      feeBps: origFeeBps,
+      reserveSats: origReserveSats,
+      startTime: origStartTime,
+      duration: origDuration,
+      floorPriceNum: BigInt(origFloorPriceNum),
+      oraclePkHex: origOraclePkHex,
+      pairId: BigInt(origPairId),
+      spreadBps: BigInt(origSpreadBps),
+      network,
+    },
+    provider
+  );
+
+  // New parameters for target covenant
+  const targetPriceNum = params.newPriceNum ?? origPriceNum;
+  const targetPriceDen = params.newPriceDen ?? origPriceDen;
+  const targetFeeBps = params.newFeeBps ?? origFeeBps;
+  const targetSpreadBps = params.newSpreadBps ?? BigInt(origSpreadBps);
+  const targetFloorPriceNum = params.newFloorPriceNum ?? BigInt(origFloorPriceNum);
+  const targetDuration = params.newDuration ?? origDuration;
+
+  const newContract = buildStrategyContract(
+    {
+      strategyType: pos.contractType === 'OracleStrategyCovenant' ? 'oracle' : pos.contractType === 'DutchDecayStrategyCovenant' ? 'dutch' : (pos.contractType === 'MultiPairRecyclingCovenant' ? 'mesh_mode4' : 'straight'),
+      ownerPkHex: ownerPkBytes,
+      tokenCategoryIn: pos.tokenCategoryIn,
+      tokenCategoryOut: pos.tokenCategoryOut,
+      priceNum: targetPriceNum,
+      priceDen: targetPriceDen,
+      feeBps: targetFeeBps,
+      reserveSats: origReserveSats,
+      startTime: Math.floor(Date.now() / 1000),
+      duration: targetDuration,
+      floorPriceNum: targetFloorPriceNum,
+      oraclePkHex: origOraclePkHex,
+      pairId: BigInt(origPairId),
+      spreadBps: targetSpreadBps,
+      network,
+    },
+    provider
+  );
+
+  // Find UTXO at old covenant address
+  const addrsToTry = [...new Set([pos.address, oldContract.address].filter(Boolean))];
+  let onChainUtxo: Awaited<ReturnType<typeof provider.getUtxos>>[number] | undefined;
+
+  for (const addr of addrsToTry) {
+    try {
+      const utxos = await provider.getUtxos(addr);
+      let found = utxos.find(u => u.txid === pos.txid && u.vout === pos.vout);
+      if (!found && utxos.length > 0) {
+        found = [...utxos].sort((a, b) => Number(b.satoshis - a.satoshis))[0];
+      }
+      if (found) {
+        onChainUtxo = found;
+        break;
+      }
+    } catch {}
+  }
+
+  if (!onChainUtxo) {
+    throw new Error('No spendable UTXO found on-chain to rebalance. Please refresh your positions.');
+  }
+
+  const contractUtxo = {
+    txid: onChainUtxo.txid,
+    vout: onChainUtxo.vout,
+    satoshis: BigInt(onChainUtxo.satoshis),
+    token: onChainUtxo.token,
+  };
+
+  const REBALANCE_FEE = 1000n;
+  const transferredSats = contractUtxo.satoshis > REBALANCE_FEE ? contractUtxo.satoshis - REBALANCE_FEE : contractUtxo.satoshis;
+
+  const rebalanceBuilder = new TransactionBuilder({ provider });
+  rebalanceBuilder.addInput(contractUtxo, oldContract.unlock.dock(ownerPkBytes, sigTemplate));
+
+  if (contractUtxo.token && contractUtxo.token.amount > 0n) {
+    rebalanceBuilder.addOutput({
+      to: newContract.address,
+      amount: transferredSats > 546n ? transferredSats : 546n,
+      token: {
+        category: contractUtxo.token.category,
+        amount: BigInt(contractUtxo.token.amount),
+      },
+    });
+  } else {
+    rebalanceBuilder.addOutput({
+      to: newContract.address,
+      amount: transferredSats > 546n ? transferredSats : 546n,
+    });
+  }
+
+  const tx = await rebalanceBuilder.send();
+  const txid = tx.txid || (tx as any).txId;
+
+  const updatedParams = {
+    ...localParams,
+    txid,
+    vout: 0,
+    address: newContract.address,
+    contractType: pos.contractType,
+    reserveSats: transferredSats.toString(),
+    priceNum: Number(targetPriceNum),
+    priceDen: Number(targetPriceDen),
+    feeBps: Number(targetFeeBps),
+    rangeLow: params.newRangeLow ?? pos.rangeLow,
+    rangeHigh: params.newRangeHigh ?? pos.rangeHigh,
+    spreadBps: Number(targetSpreadBps),
+    floorPriceNum: Number(targetFloorPriceNum),
+  };
+
+  saveLocalPositionParams(txid, updatedParams);
+  if (pos.txid !== txid) {
+    saveLocalPositionParams(pos.txid, updatedParams);
+  }
+
+  return {
+    txid,
+    newAddress: newContract.address,
+    transferredSats: transferredSats.toString(),
+    transferredTokens: contractUtxo.token ? contractUtxo.token.amount.toString() : undefined,
+    newVout: 0,
+  };
+}
+
 
