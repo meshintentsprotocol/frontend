@@ -185,7 +185,11 @@ export function MeshPositionsList({ onCreateNew }: MeshPositionsListProps) {
     setIsDocking(true);
     toast.info(`Docking ${percent}% of covenant reserves…`);
     try {
-      const txid = await executeDockPosition(wdk.bchWallet, selectedManagePosition, percent);
+      const res = await executeDockPosition(wdk.bchWallet, selectedManagePosition, {
+        percentToDock: percent,
+        network: wdk.bchNetwork,
+      });
+      const txid = typeof res === 'string' ? res : res.txid;
       toast.success(`🎉 Withdrawn ${percent}%! TXID: ${txid.slice(0, 10)}…`, {
         duration: 8000,
         action: {
@@ -211,7 +215,7 @@ export function MeshPositionsList({ onCreateNew }: MeshPositionsListProps) {
     setIsToppingUp(true);
     toast.info(`Sending ${amountBch} BCH to covenant address…`);
     try {
-      const txid = await executeTopUpPosition(wdk.bchWallet, selectedManagePosition, amountBch);
+      const txid = await executeTopUpPosition(wdk.bchWallet, selectedManagePosition, parseFloat(amountBch) || 0);
       toast.success(`🎉 Reserve topped up with ${amountBch} BCH! TXID: ${txid.slice(0, 10)}…`, {
         duration: 8000,
         action: {

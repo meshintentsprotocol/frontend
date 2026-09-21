@@ -35,6 +35,7 @@ import { SolanaWalletProvider } from "./context/SolanaWalletProvider"
 import { BCHWalletProvider, CashonizeProvider } from "./context/BCHWalletProvider"
 import { BCHSwapProvider } from "./context/BCHSwapContext"
 import BchSwapPage from "./pages/BchSwapPage"
+import WalletPage from "./pages/WalletPage"
 import OverviewPage from "./pages/OverviewPage"
 import MeshPage from "./pages/MeshPage"
 import MeshPoolDetailPage from "./pages/MeshPoolDetailPage"
@@ -65,6 +66,7 @@ function App() {
                                                 <Routes>
                                                     <Route path="/" element={<LandingPage />} />
                                                     <Route path="/home" element={<LandingPage />} />
+                                                    <Route path="/wallet" element={<WalletPage />} />
                                                     <Route path="/features" element={<FeaturesPage />} />
                                                     <Route path="/swap" element={<Navigate to="/" replace />} />
                                                     <Route path="/orders" element={<Navigate to="/" replace />} />

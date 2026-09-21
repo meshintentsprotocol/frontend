@@ -8,6 +8,13 @@ import { useSwap } from '@/context/SwapContext';
 import { ArrowRight, ChevronLeft, ChevronRight, Clock, ExternalLink, ArrowUpDown } from 'lucide-react';
 import { BCHOrder } from '@/types';
 import axios from 'axios';
+import {
+    BCH_MESH_SERVER_URL,
+    CASHTOKEN_RELAYER_URL,
+    CROSS_CHAIN_RELAYER_URL,
+    BCH_SOLANA_RELAYER_URL,
+    EVM_RELAYER_URL,
+} from '@/lib/config';
 
 // ============================================================================
 // Token & Chain icon maps
@@ -16,14 +23,24 @@ const CHAIN_ICONS: Record<string, string> = {
     'Bitcoin Cash': '/logos/bitcoin-cash-bch-logo.svg',
     'Solana': '/logos/solana.svg',
     'Movement': '/logos/movement.svg',
+    'EVM': '/logos/ethereum-eth-logo.svg',
+    'Monero': '/logos/monero.svg',
 };
 
 const TOKEN_ICONS: Record<string, string> = {
     'BCH': '/logos/bitcoin-cash-bch-logo.svg',
     'SOL': '/logos/solana.svg',
     'MOVE': '/logos/movement.svg',
+    'ETH': '/logos/ethereum-eth-logo.svg',
+    'BNB': '/logos/bnb-bnb-logo.svg',
     'USDC': '/logos/usd-coin-usdc-logo.svg',
-    'USDT': '/logos/usd-coin-usdc-logo.svg',
+    'USDT': '/logos/usdt-svgrepo-com.svg',
+    'pUSD': '/logos/usd-coin-usdc-logo.svg',
+    'PUSD': '/logos/usd-coin-usdc-logo.svg',
+    'mUSD': '/logos/usd-coin-usdc-logo.svg',
+    'FUR': '/logos/fur-logo.svg',
+    'WBTC': '/logos/wbtc-logo.svg',
+    'XMR': '/logos/monero.svg',
     'USDC.e': 'https://raw.githubusercontent.com/kitelabs-io/mvmt-tokens/main/logos/USDC.png',
     'USDT.e': 'https://raw.githubusercontent.com/kitelabs-io/mvmt-tokens/main/logos/USDT.png',
 };
@@ -39,7 +56,7 @@ interface ExplorerTx {
     buyAmount: number;
     usdValue: number;
     wallet: string;
-    chain: 'Movement' | 'Solana' | 'Bitcoin Cash';
+    chain: 'Movement' | 'Solana' | 'Bitcoin Cash' | 'EVM' | 'Monero';
     txHash?: string;
     explorerUrl?: string;
     type: string;
@@ -51,16 +68,70 @@ const getOrdersKey = (network: string) => `bch_orders_${network}`;
 const ITEMS_PER_PAGE = 10;
 
 function getTimeAgo(timestamp: number): string {
-    const diff = Date.now() - timestamp;
-    if (diff < 60000) return `${Math.floor(diff / 1000)}s ago`;
+    const ts = timestamp > 1e12 ? timestamp : timestamp * 1000;
+    const diff = Date.now() - ts;
+    if (diff < 60000) return `${Math.max(1, Math.floor(diff / 1000))}s ago`;
     if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
     if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
     return `${Math.floor(diff / 86400000)}d ago`;
 }
 
-function getChainFromSwapType(swapType: string): 'Movement' | 'Solana' | 'Bitcoin Cash' {
-    if (swapType.includes('mov')) return 'Movement';
-    if (swapType.includes('sol')) return 'Solana';
+function parseTokenInfo(tokenRaw?: string): { symbol: string; icon?: string; decimals: number } {
+    if (!tokenRaw || tokenRaw.toUpperCase() === 'BCH' || tokenRaw === '0x' || tokenRaw === '') {
+        return { symbol: 'BCH', icon: TOKEN_ICONS['BCH'], decimals: 8 };
+    }
+    const clean = tokenRaw.startsWith('0x') ? tokenRaw.slice(2).toLowerCase() : tokenRaw.toLowerCase();
+    if (clean === 'dfe50223c8d5cba8dcef8dff6d92b61deb88a8ba44947367f2b746487b56039b') {
+        return { symbol: 'pUSD', icon: TOKEN_ICONS['pUSD'], decimals: 2 };
+    }
+    if (clean === 'e7979ccdae259293c7d0bee45ce8b7ad7660ea99477f802ed6a5161b0d30e6b8') {
+        return { symbol: 'PUSD', icon: TOKEN_ICONS['PUSD'], decimals: 2 };
+    }
+    if (clean === 'c9e5e317c4613cc92f2ea69d2f2d966e3b5dfd4642c67ad3a94eb751bf8c3065') {
+        return { symbol: 'mUSD', icon: TOKEN_ICONS['mUSD'], decimals: 2 };
+    }
+    const upper = tokenRaw.toUpperCase();
+    if (TOKEN_ICONS[upper]) {
+        const decimals = upper === 'SOL' ? 9 : upper === 'ETH' || upper === 'BNB' ? 18 : upper === 'USDC' || upper === 'USDT' ? 6 : 8;
+        return { symbol: upper, icon: TOKEN_ICONS[upper], decimals };
+    }
+    if (clean.length === 64) {
+        return { symbol: `CT:${clean.slice(0, 6)}…`, decimals: 2 };
+    }
+    return { symbol: tokenRaw, decimals: 8 };
+}
+
+function parseAmount(raw: any, decimals: number): number {
+    if (raw === undefined || raw === null || raw === '') return 0;
+    const n = Number(raw);
+    if (isNaN(n)) return 0;
+    // If the number is already formatted as a small float (e.g. 0.05 BCH), use as is
+    if (n < 1000 && !Number.isInteger(n)) return n;
+    // If integer, scale by decimals
+    if (decimals > 0 && n >= 100) {
+        return n / Math.pow(10, decimals);
+    }
+    return n;
+}
+
+function getUsdPrice(symbol: string): number {
+    const s = symbol.toUpperCase();
+    if (s === 'BCH') return 390;
+    if (s === 'SOL') return 150;
+    if (s === 'ETH') return 3100;
+    if (s === 'BNB') return 580;
+    if (s === 'MOVE') return 0.8;
+    if (s === 'XMR') return 160;
+    if (s.includes('USD')) return 1.0;
+    return 1.0;
+}
+
+function getChainFromSwapType(swapType: string): 'Movement' | 'Solana' | 'Bitcoin Cash' | 'EVM' | 'Monero' {
+    const s = swapType.toLowerCase();
+    if (s.includes('mov')) return 'Movement';
+    if (s.includes('sol')) return 'Solana';
+    if (s.includes('eth') || s.includes('bsc') || s.includes('evm') || s.includes('sepolia')) return 'EVM';
+    if (s.includes('xmr') || s.includes('monero')) return 'Monero';
     return 'Bitcoin Cash';
 }
 
@@ -80,7 +151,7 @@ function getExplorerUrl(order: BCHOrder, network: 'mainnet' | 'chipnet'): string
         }
         return isMainnet
             ? `https://blockchair.com/bitcoin-cash/transaction/${order.txid}`
-            : `https://chipnet.chaingraph.cash/tx/${order.txid}`;
+            : `https://chipnet.imaginary.cash/tx/${order.txid}`;
     }
     if (order.contractAddress) {
         return isMainnet
@@ -105,11 +176,22 @@ function TxTokenIcon({ symbol, icon }: { symbol: string; icon?: string }) {
 
 function statusColor(status: string): string {
     const s = status.toLowerCase();
-    if (s === 'completed' || s === 'claimed' || s === 'filled') return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
-    if (s === 'pending') return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
+    if (s === 'completed' || s === 'claimed' || s === 'filled' || s === 'active') return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+    if (s === 'pending' || s === 'locked') return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
     if (s === 'claimable') return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
-    if (s === 'failed' || s === 'cancelled') return 'bg-red-500/10 text-red-400 border-red-500/20';
+    if (s === 'failed' || s === 'cancelled' || s === 'expired') return 'bg-red-500/10 text-red-400 border-red-500/20';
     return 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20';
+}
+
+function typeBadgeColor(type: string): string {
+    const t = type.toLowerCase();
+    if (t.includes('dutch') || t.includes('market')) return 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20';
+    if (t.includes('limit')) return 'text-amber-400 bg-amber-500/10 border-amber-500/20';
+    if (t.includes('twap')) return 'text-violet-400 bg-violet-500/10 border-violet-500/20';
+    if (t.includes('htlc')) return 'text-purple-400 bg-purple-500/10 border-purple-500/20';
+    if (t.includes('cashtoken')) return 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20';
+    if (t.includes('stark') || t.includes('zk') || t.includes('evm')) return 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20';
+    return 'text-blue-400 bg-blue-500/10 border-blue-500/20';
 }
 
 export function TransactionsTable({ activeChain, refreshTrigger }: { activeChain: ChainFilter, refreshTrigger: number }) {
@@ -122,7 +204,8 @@ export function TransactionsTable({ activeChain, refreshTrigger }: { activeChain
     const [isRefetching, setIsRefetching] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
 
-    const crossChainRelayerUrl = import.meta.env.VITE_CROSS_CHAIN_RELAYER_URL || 'https://cross-chain-relayer-production-a93e.up.railway.app';
+    const meshServerUrl = BCH_MESH_SERVER_URL || CASHTOKEN_RELAYER_URL || 'https://bchmesh-production.up.railway.app';
+    const crossChainRelayerUrl = CROSS_CHAIN_RELAYER_URL || 'https://cross-chain-relayer-production-a93e.up.railway.app';
 
     useEffect(() => {
         let isMounted = true;
@@ -130,14 +213,72 @@ export function TransactionsTable({ activeChain, refreshTrigger }: { activeChain
             setIsRefetching(true);
             const allTxs: ExplorerTx[] = [];
 
-            // 1. Movement swap history
+            // 1. BCHMesh / CashToken Live Intents (Dutch Market, Limit Orders, TWAP)
+            try {
+                const meshRes = await axios.get(`${meshServerUrl}/intents`, { timeout: 6000 });
+                const { active = [], completed = [] } = meshRes.data || {};
+                const meshIntents = [...active, ...completed];
+
+                const meshTxs = meshIntents.map((item: any): ExplorerTx => {
+                    const sellInfo = parseTokenInfo(item.sellToken);
+                    const buyInfo = parseTokenInfo(item.buyToken);
+
+                    const sellAmount = parseAmount(item.sellAmount, sellInfo.decimals);
+                    const buyAmount = parseAmount(item.buyAmount, buyInfo.decimals);
+
+                    let labelType = 'CashToken';
+                    const rawType = (item.type || item.intentType || '').toLowerCase();
+                    if (rawType.includes('dutch') || rawType.includes('market')) {
+                        labelType = 'Dutch Market';
+                    } else if (rawType.includes('limit')) {
+                        labelType = 'Limit Order';
+                    } else if (rawType.includes('twap')) {
+                        labelType = 'TWAP Slice';
+                    }
+
+                    const usdVal = (sellAmount * getUsdPrice(sellInfo.symbol)) || (buyAmount * getUsdPrice(buyInfo.symbol)) || 0;
+
+                    let expUrl = item.explorerUrl || item.fillExplorerUrl;
+                    const txHash = item.fillTxid || item.txid || item.id;
+                    if (!expUrl && txHash && !txHash.startsWith('intent_')) {
+                        expUrl = `https://chipnet.imaginary.cash/tx/${txHash}`;
+                    }
+
+                    const walletStr = item.makerAddress || item.contractAddress || 'Chipnet';
+                    const displayWallet = walletStr.length > 12 ? `${walletStr.slice(0, 8)}...${walletStr.slice(-4)}` : walletStr;
+
+                    return {
+                        id: `mesh_${item.id || item.intentId || Math.random()}`,
+                        timestamp: item.createdAt ? (item.createdAt > 1e12 ? item.createdAt : item.createdAt * 1000) : Date.now(),
+                        sellToken: sellInfo.symbol,
+                        sellIcon: sellInfo.icon,
+                        sellAmount,
+                        buyToken: buyInfo.symbol,
+                        buyIcon: buyInfo.icon,
+                        buyAmount,
+                        usdValue: usdVal,
+                        wallet: displayWallet,
+                        chain: 'Bitcoin Cash',
+                        txHash,
+                        explorerUrl: expUrl,
+                        type: labelType,
+                        status: item.status === 'filled' ? 'Completed' : (item.status || 'Active'),
+                        network: 'chipnet',
+                    };
+                });
+                allTxs.push(...meshTxs);
+            } catch (e) {
+                console.warn('[TransactionsTable] Failed to fetch BCHMesh intents:', e);
+            }
+
+            // 2. Movement swap history
             try {
                 const history = await fetchOrderHistoryRef.current();
-                if (isMounted) {
+                if (isMounted && Array.isArray(history)) {
                     const moveTxs = history.map((order: any, idx: number): ExplorerTx => {
                         const sellSym = order.sellToken?.symbol || order.sell_token || 'MOVE';
                         const buySym = order.buyToken?.symbol || order.buy_token || 'USDC';
-                        const mockUsdPrice = sellSym === 'MOVE' ? 0.8 : sellSym === 'SOL' ? 150 : sellSym === 'BCH' ? 250 : 1;
+                        const mockUsdPrice = getUsdPrice(sellSym);
                         const st = order.status === 'completed' || order.status === 'filled' || order.status === 'FILLED' ? 'Completed' : order.status || 'Pending';
                         return {
                             id: order.id || order.nonce || order.orderId || `move-${sellSym}-${buySym}-${order.createdAt || order.timestamp || Date.now()}-${idx}`,
@@ -153,15 +294,15 @@ export function TransactionsTable({ activeChain, refreshTrigger }: { activeChain
                             chain: 'Movement',
                             txHash: order.txid || order.fulfillTxId || order.order_hash,
                             explorerUrl: order.order_hash ? `https://explorer.movementlabs.xyz/txn/${order.order_hash}?network=testnet` : undefined,
-                            type: 'Intent Swap',
+                            type: 'Movement Swap',
                             status: st,
                         };
                     });
                     allTxs.push(...moveTxs);
                 }
-            } catch (e) { console.error("Failed to fetch Movement txs", e); }
+            } catch (e) { console.warn("Failed to fetch Movement txs", e); }
 
-            // 2. BCH orders from localStorage — both networks
+            // 3. BCH orders from localStorage — both networks
             const bchNetworks: Array<'chipnet' | 'mainnet'> = ['chipnet', 'mainnet'];
             bchNetworks.forEach(net => {
                 try {
@@ -171,7 +312,7 @@ export function TransactionsTable({ activeChain, refreshTrigger }: { activeChain
                     const bchTxs = bchOrders.map((order): ExplorerTx => {
                         const sellSym = order.sellToken?.symbol || '?';
                         const buySym = order.buyToken?.symbol || '?';
-                        const mockUsdPrice = sellSym === 'BCH' ? 250 : sellSym === 'SOL' ? 150 : sellSym === 'MOVE' ? 0.8 : 1;
+                        const mockUsdPrice = getUsdPrice(sellSym);
                         const statusMap: Record<string, string> = { pending: 'Pending', filled: 'Completed', claimed: 'Claimed', claimable: 'Claimable', cancelled: 'Failed', expired: 'Expired' };
                         return {
                             id: `${net}_${order.id}`,
@@ -193,13 +334,13 @@ export function TransactionsTable({ activeChain, refreshTrigger }: { activeChain
                         };
                     });
                     allTxs.push(...bchTxs);
-                } catch (e) { console.error(`Failed to load BCH ${net} orders`, e); }
+                } catch (e) { console.warn(`Failed to load BCH ${net} orders`, e); }
             });
 
-            // 3. Cross-chain relayer orders
+            // 4. Cross-chain relayer orders
             try {
-                const res = await axios.get(`${crossChainRelayerUrl}/orders`);
-                const { active = [], completed = [] } = res.data;
+                const res = await axios.get(`${crossChainRelayerUrl}/orders`, { timeout: 6000 });
+                const { active = [], completed = [] } = res.data || {};
                 const relayerOrders = [...active, ...completed];
                 const ccTxs = relayerOrders.map((intent: any): ExplorerTx => {
                     const dir = (intent.direction || '').toLowerCase();
@@ -226,11 +367,11 @@ export function TransactionsTable({ activeChain, refreshTrigger }: { activeChain
                         else explorerUrl = `https://explorer.movementnetwork.xyz/txn/${sourceId}?network=testnet`;
                     }
 
-                    const mockUsdPrice = sellSym === 'BCH' ? 250 : sellSym === 'SOL' ? 150 : sellSym === 'MOVE' ? 0.8 : 1;
+                    const mockUsdPrice = getUsdPrice(sellSym);
 
                     return {
-                        id: intent.id,
-                        timestamp: intent.createdAt ? intent.createdAt * 1000 : Date.now(),
+                        id: `cc_${intent.id}`,
+                        timestamp: intent.createdAt ? (intent.createdAt > 1e12 ? intent.createdAt : intent.createdAt * 1000) : Date.now(),
                         sellToken: sellSym,
                         sellIcon: TOKEN_ICONS[sellSym],
                         sellAmount: Number(intent.sellAmount) / 1e8 || 0,
@@ -247,13 +388,14 @@ export function TransactionsTable({ activeChain, refreshTrigger }: { activeChain
                     };
                 });
                 allTxs.push(...ccTxs);
-            } catch (e) { console.error("Failed to fetch cross-chain orders", e); }
+            } catch (e) { console.warn("Failed to fetch cross-chain orders", e); }
 
-            // Deduplicate by id
+            // Deduplicate by txHash or id
             const seen = new Set<string>();
             const deduped = allTxs.filter(tx => {
-                if (seen.has(tx.id)) return false;
-                seen.add(tx.id);
+                const key = tx.txHash || tx.id;
+                if (seen.has(key)) return false;
+                seen.add(key);
                 return true;
             });
 
@@ -267,10 +409,13 @@ export function TransactionsTable({ activeChain, refreshTrigger }: { activeChain
 
         loadOrders();
         return () => { isMounted = false; };
-    }, [refreshTrigger]);
+    }, [refreshTrigger, meshServerUrl, crossChainRelayerUrl]);
 
     // Apply chain filter
-    const filteredTxs = transactions.filter(tx => activeChain === 'All' || tx.chain === activeChain);
+    const filteredTxs = transactions.filter(tx => {
+        if (activeChain === 'All') return true;
+        return tx.chain === activeChain;
+    });
 
     // Pagination
     const totalPages = Math.max(1, Math.ceil(filteredTxs.length / ITEMS_PER_PAGE));
@@ -296,187 +441,188 @@ export function TransactionsTable({ activeChain, refreshTrigger }: { activeChain
                 </div>
             )}
             <>
-                    <div className="overflow-x-auto">
-                        <Table>
-                            <TableHeader className="bg-white/[0.02] border-b border-white/[0.06]">
-                                <TableRow className="hover:bg-transparent">
-                                    <TableHead className="text-muted-foreground text-xs font-semibold w-[90px] pl-4">Time</TableHead>
-                                    <TableHead className="text-muted-foreground text-xs font-semibold">Type</TableHead>
-                                    <TableHead className="text-muted-foreground text-xs font-semibold">
-                                        <div className="flex items-center gap-1">Token Pair <ArrowUpDown className="h-3 w-3" /></div>
-                                    </TableHead>
-                                    <TableHead className="text-muted-foreground text-xs font-semibold text-right">USD Value</TableHead>
-                                    <TableHead className="text-muted-foreground text-xs font-semibold text-right">Sold</TableHead>
-                                    <TableHead className="text-muted-foreground text-xs font-semibold text-right">Received</TableHead>
-                                    <TableHead className="text-muted-foreground text-xs font-semibold">Chain</TableHead>
-                                    <TableHead className="text-muted-foreground text-xs font-semibold">Status</TableHead>
-                                    <TableHead className="text-muted-foreground text-xs font-semibold text-right w-[50px] pr-4">Tx</TableHead>
+                <div className="overflow-x-auto">
+                    <Table>
+                        <TableHeader className="bg-white/[0.02] border-b border-white/[0.06]">
+                            <TableRow className="hover:bg-transparent">
+                                <TableHead className="text-muted-foreground text-xs font-semibold w-[90px] pl-4">Time</TableHead>
+                                <TableHead className="text-muted-foreground text-xs font-semibold">Type</TableHead>
+                                <TableHead className="text-muted-foreground text-xs font-semibold">
+                                    <div className="flex items-center gap-1">Token Pair <ArrowUpDown className="h-3 w-3" /></div>
+                                </TableHead>
+                                <TableHead className="text-muted-foreground text-xs font-semibold text-right">USD Value</TableHead>
+                                <TableHead className="text-muted-foreground text-xs font-semibold text-right">Sold</TableHead>
+                                <TableHead className="text-muted-foreground text-xs font-semibold text-right">Received</TableHead>
+                                <TableHead className="text-muted-foreground text-xs font-semibold">Chain</TableHead>
+                                <TableHead className="text-muted-foreground text-xs font-semibold">Status</TableHead>
+                                <TableHead className="text-muted-foreground text-xs font-semibold text-right w-[50px] pr-4">Tx</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {showSkeleton ? (
+                                Array.from({ length: 6 }).map((_, i) => (
+                                    <TableRow key={`skeleton-${i}`} className="border-white/[0.06]">
+                                        {Array.from({ length: 9 }).map((__, j) => (
+                                            <TableCell key={j} className={cn(j === 0 && "pl-4", j === 8 && "pr-4 text-right")}>
+                                                <div className={cn("h-4 bg-white/[0.04] rounded animate-pulse", j === 8 ? "w-4 ml-auto" : j === 2 ? "w-32" : "w-16", (j === 3 || j === 4 || j === 5) && "ml-auto")} />
+                                            </TableCell>
+                                        ))}
+                                    </TableRow>
+                                ))
+                            ) : paginatedTxs.length === 0 ? (
+                                <TableRow>
+                                    <TableCell colSpan={9} className="h-32 text-center text-muted-foreground">
+                                        <Clock className="h-6 w-6 mx-auto mb-2 opacity-50" />
+                                        No transactions found.
+                                    </TableCell>
                                 </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                                {showSkeleton ? (
-                                    Array.from({ length: 6 }).map((_, i) => (
-                                        <TableRow key={`skeleton-${i}`} className="border-white/[0.06]">
-                                            {Array.from({ length: 9 }).map((__, j) => (
-                                                <TableCell key={j} className={cn(j === 0 && "pl-4", j === 8 && "pr-4 text-right")}>
-                                                    <div className={cn("h-4 bg-white/[0.04] rounded animate-pulse", j === 8 ? "w-4 ml-auto" : j === 2 ? "w-32" : "w-16", (j === 3 || j === 4 || j === 5) && "ml-auto")} />
-                                                </TableCell>
-                                            ))}
-                                        </TableRow>
-                                    ))
-                                ) : paginatedTxs.length === 0 ? (
-                                    <TableRow>
-                                        <TableCell colSpan={9} className="h-32 text-center text-muted-foreground">
-                                            <Clock className="h-6 w-6 mx-auto mb-2 opacity-50" />
-                                            No transactions found.
+                            ) : (
+                                paginatedTxs.map((tx) => (
+                                    <TableRow key={tx.id} className="hover:bg-white/[0.02] border-white/[0.06] transition-colors group">
+                                        {/* Time */}
+                                        <TableCell className="text-muted-foreground text-sm font-medium pl-4">
+                                            {getTimeAgo(tx.timestamp)}
+                                        </TableCell>
+
+                                        {/* Type */}
+                                        <TableCell>
+                                            <Badge variant="outline" className={cn("text-[10px] py-0 font-medium", typeBadgeColor(tx.type))}>
+                                                {tx.type}
+                                            </Badge>
+                                        </TableCell>
+
+                                        {/* Token Pair — Uniswap style */}
+                                        <TableCell>
+                                            <div className="flex items-center gap-2">
+                                                <div className="flex items-center -space-x-2">
+                                                    <TxTokenIcon symbol={tx.sellToken} icon={tx.sellIcon} />
+                                                    <TxTokenIcon symbol={tx.buyToken} icon={tx.buyIcon} />
+                                                </div>
+                                                <div className="flex items-center gap-1.5">
+                                                    <span className="text-sm font-bold text-foreground">{tx.sellToken}</span>
+                                                    <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                                                    <span className="text-sm font-bold text-emerald-400">{tx.buyToken}</span>
+                                                </div>
+                                            </div>
+                                        </TableCell>
+
+                                        {/* USD Value */}
+                                        <TableCell className="text-right font-medium text-emerald-400">
+                                            ${tx.usdValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </TableCell>
+
+                                        {/* Sold */}
+                                        <TableCell className="text-right">
+                                            <div className="flex items-center justify-end gap-1.5">
+                                                <span className="font-semibold text-red-400/80">{tx.sellAmount.toLocaleString(undefined, { maximumFractionDigits: 6 })}</span>
+                                                <span className="text-xs text-muted-foreground">{tx.sellToken}</span>
+                                            </div>
+                                        </TableCell>
+
+                                        {/* Received */}
+                                        <TableCell className="text-right">
+                                            <div className="flex items-center justify-end gap-1.5">
+                                                <span className="font-semibold text-emerald-400/80">{tx.buyAmount.toLocaleString(undefined, { maximumFractionDigits: 6 })}</span>
+                                                <span className="text-xs text-muted-foreground">{tx.buyToken}</span>
+                                            </div>
+                                        </TableCell>
+
+                                        {/* Chain */}
+                                        <TableCell>
+                                            <div className="flex flex-col gap-1">
+                                                <div className="flex items-center gap-1.5">
+                                                    {CHAIN_ICONS[tx.chain] && (
+                                                        <img src={CHAIN_ICONS[tx.chain]} alt={tx.chain} className="h-4 w-4 rounded-full object-contain" />
+                                                    )}
+                                                    <span className="text-xs text-muted-foreground">
+                                                        {tx.chain === 'Bitcoin Cash' ? 'BCH' : tx.chain}
+                                                    </span>
+                                                </div>
+                                                {tx.network && (
+                                                    <span className={cn(
+                                                        "text-[9px] font-semibold px-1.5 py-0.5 rounded-full border w-fit",
+                                                        tx.network === 'mainnet'
+                                                            ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                                            : "bg-zinc-500/10 text-zinc-400 border-zinc-500/20"
+                                                    )}>
+                                                        {tx.network === 'mainnet' ? 'Mainnet' : 'Testnet'}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </TableCell>
+
+                                        {/* Status */}
+                                        <TableCell>
+                                            <Badge variant="outline" className={cn("text-[10px] py-0", statusColor(tx.status))}>
+                                                {tx.status}
+                                            </Badge>
+                                        </TableCell>
+
+                                        {/* Explorer Link */}
+                                        <TableCell className="text-right pr-4">
+                                            {(tx.explorerUrl || tx.txHash) && (
+                                                <a
+                                                    href={tx.explorerUrl || (
+                                                        tx.network === 'mainnet'
+                                                            ? `https://blockchair.com/bitcoin-cash/transaction/${tx.txHash}`
+                                                            : `https://chipnet.imaginary.cash/tx/${tx.txHash}`
+                                                    )}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-muted-foreground hover:text-emerald-400 transition-colors"
+                                                >
+                                                    <ExternalLink className="h-4 w-4" />
+                                                </a>
+                                            )}
                                         </TableCell>
                                     </TableRow>
-                                ) : (
-                                    paginatedTxs.map((tx) => (
-                                        <TableRow key={tx.id} className="hover:bg-white/[0.02] border-white/[0.06] transition-colors group">
-                                            {/* Time */}
-                                            <TableCell className="text-muted-foreground text-sm font-medium pl-4">
-                                                {getTimeAgo(tx.timestamp)}
-                                            </TableCell>
+                                ))
+                            )}
+                        </TableBody>
+                    </Table>
+                </div>
 
-                                            {/* Type */}
-                                            <TableCell>
-                                                <Badge variant="outline" className={cn("text-[10px] py-0 border-white/10 font-medium", tx.type === 'HTLC Swap' ? 'text-purple-400' : tx.type === 'CashToken' ? 'text-emerald-400' : 'text-blue-400')}>
-                                                    {tx.type}
-                                                </Badge>
-                                            </TableCell>
-
-                                            {/* Token Pair — Uniswap style */}
-                                            <TableCell>
-                                                <div className="flex items-center gap-2">
-                                                    <div className="flex items-center -space-x-2">
-                                                        <TxTokenIcon symbol={tx.sellToken} icon={tx.sellIcon} />
-                                                        <TxTokenIcon symbol={tx.buyToken} icon={tx.buyIcon} />
-                                                    </div>
-                                                    <div className="flex items-center gap-1.5">
-                                                        <span className="text-sm font-bold text-foreground">{tx.sellToken}</span>
-                                                        <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                                                        <span className="text-sm font-bold text-emerald-400">{tx.buyToken}</span>
-                                                    </div>
-                                                </div>
-                                            </TableCell>
-
-                                            {/* USD Value */}
-                                            <TableCell className="text-right font-medium text-emerald-400">
-                                                ${tx.usdValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                            </TableCell>
-
-                                            {/* Sold */}
-                                            <TableCell className="text-right">
-                                                <div className="flex items-center justify-end gap-1.5">
-                                                    <span className="font-semibold text-red-400/80">{tx.sellAmount.toLocaleString(undefined, { maximumFractionDigits: 6 })}</span>
-                                                    <span className="text-xs text-muted-foreground">{tx.sellToken}</span>
-                                                </div>
-                                            </TableCell>
-
-                                            {/* Received */}
-                                            <TableCell className="text-right">
-                                                <div className="flex items-center justify-end gap-1.5">
-                                                    <span className="font-semibold text-emerald-400/80">{tx.buyAmount.toLocaleString(undefined, { maximumFractionDigits: 6 })}</span>
-                                                    <span className="text-xs text-muted-foreground">{tx.buyToken}</span>
-                                                </div>
-                                            </TableCell>
-
-                                            {/* Chain */}
-                                            <TableCell>
-                                                <div className="flex flex-col gap-1">
-                                                    <div className="flex items-center gap-1.5">
-                                                        {CHAIN_ICONS[tx.chain] && (
-                                                            <img src={CHAIN_ICONS[tx.chain]} alt={tx.chain} className="h-4 w-4 rounded-full object-contain" />
-                                                        )}
-                                                        <span className="text-xs text-muted-foreground">
-                                                            {tx.chain === 'Bitcoin Cash' ? 'BCH' : tx.chain}
-                                                        </span>
-                                                    </div>
-                                                    {tx.network && (
-                                                        <span className={cn(
-                                                            "text-[9px] font-semibold px-1.5 py-0.5 rounded-full border w-fit",
-                                                            tx.network === 'mainnet'
-                                                                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                                                                : "bg-zinc-500/10 text-zinc-400 border-zinc-500/20"
-                                                        )}>
-                                                            {tx.network === 'mainnet' ? 'Mainnet' : 'Testnet'}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </TableCell>
-
-                                            {/* Status */}
-                                            <TableCell>
-                                                <Badge variant="outline" className={cn("text-[10px] py-0", statusColor(tx.status))}>
-                                                    {tx.status}
-                                                </Badge>
-                                            </TableCell>
-
-                                            {/* Explorer Link */}
-                                            <TableCell className="text-right pr-4">
-                                                {(tx.explorerUrl || tx.txHash) && (
-                                                    <a
-                                                        href={tx.explorerUrl || (
-                                                            tx.network === 'mainnet'
-                                                                ? `https://blockchair.com/bitcoin-cash/transaction/${tx.txHash}`
-                                                                : `https://chipnet.chaingraph.cash/tx/${tx.txHash}`
-                                                        )}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="text-muted-foreground hover:text-emerald-400 transition-colors"
-                                                    >
-                                                        <ExternalLink className="h-4 w-4" />
-                                                    </a>
-                                                )}
-                                            </TableCell>
-                                        </TableRow>
-                                    ))
-                                )}
-                            </TableBody>
-                        </Table>
-                    </div>
-
-                    {/* Pagination */}
-                    {!showSkeleton && totalPages > 1 && (
-                        <div className="flex items-center justify-between px-4 py-3 border-t border-white/[0.06]">
-                            <div className="text-xs text-muted-foreground">
-                                Showing {(clampedPage - 1) * ITEMS_PER_PAGE + 1}–{Math.min(clampedPage * ITEMS_PER_PAGE, filteredTxs.length)} of {filteredTxs.length}
-                            </div>
-                            <div className="flex items-center gap-1">
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                                    disabled={clampedPage <= 1}
-                                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                                >
-                                    <ChevronLeft className="h-4 w-4" />
-                                </Button>
-                                {getPageNumbers().map(n => (
-                                    <Button
-                                        key={n}
-                                        variant={n === clampedPage ? "default" : "ghost"}
-                                        size="icon"
-                                        className={cn("h-8 w-8 text-xs", n === clampedPage ? "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30" : "text-muted-foreground hover:text-foreground")}
-                                        onClick={() => setCurrentPage(n)}
-                                    >
-                                        {n}
-                                    </Button>
-                                ))}
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                                    disabled={clampedPage >= totalPages}
-                                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                                >
-                                    <ChevronRight className="h-4 w-4" />
-                                </Button>
-                            </div>
+                {/* Pagination */}
+                {!showSkeleton && totalPages > 1 && (
+                    <div className="flex items-center justify-between px-4 py-3 border-t border-white/[0.06]">
+                        <div className="text-xs text-muted-foreground">
+                            Showing {(clampedPage - 1) * ITEMS_PER_PAGE + 1}–{Math.min(clampedPage * ITEMS_PER_PAGE, filteredTxs.length)} of {filteredTxs.length}
                         </div>
-                    )}
-                </>
+                        <div className="flex items-center gap-1">
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                disabled={clampedPage <= 1}
+                                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                            >
+                                <ChevronLeft className="h-4 w-4" />
+                            </Button>
+                            {getPageNumbers().map(n => (
+                                <Button
+                                    key={n}
+                                    variant={n === clampedPage ? "default" : "ghost"}
+                                    size="icon"
+                                    className={cn("h-8 w-8 text-xs", n === clampedPage ? "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30" : "text-muted-foreground hover:text-foreground")}
+                                    onClick={() => setCurrentPage(n)}
+                                >
+                                    {n}
+                                </Button>
+                            ))}
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                disabled={clampedPage >= totalPages}
+                                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                            >
+                                <ChevronRight className="h-4 w-4" />
+                            </Button>
+                        </div>
+                    </div>
+                )}
+            </>
         </div>
     );
 }
+
