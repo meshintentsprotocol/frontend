@@ -2245,18 +2245,20 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                                 // forever showing "pending").
                                 switch (intent.status) {
                                     case 'filled':
+                                    case 'FILLED':
                                         order.status = 'filled';
                                         order.fillTxid = intent.fillTxid;
                                         order.explorerUrl = intent.fillExplorerUrl || intent.explorerUrl
                                             || (intent.fillTxid ? buildExplorerUrl(intent.fillTxid, 'bch') : undefined);
                                         break;
                                     case 'refunded':
+                                    case 'REFUNDED':
                                         order.status = 'refunded';
                                         // The relayer writes refundTxid (not fillTxid) for refunds —
                                         // reading fillTxid here meant the refund link was always absent.
                                         order.refundTxid = intent.refundTxid ?? intent.fillTxid;
                                         if (order.refundTxid) {
-                                            order.destExplorerUrl = intent.fillExplorerUrl
+                                            order.destExplorerUrl = intent.refundExplorerUrl || intent.fillExplorerUrl
                                                 || buildExplorerUrl(order.refundTxid, 'bch');
                                         }
                                         break;
@@ -2363,10 +2365,14 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                                 }
                             }
 
-                            if (intent.status === 'REFUNDED') {
-                                order.status = 'refunded';
-                                updated = true;
-                            } else if (intent.status === 'FAILED') {
+                            if (intent.status === 'REFUNDED' || intent.status === 'refunded') {
+                                if (order.status !== 'refunded') {
+                                    order.status = 'refunded';
+                                    order.refundTxid = intent.refundTxid || intent.fillTxid || order.refundTxid;
+                                    order.destExplorerUrl = intent.refundExplorerUrl || (order.refundTxid ? buildExplorerUrl(order.refundTxid, 'bch') : order.destExplorerUrl);
+                                    updated = true;
+                                }
+                            } else if (intent.status === 'FAILED' || intent.status === 'failed') {
                                 order.status = 'cancelled';
                                 updated = true;
                             }
@@ -2389,12 +2395,15 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                     setPendingOrders(split.pending);
                     setCompletedOrders(split.completed);
                 }
+                queryClient.invalidateQueries({ queryKey: ['bch-balance'] });
+                queryClient.invalidateQueries({ queryKey: ['bch-tokens'] });
+                queryClient.invalidateQueries({ queryKey: ['portfolio'] });
             }
         } catch { /* ignore */ }
         finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [queryClient]);
 
     // =========================================================================
     // Live order updates from the relayer WebSocket
@@ -2436,7 +2445,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
             case 'intent:refunded':
                 order.status = 'refunded';
                 order.refundTxid = intent.refundTxid ?? intent.fillTxid ?? order.refundTxid;
-                order.destExplorerUrl = intent.fillExplorerUrl ?? order.destExplorerUrl;
+                order.destExplorerUrl = intent.refundExplorerUrl ?? intent.fillExplorerUrl ?? (order.refundTxid ? `https://chipnet.imaginary.cash/tx/${order.refundTxid}` : order.destExplorerUrl);
                 break;
             case 'intent:cancelled':
                 order.status = 'cancelled';
