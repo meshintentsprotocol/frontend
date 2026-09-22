@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown, Zap, Globe, Puzzle, Sparkles, FileText, ExternalLink, Wallet } from 'lucide-react';
+import { ChevronDown, Zap, Globe, Puzzle, Sparkles, FileText, ExternalLink, Wallet, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // ── Social Icons ──────────────────────────────────────────────────────────────
@@ -24,6 +24,7 @@ interface ExploreItem {
 }
 
 const EXPLORE_ITEMS: ExploreItem[] = [
+    { name: 'Admin Analytics', path: '/admin', description: 'Real-time swap flows & profits', icon: ShieldCheck },
     { name: 'Intent Wallet', path: '/wallet', description: 'Crosschain Mobile & Extension', icon: Wallet },
     { name: 'Features', path: '/features', description: 'Core protocol capabilities', icon: Zap },
     { name: 'Ecosystem', path: '/ecosystem', description: 'Partners & integrations', icon: Globe },

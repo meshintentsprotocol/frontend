@@ -29,6 +29,7 @@ const APP_VERSION = '0.1.0';
 
 // ── Mobile drawer: "Explore" section (marketing pages) ────────────────────────
 const MOBILE_EXPLORE_ITEMS: { name: string; path: string; icon: LucideIcon }[] = [
+    { name: 'Admin Analytics', path: '/admin', icon: Zap },
     { name: 'Intent Wallet', path: '/wallet', icon: Wallet },
     { name: 'Features', path: '/features', icon: Zap },
     { name: 'Ecosystem', path: '/ecosystem', icon: Globe },
