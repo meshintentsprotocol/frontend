@@ -47,6 +47,7 @@ import axios from 'axios';
 
 export interface RouteFlags {
     meshEnabled: boolean;
+    solverEnabled: boolean;
     cauldronEnabled: boolean;
     lastUpdated: number;
     reason?: string;
@@ -75,7 +76,7 @@ interface SwapItem {
     intentId: string;
     intentTxid: string;
     fillTxid?: string;
-    route: 'CAULDRON_AMM' | 'MESH_POOL' | 'WATERFALL_BLENDED';
+    route: 'CAULDRON_AMM' | 'SOLVER_ROUTE' | 'MESH_POOL' | 'WATERFALL_BLENDED';
     orderType: 'LIMIT' | 'MARKET' | 'DUTCH';
     makerAddress: string;
     contractAddress: string;
@@ -130,9 +131,11 @@ interface OverviewStats {
     avgFillLatencySec: number;
     routeDistribution: {
         meshCount: number;
+        solverCount: number;
         cauldronCount: number;
         blendedCount: number;
         meshPercent: number;
+        solverPercent: number;
         cauldronPercent: number;
         blendedPercent: number;
     };
@@ -227,7 +230,7 @@ export function AdminPage() {
 
     // Filters
     const [statusFilter, setStatusFilter] = useState<'ALL' | 'FILLED' | 'ACTIVE' | 'EXPIRED'>('ALL');
-    const [routeFilter, setRouteFilter] = useState<'ALL' | 'CAULDRON_AMM' | 'MESH_POOL' | 'WATERFALL_BLENDED'>('ALL');
+    const [routeFilter, setRouteFilter] = useState<'ALL' | 'CAULDRON_AMM' | 'SOLVER_ROUTE' | 'MESH_POOL' | 'WATERFALL_BLENDED'>('ALL');
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedSwap, setSelectedSwap] = useState<SwapItem | null>(null);
     const [autoRefreshInterval, setAutoRefreshInterval] = useState<number>(10);
@@ -273,18 +276,33 @@ export function AdminPage() {
         }
     }, [baseUrl]);
 
-    const handleToggleRoute = async (route: 'mesh' | 'cauldron', enable: boolean) => {
+    const handleToggleRoute = async (route: 'mesh' | 'solver' | 'cauldron', enable: boolean) => {
         setIsUpdatingRoute(true);
         setTriggerMessage(null);
         try {
-            const endpoint = route === 'mesh'
-                ? (enable ? `${baseUrl}/api/v1/admin/routes/resume-mesh` : `${baseUrl}/api/v1/admin/routes/pause-mesh`)
-                : (enable ? `${baseUrl}/api/v1/admin/routes/resume-cauldron` : `${baseUrl}/api/v1/admin/routes/pause-cauldron`);
+            let endpoint: string;
+            let label: string;
+            if (route === 'mesh') {
+                endpoint = enable
+                    ? `${baseUrl}/api/v1/admin/routes/resume-mesh`
+                    : `${baseUrl}/api/v1/admin/routes/pause-mesh`;
+                label = 'Mesh Pool Route';
+            } else if (route === 'solver') {
+                endpoint = enable
+                    ? `${baseUrl}/api/v1/admin/routes/resume-solver`
+                    : `${baseUrl}/api/v1/admin/routes/pause-solver`;
+                label = 'Solver Route';
+            } else {
+                endpoint = enable
+                    ? `${baseUrl}/api/v1/admin/routes/resume-cauldron`
+                    : `${baseUrl}/api/v1/admin/routes/pause-cauldron`;
+                label = 'Cauldron AMM Route';
+            }
             
             const res = await axios.post(endpoint, { reason: `Operator toggled via Admin UI` });
             if (res.data?.success && res.data?.routes) {
                 setRouteFlags(res.data.routes);
-                setTriggerMessage(`✅ ${route === 'mesh' ? 'Mesh Covenant Route' : 'Cauldron AMM Route'} is now ${enable ? 'ACTIVE (Enabled)' : 'PAUSED (Disabled)'}`);
+                setTriggerMessage(`✅ ${label} is now ${enable ? 'ACTIVE (Enabled)' : 'PAUSED (Disabled)'}`);
             }
         } catch (err: any) {
             setTriggerMessage(`❌ Route toggle failed: ${err.response?.data?.error || err.message}`);
@@ -406,10 +424,16 @@ export function AdminPage() {
                         <Flame className="w-3 h-3 text-emerald-400" /> Cauldron AMM
                     </Badge>
                 );
+            case 'SOLVER_ROUTE':
+                return (
+                    <Badge className="bg-amber-500/10 text-amber-400 border-amber-500/30 flex items-center gap-1 font-mono text-[11px] py-0.5">
+                        <Zap className="w-3 h-3 text-amber-400" /> Solver Route
+                    </Badge>
+                );
             case 'MESH_POOL':
                 return (
                     <Badge className="bg-blue-500/10 text-blue-400 border-blue-500/30 flex items-center gap-1 font-mono text-[11px] py-0.5">
-                        <Layers className="w-3 h-3 text-blue-400" /> Mesh Covenant
+                        <Layers className="w-3 h-3 text-blue-400" /> Mesh Pool
                     </Badge>
                 );
             case 'WATERFALL_BLENDED':
@@ -597,21 +621,25 @@ export function AdminPage() {
                         <div>
                             <h3 className="text-sm font-heading font-bold text-white flex flex-wrap items-center gap-2">
                                 Execution Routing Circuit Breakers & Venue Pause Toggles
-                                {routeFlags?.meshEnabled && routeFlags?.cauldronEnabled ? (
+                                {routeFlags?.meshEnabled && routeFlags?.solverEnabled && routeFlags?.cauldronEnabled ? (
                                     <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30 text-[10px] font-mono">
-                                        Hybrid Waterfall Active
+                                        All 3 Routes Active
                                     </Badge>
-                                ) : routeFlags?.meshEnabled ? (
+                                ) : routeFlags?.meshEnabled && routeFlags?.solverEnabled && !routeFlags?.cauldronEnabled ? (
                                     <Badge className="bg-blue-500/10 text-blue-400 border-blue-500/30 text-[10px] font-mono">
-                                        Mesh Exclusive (Cauldron Paused)
+                                        Mesh + Solver (Cauldron Paused)
                                     </Badge>
-                                ) : routeFlags?.cauldronEnabled ? (
+                                ) : routeFlags?.cauldronEnabled && !routeFlags?.meshEnabled && !routeFlags?.solverEnabled ? (
                                     <Badge className="bg-amber-500/10 text-amber-400 border-amber-500/30 text-[10px] font-mono">
-                                        Cauldron Exclusive (Mesh Paused)
+                                        Cauldron Only (Mesh + Solver Paused)
                                     </Badge>
-                                ) : (
+                                ) : !routeFlags?.meshEnabled && !routeFlags?.solverEnabled && !routeFlags?.cauldronEnabled ? (
                                     <Badge className="bg-red-500/20 text-red-400 border-red-500/40 text-[10px] font-mono animate-pulse">
                                         ⚠️ All Routes Paused
+                                    </Badge>
+                                ) : (
+                                    <Badge className="bg-purple-500/10 text-purple-400 border-purple-500/30 text-[10px] font-mono">
+                                        Partial Routes Active
                                     </Badge>
                                 )}
                             </h3>
@@ -628,9 +656,9 @@ export function AdminPage() {
                     </div>
                 </div>
 
-                {/* Route Venue Toggles Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Mesh Route Toggle Card */}
+                {/* Route Venue Toggles Grid — 3 routes */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* Mesh Pool Route Toggle Card */}
                     <div className={`p-4 rounded-xl border transition-all ${
                         routeFlags?.meshEnabled !== false 
                             ? 'bg-blue-950/20 border-blue-500/30 shadow-[0_0_15px_rgba(59,130,246,0.1)]' 
@@ -643,7 +671,7 @@ export function AdminPage() {
                                 </div>
                                 <div>
                                     <div className="text-xs font-bold text-white flex items-center gap-2">
-                                        <span>BCHMesh Covenants Route</span>
+                                        <span>Mesh Pool Route</span>
                                         {routeFlags?.meshEnabled !== false ? (
                                             <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 font-mono">
                                                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Active
@@ -655,7 +683,7 @@ export function AdminPage() {
                                         )}
                                     </div>
                                     <div className="text-[11px] text-zinc-400 mt-0.5">
-                                        Zero-inventory on-chain strategy LP covenants
+                                        Zero-inventory on-chain covenant LP fills
                                     </div>
                                 </div>
                             </div>
@@ -671,9 +699,58 @@ export function AdminPage() {
                                 }`}
                             >
                                 {routeFlags?.meshEnabled !== false ? (
-                                    <><PauseCircle className="w-3.5 h-3.5 mr-1" /> Pause Mesh</>
+                                    <><PauseCircle className="w-3.5 h-3.5 mr-1" /> Pause</>
                                 ) : (
-                                    <><PlayCircle className="w-3.5 h-3.5 mr-1 fill-current" /> Resume Mesh</>
+                                    <><PlayCircle className="w-3.5 h-3.5 mr-1 fill-current" /> Resume</>
+                                )}
+                            </Button>
+                        </div>
+                    </div>
+
+                    {/* Solver Route Toggle Card */}
+                    <div className={`p-4 rounded-xl border transition-all ${
+                        routeFlags?.solverEnabled !== false 
+                            ? 'bg-amber-950/20 border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.1)]' 
+                            : 'bg-zinc-900/40 border-red-500/30 opacity-80'
+                    }`}>
+                        <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3">
+                                <div className={`p-2 rounded-lg ${routeFlags?.solverEnabled !== false ? 'bg-amber-500/20 text-amber-400' : 'bg-red-500/20 text-red-400'}`}>
+                                    <Zap className="w-4 h-4" />
+                                </div>
+                                <div>
+                                    <div className="text-xs font-bold text-white flex items-center gap-2">
+                                        <span>Solver Route</span>
+                                        {routeFlags?.solverEnabled !== false ? (
+                                            <span className="inline-flex items-center gap-1 text-[10px] text-emerald-400 font-mono">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" /> Active
+                                            </span>
+                                        ) : (
+                                            <span className="inline-flex items-center gap-1 text-[10px] text-red-400 font-mono">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-red-400" /> Paused
+                                            </span>
+                                        )}
+                                    </div>
+                                    <div className="text-[11px] text-zinc-400 mt-0.5">
+                                        JIT inventory fills via solver wallet
+                                    </div>
+                                </div>
+                            </div>
+
+                            <Button
+                                size="sm"
+                                disabled={isUpdatingRoute}
+                                onClick={() => handleToggleRoute('solver', routeFlags?.solverEnabled === false)}
+                                className={`h-8 text-xs font-semibold px-3 rounded-lg transition-all ${
+                                    routeFlags?.solverEnabled !== false
+                                        ? 'bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40'
+                                        : 'bg-emerald-500 hover:bg-emerald-600 text-black'
+                                }`}
+                            >
+                                {routeFlags?.solverEnabled !== false ? (
+                                    <><PauseCircle className="w-3.5 h-3.5 mr-1" /> Pause</>
+                                ) : (
+                                    <><PlayCircle className="w-3.5 h-3.5 mr-1 fill-current" /> Resume</>
                                 )}
                             </Button>
                         </div>
@@ -704,7 +781,7 @@ export function AdminPage() {
                                         )}
                                     </div>
                                     <div className="text-[11px] text-zinc-400 mt-0.5">
-                                        Decentralized CPMM liquidity pool fallback
+                                        Decentralised CPMM pool fallback (0.3% fee)
                                     </div>
                                 </div>
                             </div>
@@ -720,9 +797,9 @@ export function AdminPage() {
                                 }`}
                             >
                                 {routeFlags?.cauldronEnabled !== false ? (
-                                    <><PauseCircle className="w-3.5 h-3.5 mr-1" /> Pause Cauldron</>
+                                    <><PauseCircle className="w-3.5 h-3.5 mr-1" /> Pause</>
                                 ) : (
-                                    <><PlayCircle className="w-3.5 h-3.5 mr-1 fill-current" /> Resume Cauldron</>
+                                    <><PlayCircle className="w-3.5 h-3.5 mr-1 fill-current" /> Resume</>
                                 )}
                             </Button>
                         </div>
@@ -894,29 +971,59 @@ export function AdminPage() {
                     </CardContent>
                 </Card>
 
-                {/* 4. Route Split */}
+                {/* 4. Route Distribution — Tri-Route Segmented Bar */}
                 <Card className="bg-zinc-950/80 border-white/10 shadow-md">
                     <CardHeader className="pb-2">
                         <CardDescription className="text-zinc-400 text-xs flex items-center justify-between">
                             <span>ROUTE DISTRIBUTION</span>
                             <Layers className="w-4 h-4 text-purple-400" />
                         </CardDescription>
-                        <CardTitle className="text-xl font-mono font-bold text-white flex items-center gap-2">
-                            <span className="text-emerald-400 text-base">{stats?.routeDistribution?.cauldronPercent || 100}%</span> Cauldron
+                        <CardTitle className="text-sm font-mono font-bold text-white flex flex-wrap items-center gap-2">
+                            <span className="flex items-center gap-1">
+                                <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block" />
+                                <span className="text-emerald-400">{stats?.routeDistribution?.cauldronPercent ?? 0}%</span>
+                                <span className="text-zinc-500 font-normal">AMM</span>
+                            </span>
+                            <span className="flex items-center gap-1">
+                                <span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />
+                                <span className="text-amber-400">{stats?.routeDistribution?.solverPercent ?? 0}%</span>
+                                <span className="text-zinc-500 font-normal">Solver</span>
+                            </span>
+                            <span className="flex items-center gap-1">
+                                <span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />
+                                <span className="text-blue-400">{stats?.routeDistribution?.meshPercent ?? 0}%</span>
+                                <span className="text-zinc-500 font-normal">Mesh</span>
+                            </span>
                         </CardTitle>
                     </CardHeader>
-                    <CardContent className="pt-0 text-xs text-zinc-400 flex items-center gap-2">
-                        <div className="w-full bg-zinc-800 rounded-full h-2 overflow-hidden flex">
-                            <div 
-                                className="bg-emerald-400 h-full" 
-                                style={{ width: `${stats?.routeDistribution?.cauldronPercent || 100}%` }} 
-                                title="Cauldron AMM"
+                    <CardContent className="pt-0 text-xs text-zinc-500 space-y-2">
+                        {/* Segmented progress bar */}
+                        <div className="w-full bg-zinc-800 rounded-full h-2.5 overflow-hidden flex gap-px">
+                            <div
+                                className="bg-emerald-400 h-full rounded-l-full transition-all"
+                                style={{ width: `${stats?.routeDistribution?.cauldronPercent ?? 0}%` }}
+                                title={`Cauldron AMM: ${stats?.routeDistribution?.cauldronCount ?? 0} fills`}
                             />
-                            <div 
-                                className="bg-blue-400 h-full" 
-                                style={{ width: `${stats?.routeDistribution?.meshPercent || 0}%` }} 
-                                title="Mesh Pool"
+                            <div
+                                className="bg-amber-400 h-full transition-all"
+                                style={{ width: `${stats?.routeDistribution?.solverPercent ?? 0}%` }}
+                                title={`Solver Route: ${stats?.routeDistribution?.solverCount ?? 0} fills`}
                             />
+                            <div
+                                className="bg-blue-400 h-full transition-all"
+                                style={{ width: `${stats?.routeDistribution?.meshPercent ?? 0}%` }}
+                                title={`Mesh Pool: ${stats?.routeDistribution?.meshCount ?? 0} fills`}
+                            />
+                            <div
+                                className="bg-purple-400 h-full rounded-r-full transition-all"
+                                style={{ width: `${stats?.routeDistribution?.blendedPercent ?? 0}%` }}
+                                title={`Blended: ${stats?.routeDistribution?.blendedCount ?? 0} fills`}
+                            />
+                        </div>
+                        <div className="flex justify-between font-mono text-[10px]">
+                            <span>{stats?.routeDistribution?.cauldronCount ?? 0} AMM fills</span>
+                            <span>{stats?.routeDistribution?.solverCount ?? 0} Solver fills</span>
+                            <span>{stats?.routeDistribution?.meshCount ?? 0} Mesh fills</span>
                         </div>
                     </CardContent>
                 </Card>
@@ -967,6 +1074,7 @@ export function AdminPage() {
                                     [
                                         { key: 'ALL', label: 'All Routes' },
                                         { key: 'CAULDRON_AMM', label: 'Cauldron AMM' },
+                                        { key: 'SOLVER_ROUTE', label: 'Solver Route' },
                                         { key: 'MESH_POOL', label: 'Mesh Pool' },
                                     ] as const
                                 ).map((rt) => (
@@ -1649,18 +1757,28 @@ export function AdminPage() {
                                 <div className="p-3 rounded-lg bg-black/60 border border-white/5 font-mono text-[11px] text-zinc-300 space-y-1.5 leading-relaxed">
                                     {selectedSwap.status === 'FILLED' ? (
                                         <p className="text-emerald-400">
-                                            ✅ <strong>Fill Confirmed:</strong> Intent matched via {selectedSwap.route === 'CAULDRON_AMM' ? 'Cauldron Chipnet AMM Pool' : 'BCHMesh Strategy Covenant'}. Atomic transaction verified on-chain.
+                                            ✅ <strong>Fill Confirmed:</strong> Intent executed via{' '}
+                                            {selectedSwap.route === 'CAULDRON_AMM'
+                                                ? '🔥 Cauldron AMM — direct decentralised pool swap with 0.3% treasury fee output'
+                                                : selectedSwap.route === 'SOLVER_ROUTE'
+                                                ? '⚡ Solver Route — JIT inventory fill by solver wallet advancing tokens'
+                                                : selectedSwap.route === 'MESH_POOL'
+                                                ? '🔷 Mesh Pool — zero-inventory BCH covenant strategy match'
+                                                : '🌊 Waterfall Blended — split execution across Mesh + Cauldron venues'
+                                            }. Atomic transaction verified on-chain.
                                         </p>
                                     ) : (
                                         <div className="space-y-1">
                                             <p className="text-amber-400">
-                                                ⏳ <strong>Pending Solver Match:</strong> Intent is active in the solver mempool scanner.
+                                                ⏳ <strong>Pending Solver Match:</strong> Intent is live in the solver mempool scanner.
                                             </p>
                                             <p className="text-zinc-400">
-                                                • <strong>Minimum Floor:</strong> Requires at least <span className="text-zinc-200">{selectedSwap.minAmountOutRaw}</span> units of {selectedSwap.tokenOutSymbol}.
+                                                • <strong>Minimum Floor:</strong> Requires at least{' '}
+                                                <span className="text-zinc-200">{selectedSwap.minAmountOutRaw}</span>{' '}
+                                                units of {selectedSwap.tokenOutSymbol}.
                                             </p>
                                             <p className="text-zinc-400">
-                                                • <strong>Liquidity Evaluation:</strong> Solver evaluates Mesh Strategy Depth (0% available) ➔ Cauldron AMM Pool Depth.
+                                                • <strong>Route Waterfall:</strong> Solver checks Mesh Pool depth ➔ Solver Inventory ➔ Cauldron AMM fallback in sequence.
                                             </p>
                                         </div>
                                     )}
