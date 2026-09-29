@@ -82,64 +82,40 @@ export function usePoolFills(
         }
       }
 
-      // 2. Fetch on-chain transaction history from Electrs REST
-      if (address) {
+      // 2. Fetch server-side aggregate fills if available
+      if (txid || address) {
         try {
-          const cleanAddr = address.includes(':') ? address : `bchtest:${address}`;
-          const res = await fetch(`https://chipnet.bch.ninja/electrs/address/${cleanAddr}/txs`);
+          const fillsEndpoint = `${MESH_BASE}/api/v1/admin/mesh-pools`;
+          const res = await fetch(fillsEndpoint);
           if (res.ok) {
-            const txs = await res.json();
-            if (Array.isArray(txs)) {
-              for (const tx of txs) {
-                // If already captured by meshserver, skip
-                if (items.some(i => i.txid === tx.txid)) continue;
-
-                const isDeploy = tx.vin.some((v: any) => v.prevout?.scriptpubkey_address !== cleanAddr);
-                const hasSpend = tx.vin.some((v: any) => v.prevout?.scriptpubkey_address === cleanAddr);
-                const hasOutput = tx.vout.some((v: any) => v.scriptpubkey_address === cleanAddr);
-
-                let eventType: PoolFillItem['type'] = 'SWAP_FILL';
-                if (!hasSpend && hasOutput) {
-                  eventType = items.length === txs.length - 1 ? 'DEPLOY' : 'TOP_UP';
-                } else if (hasSpend && !hasOutput) {
-                  eventType = 'DOCK';
-                }
-
-                // Compute flow
-                let inSats = 0;
-                let outSats = 0;
-                for (const vin of tx.vin) {
-                  if (vin.prevout?.scriptpubkey_address === cleanAddr) {
-                    inSats += vin.prevout?.value || 0;
+            const data = await res.json();
+            if (Array.isArray(data.pools)) {
+              for (const pool of data.pools) {
+                if (pool.address === address || pool.txid === txid) {
+                  if (Array.isArray(pool.fills)) {
+                    for (const f of pool.fills) {
+                      if (items.some(i => i.txid === (f.fillTxid || f.txid))) continue;
+                      items.push({
+                        id: f.id || `${f.fillTxid}:${f.strategyTxid}`,
+                        txid: f.fillTxid || f.txid || f.strategyTxid,
+                        timestamp: f.timestamp || Date.now(),
+                        type: 'SWAP_FILL',
+                        tokenInSymbol: f.tokenCategoryIn === '0x' ? 'BCH' : 'pUSD',
+                        tokenInAmount: f.tokenAmountIn || '0',
+                        tokenOutSymbol: f.tokenCategoryOut === '0x' ? 'BCH' : 'pUSD',
+                        tokenOutAmount: f.tokenAmountOut || '0',
+                        feeSats: f.feeSats || '1000',
+                        explorerUrl: `https://chipnet.chaingraph.cash/tx/${f.fillTxid || f.txid}`,
+                        raw: f,
+                      });
+                    }
                   }
                 }
-                for (const vout of tx.vout) {
-                  if (vout.scriptpubkey_address === cleanAddr) {
-                    outSats += vout.value || 0;
-                  }
-                }
-
-                const netBch = Math.abs(outSats - inSats) / 1e8;
-                const time = tx.status?.block_time ? tx.status.block_time * 1000 : Date.now();
-
-                items.push({
-                  id: tx.txid,
-                  txid: tx.txid,
-                  timestamp: time,
-                  type: eventType,
-                  tokenInSymbol: 'BCH',
-                  tokenInAmount: netBch > 0 ? netBch.toFixed(6) : '0',
-                  tokenOutSymbol: tokenCategoryOut && tokenCategoryOut !== '0x' ? 'pUSD' : 'BCH',
-                  tokenOutAmount: '0',
-                  feeSats: '1000',
-                  explorerUrl: `https://chipnet.chaingraph.cash/tx/${tx.txid}`,
-                  raw: tx,
-                });
               }
             }
           }
         } catch {
-          // ignore electrs errors
+          // ignore
         }
       }
 

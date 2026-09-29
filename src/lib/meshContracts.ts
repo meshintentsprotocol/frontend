@@ -207,6 +207,18 @@ export async function deployStrategyPosition(
 ): Promise<DeploymentResult> {
   if (!bchWallet) throw new Error('BCH Wallet not connected');
 
+  console.log('[Mesh Deploy] 1. Initializing deployStrategyPosition with params:', {
+    strategyType: params.strategyType,
+    tokenIn: params.tokenCategoryIn,
+    tokenOut: params.tokenCategoryOut,
+    priceNum: params.priceNum.toString(),
+    priceDen: params.priceDen.toString(),
+    feeBps: params.feeBps.toString(),
+    reserveSats: params.reserveSats.toString(),
+    reserveTokenAmount: params.reserveTokenAmount?.toString(),
+    network: params.network ?? 'chipnet',
+  });
+
   const provider = getElectrumProvider(params.network ?? 'chipnet');
   const contract = buildStrategyContract(params, provider);
   const ownerPkhHex = binToHex(derivePkh(params.ownerPkHex));
@@ -217,10 +229,23 @@ export async function deployStrategyPosition(
     : (params.strategyType === 'multi_pair' || params.strategyType === 'mesh_mode4') ? 'MultiPairRecyclingCovenant'
     : 'StrategyCovenant';
 
+  console.log('[Mesh Deploy] 2. Built contract instance:', {
+    contractType,
+    address: contract.address,
+    ownerPkhHex,
+    bytecodeLength: contract.bytecode?.length,
+  });
+
   let txid = '';
 
   if (params.reserveTokenAmount && params.tokenCategoryOut && params.tokenCategoryOut !== '0x') {
     // Deploy CashToken reserve
+    console.log('[Mesh Deploy] 3. Sending CashToken funding transaction:', {
+      to: contract.address,
+      category: params.tokenCategoryOut,
+      tokenAmount: params.reserveTokenAmount.toString(),
+      sats: Number(params.reserveSats > 1000n ? params.reserveSats : 1000n),
+    });
     const res = await bchWallet.send([
       {
         cashaddr: contract.address,
@@ -233,8 +258,13 @@ export async function deployStrategyPosition(
       },
     ]);
     txid = res.txId || res.txid;
+    console.log('[Mesh Deploy] 4. CashToken Funding broadcasted! TXID:', txid);
   } else {
     // Deploy pure BCH reserve
+    console.log('[Mesh Deploy] 3. Sending pure BCH funding transaction:', {
+      to: contract.address,
+      sats: Number(params.reserveSats),
+    });
     const res = await bchWallet.send([
       {
         cashaddr: contract.address,
@@ -243,16 +273,97 @@ export async function deployStrategyPosition(
       },
     ]);
     txid = res.txId || res.txid;
+    console.log('[Mesh Deploy] 4. BCH Funding broadcasted! TXID:', txid);
   }
 
   if (!txid) throw new Error('Funding transaction failed — no TXID returned');
 
-  return {
+  const result: DeploymentResult = {
     txid,
     contractAddress: contract.address,
     contractType,
     reserveSats: params.reserveSats.toString(),
     ownerPkh: ownerPkhHex,
+  };
+
+  console.log('[Mesh Deploy] 5. Deployment successful:', result);
+  return result;
+}
+
+export interface DualSidedMarketParams {
+  strategyType: 'straight' | 'oracle' | 'dutch';
+  ownerPkHex: string | Uint8Array | Buffer;
+  tokenCategoryQuote: string;
+  priceNum: bigint;
+  priceDen: bigint;
+  feeBps: bigint;
+  forwardReserveSats: bigint;
+  reverseReserveTokenAmount: bigint;
+  network?: 'chipnet' | 'mainnet';
+}
+
+export interface DualSidedMarketResult {
+  bundleId: string;
+  forward: DeploymentResult;
+  reverse: DeploymentResult;
+}
+
+export async function deployDualSidedMarket(
+  bchWallet: any,
+  params: DualSidedMarketParams
+): Promise<DualSidedMarketResult> {
+  const bundleId = `bundle-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+  console.log('[Mesh Dual Deploy] Starting Dual-Sided Market bundle creation:', {
+    bundleId,
+    params: {
+      strategyType: params.strategyType,
+      tokenCategoryQuote: params.tokenCategoryQuote,
+      priceNum: params.priceNum.toString(),
+      priceDen: params.priceDen.toString(),
+      forwardReserveSats: params.forwardReserveSats.toString(),
+      reverseReserveTokenAmount: params.reverseReserveTokenAmount.toString(),
+    },
+  });
+
+  // 1. Deploy Forward Leg (BCH in reserve -> quotes CashToken)
+  console.log('[Mesh Dual Deploy] Deploying Leg 1 (FORWARD - BCH reserve)...');
+  const forwardRes = await deployStrategyPosition(bchWallet, {
+    strategyType: params.strategyType,
+    ownerPkHex: params.ownerPkHex,
+    tokenCategoryIn: params.tokenCategoryQuote,
+    tokenCategoryOut: '0x',
+    priceNum: params.priceNum,
+    priceDen: params.priceDen,
+    feeBps: params.feeBps,
+    reserveSats: params.forwardReserveSats,
+    network: params.network,
+  });
+
+  // 2. Deploy Reverse Leg (CashToken in reserve -> quotes BCH)
+  console.log('[Mesh Dual Deploy] Deploying Leg 2 (REVERSE - CashToken reserve)...');
+  const reverseRes = await deployStrategyPosition(bchWallet, {
+    strategyType: params.strategyType,
+    ownerPkHex: params.ownerPkHex,
+    tokenCategoryIn: '0x',
+    tokenCategoryOut: params.tokenCategoryQuote,
+    priceNum: params.priceDen,
+    priceDen: params.priceNum,
+    feeBps: params.feeBps,
+    reserveSats: 1000n, // Dust satoshis to hold token UTXO
+    reserveTokenAmount: params.reverseReserveTokenAmount,
+    network: params.network,
+  });
+
+  console.log('[Mesh Dual Deploy] Dual-Sided Market bundle deployed successfully!', {
+    bundleId,
+    forward: forwardRes,
+    reverse: reverseRes,
+  });
+
+  return {
+    bundleId,
+    forward: forwardRes,
+    reverse: reverseRes,
   };
 }
 

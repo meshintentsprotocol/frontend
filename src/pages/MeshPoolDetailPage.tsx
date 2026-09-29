@@ -20,6 +20,7 @@ import { MeshPoolStatsCard } from '@/components/mesh/MeshPoolStatsCard';
 import { MeshPoolLinksCard } from '@/components/mesh/MeshPoolLinksCard';
 import { MeshPoolManageCard } from '@/components/mesh/MeshPoolManageCard';
 import { MeshPoolActivityTable } from '@/components/mesh/MeshPoolActivityTable';
+import { MeshPoolBundleCard } from '@/components/mesh/MeshPoolBundleCard';
 import {
   Dialog,
   DialogContent,
@@ -47,7 +48,7 @@ export function MeshPoolDetailPage() {
   const navigate = useNavigate();
   const wdk = useWDK();
   const isConnected = Boolean(wdk.bchAddress || wdk.bchWallet);
-  const { positions, loading: serverLoading, refresh: refreshServer, bchUsdPrice } = useMeshServer(10_000);
+  const { positions, loading: serverLoading, refresh: refreshServer, bchUsdPrice, fetchPositionByTxid } = useMeshServer(10_000);
 
   const [isDocking, setIsDocking] = useState<boolean>(false);
   const [isToppingUp, setIsToppingUp] = useState<boolean>(false);
@@ -59,11 +60,12 @@ export function MeshPoolDetailPage() {
   // Live on-chain balance state
   const [liveBalance, setLiveBalance] = useState<LivePoolBalance | null>(null);
   const [isRefreshingBalance, setIsRefreshingBalance] = useState<boolean>(false);
+  const [asyncPosition, setAsyncPosition] = useState<MeshPosition | null>(null);
 
   const voutNum = Number(vout || 0);
 
-  // Match position from live indexer or client cache
-  const position = useMemo<MeshPosition | null>(() => {
+  // Match position from live indexer, client cache or async server lookup
+  const cachedPosition = useMemo<MeshPosition | null>(() => {
     if (!txid) return null;
     const found = positions.find((p) => p.txid === txid && p.vout === voutNum);
     if (found) return found;
@@ -98,7 +100,7 @@ export function MeshPoolDetailPage() {
       };
     }
 
-    // Default fallback mock if fresh URL
+    // Default fallback mock if fresh demo URL
     if (txid === '924aa5af7145a8d03e5029791df5360158b552024b89e35129bd73e266d8c061') {
       return {
         txid,
@@ -124,6 +126,25 @@ export function MeshPoolDetailPage() {
 
     return null;
   }, [positions, txid, voutNum]);
+
+  // Async lookup for pools that may not be in initial cache list
+  useEffect(() => {
+    if (!cachedPosition && txid && fetchPositionByTxid) {
+      let isMounted = true;
+      fetchPositionByTxid(txid, voutNum)
+        .then((resolved) => {
+          if (isMounted && resolved) {
+            setAsyncPosition(resolved);
+          }
+        })
+        .catch(() => {});
+      return () => {
+        isMounted = false;
+      };
+    }
+  }, [cachedPosition, txid, voutNum, fetchPositionByTxid]);
+
+  const position = cachedPosition || asyncPosition;
 
   // Query live pool on-chain balance
   const refreshLiveBalance = useCallback(async () => {
@@ -366,6 +387,41 @@ export function MeshPoolDetailPage() {
             onOpenManage={() => setIsManageOpen(true)}
             onOpenAddLiquidity={() => setIsManageOpen(true)}
           />
+
+          {/* ─── Spent UTXO Warning Banner ─── */}
+          {position.isSpent && (
+            <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+                <div>
+                  <h4 className="text-sm font-bold text-amber-300">Covenant Pool UTXO Spent / Closed</h4>
+                  <p className="text-xs text-amber-200/80">
+                    This UTXO was redeemed or rebalanced into a new strategy. Reserves on this specific UTXO are 0.
+                  </p>
+                </div>
+              </div>
+              <a
+                href={`https://chipnet.chaingraph.cash/tx/${position.txid}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-300 text-xs font-semibold shrink-0 transition-all"
+              >
+                View on Explorer
+              </a>
+            </div>
+          )}
+
+          {/* ─── Paired / Multi-Leg Bundle Linkage Card ─── */}
+          {(position.bundleId || (position.reverseAddress && position.reverseAddress !== '0x' + '00'.repeat(32))) && (
+            <MeshPoolBundleCard
+              bundleId={position.bundleId}
+              pairRole={position.pairRole}
+              reverseAddress={position.reverseAddress}
+              pairName={position.pairName}
+              symbolIn={position.symbolIn || 'BCH'}
+              symbolOut={position.symbolOut || tokenOutName}
+            />
+          )}
 
           {/* ─── 2. 2-Column Workstation Layout ─── */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">

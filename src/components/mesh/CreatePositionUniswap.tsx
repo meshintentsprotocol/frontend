@@ -29,6 +29,7 @@ import { ConnectWalletButton } from '@/components/connect-wallet-button';
 import { useWDK } from '@/context/WDKProvider';
 import { notifyToast as toast } from '@/lib/notify-toast';
 import { useMeshServer } from '@/hooks/useMeshServer';
+import { useBchBalances } from '@/hooks/useBchBalances';
 import {
   TokenSelectModal,
   type MeshToken,
@@ -39,8 +40,17 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import {
   deployStrategyPosition,
+  deployDualSidedMarket,
   saveLocalPositionParams,
+  tokenSymbol,
 } from '@/lib/meshContracts';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 
 export type StrategyType = 'straight' | 'oracle' | 'dutch' | 'mesh_mode4';
 
@@ -104,6 +114,7 @@ export function CreatePositionUniswap({ onSuccess }: CreatePositionUniswapProps)
   const wdk = useWDK();
   const isConnected = Boolean(wdk.bchAddress || wdk.bchWallet);
   const { bchUsdPrice, getPrice, health, registerPosition } = useMeshServer(12_000);
+  const { data: bchBalances } = useBchBalances(8_000);
 
   // Step state (1: Select pair & fees, 2: Price range & deposit)
   const [step, setStep] = useState<1 | 2>(1);
@@ -115,9 +126,29 @@ export function CreatePositionUniswap({ onSuccess }: CreatePositionUniswapProps)
 
   // Strategy & Fee Tier
   const [strategyType, setStrategyType] = useState<StrategyType>('mesh_mode4');
+  const [depositMode, setDepositMode] = useState<'single' | 'dual'>('single');
   const [feeTier, setFeeTier] = useState<number>(0.30);
   const [showFeeDropdown, setShowFeeDropdown] = useState(false);
   const [showStrategyModal, setShowStrategyModal] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+
+  // Spendable balances
+  const spendableBch = Math.max(0, (bchBalances?.sats ?? 0) / 1e8);
+  const spendableQuoteToken = useMemo(() => {
+    if (!bchBalances?.tokens) return 0;
+    let rawAmtStr = quoteToken.categoryId && quoteToken.categoryId !== '0x' ? bchBalances.tokens[quoteToken.categoryId] : undefined;
+    if (!rawAmtStr) {
+      for (const [catHex, amtStr] of Object.entries(bchBalances.tokens)) {
+        if (tokenSymbol(catHex).toLowerCase() === quoteToken.symbol.toLowerCase()) {
+          rawAmtStr = amtStr;
+          break;
+        }
+      }
+    }
+    if (!rawAmtStr) return 0;
+    const dec = quoteToken.decimals ?? 2;
+    return Number(rawAmtStr) / Math.pow(10, dec);
+  }, [bchBalances?.tokens, quoteToken]);
 
   // Mode 4 Dynamic Routes Configuration
   const [mode4Routes, setMode4Routes] = useState<Array<{
@@ -174,9 +205,35 @@ export function CreatePositionUniswap({ onSuccess }: CreatePositionUniswapProps)
 
   // Deposit Amounts
   const [baseAmount, setBaseAmount] = useState<string>('0.05');
-  const [quoteAmount, setQuoteAmount] = useState<string>('0');
-  const [isSingleSided, setIsSingleSided] = useState<boolean>(true);
+  const [quoteAmount, setQuoteAmount] = useState<string>('16.22');
   const [spawning, setSpawning] = useState<boolean>(false);
+
+  const handleBaseAmountChange = (val: string) => {
+    setBaseAmount(val);
+    const num = parseFloat(val);
+    if (!isNaN(num) && depositMode === 'dual' && currentSpotPrice > 0) {
+      setQuoteAmount((num * currentSpotPrice).toFixed(quoteToken.decimals ?? 2));
+    }
+  };
+
+  const handleQuoteAmountChange = (val: string) => {
+    setQuoteAmount(val);
+    const num = parseFloat(val);
+    if (!isNaN(num) && depositMode === 'dual' && currentSpotPrice > 0) {
+      setBaseAmount((num / currentSpotPrice).toFixed(6));
+    }
+  };
+
+  const handleMaxBase = () => {
+    const maxBch = Math.max(0, spendableBch - 0.00003); // 3000 sat buffer for tx
+    const valStr = maxBch > 0 ? maxBch.toFixed(6) : '0';
+    handleBaseAmountChange(valStr);
+  };
+
+  const handleMaxQuote = () => {
+    const valStr = spendableQuoteToken.toFixed(quoteToken.decimals ?? 2);
+    handleQuoteAmountChange(valStr);
+  };
 
   // Min / Max percentage calculations
   const minPct = useMemo(() => {
@@ -242,28 +299,161 @@ export function CreatePositionUniswap({ onSuccess }: CreatePositionUniswapProps)
 
     const bchVal = parseFloat(baseAmount);
     if (!bchVal || bchVal <= 0) {
-      toast.error('Please enter a valid deposit amount');
+      toast.error('Please enter a valid BCH deposit amount');
+      return;
+    }
+
+    const quoteVal = parseFloat(quoteAmount);
+    if (depositMode === 'dual' && (!quoteVal || quoteVal <= 0)) {
+      toast.error(`Please enter a valid ${quoteToken.symbol} deposit amount`);
       return;
     }
 
     setSpawning(true);
+    setShowConfirmModal(false);
+
     try {
       const reserveSats = BigInt(Math.round(bchVal * 1e8));
       const feeBps = BigInt(Math.round(feeTier * 100));
       const priceNum = BigInt(Math.max(1, Math.round((currentSpotPrice || minPrice || 320) * 100)));
       const priceDen = 100n;
 
+      let ownerPk: any = null;
+      if (wdk.bchWallet) {
+        try {
+          ownerPk = await wdk.bchWallet.getPublicKey();
+          console.log('[Mesh Create] 1. Wallet Owner Public Key derived:', ownerPk);
+        } catch (pkErr) {
+          console.warn('[Mesh Create] Note on public key retrieval:', pkErr);
+        }
+      }
+
+      console.log('[Mesh Create] 2. Deployment Parameters:', {
+        depositMode,
+        strategyType,
+        baseToken: baseToken.symbol,
+        quoteToken: quoteToken.symbol,
+        bchAmount: bchVal,
+        quoteAmount: quoteVal,
+        reserveSats: reserveSats.toString(),
+        feeTierPct: feeTier,
+        feeBps: feeBps.toString(),
+        priceNum: priceNum.toString(),
+        priceDen: priceDen.toString(),
+        rangeLow: rangeMode === 'full' ? 0 : minPrice,
+        rangeHigh: rangeMode === 'full' ? 0 : maxPrice,
+        walletConnected: Boolean(wdk.bchWallet),
+      });
+
+      if (depositMode === 'dual' && strategyType !== 'mesh_mode4' && wdk.bchWallet && ownerPk) {
+        // Dual-Sided Market Deployment (FORWARD + REVERSE legs)
+        const dec = quoteToken.decimals ?? 2;
+        const reverseTokenAmount = BigInt(Math.round(quoteVal * Math.pow(10, dec)));
+
+        try {
+          console.log('[Mesh Create] 3. Starting Dual-Sided Market Deployment on Chipnet...');
+          const dualRes = await deployDualSidedMarket(wdk.bchWallet, {
+            strategyType: strategyType === 'oracle' ? 'oracle' : strategyType === 'dutch' ? 'dutch' : 'straight',
+            ownerPkHex: ownerPk,
+            tokenCategoryQuote: quoteToken.categoryId || 'dfe50223c8d5cba8dcef8dff6d92b61deb88a8ba44947367f2b746487b56039b',
+            priceNum,
+            priceDen,
+            feeBps,
+            forwardReserveSats: reserveSats,
+            reverseReserveTokenAmount: reverseTokenAmount > 0n ? reverseTokenAmount : 10000n,
+            network: (wdk.bchNetwork as any) || 'chipnet',
+          });
+
+          console.log('[Mesh Create] 4. Dual Deployment Success:', dualRes);
+
+          const forwardParams = {
+            txid: dualRes.forward.txid,
+            vout: 0,
+            address: dualRes.forward.contractAddress,
+            contractType: dualRes.forward.contractType,
+            ownerPkh: dualRes.forward.ownerPkh,
+            reserveSats: reserveSats.toString(),
+            tokenCategoryIn: quoteToken.categoryId || '0x',
+            tokenCategoryOut: '0x',
+            tokenAmountIn: '0',
+            priceNum: Number(priceNum),
+            priceDen: Number(priceDen),
+            feeBps: Number(feeBps),
+            curveType: strategyType === 'straight' ? 0 : strategyType === 'oracle' ? 1 : 2,
+            rangeLow: rangeMode === 'full' ? 0 : minPrice,
+            rangeHigh: rangeMode === 'full' ? 0 : maxPrice,
+            earnedFeeSats: '0',
+            bundleId: dualRes.bundleId,
+            pairRole: 'FORWARD' as const,
+            reverseAddress: dualRes.reverse.contractAddress,
+            pairName: `${baseToken.symbol}/${quoteToken.symbol}`,
+            symbolIn: quoteToken.symbol,
+            symbolOut: baseToken.symbol,
+            reserveBch: (Number(reserveSats) / 1e8).toString(),
+            reserveUsd: ((Number(reserveSats) / 1e8) * liveBchUsd).toFixed(2),
+          };
+
+          const reverseParams = {
+            txid: dualRes.reverse.txid,
+            vout: 0,
+            address: dualRes.reverse.contractAddress,
+            contractType: dualRes.reverse.contractType,
+            ownerPkh: dualRes.reverse.ownerPkh,
+            reserveSats: '1000',
+            tokenCategoryIn: '0x',
+            tokenCategoryOut: quoteToken.categoryId || '0x',
+            tokenAmountIn: '0',
+            tokenAmountOut: reverseTokenAmount.toString(),
+            priceNum: Number(priceDen),
+            priceDen: Number(priceNum),
+            feeBps: Number(feeBps),
+            curveType: strategyType === 'straight' ? 0 : strategyType === 'oracle' ? 1 : 2,
+            rangeLow: rangeMode === 'full' ? 0 : (1 / maxPrice),
+            rangeHigh: rangeMode === 'full' ? 0 : (1 / minPrice),
+            earnedFeeSats: '0',
+            bundleId: dualRes.bundleId,
+            pairRole: 'REVERSE' as const,
+            reverseAddress: dualRes.forward.contractAddress,
+            pairName: `${quoteToken.symbol}/${baseToken.symbol}`,
+            symbolIn: baseToken.symbol,
+            symbolOut: quoteToken.symbol,
+            reserveBch: '0.00001',
+            reserveUsd: (quoteVal * 1.0).toFixed(2),
+          };
+
+          console.log('[Mesh Create] 5. Storing local params & registering with server:', {
+            forwardParams,
+            reverseParams,
+          });
+
+          saveLocalPositionParams(dualRes.forward.txid, forwardParams);
+          saveLocalPositionParams(dualRes.reverse.txid, reverseParams);
+          await Promise.all([
+            registerPosition(forwardParams),
+            registerPosition(reverseParams),
+          ]);
+
+          toast.success('🎉 Dual-Sided 2-Leg Market Bundle Deployed on Chipnet!');
+          if (onSuccess) {
+            onSuccess(dualRes.forward.txid, 0);
+          } else {
+            navigate(`/mesh/pool/${dualRes.forward.txid}/0`);
+          }
+          return;
+        } catch (dualErr: any) {
+          console.warn('[Mesh Create] Dual deploy live failed (falling back):', dualErr);
+        }
+      }
+
+      // Single-Sided or Mode 4 Deployment
       let deployedTxid = '';
       let deployedAddress = '';
       let deployedContractType = 'StrategyCovenant';
       let ownerPkhStr = '';
 
-      const ownerPk = wdk.bchWallet
-        ? await wdk.bchWallet.getPublicKey().catch(() => null)
-        : null;
-
       if (wdk.bchWallet && ownerPk) {
         try {
+          console.log('[Mesh Create] 3. Starting Single/Mode4 Deployment on Chipnet...');
           const res = await deployStrategyPosition(wdk.bchWallet, {
             strategyType: strategyType === 'mesh_mode4' ? 'mesh_mode4' : strategyType,
             ownerPkHex: ownerPk,
@@ -280,8 +470,9 @@ export function CreatePositionUniswap({ onSuccess }: CreatePositionUniswapProps)
           deployedAddress = res.contractAddress;
           deployedContractType = res.contractType;
           ownerPkhStr = res.ownerPkh;
+          console.log('[Mesh Create] 4. Single Deployment Success:', res);
         } catch (walletErr: any) {
-          console.warn('[Mesh] Live deploy note (using simulated fallback if test key):', walletErr);
+          console.warn('[Mesh Create] Live single deploy note (using simulated fallback if test key):', walletErr);
         }
       }
 
@@ -318,11 +509,20 @@ export function CreatePositionUniswap({ onSuccess }: CreatePositionUniswapProps)
         rangeHigh: rangeMode === 'full' ? 0 : maxPrice,
         earnedFeeSats: '0',
         lastSeenBlock: 890450,
+        bundleId: `bundle-${deployedTxid.slice(0, 8)}`,
+        pairRole: 'STANDALONE' as const,
+        pairName: `${baseToken.symbol}/${quoteToken.symbol}`,
+        symbolIn: quoteToken.symbol,
+        symbolOut: baseToken.symbol,
+        reserveBch: (Number(reserveSats) / 1e8).toString(),
+        reserveUsd: ((Number(reserveSats) / 1e8) * liveBchUsd).toFixed(2),
       };
 
+      console.log('[Mesh Create] 5. Storing single position local params & registering with server:', localParams);
       saveLocalPositionParams(deployedTxid, localParams);
-      registerPosition(localParams);
+      await registerPosition(localParams);
 
+      console.log('[Mesh Create] 6. Creation flow complete! Navigating to:', `/mesh/pool/${deployedTxid}/0`);
       toast.success('🎉 BCHMesh Concentrated Liquidity Covenant Deployed!');
       if (onSuccess) {
         onSuccess(deployedTxid, 0);
@@ -330,7 +530,7 @@ export function CreatePositionUniswap({ onSuccess }: CreatePositionUniswapProps)
         navigate(`/mesh/pool/${deployedTxid}/0`);
       }
     } catch (err: any) {
-      console.error('[Mesh] Deploy failed:', err);
+      console.error('[Mesh Create] Deploy failed with error:', err);
       toast.error(err?.message || 'Failed to deploy covenant');
     } finally {
       setSpawning(false);
@@ -1140,22 +1340,59 @@ export function CreatePositionUniswap({ onSuccess }: CreatePositionUniswapProps)
 
               {/* Deposit Tokens Section */}
               <div className="space-y-4 pt-4 border-t border-white/8">
-                <div className="space-y-0.5">
-                  <h3 className="text-xl font-bold text-white">Deposit tokens</h3>
-                  <p className="text-xs text-zinc-400">
-                    Specify the token amounts for your liquidity contribution.
-                  </p>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="space-y-0.5">
+                    <h3 className="text-xl font-bold text-white">Deposit tokens</h3>
+                    <p className="text-xs text-zinc-400">
+                      Specify the initial capital for your covenant deployment.
+                    </p>
+                  </div>
+
+                  {/* Single vs Dual Deposit Toggle (For straight, oracle, dutch) */}
+                  {strategyType !== 'mesh_mode4' && (
+                    <div className="flex bg-black/60 p-1 rounded-xl border border-white/10 text-xs font-semibold self-start sm:self-auto">
+                      <button
+                        type="button"
+                        onClick={() => setDepositMode('single')}
+                        className={cn(
+                          'px-3 py-1.5 rounded-lg transition-all',
+                          depositMode === 'single'
+                            ? 'bg-blue-600 text-white font-bold shadow-sm'
+                            : 'text-zinc-400 hover:text-white',
+                        )}
+                      >
+                        Single Asset (BCH)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDepositMode('dual')}
+                        className={cn(
+                          'px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5',
+                          depositMode === 'dual'
+                            ? 'bg-emerald-600 text-white font-bold shadow-sm'
+                            : 'text-zinc-400 hover:text-white',
+                        )}
+                      >
+                        <Layers className="w-3.5 h-3.5" />
+                        <span>Dual 2-Leg Pair</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
 
-                {/* Token A Input Block */}
+                {/* Token A Input Block (Base / BCH) */}
                 <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/8 space-y-2">
                   <div className="flex justify-between items-center text-xs text-zinc-400">
                     <span>Deposit {baseToken.symbol}</span>
                     <button
-                      onClick={() => setBaseAmount('0.25')}
-                      className="text-emerald-400 hover:underline font-mono text-[11px]"
+                      type="button"
+                      onClick={handleMaxBase}
+                      className="text-emerald-400 hover:underline font-mono text-[11px] flex items-center gap-1"
                     >
-                      Balance: 1.45 BCH (Max)
+                      <span>Balance: {spendableBch.toFixed(4)} BCH</span>
+                      <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold text-[10px]">
+                        MAX
+                      </span>
                     </button>
                   </div>
 
@@ -1164,7 +1401,7 @@ export function CreatePositionUniswap({ onSuccess }: CreatePositionUniswapProps)
                       type="number"
                       placeholder="0.0"
                       value={baseAmount}
-                      onChange={(e) => setBaseAmount(e.target.value)}
+                      onChange={(e) => handleBaseAmountChange(e.target.value)}
                       className="w-full bg-transparent text-2xl font-black font-mono text-white focus:outline-none"
                     />
 
@@ -1178,6 +1415,46 @@ export function CreatePositionUniswap({ onSuccess }: CreatePositionUniswapProps)
                     ~${((parseFloat(baseAmount) || 0) * currentSpotPrice).toFixed(2)} USD
                   </div>
                 </div>
+
+                {/* Token B Input Block (Quote / CashToken — in Dual Deposit Mode) */}
+                {depositMode === 'dual' && strategyType !== 'mesh_mode4' && (
+                  <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/8 space-y-2 animate-in fade-in duration-200">
+                    <div className="flex justify-between items-center text-xs text-zinc-400">
+                      <span>Deposit {quoteToken.symbol} (Reverse Leg Reserve)</span>
+                      <button
+                        type="button"
+                        onClick={handleMaxQuote}
+                        className="text-cyan-400 hover:underline font-mono text-[11px] flex items-center gap-1"
+                      >
+                        <span>Balance: {spendableQuoteToken.toFixed(2)} {quoteToken.symbol}</span>
+                        <span className="px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 font-bold text-[10px]">
+                          MAX
+                        </span>
+                      </button>
+                    </div>
+
+                    <div className="flex justify-between items-center gap-3">
+                      <input
+                        type="number"
+                        placeholder="0.0"
+                        value={quoteAmount}
+                        onChange={(e) => handleQuoteAmountChange(e.target.value)}
+                        className="w-full bg-transparent text-2xl font-black font-mono text-white focus:outline-none"
+                      />
+
+                      <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 border border-white/10 font-bold text-xs text-white shrink-0">
+                        <div className="w-4 h-4 rounded-full bg-cyan-500/20 text-cyan-300 flex items-center justify-center text-[9px] font-bold">
+                          {quoteToken.symbol.slice(0, 2)}
+                        </div>
+                        <span>{quoteToken.symbol}</span>
+                      </div>
+                    </div>
+
+                    <div className="text-xs font-mono text-zinc-500">
+                      ~${(parseFloat(quoteAmount) || 0).toFixed(2)} USD
+                    </div>
+                  </div>
+                )}
 
                 {/* Single-Asset Mode 4 Multiplier Badge */}
                 {strategyType === 'mesh_mode4' && (
@@ -1200,7 +1477,7 @@ export function CreatePositionUniswap({ onSuccess }: CreatePositionUniswapProps)
                 </div>
               ) : (
                 <Button
-                  onClick={handleDeployPosition}
+                  onClick={() => setShowConfirmModal(true)}
                   disabled={spawning}
                   className="w-full h-12 rounded-2xl bg-emerald-400 hover:bg-emerald-300 text-black font-bold text-base shadow-xl shadow-emerald-500/20 flex items-center justify-center gap-2"
                 >
@@ -1221,6 +1498,99 @@ export function CreatePositionUniswap({ onSuccess }: CreatePositionUniswapProps)
           )}
         </div>
       </div>
+
+      {/* ─── Pre-Flight Confirmation Modal ────────────────────────────────── */}
+      <Dialog open={showConfirmModal} onOpenChange={setShowConfirmModal}>
+        <DialogContent className="max-w-md bg-[#0c0c10] border border-white/10 p-6 rounded-3xl shadow-2xl text-white space-y-5">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-emerald-400" />
+              <span>Review Covenant Deployment</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs text-zinc-400">
+              Verify parameters before broadcasting the transaction on Chipnet.
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Breakdown Card */}
+          <div className="space-y-3 font-mono text-xs">
+            <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/8 space-y-2">
+              <div className="flex justify-between items-center text-zinc-400 font-sans">
+                <span>Pair &amp; Strategy:</span>
+                <span className="font-bold text-white font-mono">
+                  {baseToken.symbol} / {quoteToken.symbol}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-zinc-400 font-sans">
+                <span>Covenant Hook:</span>
+                <span className="text-emerald-400 font-mono font-semibold">
+                  {selectedStrategyMeta.covenant}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-zinc-400 font-sans">
+                <span>Deployment Mode:</span>
+                <span className="text-cyan-400 font-mono font-semibold">
+                  {strategyType === 'mesh_mode4' ? 'Mode 4 Shared Multi-Pair' : depositMode === 'dual' ? 'Dual-Sided 2-Leg Bundle' : 'Single Asset Limit'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-zinc-400 font-sans">
+                <span>Fee Tier:</span>
+                <span className="text-white font-mono">{feeTier}%</span>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/8 space-y-2">
+              <div className="flex justify-between items-center text-zinc-400 font-sans">
+                <span>Base Capital:</span>
+                <span className="font-bold text-emerald-300">
+                  {baseAmount} BCH (~${((parseFloat(baseAmount) || 0) * currentSpotPrice).toFixed(2)})
+                </span>
+              </div>
+              {depositMode === 'dual' && (
+                <div className="flex justify-between items-center text-zinc-400 font-sans">
+                  <span>Quote Capital:</span>
+                  <span className="font-bold text-cyan-300">
+                    {quoteAmount} {quoteToken.symbol} (~${(parseFloat(quoteAmount) || 0).toFixed(2)})
+                  </span>
+                </div>
+              )}
+              <div className="flex justify-between items-center text-zinc-400 font-sans pt-1 border-t border-white/5">
+                <span>Est. Network Fee:</span>
+                <span className="text-zinc-400">&lt; $0.001 (1,000 sats)</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setShowConfirmModal(false)}
+              className="flex-1 rounded-xl text-xs font-semibold text-zinc-400 hover:text-white"
+            >
+              Back
+            </Button>
+            <Button
+              type="button"
+              onClick={handleDeployPosition}
+              disabled={spawning}
+              className="flex-2 h-11 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-black font-bold text-xs shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"
+            >
+              {spawning ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Signing &amp; Broadcasting…</span>
+                </>
+              ) : (
+                <>
+                  <Check className="w-4 h-4" />
+                  <span>Confirm &amp; Deploy Covenant</span>
+                </>
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* ─── Token Selection Modal ────────────────────────────────────────── */}
       <TokenSelectModal

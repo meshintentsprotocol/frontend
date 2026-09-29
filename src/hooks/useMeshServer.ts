@@ -5,32 +5,51 @@ const MESH_BASE = import.meta.env.VITE_MESH_SERVER_URL ?? 'https://bchmesh-produ
 // ── Mesh Server API types ─────────────────────────────────────────────────────
 
 export interface MeshPosition {
-  txid:             string;
-  vout:             number;
-  address:          string;
-  contractType:     'StrategyCovenant' | 'OracleStrategyCovenant' | 'MultiPairRecyclingCovenant' | 'DutchDecayStrategyCovenant';
-  ownerPkh?:        string;
-  reserveSats:      string;  // bigint as string
-  tokenCategoryIn:  string;
-  tokenCategoryOut: string;
-  tokenAmountIn:    string;
+  txid:              string;
+  vout:              number;
+  address:           string;
+  contractType:      'StrategyCovenant' | 'OracleStrategyCovenant' | 'MultiPairRecyclingCovenant' | 'DutchDecayStrategyCovenant';
+  ownerPkh?:         string;
+  reserveSats:       string;   // bigint as string
+  tokenCategoryIn:   string;
+  tokenCategoryOut:  string;
+  tokenAmountIn:     string;
   tokenAmountOut?:   string;
-  priceNum:         number;
-  priceDen:         number;
-  feeBps:           number;
-  curveType:        number; // 0=fixed 1=oracle 2=dutch 3=multi
-  rangeLow:         number;
-  rangeHigh:        number;
-  earnedFeeSats:    string;
-  lastSeenBlock:    number;
-  startTime?:       number;
-  duration?:        number;
-  floorPriceNum?:   number;
-  oraclePkHex?:     string;
-  pairId?:          number;
-  spreadBps?:       number;
+  priceNum:          number;
+  priceDen:          number;
+  feeBps:            number;
+  curveType:         number;   // 0=fixed 1=oracle 2=dutch 3=multi
+  rangeLow:          number;
+  rangeHigh:         number;
+  earnedFeeSats:     string;
+  lastSeenBlock:     number;
+  startTime?:        number;
+  duration?:         number;
+  floorPriceNum?:    number;
+  oraclePkHex?:      string;
+  pairId?:           number;
+  spreadBps?:        number;
   /** True when this is a seeded demo position — not a real on-chain UTXO owned by this wallet */
-  isMock?:          boolean;
+  isMock?:           boolean;
+  // ── Bundle / Pair linkage (dual-market two-sided pool) ─────────────────────
+  /** Groups FORWARD + REVERSE positions into a "dual market" bundle */
+  bundleId?:         string;
+  /** Role in the bundle: FORWARD sells BCH→Token, REVERSE sells Token→BCH */
+  pairRole?:         'FORWARD' | 'REVERSE' | 'STANDALONE';
+  /** Address of the paired reverse/forward covenant (if dual-market) */
+  reverseAddress?:   string;
+  /** Human-readable pair label, e.g. "BCH/pUSD" */
+  pairName?:         string;
+  // ── Lifecycle ──────────────────────────────────────────────────────────────
+  /** True if the covenant UTXO has been spent (pool closed / docked fully) */
+  isSpent?:          boolean;
+  // ── Symbol cache (resolved by server, avoids repeated token-map lookups) ──
+  symbolIn?:         string;
+  symbolOut?:        string;
+  // ── Fill aggregates (server-populated, optional) ───────────────────────────
+  fillsCount?:       number;
+  reserveUsd?:       string;
+  reserveBch?:       string;
 }
 
 export interface MeshPriceEntry {
@@ -331,7 +350,18 @@ export function useMeshServer(pollIntervalMs = 10_000) {
         const tagged = (posRes.value.positions ?? []).map(p => ({
           ...p,
           isMock: !localMap[p.txid],
-        }));
+          // Preserve server-provided extended fields (bundleId, pairRole etc.) from the raw response
+          bundleId:       (p as any).bundleId       ?? undefined,
+          pairRole:       (p as any).pairRole        ?? 'STANDALONE',
+          reverseAddress: (p as any).reverseAddress  ?? undefined,
+          pairName:       (p as any).pairName        ?? undefined,
+          isSpent:        (p as any).isSpent         ?? false,
+          symbolIn:       (p as any).symbolIn        ?? undefined,
+          symbolOut:      (p as any).symbolOut       ?? undefined,
+          fillsCount:     (p as any).fillsCount      ?? undefined,
+          reserveBch:     (p as any).reserveBch      ?? undefined,
+          reserveUsd:     (p as any).reserveUsd      ?? undefined,
+        })) as MeshPosition[];
         setPositions(tagged);
         if (posRes.value.stats) setStats(posRes.value.stats);
       } else if (positions.length === 0) {
@@ -394,6 +424,35 @@ export function useMeshServer(pollIntervalMs = 10_000) {
     }
   }, []);
 
+  /**
+   * Fetch a single pool position by txid + vout.
+   * Tries the server first; falls back to scanning the full positions list.
+   */
+  const fetchPositionByTxid = useCallback(async (txid: string, vout: number): Promise<MeshPosition | null> => {
+    // 1. Try from already-loaded positions list
+    const cached = positions.find(p => p.txid === txid && p.vout === vout);
+    if (cached) return cached;
+
+    // 2. Try fetching directly from server (single position endpoint)
+    try {
+      const data = await meshFetch<{ position: MeshPosition }>(`/api/v1/positions/utxo/${txid}/${vout}`);
+      if (data?.position) return data.position;
+    } catch {
+      // endpoint may not exist — fall through
+    }
+
+    // 3. Refresh full list and re-check
+    try {
+      const data = await meshFetch<{ positions: MeshPosition[] }>('/api/v1/positions');
+      const found = (data.positions ?? []).find(p => p.txid === txid && p.vout === vout);
+      if (found) return found;
+    } catch {
+      // ignore
+    }
+
+    return null;
+  }, [positions]);
+
   /** Request bulk rebalancing quote */
   const requestRebalanceQuote = useCallback(async (payload: RebalanceRequestPayload): Promise<RebalanceQuoteResponse> => {
     return meshFetch<RebalanceQuoteResponse>('/api/v1/rebalance/quote', {
@@ -422,6 +481,6 @@ export function useMeshServer(pollIntervalMs = 10_000) {
     positions, prices, stats, health, loading, error,
     refresh: fetchAll,
     getPrice, bchUsdPrice, pusdBchPrice, fetchOrderbook,
-    fetchOwnerPositions, requestRebalanceQuote, registerPosition,
+    fetchOwnerPositions, fetchPositionByTxid, requestRebalanceQuote, registerPosition,
   };
 }

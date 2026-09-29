@@ -40,6 +40,7 @@ import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { notifyToast as toast } from '@/lib/notify-toast';
 import { MeshPoolManageCard } from '@/components/mesh/MeshPoolManageCard';
+import { MeshPositionStateBadge, derivePositionState } from '@/components/mesh/MeshPositionStateBadge';
 import {
   Dialog,
   DialogContent,
@@ -331,21 +332,31 @@ export function MeshPositionsList({ onCreateNew }: MeshPositionsListProps) {
         if (sym === 'BCH') {
           tokenWalletAmount = walletBchAmount;
           tokenWalletUsd = walletBchUsd;
-        } else if (sym === 'USDT') {
-          tokenWalletAmount = 254.4664;
-          tokenWalletUsd = 254.4664;
-        } else if (sym === 'USDC') {
-          tokenWalletAmount = 263.3396;
-          tokenWalletUsd = 263.3396;
-        } else if (sym === 'pUSD') {
-          tokenWalletAmount = 254.4578;
-          tokenWalletUsd = 254.4578;
-        } else if (sym === 'mUSD') {
-          tokenWalletAmount = 180.50;
-          tokenWalletUsd = 180.50;
-        } else {
-          tokenWalletAmount = 100.0;
-          tokenWalletUsd = 48.2;
+        } else if (bchBalances?.tokens) {
+          // Check exact category match or match by tokenSymbol
+          let rawAmountStr = category && category !== '0x' ? bchBalances.tokens[category] : undefined;
+          if (!rawAmountStr) {
+            for (const [catHex, amtStr] of Object.entries(bchBalances.tokens)) {
+              if (tokenSymbol(catHex).toLowerCase() === sym.toLowerCase()) {
+                rawAmountStr = amtStr;
+                break;
+              }
+            }
+          }
+          if (rawAmountStr) {
+            const dec = meta.decimals ?? 2;
+            tokenWalletAmount = Number(rawAmountStr) / Math.pow(10, dec);
+          } else {
+            tokenWalletAmount = 0;
+          }
+
+          if (meta.isStable || sym.toUpperCase().includes('USD')) {
+            tokenWalletUsd = tokenWalletAmount * 1.0;
+          } else if (sym === 'WBTC') {
+            tokenWalletUsd = tokenWalletAmount * 65000;
+          } else {
+            tokenWalletUsd = tokenWalletAmount * (sym === 'BCH' ? liveBchPrice : 1.0);
+          }
         }
 
         map[sym] = {
@@ -993,17 +1004,37 @@ export function MeshPositionsList({ onCreateNew }: MeshPositionsListProps) {
                                         </div>
 
                                         <div>
-                                          <div className="flex items-center gap-2">
+                                          <div className="flex items-center gap-2 flex-wrap">
                                             <span className="font-bold text-white text-sm">
                                               {pos.pairName}
                                             </span>
+                                            <MeshPositionStateBadge
+                                              state={derivePositionState({
+                                                isSpent: pos.raw.isSpent,
+                                                reserveBch: pos.raw.reserveBch || satsToBch(pos.raw.reserveSats || 0),
+                                                bundleId: pos.raw.bundleId,
+                                                pairRole: pos.raw.pairRole,
+                                              })}
+                                              size="sm"
+                                            />
+                                            {pos.raw.bundleId && (
+                                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/10 border border-purple-500/20 text-purple-300 font-mono">
+                                                {pos.raw.pairRole || 'BUNDLE'}
+                                              </span>
+                                            )}
                                           </div>
                                           <div className="flex items-center gap-1.5 mt-0.5 text-[10px] font-mono text-zinc-400">
-                                            <span>Straight</span>
+                                            <span className="text-zinc-300 font-medium">{pos.strategyLabel}</span>
                                             <span>•</span>
                                             <span>{pos.feePercent}</span>
                                             <span>•</span>
                                             <span>{pos.durationLabel}</span>
+                                            {pos.raw.fillsCount != null && pos.raw.fillsCount > 0 && (
+                                              <>
+                                                <span>•</span>
+                                                <span className="text-emerald-400 font-semibold">{pos.raw.fillsCount} fills</span>
+                                              </>
+                                            )}
                                           </div>
                                         </div>
                                       </div>
