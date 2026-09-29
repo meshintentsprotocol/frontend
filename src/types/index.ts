@@ -204,6 +204,9 @@ export interface BCHOrder {
     createdAt: number;
     expiryTime?: number;       // Unix timestamp (seconds) when limit order expires
     duration?: number;         // Dutch auction total duration (seconds)
+    /** Covenant the meshserver deployed and its exact constructor args (V2 intents). */
+    contractName?: string;
+    constructorArgs?: string[];
 
     // ── Relayer-reported detail (CashToken same-chain orders) ────────────────
     /**

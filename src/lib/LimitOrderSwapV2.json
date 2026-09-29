@@ -1,0 +1,150 @@
+{
+  "contractName": "LimitOrderSwapV2",
+  "constructorInputs": [
+    {
+      "name": "makerPkh",
+      "type": "bytes20"
+    },
+    {
+      "name": "sellTokenCategory",
+      "type": "bytes"
+    },
+    {
+      "name": "buyTokenCategory",
+      "type": "bytes"
+    },
+    {
+      "name": "sellAmount",
+      "type": "int"
+    },
+    {
+      "name": "buyAmount",
+      "type": "int"
+    },
+    {
+      "name": "expiryTime",
+      "type": "int"
+    }
+  ],
+  "abi": [
+    {
+      "name": "fill",
+      "inputs": []
+    },
+    {
+      "name": "cancel",
+      "inputs": []
+    },
+    {
+      "name": "cancelEarly",
+      "inputs": [
+        {
+          "name": "makerPk",
+          "type": "pubkey"
+        },
+        {
+          "name": "makerSig",
+          "type": "sig"
+        }
+      ]
+    }
+  ],
+  "bytecode": "OP_6 OP_PICK OP_0 OP_NUMEQUAL OP_IF OP_TXLOCKTIME 0065cd1d OP_GREATERTHANOREQUAL OP_VERIFY OP_TXLOCKTIME OP_6 OP_ROLL OP_LESSTHAN OP_VERIFY OP_INPUTINDEX OP_2 OP_PICK OP_0 OP_EQUAL OP_IF OP_DUP OP_UTXOVALUE OP_5 OP_PICK OP_GREATERTHANOREQUAL OP_VERIFY OP_ELSE OP_DUP OP_UTXOTOKENCATEGORY OP_3 OP_PICK OP_EQUALVERIFY OP_DUP OP_UTXOTOKENAMOUNT OP_5 OP_PICK OP_GREATERTHANOREQUAL OP_VERIFY OP_ENDIF OP_DUP OP_OUTPUTBYTECODE 76a914 OP_3 OP_ROLL OP_CAT 88ac OP_CAT OP_EQUALVERIFY OP_2 OP_PICK OP_0 OP_EQUAL OP_IF OP_DUP OP_OUTPUTVALUE OP_5 OP_PICK OP_GREATERTHANOREQUAL OP_VERIFY OP_ELSE OP_DUP OP_OUTPUTTOKENCATEGORY OP_3 OP_PICK OP_EQUALVERIFY OP_DUP OP_OUTPUTTOKENAMOUNT OP_5 OP_PICK OP_GREATERTHANOREQUAL OP_VERIFY OP_DUP OP_OUTPUTVALUE e803 OP_GREATERTHANOREQUAL OP_VERIFY OP_ENDIF OP_2DROP OP_2DROP OP_2DROP OP_1 OP_ELSE OP_6 OP_PICK OP_1 OP_NUMEQUAL OP_IF OP_5 OP_ROLL OP_CHECKLOCKTIMEVERIFY OP_DROP OP_INPUTINDEX OP_DUP OP_OUTPUTBYTECODE 76a914 OP_3 OP_ROLL OP_CAT 88ac OP_CAT OP_EQUALVERIFY OP_DUP OP_OUTPUTVALUE OP_OVER OP_UTXOVALUE OP_GREATERTHANOREQUAL OP_VERIFY OP_DUP OP_OUTPUTTOKENCATEGORY OP_OVER OP_UTXOTOKENCATEGORY OP_EQUALVERIFY OP_DUP OP_OUTPUTTOKENAMOUNT OP_SWAP OP_UTXOTOKENAMOUNT OP_GREATERTHANOREQUAL OP_VERIFY OP_2DROP OP_2DROP OP_DROP OP_1 OP_ELSE OP_6 OP_ROLL OP_2 OP_NUMEQUALVERIFY OP_6 OP_PICK OP_HASH160 OP_OVER OP_EQUALVERIFY OP_7 OP_ROLL OP_7 OP_ROLL OP_CHECKSIGVERIFY OP_INPUTINDEX OP_DUP OP_OUTPUTBYTECODE 76a914 OP_3 OP_ROLL OP_CAT 88ac OP_CAT OP_EQUALVERIFY OP_DUP OP_OUTPUTVALUE OP_OVER OP_UTXOVALUE OP_GREATERTHANOREQUAL OP_VERIFY OP_DUP OP_OUTPUTTOKENCATEGORY OP_OVER OP_UTXOTOKENCATEGORY OP_EQUALVERIFY OP_DUP OP_OUTPUTTOKENAMOUNT OP_SWAP OP_UTXOTOKENAMOUNT OP_GREATERTHANOREQUAL OP_VERIFY OP_2DROP OP_2DROP OP_DROP OP_1 OP_ENDIF OP_ENDIF",
+  "source": "pragma cashscript ^0.12.0;\r\n\r\n// =============================================================================\r\n// LimitOrderSwapV2 — Fixed-price intent, composable with liquidity pools\r\n// =============================================================================\r\n//\r\n// Constructor arguments are identical to LimitOrderSwap (V1) so clients can\r\n// rebuild the contract from the same order record.\r\n//\r\n// Differences from V1:\r\n//   - fill() needs no resolver signature and no fixed input count. The only\r\n//     thing the maker needs guaranteed is their payout, which must be the\r\n//     output at this.activeInputIndex. Any source may provide it: a BCHMesh\r\n//     pool, a Cauldron pool, or a solver's own funds, in the same transaction.\r\n//   - Payout is bound to the intent's own input index, so two intent UTXOs\r\n//     cannot be satisfied by a single payout output.\r\n//   - The sell asset is released to the transaction builder; the maker does\r\n//     not care where it goes once the payout is enforced.\r\n//\r\n// Exits:\r\n//   cancel()       permissionless after expiry, refunds to the maker (server auto-refund)\r\n//   cancelEarly()  maker-signed, any time\r\n// =============================================================================\r\n\r\ncontract LimitOrderSwapV2(\r\n    bytes20 makerPkh,\r\n    bytes sellTokenCategory,\r\n    bytes buyTokenCategory,\r\n    int sellAmount,\r\n    int buyAmount,\r\n    int expiryTime\r\n) {\r\n    function fill() {\r\n        require(tx.locktime >= 500000000);\r\n        require(tx.locktime < expiryTime);\r\n\r\n        int i = this.activeInputIndex;\r\n\r\n        // The intent UTXO must hold the full order; an underfunded UTXO can only be refunded.\r\n        if (sellTokenCategory == 0x) {\r\n            require(tx.inputs[i].value >= sellAmount);\r\n        } else {\r\n            require(tx.inputs[i].tokenCategory == sellTokenCategory);\r\n            require(tx.inputs[i].tokenAmount >= sellAmount);\r\n        }\r\n        require(tx.outputs[i].lockingBytecode == new LockingBytecodeP2PKH(makerPkh));\r\n\r\n        if (buyTokenCategory == 0x) {\r\n            require(tx.outputs[i].value >= buyAmount);\r\n        } else {\r\n            require(tx.outputs[i].tokenCategory == buyTokenCategory);\r\n            require(tx.outputs[i].tokenAmount >= buyAmount);\r\n            require(tx.outputs[i].value >= 1000);\r\n        }\r\n    }\r\n\r\n    function cancel() {\r\n        require(tx.time >= expiryTime);\r\n        // Refund everything this UTXO holds (sats + tokens) to the maker, so any\r\n        // funding amount — exact, over or under — is recoverable in full.\r\n        int i = this.activeInputIndex;\r\n        require(tx.outputs[i].lockingBytecode == new LockingBytecodeP2PKH(makerPkh));\r\n        require(tx.outputs[i].value >= tx.inputs[i].value);\r\n        require(tx.outputs[i].tokenCategory == tx.inputs[i].tokenCategory);\r\n        require(tx.outputs[i].tokenAmount >= tx.inputs[i].tokenAmount);\r\n    }\r\n\r\n    function cancelEarly(pubkey makerPk, sig makerSig) {\r\n        require(hash160(makerPk) == makerPkh);\r\n        require(checkSig(makerSig, makerPk));\r\n        // Refund everything this UTXO holds (sats + tokens) to the maker, so any\r\n        // funding amount — exact, over or under — is recoverable in full.\r\n        int i = this.activeInputIndex;\r\n        require(tx.outputs[i].lockingBytecode == new LockingBytecodeP2PKH(makerPkh));\r\n        require(tx.outputs[i].value >= tx.inputs[i].value);\r\n        require(tx.outputs[i].tokenCategory == tx.inputs[i].tokenCategory);\r\n        require(tx.outputs[i].tokenAmount >= tx.inputs[i].tokenAmount);\r\n    }\r\n}\r\n",
+  "debug": {
+    "bytecode": "5679009c63c5040065cd1da269c5567a9f69c0527900876376c65579a2696776ce53798876d05579a2696876cd0376a914537a7e0288ac7e88527900876376cc5579a2696776d153798876d35579a26976cc02e803a269686d6d6d51675679519c63557ab175c076cd0376a914537a7e0288ac7e8876cc78c6a26976d178ce8876d37cd0a2696d6d755167567a529d5679a97888577a577aadc076cd0376a914537a7e0288ac7e8876cc78c6a26976d178ce8876d37cd0a2696d6d75516868",
+    "sourceMap": "33:4:55:5;;;;;34:16:34:27;:31::40;:16:::1;:8::42;35:16:35:27:0;:30::40;;:16:::1;:8::42;37:16:37:37:0;40:12:40:29;;:33::35;:12:::1;:37:42:9:0;41:30:41:31;:20::38:1;:42::52:0;;:20:::1;:12::54;42:15:45:9:0;43:30:43:31;:20::46:1;:50::67:0;;:12::69:1;44:30:44:31:0;:20::44:1;:48::58:0;;:20:::1;:12::60;42:15:45:9;46:27:46:28:0;:16::45:1;:49::83:0;:74::82;;:49::83:1;;;:8::85;48:12:48:28:0;;:32::34;:12:::1;:36:50:9:0;49:31:49:32;:20::39:1;:43::52:0;;:20:::1;:12::54;50:15:54:9:0;51:31:51:32;:20::47:1;:51::67:0;;:12::69:1;52:31:52:32:0;:20::45:1;:49::58:0;;:20:::1;:12::60;53:31:53:32:0;:20::39:1;:43::47:0;:20:::1;:12::49;50:15:54:9;33:4:55:5;;;;;57::66::0;;;;;58:27:58:37;;:8::39:1;;61:16:61:37:0;62:27:62:28;:16::45:1;:49::83:0;:74::82;;:49::83:1;;;:8::85;63:27:63:28:0;:16::35:1;:49::50:0;:39::57:1;:16;:8::59;64:27:64:28:0;:16::43:1;:57::58:0;:47::73:1;:8::75;65:27:65:28:0;:16::41:1;:55::56:0;:45::69:1;:16;:8::71;57:4:66:5;;;;;68::78::0;;;;69:24:69:31;;:16::32:1;:36::44:0;:8::46:1;70:25:70:33:0;;:35::42;;:8::45:1;73:16:73:37:0;74:27:74:28;:16::45:1;:49::83:0;:74::82;;:49::83:1;;;:8::85;75:27:75:28:0;:16::35:1;:49::50:0;:39::57:1;:16;:8::59;76:27:76:28:0;:16::43:1;:57::58:0;:47::73:1;:8::75;77:27:77:28:0;:16::41:1;:55::56:0;:45::69:1;:16;:8::71;68:4:78:5;;;;25:0:79:1;",
+    "logs": [],
+    "requires": [
+      {
+        "ip": 14,
+        "line": 34
+      },
+      {
+        "ip": 19,
+        "line": 35
+      },
+      {
+        "ip": 31,
+        "line": 41
+      },
+      {
+        "ip": 37,
+        "line": 43
+      },
+      {
+        "ip": 43,
+        "line": 44
+      },
+      {
+        "ip": 53,
+        "line": 46
+      },
+      {
+        "ip": 64,
+        "line": 49
+      },
+      {
+        "ip": 70,
+        "line": 51
+      },
+      {
+        "ip": 76,
+        "line": 52
+      },
+      {
+        "ip": 81,
+        "line": 53
+      },
+      {
+        "ip": 95,
+        "line": 58
+      },
+      {
+        "ip": 106,
+        "line": 62
+      },
+      {
+        "ip": 112,
+        "line": 63
+      },
+      {
+        "ip": 117,
+        "line": 64
+      },
+      {
+        "ip": 123,
+        "line": 65
+      },
+      {
+        "ip": 137,
+        "line": 69
+      },
+      {
+        "ip": 142,
+        "line": 70
+      },
+      {
+        "ip": 152,
+        "line": 74
+      },
+      {
+        "ip": 158,
+        "line": 75
+      },
+      {
+        "ip": 163,
+        "line": 76
+      },
+      {
+        "ip": 169,
+        "line": 77
+      }
+    ]
+  },
+  "compiler": {
+    "name": "cashc",
+    "version": "0.12.1"
+  },
+  "updatedAt": "2026-09-28T11:16:50.766Z"
+}

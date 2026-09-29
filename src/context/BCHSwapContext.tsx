@@ -795,6 +795,8 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 createdAt: Date.now(),
                 expiryTime: params.expiryTime,
                 duration: params.duration,
+                contractName: data.contractName,
+                constructorArgs: data.constructorArgs,
             };
 
             saveOrder(order);
@@ -879,7 +881,12 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
 
             const { Contract, ElectrumNetworkProvider, SignatureTemplate, TransactionBuilder } = await getCashScript();
             const { cashAddressToLockingBytecode } = await import('@bitauth/libauth');
-            const artifactModule = await import('@/lib/LimitOrderSwap.json');
+            // V2 intents: rebuild from the exact constructor args the server deployed
+            // (covenant expiry is chain time, not the wall-clock expiry shown in the UI).
+            const isV2 = order.contractName === 'LimitOrderSwapV2' && Array.isArray(order.constructorArgs);
+            const artifactModule = isV2
+                ? await import('@/lib/LimitOrderSwapV2.json')
+                : await import('@/lib/LimitOrderSwap.json');
             const artifact = (artifactModule as any).default || artifactModule;
 
             const derivePkh = (address: string): Uint8Array => {
@@ -904,9 +911,10 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
             const expiryTime = BigInt(order.expiryTime || Math.floor(Date.now() / 1000) + 3600);
 
             const provider = new ElectrumNetworkProvider(isMainnet ? 'mainnet' : 'chipnet');
-            const contract = new Contract(artifact, [
-                makerPkh, sellCatLE, buyCatLE, sellBaseUnits, buyBaseUnits, expiryTime,
-            ], { provider });
+            const contract = new Contract(artifact, isV2
+                ? order.constructorArgs!.map(a => (a.startsWith('0x') ? a : BigInt(a)))
+                : [makerPkh, sellCatLE, buyCatLE, sellBaseUnits, buyBaseUnits, expiryTime],
+            { provider });
 
             if (contract.address !== order.contractAddress) {
                 throw new Error('Reconstructed contract does not match the stored order — refusing to cancel to avoid an unsafe transaction.');
