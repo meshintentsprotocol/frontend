@@ -45,7 +45,7 @@ function OrderRow({ order, onClaim, isClaiming, onRefund, isRefunding, onCancel,
                         <ArrowRight className="h-3 w-3 text-muted-foreground flex-shrink-0" />
                         <span>{Number(order.buyAmount).toFixed(4)} {order.buyToken?.symbol || '?'}</span>
                     </div>
-                    <div className="flex items-center gap-2 mt-0.5">
+                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                         {swapTypeBadge[order.swapType]}
                         <span className="text-[10px] text-muted-foreground">{timeAgo}</span>
                     </div>
@@ -92,7 +92,24 @@ function OrderRow({ order, onClaim, isClaiming, onRefund, isRefunding, onCancel,
                         {isRefunding ? '...' : 'Refund'}
                     </Button>
                 )}
-                {(() => {
+                {/* Transaction Finality Links */}
+                {order.txLinks && order.txLinks.length > 0 ? (
+                    <div className="flex items-center gap-1.5">
+                        {order.txLinks.map((link, idx) => (
+                            <a
+                                key={idx}
+                                href={link.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-emerald-400 bg-muted/40 px-1.5 py-0.5 rounded transition-colors"
+                                title={link.title}
+                            >
+                                <span>{link.title || `Tx ${idx + 1}`}</span>
+                                <ExternalLink className="h-3 w-3" />
+                            </a>
+                        ))}
+                    </div>
+                ) : (() => {
                     const explorerHref = (order.status === 'refunded' || order.status === 'failed')
                         ? (order.destExplorerUrl
                             || (order.fillTxid && order.swapType === 'sol-to-bch'

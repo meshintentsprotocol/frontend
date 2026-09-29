@@ -175,6 +175,13 @@ export function splitOrders(orders: BCHOrder[]): { pending: BCHOrder[]; complete
     return { pending, completed };
 }
 
+export interface TxLink {
+    title: string;
+    url: string;
+    txid?: string;
+    type?: 'creation' | 'fill' | 'refund' | 'claim';
+}
+
 export interface BCHOrder {
     id: string;
     swapType: BCHSwapType;
@@ -192,6 +199,7 @@ export interface BCHOrder {
     cancelTxid?: string;       // TXID of the maker's cancelEarly()
     explorerUrl?: string;      // Link to block explorer (source chain)
     destExplorerUrl?: string;  // Link to block explorer (destination chain)
+    txLinks?: TxLink[];        // Multiple finality links (e.g. waterfall legs)
     intentId?: string;         // For cross-chain relayer
     createdAt: number;
     expiryTime?: number;       // Unix timestamp (seconds) when limit order expires

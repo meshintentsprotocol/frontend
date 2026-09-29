@@ -802,10 +802,14 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
             queryClient.invalidateQueries({ queryKey: ['bch-tokens'] });
             queryClient.invalidateQueries({ queryKey: ['portfolio'] });
             setSwapStep('');
+            const modeDescription = params.orderType === 'limit'
+                ? `Mode: 📋 Limit Order Covenant • Contract: ${data.contractAddress?.slice(0, 16)}...`
+                : `Mode: ⚡ Dutch Auction Intent (BCHMesh / Cauldron AMM) • Contract: ${data.contractAddress?.slice(0, 16)}...`;
+
             toast.success(
-                params.orderType === 'limit' ? 'Limit order created!' : 'Dutch auction created!',
+                params.orderType === 'limit' ? '📋 Limit Order Covenant Created!' : '⚡ Intent Swap Initiated!',
                 {
-                    description: `Contract: ${data.contractAddress?.slice(0, 24)}...`,
+                    description: modeDescription,
                     action: explorerUrl ? {
                         label: 'View on Explorer',
                         onClick: () => window.open(explorerUrl, '_blank'),
@@ -2243,19 +2247,16 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                                 // truth and now has states this used to silently drop
                                 // ('abandoned' was unmapped entirely, so those orders polled
                                 // forever showing "pending").
-                                switch (intent.status) {
+                                const normalizedStatus = (intent.status || '').toLowerCase();
+                                switch (normalizedStatus) {
                                     case 'filled':
-                                    case 'FILLED':
                                         order.status = 'filled';
                                         order.fillTxid = intent.fillTxid;
                                         order.explorerUrl = intent.fillExplorerUrl || intent.explorerUrl
                                             || (intent.fillTxid ? buildExplorerUrl(intent.fillTxid, 'bch') : undefined);
                                         break;
                                     case 'refunded':
-                                    case 'REFUNDED':
                                         order.status = 'refunded';
-                                        // The relayer writes refundTxid (not fillTxid) for refunds —
-                                        // reading fillTxid here meant the refund link was always absent.
                                         order.refundTxid = intent.refundTxid ?? intent.fillTxid;
                                         if (order.refundTxid) {
                                             order.destExplorerUrl = intent.refundExplorerUrl || intent.fillExplorerUrl
@@ -2271,12 +2272,9 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                                         }
                                         break;
                                     case 'abandoned':
-                                        // Created but never funded before the relayer's deadline.
                                         order.status = 'abandoned';
                                         break;
                                     case 'expired':
-                                        // NOT terminal: past the fill window with the refund still
-                                        // being retried. Keep polling so 'refunded' is picked up.
                                         order.status = 'expired';
                                         break;
                                     case 'failed':
@@ -2284,6 +2282,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                                         break;
                                     case 'active':
                                     case 'pending':
+                                    default:
                                         order.status = 'pending';
                                         break;
                                 }
@@ -2458,9 +2457,17 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 order.status = 'failed';
                 break;
             case 'intent:updated':
-                // Covers pending→active and the 'expired' refund-pending state.
-                if (intent.status === 'expired') order.status = 'expired';
-                else if (intent.status === 'failed') order.status = 'failed';
+                {
+                    const s = (intent.status || '').toLowerCase();
+                    if (s === 'expired') order.status = 'expired';
+                    else if (s === 'failed') order.status = 'failed';
+                    else if (s === 'filled') {
+                        order.status = 'filled';
+                        order.fillTxid = intent.fillTxid ?? order.fillTxid;
+                    } else if (s === 'active' || s === 'pending') {
+                        order.status = 'pending';
+                    }
+                }
                 order.lastSkipCategory = intent.lastSkipCategory ?? order.lastSkipCategory;
                 order.lastSkipReason = intent.lastSkipReason ?? order.lastSkipReason;
                 order.routeType = intent.routeType ?? order.routeType;
@@ -2478,12 +2485,28 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
         setCompletedOrders(split.completed);
 
         if (order.status !== prev && isTerminalOrderStatus(order.status)) {
-            const label = order.status === 'filled' ? 'Order filled'
-                : order.status === 'refunded' ? 'Order refunded'
-                : order.status === 'cancelled' ? 'Order cancelled'
-                : 'Order closed';
+            const modeBadge = order.routeType === 'CAULDRON_AMM' || order.routeType === 'WATERFALL_CAULDRON'
+                ? '🔥 Cauldron AMM'
+                : order.routeType === 'SOLVER_ROUTE'
+                ? '⚡ Solver Inventory'
+                : order.routeType === 'MESH_POOL'
+                ? '💧 BCHMesh Pool'
+                : order.routeType === 'WATERFALL_BLENDED'
+                ? '🌊 Waterfall Blended'
+                : order.swapType === 'bch-to-sol' || order.swapType === 'sol-to-bch' || order.swapType === 'eth-to-bch' || order.swapType === 'bch-to-eth'
+                ? '✨ ZK Prover'
+                : order.swapType === 'bch-to-mov' || order.swapType === 'mov-to-bch'
+                ? '🌐 Movement HTLC'
+                : order.swapType === 'bch-to-xmr' || order.swapType === 'xmr-to-bch'
+                ? '🔒 Adaptor Signature'
+                : '⚡ Atomic Settlement';
+
+            const label = order.status === 'filled' ? `Order Filled (${modeBadge})`
+                : order.status === 'refunded' ? 'Order Refunded'
+                : order.status === 'cancelled' ? 'Order Cancelled'
+                : 'Order Closed';
             toast.success(label, {
-                description: `${order.sellAmount} ${order.sellToken?.symbol} → ${order.buyAmount} ${order.buyToken?.symbol}`,
+                description: `${order.sellAmount} ${order.sellToken?.symbol} → ${order.buyAmount} ${order.buyToken?.symbol} • Mode: ${modeBadge}`,
             });
 
             // Trigger immediate refresh of wallet balances
