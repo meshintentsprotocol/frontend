@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { CauldronTokenData, CauldronService } from "@/lib/cauldron";
 import { useWDK } from "@/context/WDKProvider";
+import { TokenChainIcon } from "@/components/common/TokenChainIcon";
+import { resolveTokenIconUri } from "@/lib/tokenIcons";
 
 const ASSETS = [
     // Movement Chain
@@ -129,21 +131,18 @@ export function OraclePage() {
                             const bchPriceData = prices['BCH'];
                             const bchPriceUsd = bchPriceData ? PriceService.formatPrice(bchPriceData) : 0;
                             return cashTokens.map(ct => {
-                                const sym = ct.bcmr?.token?.symbol || ct.display_symbol || 'UNKNOWN';
-                                const iconRaw = ct.bcmr?.uris?.icon;
-                                const icon = iconRaw?.startsWith('ipfs://') ? `https://ipfs.io/ipfs/${iconRaw.replace('ipfs://', '')}` : (iconRaw?.startsWith('http') ? iconRaw : `https://api.dicebear.com/7.x/identicon/svg?seed=${ct.token_id}`);
+                                const { symbol: sym, iconRaw } = CauldronService.metadataOf(ct);
+                                const icon = resolveTokenIconUri(iconRaw, ct.token_id);
                                 const change24h = ct.change_24h_bp / 100;
                                 const isPositive = change24h >= 0;
                                 const tokenBchPrice = ct.price_now ? ct.price_now / 1e8 : 0;
-                                const calculatedUsdPrice = tokenBchPrice * bchPriceUsd;
+                                const calculatedUsdPrice = ct.price_now_usd > 0 ? ct.price_now_usd : (tokenBchPrice * bchPriceUsd);
 
                                 return (
                                     <div key={ct.token_id} className="bg-card border border-emerald-500/20 rounded-xl p-6 shadow-sm flex flex-col justify-between h-[180px] hover:border-emerald-500/40 transition-colors">
                                         <div className="flex justify-between items-start">
                                             <div className="flex items-center gap-3">
-                                                <div className="h-10 w-10 rounded-full bg-emerald-500/10 p-1 flex items-center justify-center overflow-hidden">
-                                                    <img src={icon} alt={ct.display_name} className="h-full w-full object-contain rounded-full" />
-                                                </div>
+                                                <TokenChainIcon tokenIcon={icon} tokenName={ct.display_name || sym} chain="bitcoin-cash" size="md" />
                                                 <div className="overflow-hidden">
                                                     <h3 className="font-semibold truncate max-w-[100px]">{sym}</h3>
                                                     <p className="text-xs text-muted-foreground truncate max-w-[100px]">{ct.display_name}</p>

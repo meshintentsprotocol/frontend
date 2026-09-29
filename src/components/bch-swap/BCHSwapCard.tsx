@@ -220,7 +220,7 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                 const rawTokens = await CauldronService.getTopCashTokens(50, isMainnet);
                 const priceMap: Record<string, number> = {};
                 for (const t of rawTokens) {
-                    const sym = (t.bcmr?.token?.symbol || t.display_symbol || '').toUpperCase();
+                    const sym = CauldronService.metadataOf(t).symbol;
                     const tokenBchPrice = t.price_now ? t.price_now / 1e8 : 0;
                     const priceUsd = t.price_now_usd > 0 ? t.price_now_usd : (bchPriceUsd > 0 ? tokenBchPrice * bchPriceUsd : 0);
                     if (priceUsd <= 0) continue;

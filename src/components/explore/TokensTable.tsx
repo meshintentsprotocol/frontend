@@ -11,6 +11,7 @@ import { PriceService, PRICE_FEEDS } from '@/lib/pyth';
 import { PriceData } from '@/types';
 import { useWDK } from '@/context/WDKProvider';
 import { TokenChainIcon } from '@/components/common/TokenChainIcon';
+import { resolveTokenIconUri } from '@/lib/tokenIcons';
 
 type AssetChain = 'Bitcoin Cash' | 'EVM' | 'Solana' | 'Movement' | 'Monero';
 interface Asset {
@@ -73,7 +74,7 @@ export function TokensTable({ activeChain, refreshTrigger }: TokensTableProps) {
                 const symbols = ASSETS.map(a => a.symbol);
                 const [cg, apiTokens, pyth] = await Promise.all([
                     CoinGeckoService.getMarketData(symbols),
-                    CauldronService.getTopCashTokens(20, isMainnet),
+                    CauldronService.getTopCashTokens(50, isMainnet),
                     PriceService.getLatestPrices(),
                 ]);
                 if (!isMounted) return;
@@ -253,16 +254,13 @@ export function TokensTable({ activeChain, refreshTrigger }: TokensTableProps) {
                         )}
 
                         {filteredCashTokens.length > 0 && filteredCashTokens.map(ct => {
-                            const sym = ct.bcmr?.token?.symbol || ct.display_symbol || 'UNKNOWN';
-                            const iconRaw = ct.bcmr?.uris?.icon;
-                            const icon = iconRaw?.startsWith('ipfs://')
-                                ? `https://ipfs.io/ipfs/${iconRaw.replace('ipfs://', '')}`
-                                : (iconRaw?.startsWith('http') ? iconRaw : `https://api.dicebear.com/7.x/identicon/svg?seed=${ct.token_id}`);
-                            const change24h = ct.change_24h_bp / 100; // bp → percent
-                            const change7d = ct.change_7d_bp / 100;
-                            // price_now is sats per smallest unit; bchPriceUsd from Pyth
+                            const { symbol: sym, iconRaw } = CauldronService.metadataOf(ct);
+                            const icon = resolveTokenIconUri(iconRaw, ct.token_id);
+                            const change24h = Number.isFinite(ct.change_24h_bp) ? ct.change_24h_bp / 100 : null; // bp → percent
+                            const change7d = Number.isFinite(ct.change_7d_bp) ? ct.change_7d_bp / 100 : 0;
+                            // price_now is sats per whole (display) token; bchPriceUsd from Pyth
                             const tokenBchPrice = ct.price_now ? ct.price_now / 1e8 : 0;
-                            const calculatedUsdPrice = tokenBchPrice * bchPriceUsd;
+                            const calculatedUsdPrice = ct.price_now_usd > 0 ? ct.price_now_usd : (tokenBchPrice * bchPriceUsd);
                             const tvlBch = ct.tvl_sats ? ct.tvl_sats / 1e8 : 0;
                             const tvlUsd = tvlBch * bchPriceUsd;
                             const volBch = ct.trade_volume ? ct.trade_volume / 1e8 : 0;
@@ -276,10 +274,10 @@ export function TokensTable({ activeChain, refreshTrigger }: TokensTableProps) {
                                 >
                                     <TableCell>
                                         <div className="flex items-center gap-3">
-                                            <TokenChainIcon tokenIcon={icon} tokenName={ct.display_name} chain="bitcoin-cash" size="sm" />
+                                            <TokenChainIcon tokenIcon={icon} tokenName={ct.display_name || sym} chain="bitcoin-cash" size="sm" />
                                             <div className="flex flex-col min-w-0">
                                                 <div className="flex items-center gap-2">
-                                                    <span className="font-semibold text-sm truncate" title={ct.display_name}>{ct.display_name}</span>
+                                                    <span className="font-semibold text-sm truncate" title={ct.display_name || sym}>{ct.display_name || sym}</span>
                                                     <span className="text-xs text-muted-foreground uppercase tracking-wide">{sym}</span>
                                                 </div>
                                                 <div className="mt-0.5 flex items-center gap-1.5">
@@ -296,9 +294,9 @@ export function TokensTable({ activeChain, refreshTrigger }: TokensTableProps) {
                                     </TableCell>
                                     <TableCell className="text-right font-medium">
                                         <div className="flex flex-col items-end">
-                                            <span>{calculatedUsdPrice > 0 ? `$${calculatedUsdPrice.toFixed(6)}` : '-'}</span>
+                                            <span>{calculatedUsdPrice > 0 ? formatUsd(calculatedUsdPrice, { min: 2, max: calculatedUsdPrice < 0.01 ? 10 : 6 }) : '-'}</span>
                                             {ct.price_now ? (
-                                                <span className="text-xs text-muted-foreground">{ct.price_now.toFixed(2)} sats</span>
+                                                <span className="text-xs text-muted-foreground">{ct.price_now.toLocaleString(undefined, { maximumFractionDigits: ct.price_now < 1 ? 6 : 2 })} sats</span>
                                             ) : null}
                                         </div>
                                     </TableCell>

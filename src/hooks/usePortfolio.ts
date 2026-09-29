@@ -20,6 +20,8 @@ import { getEvmConfig, USDT_BSC, USDT_SEPOLIA, USDC_SEPOLIA, USDC_BSC } from '@/
 import { usePrices } from '@/hooks/usePrices';
 import { useBchBalances } from '@/hooks/useBchBalances';
 import { CauldronService } from '@/lib/cauldron';
+import { resolveTokenIconUri } from '@/lib/tokenIcons';
+import { useTokenMetadataMany } from '@/hooks/useTokenMetadata';
 import { readPersisted } from '@/lib/persist';
 
 // Portfolio token structure
@@ -235,6 +237,15 @@ export function usePortfolio(options?: { pollingMs?: number }) {
         queryFn: () => CauldronService.getTopCashTokens(50, isMainnet),
     });
 
+    // ── BCMR metadata for held CashTokens Cauldron doesn't list ───────────────
+    // Without it an unlisted token falls back to decimals=0 and its balance is
+    // shown in raw base units (e.g. 10^8× too large for an 8-decimal token).
+    const unlistedHeldCategories = useMemo(() => {
+        const listed = new Set((cauldronQuery.data ?? []).map(t => t.token_id.toLowerCase()));
+        return Object.keys(bchQuery.data.tokens ?? {}).filter(c => !listed.has(c.toLowerCase()));
+    }, [cauldronQuery.data, bchQuery.data.tokens]);
+    const bcmrQuery = useTokenMetadataMany(unlistedHeldCategories, isMainnet);
+
     // ── Compose tokens ────────────────────────────────────────────────────────
     const tokens = useMemo<PortfolioToken[]>(() => {
         const list: PortfolioToken[] = [];
@@ -403,8 +414,15 @@ export function usePortfolio(options?: { pollingMs?: number }) {
             const cauldronMapped = CauldronService.mapToTokens(cauldronRaw);
             const metaByCategory = new Map(cauldronMapped.map(m => [m.categoryId, m]));
             const rawByCategory = new Map(cauldronRaw.map(t => [t.token_id, t]));
+            const bcmrByCategory = bcmrQuery.data ?? {};
             for (const [category, amountStr] of Object.entries(bchQuery.data.tokens)) {
-                const meta = metaByCategory.get(category);
+                const bcmr = bcmrByCategory[category.toLowerCase()];
+                const meta = metaByCategory.get(category) ?? (bcmr ? {
+                    symbol: bcmr.symbol,
+                    name: bcmr.name,
+                    decimals: bcmr.decimals,
+                    icon: resolveTokenIconUri(bcmr.icon, category),
+                } : undefined);
                 const raw = rawByCategory.get(category);
                 const decimals = meta?.decimals ?? 0;
                 const balance = Number(amountStr) / Math.pow(10, decimals);
@@ -448,7 +466,7 @@ export function usePortfolio(options?: { pollingMs?: number }) {
 
         list.sort((a, b) => b.valueUsd - a.valueUsd);
         return list;
-    }, [evmAddress, solanaAddress, movementAddress, bchAddress, btcAddress, isMainnet, evmQuery.data, solQuery.data, movementQuery.data, bchQuery.data, btcQuery.data, cauldronQuery.data, prices]);
+    }, [evmAddress, solanaAddress, movementAddress, bchAddress, btcAddress, isMainnet, evmQuery.data, solQuery.data, movementQuery.data, bchQuery.data, btcQuery.data, cauldronQuery.data, bcmrQuery.data, prices]);
 
     // Total is the strict aggregate of the rendered token rows.
     const totalValue = useMemo(

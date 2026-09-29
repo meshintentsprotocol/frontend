@@ -1,8 +1,10 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Search, Loader2, Sparkles, Check, Globe, AlertCircle } from 'lucide-react';
 import { CauldronService, type CauldronTokenData } from '@/lib/cauldron';
 import { useWDK } from '@/context/WDKProvider';
+import { resolveTokenIconUri } from '@/lib/tokenIcons';
 
 export interface MeshToken {
   symbol: string;
@@ -83,18 +85,11 @@ export function TokenSelectModal({
         const rawTokens = await CauldronService.getTopCashTokens(50, isMainnet);
         if (mounted) {
           const mapped: MeshToken[] = rawTokens
-            .filter(t => {
-              const sym = t.bcmr?.token?.symbol || t.display_symbol || '';
-              return sym && sym !== 'UNKNOWN';
-            })
-            .map(t => {
-              const symbol = t.bcmr?.token?.symbol || t.display_symbol || 'TOKEN';
-              const name = t.bcmr?.name || t.display_name || symbol;
-              const decimals = t.bcmr?.token?.decimals ?? 0;
-              let icon = t.bcmr?.uris?.icon;
-              if (icon?.startsWith('ipfs://')) {
-                icon = `https://ipfs.io/ipfs/${icon.replace('ipfs://', '')}`;
-              }
+            .map(t => ({ t, meta: CauldronService.metadataOf(t) }))
+            .filter(({ meta }) => meta.symbol !== 'UNKNOWN')
+            .map(({ t, meta }) => {
+              const { symbol, name, decimals } = meta;
+              const icon = resolveTokenIconUri(meta.iconRaw, t.token_id);
               return {
                 symbol,
                 name,
@@ -192,11 +187,10 @@ export function TokenSelectModal({
               <button
                 key={t.categoryId || t.symbol}
                 onClick={() => handleSelectToken(t)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${
-                  isSelected
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all ${isSelected
                     ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300'
                     : 'bg-white/5 border-white/10 text-zinc-300 hover:bg-white/10 hover:text-white'
-                }`}
+                  }`}
               >
                 {t.icon ? (
                   <img src={t.icon} alt={t.symbol} className="w-4 h-4 rounded-full object-contain" />
@@ -229,13 +223,12 @@ export function TokenSelectModal({
                 key={token.categoryId || token.symbol}
                 onClick={() => handleSelectToken(token)}
                 disabled={isOther}
-                className={`w-full flex items-center justify-between p-3 rounded-2xl border text-left transition-all group ${
-                  isSelected
+                className={`w-full flex items-center justify-between p-3 rounded-2xl border text-left transition-all group ${isSelected
                     ? 'bg-emerald-500/15 border-emerald-500/60 shadow-[0_0_15px_rgba(16,185,129,0.15)]'
                     : isOther
-                    ? 'opacity-40 cursor-not-allowed bg-white/[0.01] border-white/5'
-                    : 'bg-white/[0.02] border-white/5 hover:bg-white/[0.06] hover:border-white/15'
-                }`}
+                      ? 'opacity-40 cursor-not-allowed bg-white/[0.01] border-white/5'
+                      : 'bg-white/[0.02] border-white/5 hover:bg-white/[0.06] hover:border-white/15'
+                  }`}
               >
                 <div className="flex items-center gap-3">
                   {/* Token Icon */}

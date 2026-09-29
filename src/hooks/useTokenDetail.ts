@@ -3,6 +3,8 @@ import { CoinGeckoService, CoinGeckoService_extended, CG_ID_MAP, type CoinDetail
 import { CauldronService, type CauldronTokenData } from '@/lib/cauldron';
 import { PriceService } from '@/lib/pyth';
 import type { PriceData } from '@/types';
+import { resolveTokenIconUri } from '@/lib/tokenIcons';
+import { BcmrClient } from '@/lib/bcmr';
 
 export interface TokenDetail {
     symbol: string;
@@ -35,13 +37,6 @@ export interface TokenDetail {
     bcmrCategory?: string;
     // raw data for advanced use
     raw?: CoinDetail | CauldronTokenData;
-}
-
-function resolveIcon(uri?: string | null, seed?: string): string {
-    if (!uri) return `https://api.dicebear.com/7.x/identicon/svg?seed=${seed ?? 'token'}`;
-    if (uri.startsWith('https://') || uri.startsWith('http://')) return uri;
-    if (uri.startsWith('ipfs://')) return `https://ipfs.io/ipfs/${uri.replace('ipfs://', '')}`;
-    return `https://api.dicebear.com/7.x/identicon/svg?seed=${seed ?? 'token'}`;
 }
 
 // Approximate BCH/USD fallback when Pyth is unavailable
@@ -83,11 +78,23 @@ export function useTokenDetail(
 
             // ── CashToken ────────────────────────────────────────────────────
             if (isCashToken) {
-                const [detail, pythPrices] = await Promise.all([
+                const [market, bcmr, pythPrices] = await Promise.all([
                     CauldronService.getTokenDetail(tokenId, isMainnet),
+                    BcmrClient.get(tokenId, isMainnet).catch(() => null),
                     PriceService.getLatestPrices().catch(() => ({})),
                 ]);
-                if (!detail) return null;
+                if (!market && !bcmr) return null;
+
+                // No Cauldron pool (e.g. a wallet-held token) — metadata-only row
+                const detail: CauldronTokenData = market ?? {
+                    token_id: bcmr!.category,
+                    display_name: bcmr!.name,
+                    display_symbol: bcmr!.symbol,
+                    score_rank: 0, trade_volume: 0, tvl_sats: 0, tvl_tokens: 0,
+                    price_now: 0, price_now_usd: 0, price_24h: 0, price_24h_usd: 0,
+                    change_24h_bp: 0, change_7d_bp: 0,
+                };
+                const meta = CauldronService.metadataOf(detail, bcmr);
 
                 const bchPrice = safeBchPrice(pythPrices as Record<string, PriceData>);
 
@@ -99,10 +106,10 @@ export function useTokenDetail(
                 const volBch = detail.trade_volume ? detail.trade_volume / 1e8 : 0;
 
                 // change_24h_bp: Cauldron reports in basis points (1% = 100bp)
-                const change24h = (detail.change_24h_bp != null && detail.change_24h_bp !== 0)
+                const change24h = !market ? null : (detail.change_24h_bp != null && detail.change_24h_bp !== 0)
                     ? detail.change_24h_bp / 100
                     : (detail.change_24h_usd_bp != null ? detail.change_24h_usd_bp / 100 : null);
-                const change7d = (detail.change_7d_bp != null && detail.change_7d_bp !== 0)
+                const change7d = !market ? null : (detail.change_7d_bp != null && detail.change_7d_bp !== 0)
                     ? detail.change_7d_bp / 100
                     : (detail.change_7d_usd_bp != null ? detail.change_7d_usd_bp / 100 : null);
 
@@ -111,13 +118,11 @@ export function useTokenDetail(
                     ? `https://explorer.bitcoinunlimited.info/token/${detail.token_id}`
                     : `https://${network}chaingraph.cash/token/${detail.token_id}`;
 
-                const decimals = (detail.bcmr?.token as any)?.decimals ?? (detail.bcmr as any)?.decimals ?? 0;
-
                 return {
-                    symbol: (detail.bcmr?.token?.symbol || detail.display_symbol || '???').toUpperCase(),
-                    name: detail.bcmr?.name || detail.display_name || 'Unknown Token',
-                    icon: resolveIcon(detail.bcmr?.uris?.icon, detail.token_id),
-                    decimals,
+                    symbol: meta.symbol,
+                    name: meta.name || 'Unknown Token',
+                    icon: resolveTokenIconUri(meta.iconRaw, detail.token_id),
+                    decimals: meta.decimals,
                     chain: 'Bitcoin Cash',
                     isCashToken: true,
                     priceUsd,
@@ -136,8 +141,8 @@ export function useTokenDetail(
                     atl: null,
                     circulatingSupply: null,
                     totalSupply: detail.tvl_tokens || null,
-                    description: detail.bcmr?.description || '',
-                    website: detail.bcmr?.uris?.web || null,
+                    description: meta.description,
+                    website: meta.website,
                     explorerLinks: [explorerBase],
                     bcmrCategory: detail.token_id,
                     raw: detail,
