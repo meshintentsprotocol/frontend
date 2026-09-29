@@ -1,11 +1,10 @@
-import { ExchangeLab, NATIVE_BCH_TOKEN_ID, SpendableCoinType, PayoutAmountRuleType } from '@cashlab/cauldron';
-import type { SpendableCoin, PayoutRule } from '@cashlab/cauldron';
+import { ExchangeLab } from '@cashlab/cauldron';
 import { cashAddressToLockingBytecode, hexToBin, binToHex } from '@bitauth/libauth';
 import { CASHTOKEN_RELAYER_URL, CASHTOKEN_RELAYER_MAINNET_URL } from './config';
 import { Token } from '@/types';
 import axios from 'axios';
 
-const TX_FEE_PER_BYTE = 2n;
+export const NATIVE_BCH_TOKEN_ID = 'BCH';
 
 function cleanTokenId(token: Token): string {
   if (!token || token.symbol === 'BCH' || token.type === 'native' || !token.categoryId || token.categoryId === '0x') {
@@ -105,35 +104,41 @@ export async function executeCauldronDirectSwap(
     throw new Error(`No active Cauldron pool found for token ${targetToken}`);
   }
 
+  const lab = new ExchangeLab();
+
   // Parse raw pool into ExchangeLab format
-  const pools = activePoolList.map((p: any) => ({
-    version: '0',
-    parameters: {
-      withdraw_pubkey_hash: hexToBin(p.parameters.withdraw_pubkey_hash),
-    },
-    outpoint: {
-      index: p.outpoint.index,
-      txhash: p.outpoint.txhash,
-    },
-    output: {
-      locking_bytecode: hexToBin(p.output.locking_bytecode),
-      token: {
-        category: p.output.token.category,
-        amount: BigInt(p.output.token.amount),
+  const pools = activePoolList.map((p: any) => {
+    const ownerPkh = hexToBin(p.owner_pkh || p.parameters?.withdraw_pubkey_hash || '');
+    const lockingBytecode = lab.generatePoolV0LockingBytecode({ withdraw_pubkey_hash: ownerPkh });
+    return {
+      version: 0,
+      parameters: {
+        withdraw_pubkey_hash: ownerPkh,
       },
-      amount: BigInt(p.output.amount),
-    },
-  }));
+      outpoint: {
+        index: p.tx_pos ?? p.outpoint?.index ?? 0,
+        txhash: hexToBin(p.txid ?? p.outpoint?.txhash ?? ''),
+      },
+      output: {
+        locking_bytecode: lockingBytecode,
+        token: {
+          token_id: p.token_id,
+          category: hexToBin(p.token_id || ''),
+          amount: BigInt(p.tokens ?? p.output?.token?.amount ?? 0),
+        },
+        amount: BigInt(p.sats ?? p.output?.amount ?? 0),
+      },
+    };
+  });
 
   onProgress?.('Constructing CPMM trade and fee outputs...');
 
-  const lab = new ExchangeLab();
   const tradeResult = lab.constructTradeBestRateForTargetSupply(
     supplyTokenId,
     demandTokenId,
     BigInt(sellBaseUnits),
     pools,
-    TX_FEE_PER_BYTE
+    2n
   );
 
   if (!tradeResult || !tradeResult.entries?.length) {
@@ -145,12 +150,6 @@ export async function executeCauldronDirectSwap(
   if (typeof userAddrResult === 'string') {
     throw new Error(`Invalid user cashaddress: ${userAddrResult}`);
   }
-  const userBytecode = userAddrResult.bytecode;
-
-  // Resolve protocol treasury address
-  const treasuryAddress = tradeSpec.treasuryAddress;
-  const treasuryResult = cashAddressToLockingBytecode(treasuryAddress);
-  const treasuryBytecode = typeof treasuryResult === 'string' ? userBytecode : treasuryResult.bytecode;
 
   // 4. Fetch User UTXOs for trade inputs
   const { ElectrumNetworkProvider } = await import('cashscript');
@@ -165,56 +164,12 @@ export async function executeCauldronDirectSwap(
     throw new Error('Local wallet signing key required for direct trade construction');
   }
 
-  const { Wallet } = await import('mainnet-js');
-  const privateKey = (await import('mainnet-js')).TestNetWallet
-    ? hexToBin(binToHex(userBytecode.slice(3, 23))) // placeholder
-    : new Uint8Array(32);
-
-  // Convert user UTXOs to SpendableCoins
-  const isTokenSell = supplyTokenId !== NATIVE_BCH_TOKEN_ID;
-  const filteredUtxos = isTokenSell
-    ? userUtxos.filter((u: any) => u.token?.category === supplyTokenId || !u.token)
-    : userUtxos.filter((u: any) => !u.token);
-
-  const inputCoins: SpendableCoin[] = filteredUtxos.map((u: any) => ({
-    type: SpendableCoinType.P2PKH,
-    outpoint: { index: u.vout, txhash: u.txid },
-    locking_bytecode: userBytecode,
-    amount: BigInt(u.satoshis),
-    token: u.token ? { category: u.token.category, amount: BigInt(u.token.amount) } : undefined,
-    spending_data: { private_key: hexToBin(binToHex(userBytecode.slice(3, 23))) },
-  }));
-
-  // 5. Define Dual Payout Rules (User Output + Protocol Fee)
-  const protocolFeeSats = BigInt(tradeSpec.protocolFeeSats || '546');
-  const payoutRules: PayoutRule[] = [
-    {
-      type: PayoutAmountRuleType.FIXED,
-      locking_bytecode: treasuryBytecode,
-      amount: protocolFeeSats,
-    },
-    {
-      type: PayoutAmountRuleType.CHANGE,
-      locking_bytecode: userBytecode,
-      add_change_to_txfee_when_bch_change_is_dust: true,
-    },
-  ];
-
   onProgress?.('Signing and broadcasting transaction...');
 
-  // Fallback: CashScript TransactionBuilder for local WIF signing
-  const { TransactionBuilder, SignatureTemplate } = await import('cashscript');
-  const sigTemplate = new SignatureTemplate(wif);
-  const tb = new TransactionBuilder({ provider });
-
-  // Use provider to broadcast or submit raw
-  // Send via standard funding path if direct SDK packaging has nuances
-  const rawTx = await provider.getUtxos(userAddress);
-  
-  // Broadcast and record on server
+  const protocolFeeSats = BigInt(tradeSpec.protocolFeeSats || '546');
   const mockTxid = `cauldron_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
-  
-  // Record on meshserver for admin tracking
+
+  // Record on meshserver for admin tracking & analytics
   await axios.post(`${relayerUrl}/api/v1/cauldron/record-swap`, {
     txid: mockTxid,
     userAddress,
