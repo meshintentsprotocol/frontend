@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react"
 import { useLanguage } from "@/context/language-provider"
 import { useWallet } from "@/context/wallet-provider"
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom"
@@ -46,6 +47,9 @@ import OrderbookPage from "./pages/OrderbookPage"
 import { WDKProvider } from "./context/WDKProvider"
 import { ExternalBCHWalletProvider } from "./context/ExternalBCHWalletProvider"
 import { PWAUpdatePrompt } from "./components/common/PWAUpdatePrompt"
+
+// Developer docs are a self-contained subtree, loaded on demand.
+const DocsApp = lazy(() => import("./docs/DocsApp"))
 
 function App() {
     useLanguage();
@@ -177,6 +181,12 @@ function App() {
                                                         </div>
                                                     } />
                                                     <Route path="/bchswap" element={<Navigate to="/trade" replace />} />
+
+                                                    <Route path="/docs/*" element={
+                                                        <Suspense fallback={<div className="min-h-screen bg-[#050505]" />}>
+                                                            <DocsApp />
+                                                        </Suspense>
+                                                    } />
 
                                                     <Route path="/terms" element={<TermsOfService />} />
                                                     <Route path="/privacy" element={<PrivacyPolicy />} />
