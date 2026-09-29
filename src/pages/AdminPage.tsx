@@ -255,6 +255,9 @@ export function AdminPage() {
     const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
     const baseUrl = BCH_MESH_SERVER_URL.replace(/\/$/, '');
+    // meshserver requires x-admin-key on admin writes. VITE_ vars are bundled into the
+    // browser, so set VITE_MESH_ADMIN_KEY only for local/internal builds.
+    const adminHeaders = { 'x-admin-key': import.meta.env.VITE_MESH_ADMIN_KEY ?? '' };
 
     const fetchData = useCallback(async (showRefreshing = false) => {
         if (showRefreshing) setIsRefreshing(true);
@@ -323,7 +326,7 @@ export function AdminPage() {
                 label = 'Cauldron AMM Route';
             }
             
-            const res = await axios.post(endpoint, { reason: `Operator toggled via Admin UI` });
+            const res = await axios.post(endpoint, { reason: `Operator toggled via Admin UI` }, { headers: adminHeaders });
             if (res.data?.success && res.data?.routes) {
                 setRouteFlags(res.data.routes);
                 setTriggerMessage(`✅ ${label} is now ${enable ? 'ACTIVE (Enabled)' : 'PAUSED (Disabled)'}`);
@@ -393,13 +396,14 @@ export function AdminPage() {
         setIsTriggering(true);
         setTriggerMessage(null);
         try {
-            const res = await axios.post(`${baseUrl}/api/v1/admin/trigger-match`);
+            const res = await axios.post(`${baseUrl}/api/v1/admin/trigger-match`, {}, { headers: adminHeaders });
             if (res.data?.success) {
-                setTriggerMessage(`✅ Match cycle triggered: Found ${res.data.matchesFound} match(es)`);
+                const d = res.data;
+                setTriggerMessage(`✅ Solver cycle: ${d.filled?.length ?? 0} filled, ${d.failed?.length ?? 0} failed, ${d.unfillable?.length ?? 0} unfillable`);
                 await fetchData(true);
             }
         } catch (err: any) {
-            setTriggerMessage(`❌ Trigger failed: ${err.message}`);
+            setTriggerMessage(`❌ Trigger failed: ${err.response?.data?.error || err.message}`);
         } finally {
             setIsTriggering(false);
             setTimeout(() => setTriggerMessage(null), 5000);
