@@ -156,6 +156,7 @@ interface SolverStatus {
     tokenUtxosCount: number;
     protocolTreasuryPkh: string;
     activeIntentsWatched: number;
+    strategyPoolsActive?: number;
 }
 
 export interface MeshPoolFill {
@@ -205,13 +206,29 @@ export interface MeshPoolItem {
     addressExplorerUrl: string;
 }
 
+export interface CauldronTokenInfo {
+    categoryId: string;
+    symbol: string;
+    name: string;
+    decimals: number;
+    tvlSats: string;
+    priceSats: string;
+    priceUsd?: number;
+    poolAddress?: string;
+    reserveTokens?: string;
+    reserveBchSats?: string;
+    verified?: boolean;
+}
+
 export function AdminPage() {
     const [stats, setStats] = useState<OverviewStats | null>(null);
     const [swaps, setSwaps] = useState<SwapItem[]>([]);
     const [meshPools, setMeshPools] = useState<MeshPoolItem[]>([]);
+    const [cauldronTokens, setCauldronTokens] = useState<CauldronTokenInfo[]>([]);
     const [expandedPoolId, setExpandedPoolId] = useState<string | null>(null);
     const [poolStatusFilter, setPoolStatusFilter] = useState<'ALL' | 'ACTIVE' | 'DEPLETED'>('ALL');
     const [poolSearchTerm, setPoolSearchTerm] = useState('');
+    const [tokenSearchTerm, setTokenSearchTerm] = useState('');
     const [solverInfo, setSolverInfo] = useState<SolverStatus | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -233,7 +250,8 @@ export function AdminPage() {
     const [routeFilter, setRouteFilter] = useState<'ALL' | 'CAULDRON_AMM' | 'SOLVER_ROUTE' | 'MESH_POOL' | 'WATERFALL_BLENDED'>('ALL');
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedSwap, setSelectedSwap] = useState<SwapItem | null>(null);
-    const [autoRefreshInterval, setAutoRefreshInterval] = useState<number>(10);
+    const [autoRefreshInterval, setAutoRefreshInterval] = useState<number>(15);
+    const [countdown, setCountdown] = useState<number>(15);
     const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
     const baseUrl = BCH_MESH_SERVER_URL.replace(/\/$/, '');
@@ -241,12 +259,13 @@ export function AdminPage() {
     const fetchData = useCallback(async (showRefreshing = false) => {
         if (showRefreshing) setIsRefreshing(true);
         try {
-            const [statsRes, swapsRes, solverRes, poolsRes, routesRes] = await Promise.allSettled([
+            const [statsRes, swapsRes, solverRes, poolsRes, routesRes, cauldronRes] = await Promise.allSettled([
                 axios.get(`${baseUrl}/api/v1/admin/stats`),
                 axios.get(`${baseUrl}/api/v1/admin/swaps?limit=100`),
                 axios.get(`${baseUrl}/api/v1/admin/solver`),
                 axios.get(`${baseUrl}/api/v1/admin/mesh-pools`),
                 axios.get(`${baseUrl}/api/v1/admin/routes/status`),
+                axios.get(`${baseUrl}/api/v1/admin/cauldron`),
             ]);
 
             if (statsRes.status === 'fulfilled' && statsRes.value.data?.data) {
@@ -268,6 +287,11 @@ export function AdminPage() {
             if (routesRes.status === 'fulfilled' && routesRes.value.data?.routes) {
                 setRouteFlags(routesRes.value.data.routes);
             }
+
+            if (cauldronRes.status === 'fulfilled' && cauldronRes.value.data?.tokens) {
+                setCauldronTokens(cauldronRes.value.data.tokens);
+            }
+            setCountdown(15);
         } catch (err) {
             console.error('Failed to load admin data:', err);
         } finally {
@@ -349,10 +373,20 @@ export function AdminPage() {
 
     useEffect(() => {
         fetchData();
-        if (autoRefreshInterval > 0) {
-            const timer = setInterval(() => fetchData(false), autoRefreshInterval * 1000);
-            return () => clearInterval(timer);
-        }
+    }, [fetchData]);
+
+    useEffect(() => {
+        if (autoRefreshInterval <= 0) return;
+        const timer = setInterval(() => {
+            setCountdown(prev => {
+                if (prev <= 1) {
+                    fetchData(false);
+                    return autoRefreshInterval;
+                }
+                return prev - 1;
+            });
+        }, 1000);
+        return () => clearInterval(timer);
     }, [fetchData, autoRefreshInterval]);
 
     const handleTriggerMatch = async () => {
@@ -531,18 +565,30 @@ export function AdminPage() {
                         Sync Data
                     </Button>
 
-                    {/* Auto-refresh interval selector */}
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.03] border border-white/10 text-xs text-zinc-400">
-                        <Clock className="w-3.5 h-3.5 text-zinc-500" />
+                    {/* Auto-refresh interval selector & live countdown */}
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.03] border border-white/10 text-xs text-zinc-400">
+                        <div className="flex items-center gap-1.5">
+                            <Clock className="w-3.5 h-3.5 text-emerald-400" />
+                            {autoRefreshInterval > 0 && (
+                                <span className="text-[11px] font-mono text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">
+                                    {countdown}s
+                                </span>
+                            )}
+                        </div>
                         <select 
                             value={autoRefreshInterval} 
-                            onChange={(e) => setAutoRefreshInterval(Number(e.target.value))}
+                            onChange={(e) => {
+                                const val = Number(e.target.value);
+                                setAutoRefreshInterval(val);
+                                setCountdown(val);
+                            }}
                             aria-label="Auto-refresh interval"
                             className="bg-transparent border-none text-zinc-200 text-xs focus:outline-none cursor-pointer"
                         >
+                            <option value={15} className="bg-zinc-900">15s Poll (Default)</option>
                             <option value={5} className="bg-zinc-900">5s Poll</option>
-                            <option value={10} className="bg-zinc-900">10s Poll</option>
                             <option value={30} className="bg-zinc-900">30s Poll</option>
+                            <option value={60} className="bg-zinc-900">60s Poll</option>
                             <option value={0} className="bg-zinc-900">Off</option>
                         </select>
                     </div>
@@ -1034,6 +1080,9 @@ export function AdminPage() {
                 <TabsList className="bg-zinc-900/80 border border-white/10 p-1 rounded-xl flex flex-wrap">
                     <TabsTrigger value="swaps" className="data-[state=active]:bg-zinc-800 data-[state=active]:text-white text-xs">
                         <Activity className="w-3.5 h-3.5 mr-1.5" /> Live Swaps Flow ({filteredSwaps.length})
+                    </TabsTrigger>
+                    <TabsTrigger value="liquidity" className="data-[state=active]:bg-zinc-800 data-[state=active]:text-white text-xs">
+                        <Wallet className="w-3.5 h-3.5 mr-1.5 text-emerald-400" /> Solver, Mesh & Cauldron Balances ({cauldronTokens.length} Tokens)
                     </TabsTrigger>
                     <TabsTrigger value="mesh-pools" className="data-[state=active]:bg-zinc-800 data-[state=active]:text-white text-xs">
                         <Layers className="w-3.5 h-3.5 mr-1.5 text-blue-400" /> Active Mesh Pools & Fills ({meshPools.length})
@@ -1671,6 +1720,335 @@ export function AdminPage() {
                             </div>
                         </CardContent>
                     </Card>
+                </TabsContent>
+
+                {/* TAB 4: Solver Balance, Mesh Balance & Cauldron Liquidity */}
+                <TabsContent value="liquidity" className="space-y-6 animate-in fade-in-50">
+                    {/* Top 3 Metric Cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {/* 1. Solver Gas & Wallet Balance */}
+                        <Card className="bg-zinc-950 border-white/10 shadow-lg">
+                            <CardHeader className="pb-2">
+                                <CardDescription className="text-xs text-zinc-400 flex items-center justify-between font-mono">
+                                    <span className="flex items-center gap-1.5">
+                                        <ShieldCheck className="w-4 h-4 text-cyan-400" />
+                                        SOLVER GAS & INVENTORY
+                                    </span>
+                                    <Badge className="bg-cyan-500/10 text-cyan-400 border-cyan-500/30 text-[10px]">
+                                        15s Polling
+                                    </Badge>
+                                </CardDescription>
+                                <CardTitle className="text-2xl font-mono font-bold text-white mt-1">
+                                    {solverInfo?.balanceBch || '0.0000'} <span className="text-sm font-normal text-zinc-400">BCH</span>
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-2 text-xs font-mono text-zinc-300 pt-0">
+                                <div className="text-zinc-500 text-[11px]">
+                                    Raw: <span className="text-emerald-400 font-semibold">{solverInfo?.balanceSats || '0'}</span> satoshis
+                                </div>
+                                <div className="p-2.5 rounded-lg bg-zinc-900/80 border border-white/5 space-y-1">
+                                    <div className="flex justify-between text-[11px]">
+                                        <span className="text-zinc-500">Pure BCH UTXOs (Gas):</span>
+                                        <span className="text-white font-semibold">{solverInfo?.utxoCount ?? 0}</span>
+                                    </div>
+                                    <div className="flex justify-between text-[11px]">
+                                        <span className="text-zinc-500">Token UTXOs (Inventory):</span>
+                                        <span className="text-white font-semibold">{solverInfo?.tokenUtxosCount ?? 0}</span>
+                                    </div>
+                                    <div className="flex justify-between text-[11px]">
+                                        <span className="text-zinc-500">Active Intents Watched:</span>
+                                        <span className="text-cyan-400 font-semibold">{solverInfo?.activeIntentsWatched ?? 0}</span>
+                                    </div>
+                                </div>
+                                <div className="flex items-center justify-between pt-1 border-t border-white/5 text-[11px]">
+                                    <span className="text-zinc-500">Address:</span>
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="text-zinc-300 font-mono">{shortenAddr(solverInfo?.address || 'bchtest:...')}</span>
+                                        {solverInfo?.address && (
+                                            <>
+                                                <button 
+                                                    onClick={() => copyToClipboard(solverInfo.address, 'solver-bal-addr')} 
+                                                    className="text-zinc-500 hover:text-white"
+                                                    title="Copy address"
+                                                >
+                                                    {copiedKey === 'solver-bal-addr' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                                                </button>
+                                                <a 
+                                                    href={`https://chipnet.imaginary.cash/address/${solverInfo.address}`} 
+                                                    target="_blank" 
+                                                    rel="noreferrer"
+                                                    className="text-cyan-400 hover:text-cyan-300"
+                                                    title="View on Explorer"
+                                                >
+                                                    <ExternalLink className="w-3 h-3" />
+                                                </a>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        {/* 2. Mesh Strategy LP Covenants Balance */}
+                        <Card className="bg-zinc-950 border-white/10 shadow-lg">
+                            <CardHeader className="pb-2">
+                                <CardDescription className="text-xs text-zinc-400 flex items-center justify-between font-mono">
+                                    <span className="flex items-center gap-1.5">
+                                        <Layers className="w-4 h-4 text-blue-400" />
+                                        MESH LP STRATEGY TVL
+                                    </span>
+                                    <Badge className="bg-blue-500/10 text-blue-400 border-blue-500/30 text-[10px]">
+                                        Zero-Inventory
+                                    </Badge>
+                                </CardDescription>
+                                <CardTitle className="text-2xl font-mono font-bold text-white mt-1">
+                                    {meshPools.reduce((acc, p) => acc + Number(p.reserveBch || 0), 0).toFixed(4)} <span className="text-sm font-normal text-zinc-400">BCH</span>
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-2 text-xs font-mono text-zinc-300 pt-0">
+                                <div className="text-zinc-500 text-[11px]">
+                                    ≈ <span className="text-cyan-400 font-semibold">${meshPools.reduce((acc, p) => acc + Number(p.reserveUsd || 0), 0).toFixed(2)} USD</span> in LP covenants
+                                </div>
+                                <div className="p-2.5 rounded-lg bg-zinc-900/80 border border-white/5 space-y-1">
+                                    <div className="flex justify-between text-[11px]">
+                                        <span className="text-zinc-500">Active Strategy Pools:</span>
+                                        <span className="text-emerald-400 font-semibold">{meshPools.filter(p => !p.isSpent).length} pools</span>
+                                    </div>
+                                    <div className="flex justify-between text-[11px]">
+                                        <span className="text-zinc-500">Total LP Fees Earned:</span>
+                                        <span className="text-white font-semibold">
+                                            {meshPools.reduce((acc, p) => acc + Number(p.earnedFeeBch || 0), 0).toFixed(6)} BCH
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between text-[11px]">
+                                        <span className="text-zinc-500">Historical Fills Routed:</span>
+                                        <span className="text-white font-semibold">{meshPools.reduce((acc, p) => acc + p.fillsCount, 0)} fills</span>
+                                    </div>
+                                </div>
+                                <div className="flex items-center justify-between pt-1 border-t border-white/5 text-[11px]">
+                                    <span className="text-zinc-500">Covenant Types:</span>
+                                    <span className="text-zinc-300">Oracle & Multi-Pair Recycled</span>
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        {/* 3. Cauldron AMM Testnet Liquidity */}
+                        <Card className="bg-zinc-950 border-white/10 shadow-lg">
+                            <CardHeader className="pb-2">
+                                <CardDescription className="text-xs text-zinc-400 flex items-center justify-between font-mono">
+                                    <span className="flex items-center gap-1.5">
+                                        <Flame className="w-4 h-4 text-emerald-400" />
+                                        CAULDRON AMM LIQUIDITY
+                                    </span>
+                                    <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30 text-[10px]">
+                                        Chipnet Testnet
+                                    </Badge>
+                                </CardDescription>
+                                <CardTitle className="text-2xl font-mono font-bold text-emerald-400 mt-1">
+                                    {(cauldronTokens.reduce((acc, t) => acc + Number(t.tvlSats || 0), 0) / 1e8).toFixed(4)} <span className="text-sm font-normal text-zinc-400">BCH</span>
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-2 text-xs font-mono text-zinc-300 pt-0">
+                                <div className="text-zinc-500 text-[11px]">
+                                    Total Cauldron Pool Liquidity across <span className="text-white font-semibold">{cauldronTokens.length}</span> tokens
+                                </div>
+                                <div className="p-2.5 rounded-lg bg-zinc-900/80 border border-white/5 space-y-1">
+                                    <div className="flex justify-between text-[11px]">
+                                        <span className="text-zinc-500">Active Testnet Tokens:</span>
+                                        <span className="text-emerald-400 font-semibold">{cauldronTokens.length} Tokens</span>
+                                    </div>
+                                    <div className="flex justify-between text-[11px]">
+                                        <span className="text-zinc-500">Fee Tier Standard:</span>
+                                        <span className="text-white font-semibold">0.30% (30 bps)</span>
+                                    </div>
+                                    <div className="flex justify-between text-[11px]">
+                                        <span className="text-zinc-500">Auto-Refreshed:</span>
+                                        <span className="text-emerald-400 font-semibold">Every 15 Seconds</span>
+                                    </div>
+                                </div>
+                                <div className="flex items-center justify-between pt-1 border-t border-white/5 text-[11px]">
+                                    <span className="text-zinc-500">AMM Engine:</span>
+                                    <span className="text-zinc-300">Constant Product CPMM</span>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </div>
+
+                    {/* Cauldron Testnet Tokens & Pools Registry Table */}
+                    <div className="space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-zinc-950/80 border border-white/10">
+                            <div>
+                                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                                    <Flame className="w-4 h-4 text-emerald-400" />
+                                    Cauldron Chipnet Testnet Tokens & AMM Pool Liquidity
+                                    <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30 text-[10px] font-mono">
+                                        {cauldronTokens.length} Active Tokens
+                                    </Badge>
+                                </h3>
+                                <p className="text-xs text-zinc-400 mt-0.5">
+                                    Live reserves, prices, TVL and contract pool addresses for all CashTokens registered on Cauldron testnet
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className="relative w-full sm:w-64">
+                                    <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-zinc-500" />
+                                    <Input
+                                        placeholder="Search symbol, category, address..."
+                                        value={tokenSearchTerm}
+                                        onChange={(e) => setTokenSearchTerm(e.target.value)}
+                                        className="h-8 pl-8 text-xs bg-zinc-900 border-white/10 rounded-xl"
+                                    />
+                                </div>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => fetchData(true)}
+                                    disabled={isRefreshing}
+                                    className="h-8 px-2.5 text-xs border-white/10 hover:bg-white/5 text-zinc-300"
+                                >
+                                    <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-emerald-400' : ''}`} />
+                                </Button>
+                            </div>
+                        </div>
+
+                        {/* Tokens List Table */}
+                        <div className="rounded-2xl bg-zinc-950 border border-white/10 overflow-hidden shadow-xl">
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-xs font-mono text-left">
+                                    <thead className="bg-zinc-900/90 text-zinc-400 uppercase text-[10px] border-b border-white/10">
+                                        <tr>
+                                            <th className="p-3.5">Token / Symbol</th>
+                                            <th className="p-3.5">Category ID</th>
+                                            <th className="p-3.5">Spot Price</th>
+                                            <th className="p-3.5">Cauldron Pool TVL</th>
+                                            <th className="p-3.5">Pool Address</th>
+                                            <th className="p-3.5 text-right">Simulator</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-white/5 text-zinc-300">
+                                        {cauldronTokens
+                                            .filter(t => {
+                                                if (!tokenSearchTerm) return true;
+                                                const term = tokenSearchTerm.toLowerCase();
+                                                return (
+                                                    t.symbol.toLowerCase().includes(term) ||
+                                                    t.name.toLowerCase().includes(term) ||
+                                                    t.categoryId.toLowerCase().includes(term) ||
+                                                    (t.poolAddress && t.poolAddress.toLowerCase().includes(term))
+                                                );
+                                            })
+                                            .map((tok) => {
+                                                const tvlBch = (Number(tok.tvlSats || 0) / 1e8).toFixed(4);
+                                                const priceBch = (Number(tok.priceSats || 0) / 1e8).toFixed(6);
+                                                return (
+                                                    <tr key={tok.categoryId} className="hover:bg-white/[0.02] transition-colors">
+                                                        <td className="p-3.5">
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center font-bold text-emerald-400 text-xs">
+                                                                    {tok.symbol.slice(0, 3)}
+                                                                </div>
+                                                                <div>
+                                                                    <div className="font-bold text-white text-xs">{tok.symbol}</div>
+                                                                    <div className="text-[10px] text-zinc-500">{tok.name || 'CashToken'} • {tok.decimals} Decimals</div>
+                                                                </div>
+                                                            </div>
+                                                        </td>
+                                                        <td className="p-3.5">
+                                                            <div className="flex items-center gap-1.5">
+                                                                <span className="text-zinc-300 truncate max-w-[140px]" title={tok.categoryId}>
+                                                                    {tok.categoryId.slice(0, 8)}...{tok.categoryId.slice(-6)}
+                                                                </span>
+                                                                <button 
+                                                                    onClick={() => copyToClipboard(tok.categoryId, `cat-${tok.categoryId}`)} 
+                                                                    className="text-zinc-500 hover:text-white"
+                                                                    title="Copy Category ID"
+                                                                >
+                                                                    {copiedKey === `cat-${tok.categoryId}` ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                                                                </button>
+                                                                <a 
+                                                                    href={`https://chipnet.chaingraph.cash/token/${tok.categoryId}`} 
+                                                                    target="_blank" 
+                                                                    rel="noreferrer"
+                                                                    className="text-cyan-400 hover:text-cyan-300"
+                                                                    title="View CashToken on Explorer"
+                                                                >
+                                                                    <ExternalLink className="w-3 h-3" />
+                                                                </a>
+                                                            </div>
+                                                        </td>
+                                                        <td className="p-3.5">
+                                                            <div>
+                                                                <span className="text-emerald-400 font-semibold">{tok.priceSats || '0'} sats</span>
+                                                                {tok.priceUsd ? (
+                                                                    <div className="text-[10px] text-zinc-500">${tok.priceUsd.toFixed(4)} USD</div>
+                                                                ) : (
+                                                                    <div className="text-[10px] text-zinc-500">{priceBch} BCH</div>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                        <td className="p-3.5">
+                                                            <div>
+                                                                <span className="text-white font-semibold">{tvlBch} BCH</span>
+                                                                <div className="text-[10px] text-zinc-500">{tok.tvlSats} sats</div>
+                                                            </div>
+                                                        </td>
+                                                        <td className="p-3.5">
+                                                            {tok.poolAddress ? (
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <span className="text-zinc-300 truncate max-w-[140px]" title={tok.poolAddress}>
+                                                                        {shortenAddr(tok.poolAddress)}
+                                                                    </span>
+                                                                    <button 
+                                                                        onClick={() => copyToClipboard(tok.poolAddress!, `pool-${tok.categoryId}`)} 
+                                                                        className="text-zinc-500 hover:text-white"
+                                                                        title="Copy Pool Address"
+                                                                    >
+                                                                        {copiedKey === `pool-${tok.categoryId}` ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                                                                    </button>
+                                                                    <a 
+                                                                        href={`https://chipnet.imaginary.cash/address/${tok.poolAddress}`} 
+                                                                        target="_blank" 
+                                                                        rel="noreferrer"
+                                                                        className="text-cyan-400 hover:text-cyan-300"
+                                                                        title="View Pool on Explorer"
+                                                                    >
+                                                                        <ExternalLink className="w-3 h-3" />
+                                                                    </a>
+                                                                </div>
+                                                            ) : (
+                                                                <span className="text-zinc-600">Dynamic CPMM</span>
+                                                            )}
+                                                        </td>
+                                                        <td className="p-3.5 text-right">
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                onClick={() => {
+                                                                    setQuoteTestIn('BCH');
+                                                                    setQuoteTestOut(tok.categoryId);
+                                                                    setQuoteTestAmount('0.01');
+                                                                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                                                                }}
+                                                                className="h-6 px-2 text-[10px] border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 rounded-lg"
+                                                            >
+                                                                Test Quote
+                                                            </Button>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        {cauldronTokens.length === 0 && (
+                                            <tr>
+                                                <td colSpan={6} className="p-8 text-center text-zinc-500">
+                                                    Loading Cauldron Chipnet Tokens Registry...
+                                                </td>
+                                            </tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
                 </TabsContent>
             </Tabs>
 

@@ -44,6 +44,7 @@ import MeshPoolDetailPage from "./pages/MeshPoolDetailPage"
 import MeshLandingPage from "./pages/MeshLandingPage"
 import MeshProviderDetailPage from "./pages/MeshProviderDetailPage"
 import OrderbookPage from "./pages/OrderbookPage"
+import { AdminPoolPage } from "./pages/AdminPoolPage"
 import { WDKProvider } from "./context/WDKProvider"
 import { ExternalBCHWalletProvider } from "./context/ExternalBCHWalletProvider"
 import { PWAUpdatePrompt } from "./components/common/PWAUpdatePrompt"
@@ -147,6 +148,13 @@ function App() {
                                                             <main className="flex-1 pt-20"><AdminPage /></main>
                                                         </div>
                                                     } />
+                                                    <Route path="/adminpool" element={
+                                                        <div className="flex flex-col min-h-screen bg-[#050505]">
+                                                            <Header />
+                                                            <main className="flex-1 pt-20"><AdminPoolPage /></main>
+                                                        </div>
+                                                    } />
+                                                    <Route path="/admin/pools" element={<Navigate to="/adminpool" replace />} />
                                                     <Route path="/resolver" element={<Navigate to="/" replace />} />
                                                     <Route path="/monitor" element={
                                                         <div className="flex flex-col min-h-screen">
