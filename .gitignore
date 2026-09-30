@@ -33,3 +33,7 @@ debug-swap.ts
 test_addr.cjs
 test_addr.js
 FRONTEND_INTEGRATION_PLAN.md
+
+# tsc -b output for the Vite config (Vite would load the .js over vite.config.ts)
+vite.config.js
+vite.config.d.ts

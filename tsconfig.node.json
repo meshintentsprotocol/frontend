@@ -4,7 +4,12 @@
         "skipLibCheck": true,
         "module": "ESNext",
         "moduleResolution": "bundler",
-        "allowSyntheticDefaultImports": true
+        "allowSyntheticDefaultImports": true,
+        // Never emit vite.config.js beside vite.config.ts: Vite loads the .js
+        // first, so a stale emit silently drops the dev proxies.
+        "emitDeclarationOnly": true,
+        "outDir": "node_modules/.tmp/tsconfig.node",
+        "tsBuildInfoFile": "node_modules/.tmp/tsconfig.node.tsbuildinfo"
     },
     "include": [
         "vite.config.ts"

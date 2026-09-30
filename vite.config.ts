@@ -71,18 +71,7 @@ export default defineConfig({
                 rewrite: (path) => path.replace(/^\/api\/bardock/, ''),
                 secure: true,
             },
-            '/api/pyth': {
-                target: 'https://hermes.pyth.network',
-                changeOrigin: true,
-                rewrite: (path) => path.replace(/^\/api\/pyth/, ''),
-                secure: true,
-            },
-            '/api/coingecko': {
-                target: 'https://api.coingecko.com',
-                changeOrigin: true,
-                rewrite: (path) => path.replace(/^\/api\/coingecko/, ''),
-                secure: true,
-            },
+            // Prices / market data come from the mesh server (lib/marketData.ts), not vendor proxies.
         }
     }
 })
