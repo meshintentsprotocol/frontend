@@ -27,6 +27,9 @@ const keys = {
   recent: ['mesh', 'recent'] as const,
   marketRef: (t: string) => ['mesh', 'market-ref', t] as const,
   health: ['mesh', 'health'] as const,
+  templates: ['mesh', 'templates'] as const,
+  strategies: (o: string) => ['mesh', 'strategies', o] as const,
+  strategy: (id: string) => ['mesh', 'strategy', id] as const,
 };
 
 export function useMeshStats(refetchMs = 15_000) {
@@ -77,6 +80,26 @@ export function useMarketRef(token: string | undefined) {
   return useQuery({
     queryKey: keys.marketRef(token ?? ''), queryFn: () => meshApi.marketRef(token!), enabled: !!token && token !== '0x',
     refetchInterval: 60_000, staleTime: 30_000,
+  });
+}
+
+// ── Strategies ───────────────────────────────────────────────────────────────
+
+export function useStrategyTemplates() {
+  return useQuery({ queryKey: keys.templates, queryFn: () => meshApi.templates(), staleTime: 10 * 60_000 });
+}
+
+export function useStrategies(owner: string | undefined | null) {
+  return useQuery({
+    queryKey: keys.strategies(owner ?? ''), queryFn: () => meshApi.strategies(owner ?? undefined),
+    enabled: owner !== null, refetchInterval: 20_000, placeholderData: keepPreviousData,
+  });
+}
+
+export function useStrategy(id: string | undefined) {
+  return useQuery({
+    queryKey: keys.strategy(id ?? ''), queryFn: () => meshApi.strategy(id!), enabled: !!id,
+    refetchInterval: 15_000, retry: (n, e: any) => e?.status !== 404 && n < 2,
   });
 }
 

@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { meshApi, useInvalidateMesh, useMeshLp, useMeshPools, useMeshPoolStream, useMeshSigner, useMeshStats } from '@/hooks/useMesh';
-import { loadPending, removePending, type PendingRegistration } from '@/lib/mesh/pendingRegistrations';
+import { describePending, loadPending, registerPending, removePending, type PendingRegistration } from '@/lib/mesh/pendingRegistrations';
 import { formatPct, formatSatsCompact, formatUsd, satsToUsd, shortHex } from '@/lib/mesh/format';
 import { EmptyState, Panel, StatTile } from './shared';
 import { PoolsTable } from './PoolsTable';
@@ -19,8 +19,7 @@ export function PendingRegistrationsBanner() {
   async function retry(p: PendingRegistration) {
     setBusy(p.txid);
     try {
-      const r = await meshApi.register(p.items);
-      if (!r.success) throw new Error(r.error ?? 'registration failed');
+      await registerPending(meshApi, p);
       removePending(p.txid);
       setPending(loadPending());
       invalidate();
@@ -35,7 +34,7 @@ export function PendingRegistrationsBanner() {
       <p className="text-[11px] text-amber-100/80">These covenants are funded on-chain (your funds are safe there), but the Mesh server has not indexed them yet, so solvers can't route to them.</p>
       {pending.map(p => (
         <div key={p.txid} className="flex items-center justify-between gap-3 text-xs">
-          <span className="font-mono text-amber-100">{p.items.length} pool(s) · tx {shortHex(p.txid)}</span>
+          <span className="font-mono text-amber-100">{describePending(p)} · tx {shortHex(p.txid)}</span>
           <div className="flex gap-2">
             <Button size="sm" variant="outline" className="h-7 rounded-lg text-[11px]" onClick={() => { removePending(p.txid); setPending(loadPending()); }}>Dismiss</Button>
             <Button size="sm" className="h-7 rounded-lg text-[11px]" disabled={busy === p.txid} onClick={() => retry(p)}>

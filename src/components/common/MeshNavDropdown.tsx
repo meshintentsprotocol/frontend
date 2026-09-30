@@ -31,9 +31,9 @@ export const MESH_PAGES: MeshPageItem[] = [
     icon: Trophy,
   },
   {
-    name: 'Create Position',
+    name: 'New Position',
     path: '/mesh?tab=create',
-    description: 'Deploy new concentrated LP covenant',
+    description: 'Strategies and custom V3 pools',
     icon: PlusCircle,
   },
   {
