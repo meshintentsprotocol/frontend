@@ -274,6 +274,7 @@ export const NAV: NavSection[] = [
             {
                 title: 'Liquidity',
                 items: [
+                    { slug: 'api/pools', title: 'Pools', method: 'GET' },
                     { slug: 'api/positions', title: 'Positions', method: 'GET' },
                     { slug: 'api/orderbook', title: 'Orderbook', method: 'GET' },
                     { slug: 'api/rebalance', title: 'Rebalance quote', method: 'POST' },
