@@ -3,6 +3,10 @@
  *   form → server preview → every pool recomputed and checked locally (address
  *   and owner) → one transaction funds every pool → the server registers the
  *   strategy from that transaction → strategy dashboard.
+ *
+ * With `replaces`, the same form rebalances an existing strategy: one
+ * transaction docks all of its pools and funds the new set (the wallet adds
+ * any shortfall and the fee); the new strategy is registered as its successor.
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -18,7 +22,7 @@ import { meshApi, useInvalidateMesh, useMarketRef, useMeshHealth, useMeshSigner,
 import { formFor, toServerParams, type FieldSpec } from '@/lib/mesh/v3/strategyForms';
 import { parseV3Params, v3ContractFor } from '@/lib/mesh/v3/v3Pool';
 import { poolLevels } from '@/lib/mesh/v3/v3Display';
-import { buildDeployV3, type V3Deposit } from '@/lib/mesh/v3/v3Tx';
+import { buildDeployV3, buildRebalanceV3, type ClosePool, type V3Deposit } from '@/lib/mesh/v3/v3Tx';
 import { sendPoolTx, type BuiltTx } from '@/lib/mesh/poolTx';
 import type { StrategyInput, StrategyPreview } from '@/lib/mesh/meshApi';
 import { addPending, registerWithRetry, removePending } from '@/lib/mesh/pendingRegistrations';
@@ -48,7 +52,7 @@ function useDebounced<T>(value: T, ms = 400): T {
   return v;
 }
 
-export function StrategyBuilder({ templateId, onBack }: { templateId: string; onBack: () => void }) {
+export function StrategyBuilder({ templateId, onBack, replaces }: { templateId: string; onBack: () => void; replaces?: string }) {
   const navigate = useNavigate();
   const invalidate = useInvalidateMesh();
   const wallet = useMeshSigner();
@@ -119,19 +123,34 @@ export function StrategyBuilder({ templateId, onBack }: { templateId: string; on
     if (preview.isError) return (preview.error as Error).message;
     if (verified && !verified.ok) return `Refusing to deploy: ${verified.error}`;
     const t = preview.data?.totals; const b = balances.data;
-    if (t && b) {
+    if (t && b && !replaces) {
       if (BigInt(t.sats) > b.sats) return 'Not enough BCH in the wallet';
       for (const [cat, amt] of Object.entries(t.tokens)) if (BigInt(amt) > (b.tokens[cat] ?? 0n)) return `Not enough ${infoOf(cat).symbol} in the wallet`;
     }
     return null;
   }, [wallet, networkMismatch, input, preview.isError, preview.error, preview.data, verified, balances.data, health.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /** Live UTXOs of the strategy being replaced, with contracts rebuilt and checked locally. */
+  async function closeCurrent(id: string): Promise<ClosePool[]> {
+    const cur = await meshApi.strategy(id);
+    if (cur.strategy.ownerPkh !== wallet.pkh) throw new Error('You do not own the strategy being rebalanced');
+    const out: ClosePool[] = [];
+    for (const p of cur.pools) {
+      if (!p.v3) continue;
+      const utxos = await wallet.signer!.provider.getUtxos(p.address);
+      if (utxos.length) out.push({ contract: v3ContractFor(p.v3, p.address, wallet.signer!.provider).contract, utxos });
+    }
+    return out;
+  }
+
   async function onReview() {
     setFormError(null);
     if (!wallet.signer || !verified?.ok || !input.input || !preview.data) return;
     setBusy('Building transaction…');
     try {
-      const built = await buildDeployV3(wallet.signer, verified.deposits);
+      const built = replaces
+        ? await buildRebalanceV3(wallet.signer, await closeCurrent(replaces), verified.deposits)
+        : await buildDeployV3(wallet.signer, verified.deposits);
       setReview({ built, input: input.input, preview: preview.data });
     } catch (e: any) { setFormError(e?.message ?? String(e)); } finally { setBusy(null); }
   }
@@ -141,10 +160,14 @@ export function StrategyBuilder({ templateId, onBack }: { templateId: string; on
     setBusy(wallet.kind === 'external' ? 'Approve the transaction in your wallet…' : 'Signing and broadcasting…');
     let txid: string | null = null;
     try {
-      txid = await sendPoolTx(wallet.signer, review.built, `Deploy ${meta?.name ?? templateId} (${review.preview.pools.length} Mesh pool${review.preview.pools.length > 1 ? 's' : ''})`);
-      addPending({ txid, strategy: review.input, createdAt: Date.now() });
+      txid = await sendPoolTx(wallet.signer, review.built, `${replaces ? 'Rebalance into' : 'Deploy'} ${meta?.name ?? templateId} (${review.preview.pools.length} Mesh pool${review.preview.pools.length > 1 ? 's' : ''})`);
+      addPending({ txid, strategy: { ...review.input, replaces }, createdAt: Date.now() });
       setBusy('Registering with the Mesh server…');
-      const r = await registerWithRetry(() => meshApi.registerStrategy({ ...review.input, txid: txid! }));
+      const r = await registerWithRetry(() => meshApi.registerStrategy({ ...review.input, txid: txid!, replaces }));
+      if (replaces) {
+        const old = await meshApi.strategy(replaces).catch(() => null);
+        for (const p of old?.pools ?? []) await meshApi.sync(p.address).catch(() => undefined);
+      }
       removePending(txid);
       invalidate();
       toast.success('Strategy live', { description: `${review.preview.pools.length} pool(s) funded and verified on-chain · ${shortHex(txid)}` });
@@ -222,7 +245,8 @@ export function StrategyBuilder({ templateId, onBack }: { templateId: string; on
     <div className="space-y-6">
       <button type="button" onClick={onBack} className="inline-flex items-center gap-2 text-xs font-semibold text-zinc-400 hover:text-white"><ArrowLeft className="w-4 h-4" />All strategies</button>
       <div>
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">{meta?.name ?? templateId}</h1>
+        <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">{replaces ? 'Rebalance into: ' : ''}{meta?.name ?? templateId}</h1>
+        {replaces && <p className="text-[11px] text-amber-300/90 mt-1">One transaction closes every pool of the current strategy and funds this new set; your wallet adds any shortfall and the fee.</p>}
         <p className="text-xs text-zinc-400 mt-1">{meta?.summary ?? form.earns}</p>
       </div>
 
@@ -291,7 +315,7 @@ export function StrategyBuilder({ templateId, onBack }: { templateId: string; on
       <Dialog open={!!review} onOpenChange={o => { if (!o && !busy) setReview(null); }}>
         <DialogContent className="max-w-md bg-[#0c0c10] border border-white/10 rounded-3xl text-white">
           <DialogHeader>
-            <DialogTitle>Deploy {meta?.name ?? templateId}</DialogTitle>
+            <DialogTitle>{replaces ? 'Rebalance into' : 'Deploy'} {meta?.name ?? templateId}</DialogTitle>
             <DialogDescription className="text-zinc-400">One transaction funds every pool; the server then verifies each one on-chain.</DialogDescription>
           </DialogHeader>
           {review && (
@@ -304,7 +328,7 @@ export function StrategyBuilder({ templateId, onBack }: { templateId: string; on
               ))}
               <div className="flex justify-between px-2.5 text-zinc-400"><span>Network fee</span><span className="font-mono">{review.built.fee.toString()} sats ({review.built.size} B)</span></div>
               <Button className="w-full h-11 rounded-xl font-bold mt-2" disabled={!!busy} onClick={onConfirm}>
-                {busy ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />{busy}</> : <><CheckCircle2 className="w-4 h-4 mr-2" />Sign and deploy</>}
+                {busy ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />{busy}</> : <><CheckCircle2 className="w-4 h-4 mr-2" />{replaces ? 'Sign and rebalance' : 'Sign and deploy'}</>}
               </Button>
             </div>
           )}

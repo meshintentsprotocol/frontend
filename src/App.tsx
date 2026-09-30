@@ -43,6 +43,7 @@ import MeshPage from "./pages/MeshPage"
 import MeshPoolDetailPage, { MeshPoolOutpointRedirect } from "./pages/MeshPoolDetailPage"
 import MeshLandingPage from "./pages/MeshLandingPage"
 import MeshProviderDetailPage from "./pages/MeshProviderDetailPage"
+import MeshStrategyPage from "./pages/MeshStrategyPage"
 import OrderbookPage from "./pages/OrderbookPage"
 import { AdminPoolPage } from "./pages/AdminPoolPage"
 import { WDKProvider } from "./context/WDKProvider"
@@ -115,6 +116,12 @@ function App() {
                                                          <div className="flex flex-col min-h-screen bg-[#050505]">
                                                              <Header />
                                                              <main className="flex-1 pt-24"><MeshProviderDetailPage /></main>
+                                                         </div>
+                                                     } />
+                                                     <Route path="/mesh/strategy/:id" element={
+                                                         <div className="flex flex-col min-h-screen bg-[#050505]">
+                                                             <Header />
+                                                             <main className="flex-1 pt-24"><MeshStrategyPage /></main>
                                                          </div>
                                                      } />
                                                      <Route path="/mesh/pool/:address" element={

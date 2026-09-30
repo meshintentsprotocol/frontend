@@ -3,10 +3,12 @@ import { PlusCircle, Wallet, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { meshApi, useInvalidateMesh, useMeshLp, useMeshPools, useMeshPoolStream, useMeshSigner, useMeshStats } from '@/hooks/useMesh';
+import { Link } from 'react-router-dom';
+import { meshApi, useInvalidateMesh, useMeshLp, useMeshPools, useMeshPoolStream, useMeshSigner, useMeshStats, useStrategies } from '@/hooks/useMesh';
+import { strategyUrl } from '@/components/mesh/strategies/StrategyBuilder';
 import { describePending, loadPending, registerPending, removePending, type PendingRegistration } from '@/lib/mesh/pendingRegistrations';
 import { formatPct, formatSatsCompact, formatUsd, satsToUsd, shortHex } from '@/lib/mesh/format';
-import { EmptyState, Panel, StatTile } from './shared';
+import { EmptyState, Panel, PoolStatusBadge, StatTile } from './shared';
 import { PoolsTable } from './PoolsTable';
 
 /** Pools funded in this browser whose registration did not complete. */
@@ -53,6 +55,7 @@ export function MeshMyPools({ onCreateNew }: { onCreateNew: () => void }) {
   const [status, setStatus] = useState<'active,exhausted' | 'all'>('active,exhausted');
   const mine = useMeshPools({ owner: wallet.pkh ?? undefined, status, sort: 'value' }, { enabled: !!wallet.pkh });
   const lp = useMeshLp(wallet.pkh ?? undefined);
+  const strategies = useStrategies(wallet.pkh ?? null);
   useMeshPoolStream();
   const bchUsd = stats.data?.bchUsd;
   const summary = lp.data?.lp;
@@ -82,6 +85,25 @@ export function MeshMyPools({ onCreateNew }: { onCreateNew: () => void }) {
             <StatTile label="P&L vs holding" value={summary ? `${BigInt(summary.pnlSats) >= 0n ? '+' : ''}${formatSatsCompact(summary.pnlSats)}` : '—'}
               accent={summary && BigInt(summary.pnlSats) < 0n ? 'text-rose-400' : 'text-emerald-400'} sub={summary ? `${summary.activePools} active of ${summary.poolCount}` : undefined} />
           </div>
+          {(strategies.data?.strategies.length ?? 0) > 0 && (
+            <Panel title="Strategies" action={<span className="text-[11px] text-zinc-500">{strategies.data!.strategies.filter(s => s.status !== 'closed').length} open</span>}>
+              <div className="space-y-2">
+                {strategies.data!.strategies.map(s => (
+                  <Link key={s.id} to={strategyUrl(s.id)} className="flex items-center justify-between gap-3 p-3 rounded-xl bg-black/30 border border-white/[0.06] hover:border-white/20">
+                    <div className="min-w-0">
+                      <div className="text-sm font-bold text-white capitalize">{s.template.replace('-', ' ')}</div>
+                      <div className="text-[10px] text-zinc-500">{s.poolCount} pools · {s.fillCount} fills{s.replacedBy ? ' · rebalanced' : ''}</div>
+                    </div>
+                    <div className="flex items-center gap-4 text-xs font-mono">
+                      <span className="text-zinc-200">{formatSatsCompact(s.valueSats)}</span>
+                      <span className={BigInt(s.pnlSats) >= 0n ? 'text-emerald-400' : 'text-rose-400'}>{BigInt(s.pnlSats) >= 0n ? '+' : ''}{formatSatsCompact(s.pnlSats)}</span>
+                      <PoolStatusBadge status={s.status} />
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </Panel>
+          )}
           <Panel title="Pools" action={
             <div className="flex gap-1 p-1 rounded-lg bg-black/40 border border-white/[0.06]">
               {([['active,exhausted', 'Open'], ['all', 'Including closed']] as const).map(([s, l]) => (

@@ -1,5 +1,5 @@
 /**
- * /mesh/pool/:address — one StrategyCovenantV2 pool. Pools are identified by
+ * /mesh/pool/:address — one pool (MeshPoolV3 pools render V3PoolDetail). Pools are identified by
  * their covenant address, which stays the same across fills (outpoints move).
  * Legacy /mesh/pool/:txid/:vout links are resolved and redirected.
  */
@@ -17,6 +17,7 @@ import {
 import { PoolReserves } from '@/components/mesh/pools/PoolsTable';
 import { PoolManagePanel } from '@/components/mesh/pools/PoolManagePanel';
 import { PoolActivityTable, PoolValueChart } from '@/components/mesh/pools/PoolActivity';
+import { V3PoolDetail } from '@/components/mesh/v3/V3PoolDetail';
 
 export function MeshPoolDetailPage() {
   const { address: raw } = useParams();
@@ -52,6 +53,14 @@ export function MeshPoolDetailPage() {
         </Panel>
       </div>
     );
+  }
+
+  if (p.v3) {
+    const syncV3 = async () => {
+      setSyncing(true);
+      try { await meshApi.sync(p.address); invalidate(); } catch (e: any) { toast.error('Sync failed', { description: e?.message }); } finally { setSyncing(false); }
+    };
+    return <V3PoolDetail pool={p} bundle={pool.data?.bundle ?? []} onSync={syncV3} syncing={syncing} />;
   }
 
   const trader = token.known ? traderTokenPerBch(p, token.decimals) : null;

@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Layers } from 'lucide-react';
 import type { Pool } from '@/lib/mesh/meshApi';
 import { traderTokenPerBch } from '@/lib/mesh/pool';
+import { poolLevels } from '@/lib/mesh/v3/v3Display';
+import { V3PoolLabel, amountOf, useAssetInfo } from '@/components/mesh/v3/V3PoolDetail';
 import { formatNumber, formatPct, formatSatsCompact } from '@/lib/mesh/format';
 import {
   EmptyState, PoolPairLabel, PoolStatusBadge, SatsValue, poolUrl, tokenAmount, useTokenInfo, type TokenInfo,
@@ -33,6 +35,25 @@ export function PoolPrice({ pool, token }: { pool: Pool; token: TokenInfo }) {
       <div className="text-[11px] text-zinc-500">{token.symbol} per BCH</div>
     </div>
   );
+}
+
+/** V3 row cells: first accepted asset's trader price, and the reserve. */
+function V3PriceCell({ pool }: { pool: Pool }) {
+  const v3 = pool.v3!;
+  const asset = useAssetInfo([v3.reserve, ...v3.slots.map(s => s.cat)]);
+  const lv = poolLevels(pool.address, v3, c => asset(c).decimals).filter(l => !l.fromMirror);
+  if (!lv.length) return <span className="text-zinc-500 text-xs">token↔token</span>;
+  return (
+    <div className="font-mono">
+      {lv.slice(0, 2).map((l, i) => <div key={i} className="text-zinc-200">{formatNumber(l.traderTokenPerBch, 4)} <span className="text-[10px] text-zinc-500">{asset(l.token).symbol}/BCH</span></div>)}
+      {lv.length > 2 && <div className="text-[10px] text-zinc-500">+{lv.length - 2} more</div>}
+    </div>
+  );
+}
+function V3ReserveCell({ pool }: { pool: Pool }) {
+  const asset = useAssetInfo([pool.v3!.reserve]);
+  const r = asset(pool.v3!.reserve);
+  return <div className="font-mono text-zinc-200">{amountOf(pool.v3!.reserve === '0x' ? pool.reserves.sats : pool.reserves.tokens, r)}</div>;
 }
 
 export function PoolsTable({ pools, bchUsd, loading, empty, showOwner = false }: {
@@ -66,12 +87,12 @@ export function PoolsTable({ pools, bchUsd, loading, empty, showOwner = false }:
               <tr key={pool.address} onClick={() => navigate(poolUrl(pool))}
                 className="border-b border-white/[0.04] hover:bg-white/[0.03] cursor-pointer transition-colors">
                 <td className="px-2 py-3">
-                  <PoolPairLabel token={token} side={pool.side} />
+                  {pool.v3 ? <V3PoolLabel pool={pool} /> : <PoolPairLabel token={token} side={pool.side} />}
                   {showOwner && <div className="text-[10px] text-zinc-600 font-mono mt-0.5">LP {pool.ownerAddress.split(':')[1]?.slice(0, 10)}…</div>}
                 </td>
-                <td className="px-2 py-3"><PoolPrice pool={pool} token={token} /></td>
+                <td className="px-2 py-3">{pool.v3 ? <V3PriceCell pool={pool} /> : <PoolPrice pool={pool} token={token} />}</td>
                 <td className="px-2 py-3 font-mono text-zinc-300">{(pool.feeBps / 100).toFixed(2)}%</td>
-                <td className="px-2 py-3"><PoolReserves pool={pool} token={token} /></td>
+                <td className="px-2 py-3">{pool.v3 ? <V3ReserveCell pool={pool} /> : <PoolReserves pool={pool} token={token} />}</td>
                 <td className="px-2 py-3"><SatsValue sats={pool.valueSats} bchUsd={bchUsd} className="text-zinc-200" /></td>
                 <td className="px-2 py-3 font-mono text-zinc-300">{formatSatsCompact(pool.stats.volume7dSats)}</td>
                 <td className="px-2 py-3 font-mono text-emerald-400">{formatSatsCompact(pool.stats.fees7dSats)}</td>

@@ -14,6 +14,7 @@ export function MeshPage() {
   const rawTab = searchParams.get('tab');
   const activeTab: Tab = rawTab === 'pools' || rawTab === 'create' || rawTab === 'leaderboard' ? rawTab : 'positions';
   const template = searchParams.get('template') ?? undefined;
+  const replaces = searchParams.get('replaces') ?? undefined;
 
   const go = (tab: Tab, extra?: Record<string, string>) => setSearchParams({ tab, ...(extra ?? {}) });
 
@@ -25,7 +26,7 @@ export function MeshPage() {
       {activeTab === 'create' && (
         !template ? <StrategyGallery onPick={id => go('create', { template: id })} />
           : template === 'custom' ? <CreatePoolV3Form onBack={() => go('create')} />
-            : <StrategyBuilder key={template} templateId={template} onBack={() => go('create')} />
+            : <StrategyBuilder key={`${template}-${replaces ?? ''}`} templateId={template} replaces={replaces} onBack={() => go('create')} />
       )}
     </div>
   );
