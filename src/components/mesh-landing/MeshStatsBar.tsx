@@ -1,56 +1,34 @@
-import { useEffect, useState } from 'react';
 import { Activity, Clock, Zap, Database, TrendingUp } from 'lucide-react';
+import { useMeshHealth, useMeshStats } from '@/hooks/useMesh';
+import { formatSatsCompact } from '@/lib/mesh/format';
 
 interface MeshStats {
-  activePools: number;
-  totalFills: number;
+  activePools: string;
+  totalFills: string;
   avgLatency: string;
   feeRange: string;
   settlement: string;
 }
 
-const MOCK_STATS: MeshStats = {
-  activePools: 12,
-  totalFills: 3847,
-  avgLatency: '< 30 sec',
-  feeRange: '10–100 bps',
-  settlement: 'BCH Mainnet + Chipnet',
-};
-
 const TICKER_ITEMS = (stats: MeshStats) => [
-  { icon: <Database className="w-3.5 h-3.5 text-emerald-400 shrink-0" />, label: 'Active Covenant Pools', value: stats.activePools.toString(), accent: 'text-emerald-400' },
-  { icon: <Zap className="w-3.5 h-3.5 text-teal-400 shrink-0" />, label: 'Protocol Fills', value: stats.totalFills.toLocaleString(), accent: 'text-teal-400' },
+  { icon: <Database className="w-3.5 h-3.5 text-emerald-400 shrink-0" />, label: 'Active Covenant Pools', value: stats.activePools, accent: 'text-emerald-400' },
+  { icon: <Zap className="w-3.5 h-3.5 text-teal-400 shrink-0" />, label: 'Pool Fills', value: stats.totalFills, accent: 'text-teal-400' },
   { icon: <Clock className="w-3.5 h-3.5 text-cyan-400 shrink-0" />, label: 'Avg Fill Latency', value: stats.avgLatency, accent: 'text-cyan-400' },
   { icon: <TrendingUp className="w-3.5 h-3.5 text-emerald-300 shrink-0" />, label: 'LP Fee Capture', value: stats.feeRange, accent: 'text-emerald-300' },
   { icon: <Activity className="w-3.5 h-3.5 text-teal-300 shrink-0" />, label: 'Settlement', value: stats.settlement, accent: 'text-teal-300' },
 ];
 
 export function MeshStatsBar() {
-  const [stats, setStats] = useState<MeshStats>(MOCK_STATS);
-
-  useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        const meshBase = import.meta.env.VITE_MESH_SERVER_URL || 'https://bchmesh-production.up.railway.app';
-        const res = await fetch(`${meshBase}/api/v1/stats`, { signal: AbortSignal.timeout(3000) });
-        if (res.ok) {
-          const data = await res.json();
-          setStats({
-            activePools: data.activePools ?? MOCK_STATS.activePools,
-            totalFills: data.totalFills ?? MOCK_STATS.totalFills,
-            avgLatency: data.avgLatency ?? MOCK_STATS.avgLatency,
-            feeRange: MOCK_STATS.feeRange,
-            settlement: MOCK_STATS.settlement,
-          });
-        }
-      } catch {
-        // Silently fall back to mock data
-      }
-    };
-    fetchStats();
-    const interval = setInterval(fetchStats, 15_000);
-    return () => clearInterval(interval);
-  }, []);
+  const { data } = useMeshStats();
+  const health = useMeshHealth();
+  // Live server figures only; '—' while unknown (never placeholder numbers).
+  const stats: MeshStats = {
+    activePools: data ? `${data.activePools} · ${formatSatsCompact(data.tvlSats)} TVL` : '—',
+    totalFills: data ? data.poolFillsTotal.toLocaleString() : '—',
+    avgLatency: data?.avgFillLatencySec != null ? `${data.avgFillLatencySec}s` : '—',
+    feeRange: '0.05–1.00% per pool',
+    settlement: health.data ? `BCH ${health.data.network}` : '—',
+  };
 
   const items = TICKER_ITEMS(stats);
   // Duplicate for seamless loop

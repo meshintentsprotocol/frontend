@@ -40,7 +40,7 @@ import BchSwapPage from "./pages/BchSwapPage"
 import WalletPage from "./pages/WalletPage"
 import OverviewPage from "./pages/OverviewPage"
 import MeshPage from "./pages/MeshPage"
-import MeshPoolDetailPage from "./pages/MeshPoolDetailPage"
+import MeshPoolDetailPage, { MeshPoolOutpointRedirect } from "./pages/MeshPoolDetailPage"
 import MeshLandingPage from "./pages/MeshLandingPage"
 import MeshProviderDetailPage from "./pages/MeshProviderDetailPage"
 import OrderbookPage from "./pages/OrderbookPage"
@@ -117,10 +117,17 @@ function App() {
                                                              <main className="flex-1 pt-24"><MeshProviderDetailPage /></main>
                                                          </div>
                                                      } />
-                                                     <Route path="/mesh/pool/:txid/:vout" element={
+                                                     <Route path="/mesh/pool/:address" element={
                                                          <div className="flex flex-col min-h-screen bg-[#050505]">
                                                              <Header />
                                                              <main className="flex-1 pt-24"><MeshPoolDetailPage /></main>
+                                                         </div>
+                                                     } />
+                                                     {/* legacy outpoint links: V2 pools move to a new outpoint on every fill */}
+                                                     <Route path="/mesh/pool/:txid/:vout" element={
+                                                         <div className="flex flex-col min-h-screen bg-[#050505]">
+                                                             <Header />
+                                                             <main className="flex-1 pt-24"><MeshPoolOutpointRedirect /></main>
                                                          </div>
                                                      } />
                                                      <Route path="/mesh-landing" element={<MeshLandingPage />} />

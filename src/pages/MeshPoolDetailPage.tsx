@@ -1,573 +1,191 @@
-import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
-import { useMeshServer, type MeshPosition } from '@/hooks/useMeshServer';
-import { useWDK } from '@/context/WDKProvider';
-import { usePoolFills } from '@/hooks/usePoolFills';
-import { useIsMobile } from '@/hooks/use-mobile';
+/**
+ * /mesh/pool/:address — one StrategyCovenantV2 pool. Pools are identified by
+ * their covenant address, which stays the same across fills (outpoints move).
+ * Legacy /mesh/pool/:txid/:vout links are resolved and redirected.
+ */
+import React, { useEffect, useState } from 'react';
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
+import { AlertTriangle, ArrowLeft, ArrowRightLeft, Copy, ExternalLink, Loader2, RefreshCw } from 'lucide-react';
+import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
+import { meshApi, useMeshPool, useMeshPoolActivity, useMeshPoolStream, useMeshSigner, useMeshStats, useInvalidateMesh } from '@/hooks/useMesh';
+import { traderTokenPerBch, tokenPerBchFromSatsPerUnit } from '@/lib/mesh/pool';
+import { explorerAddress, formatNumber, formatPct, formatSatsCompact, formatUsd, satsToUsd, shortHex, timeAgo } from '@/lib/mesh/format';
 import {
-  executeDockPosition,
-  executeTopUpPosition,
-  executeRebalancePosition,
-  fetchLivePoolBalance,
-  tokenSymbol,
-  getLocalPositionParams,
-  type LivePoolBalance,
-} from '@/lib/meshContracts';
-import { notifyToast as toast } from '@/lib/notify-toast';
-import { MeshPoolHeader } from '@/components/mesh/MeshPoolHeader';
-import { MeshPoolChart } from '@/components/mesh/MeshPoolChart';
-import { MeshPoolStatsCard } from '@/components/mesh/MeshPoolStatsCard';
-import { MeshPoolLinksCard } from '@/components/mesh/MeshPoolLinksCard';
-import { MeshPoolManageCard } from '@/components/mesh/MeshPoolManageCard';
-import { MeshPoolActivityTable } from '@/components/mesh/MeshPoolActivityTable';
-import { MeshPoolBundleCard } from '@/components/mesh/MeshPoolBundleCard';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog';
-import {
-  Drawer,
-  DrawerContent,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerDescription,
-} from '@/components/ui/drawer';
-import {
-  ShieldCheck,
-  AlertTriangle,
-  Loader2,
-  ArrowLeft,
-  Zap,
-} from 'lucide-react';
+  Panel, PoolPairLabel, PoolStatusBadge, StatTile, lpUrl, poolUrl, tokenAmount, useTokenInfo,
+} from '@/components/mesh/pools/shared';
+import { PoolReserves } from '@/components/mesh/pools/PoolsTable';
+import { PoolManagePanel } from '@/components/mesh/pools/PoolManagePanel';
+import { PoolActivityTable, PoolValueChart } from '@/components/mesh/pools/PoolActivity';
 
 export function MeshPoolDetailPage() {
-  const { txid, vout } = useParams<{ txid: string; vout: string }>();
-  const navigate = useNavigate();
-  const wdk = useWDK();
-  const isConnected = Boolean(wdk.bchAddress || wdk.bchWallet);
-  const { positions, loading: serverLoading, refresh: refreshServer, bchUsdPrice, fetchPositionByTxid } = useMeshServer(10_000);
+  const { address: raw } = useParams();
+  const address = raw ? decodeURIComponent(raw) : undefined;
+  const pool = useMeshPool(address);
+  const activity = useMeshPoolActivity(address);
+  const stats = useMeshStats();
+  const wallet = useMeshSigner();
+  const invalidate = useInvalidateMesh();
+  const [syncing, setSyncing] = useState(false);
+  useMeshPoolStream(pool.data?.pool.address);
 
-  const [isDocking, setIsDocking] = useState<boolean>(false);
-  const [isToppingUp, setIsToppingUp] = useState<boolean>(false);
-  const [isRebalancing, setIsRebalancing] = useState<boolean>(false);
-  const [isManageOpen, setIsManageOpen] = useState<boolean>(false);
-  const isMobile = useIsMobile();
-  const manageCardRef = useRef<HTMLDivElement>(null);
+  const p = pool.data?.pool;
+  const { get } = useTokenInfo([p?.tokenCategory]);
+  const token = get(p?.tokenCategory);
+  const bchUsd = stats.data?.bchUsd ?? null;
+  const network = wallet.network;
 
-  // Live on-chain balance state
-  const [liveBalance, setLiveBalance] = useState<LivePoolBalance | null>(null);
-  const [isRefreshingBalance, setIsRefreshingBalance] = useState<boolean>(false);
-  const [asyncPosition, setAsyncPosition] = useState<MeshPosition | null>(null);
+  if (pool.isLoading) {
+    return <div className="py-28 text-center text-zinc-400 text-sm"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-3 text-emerald-400" />Loading pool…</div>;
+  }
+  if (!p) {
+    const notFound = (pool.error as any)?.status === 404;
+    return (
+      <div className="container mx-auto max-w-lg py-16">
+        <Panel>
+          <div className="text-center space-y-3 py-6">
+            <AlertTriangle className="w-10 h-10 text-amber-400 mx-auto" />
+            <h2 className="text-xl font-bold text-white">{notFound ? 'Pool not found' : 'Could not load the pool'}</h2>
+            <p className="text-xs text-zinc-400">{notFound ? 'No registered Mesh pool has this address.' : String((pool.error as Error)?.message ?? '')}</p>
+            <Link to="/mesh?tab=pools" className="inline-flex items-center gap-2 text-xs font-semibold text-zinc-300 hover:text-white"><ArrowLeft className="w-4 h-4" />Back to pools</Link>
+          </div>
+        </Panel>
+      </div>
+    );
+  }
 
-  const voutNum = Number(vout || 0);
+  const trader = token.known ? traderTokenPerBch(p, token.decimals) : null;
+  const market = token.known && p.priceSource === 'cauldron' ? tokenPerBchFromSatsPerUnit(p.marketSatsPerToken, token.decimals) : null;
+  const vsMarket = trader && market ? (trader / market - 1) * 100 : null;
+  const pnl = BigInt(p.stats.pnlSats);
 
-  // Match position from live indexer, client cache or async server lookup
-  const cachedPosition = useMemo<MeshPosition | null>(() => {
-    if (!txid) return null;
-    const found = positions.find((p) => p.txid === txid && p.vout === voutNum);
-    if (found) return found;
-
-    const local = getLocalPositionParams(txid);
-    if (local) {
-      return {
-        txid,
-        vout: voutNum,
-        address: local.address || '',
-        contractType: local.contractType || 'StrategyCovenant',
-        ownerPkh: local.ownerPkh,
-        reserveSats: local.reserveSats || '845000000',
-        tokenCategoryIn: local.tokenCategoryIn || '0x',
-        tokenCategoryOut: local.tokenCategoryOut || 'dfe50223c8d5cba8dcef8dff6d92b61deb88a8ba44947367f2b746487b56039b',
-        tokenAmountIn: local.tokenAmountIn || '0',
-        tokenAmountOut: local.tokenAmountOut || '274118',
-        priceNum: local.priceNum || 32440,
-        priceDen: local.priceDen || 100,
-        feeBps: local.feeBps || 30,
-        curveType: local.curveType || 1,
-        rangeLow: local.rangeLow || 310,
-        rangeHigh: local.rangeHigh || 345,
-        startTime: local.startTime,
-        duration: local.duration,
-        floorPriceNum: local.floorPriceNum,
-        oraclePkHex: local.oraclePkHex,
-        pairId: local.pairId,
-        spreadBps: local.spreadBps,
-        earnedFeeSats: '2840000',
-        lastSeenBlock: 220100,
-      };
-    }
-
-    // Default fallback mock if fresh demo URL
-    if (txid === '924aa5af7145a8d03e5029791df5360158b552024b89e35129bd73e266d8c061') {
-      return {
-        txid,
-        vout: 0,
-        address: 'bchtest:pdhlx033sj4g70w76uzc9q7a4h774g8a9vclsk32pxj92g72n39g6jvd83er3',
-        contractType: 'OracleStrategyCovenant',
-        reserveSats: '845000000',
-        tokenCategoryIn: '0x',
-        tokenCategoryOut: 'dfe50223c8d5cba8dcef8dff6d92b61deb88a8ba44947367f2b746487b56039b',
-        tokenAmountIn: '0',
-        tokenAmountOut: '274118',
-        priceNum: 32440,
-        priceDen: 100,
-        feeBps: 30,
-        curveType: 1,
-        rangeLow: 310,
-        rangeHigh: 345,
-        ownerPkh: '9ca69d52c28da1207604561081a95e02204c3210',
-        earnedFeeSats: '2840000',
-        lastSeenBlock: 220100,
-      };
-    }
-
-    return null;
-  }, [positions, txid, voutNum]);
-
-  // Async lookup for pools that may not be in initial cache list
-  useEffect(() => {
-    if (!cachedPosition && txid && fetchPositionByTxid) {
-      let isMounted = true;
-      fetchPositionByTxid(txid, voutNum)
-        .then((resolved) => {
-          if (isMounted && resolved) {
-            setAsyncPosition(resolved);
-          }
-        })
-        .catch(() => {});
-      return () => {
-        isMounted = false;
-      };
-    }
-  }, [cachedPosition, txid, voutNum, fetchPositionByTxid]);
-
-  const position = cachedPosition || asyncPosition;
-
-  // Query live pool on-chain balance
-  const refreshLiveBalance = useCallback(async () => {
-    if (!position?.address) return;
-    setIsRefreshingBalance(true);
-    try {
-      const bal = await fetchLivePoolBalance(
-        position.address,
-        (wdk.bchNetwork as any) || 'chipnet'
-      );
-      setLiveBalance(bal);
-    } catch (e) {
-      console.warn('[Mesh] Error refreshing live balance:', e);
-    } finally {
-      setIsRefreshingBalance(false);
-    }
-  }, [position?.address, wdk.bchNetwork]);
-
-  useEffect(() => {
-    void refreshLiveBalance();
-    const timer = setInterval(() => {
-      void refreshLiveBalance();
-    }, 10_000);
-    return () => clearInterval(timer);
-  }, [refreshLiveBalance]);
-
-  // Fill activity hook
-  const {
-    fills,
-    totalFills,
-    totalBchVolume,
-    totalFeesEarnedBch,
-    loading: fillsLoading,
-    refresh: refreshFills,
-  } = usePoolFills(position?.address, position?.txid, position?.tokenCategoryOut, 12_000);
-
-  const livePrice = bchUsdPrice() || 324.4;
-  const tokenOutName = tokenSymbol(position?.tokenCategoryOut);
-
-  // Effective reserves
-  const effectiveReserveSats = liveBalance
-    ? liveBalance.satoshis
-    : BigInt(position?.reserveSats || '845000000');
-
-  const effectiveReserveBch = Number(effectiveReserveSats) / 1e8;
-  const effectiveReserveUsd = effectiveReserveBch * livePrice;
-
-  const effectiveTokenAmount =
-    liveBalance?.tokenAmount && liveBalance.tokenAmount > 0n
-      ? liveBalance.tokenAmount
-      : BigInt(position?.tokenAmountOut || '274118');
-
-  const isDrained = effectiveReserveSats < 546n && effectiveTokenAmount <= 0n;
-
-  // Execution: Partial / Full Docking
-  const handleDock = async (dockPercent: number) => {
-    if (!position || !wdk.bchWallet) {
-      toast.error('Connect your BCH wallet to dock this position');
-      return;
-    }
-
-    if (position.isMock) {
-      toast.error(
-        'This is a seeded demo position. Deploy your own pool to test live docking on Chipnet.',
-        { duration: 8000 }
-      );
-      return;
-    }
-
-    setIsDocking(true);
-    const actionLabel = dockPercent === 100 ? '100% Full Dock' : `${dockPercent}% Partial Dock`;
-    toast.info(`Executing ${actionLabel} on Chipnet…`);
-
-    try {
-      const res = await executeDockPosition(wdk.bchWallet, position, {
-        percentToDock: dockPercent,
-        network: (wdk.bchNetwork as any) || 'chipnet',
-      });
-
-      const dockedBch = (Number(res.dockedSats) / 1e8).toFixed(6);
-      const tokenMsg = res.dockedTokens ? ` & ${res.dockedTokens} ${tokenOutName}` : '';
-
-      toast.success(
-        `🎉 Successfully docked ${dockedBch} BCH${tokenMsg}! TXID: ${res.txid.slice(0, 10)}…`,
-        {
-          duration: 9000,
-          action: {
-            label: 'View on Explorer',
-            onClick: () =>
-              window.open(`https://chipnet.chaingraph.cash/tx/${res.txid}`, '_blank'),
-          },
-        }
-      );
-
-      await Promise.all([refreshLiveBalance(), refreshServer(), refreshFills()]);
-    } catch (e: any) {
-      console.error('[Mesh] Dock execution failed:', e);
-      toast.error(`Dock failed: ${e?.message ?? 'Unknown error'}`);
-    } finally {
-      setIsDocking(false);
-    }
-  };
-
-  // Execution: Top Up Pool Capital
-  const handleTopUp = async (amountStr: string) => {
-    if (!position || !wdk.bchWallet) {
-      toast.error('Connect your BCH wallet to top up this pool');
-      return;
-    }
-
-    const bchAmount = parseFloat(amountStr);
-    if (isNaN(bchAmount) || bchAmount <= 0) {
-      toast.error('Enter a valid BCH amount to deposit');
-      return;
-    }
-
-    setIsToppingUp(true);
-    toast.info(`Sending ${bchAmount} BCH to covenant address…`);
-
-    try {
-      const txid = await executeTopUpPosition(wdk.bchWallet, position, bchAmount);
-
-      toast.success(
-        `🎉 Reserve topped up with ${bchAmount} BCH! TXID: ${txid.slice(0, 10)}…`,
-        {
-          duration: 8000,
-          action: {
-            label: 'View on Explorer',
-            onClick: () =>
-              window.open(`https://chipnet.chaingraph.cash/tx/${txid}`, '_blank'),
-          },
-        }
-      );
-
-      setTimeout(async () => {
-        await Promise.all([refreshLiveBalance(), refreshServer(), refreshFills()]);
-      }, 3000);
-    } catch (e: any) {
-      console.error('[Mesh] Top up failed:', e);
-      toast.error(`Top up failed: ${e?.message ?? 'Unknown error'}`);
-    } finally {
-      setIsToppingUp(false);
-    }
-  };
-
-  // Execution: Single-Tx Atomic Strategy Rebalance
-  const handleRebalance = async (newParams: {
-    rangeLow?: number;
-    rangeHigh?: number;
-    spreadBps?: number;
-    feeBps?: number;
-  }) => {
-    if (!position || !wdk.bchWallet) {
-      toast.error('Connect your BCH wallet to rebalance this position');
-      return;
-    }
-
-    if (position.isMock) {
-      toast.error(
-        'This is a seeded demo position. Deploy your own pool to test live rebalancing on Chipnet.',
-        { duration: 8000 }
-      );
-      return;
-    }
-
-    setIsRebalancing(true);
-    toast.info('Executing atomic single-tx rebalance on Chipnet (< $0.01 fee)…');
-
-    try {
-      const res = await executeRebalancePosition(wdk.bchWallet, position, {
-        newRangeLow: newParams.rangeLow,
-        newRangeHigh: newParams.rangeHigh,
-        newSpreadBps: newParams.spreadBps ? BigInt(newParams.spreadBps) : undefined,
-        newFeeBps: newParams.feeBps ? BigInt(newParams.feeBps) : undefined,
-        network: (wdk.bchNetwork as any) || 'chipnet',
-      });
-
-      toast.success(
-        `🎉 Successfully rebalanced strategy! New TXID: ${res.txid.slice(0, 10)}…`,
-        {
-          duration: 9000,
-          action: {
-            label: 'View on Explorer',
-            onClick: () =>
-              window.open(`https://chipnet.chaingraph.cash/tx/${res.txid}`, '_blank'),
-          },
-        }
-      );
-
-      await Promise.all([refreshLiveBalance(), refreshServer(), refreshFills()]);
-      navigate(`/mesh/pool/${res.txid}/0`, { replace: true });
-    } catch (e: any) {
-      console.error('[Mesh] Rebalance execution failed:', e);
-      toast.error(`Rebalance failed: ${e?.message ?? 'Unknown error'}`);
-    } finally {
-      setIsRebalancing(false);
-    }
-  };
-
-  const handleSyncAll = async () => {
-    await Promise.all([refreshLiveBalance(), refreshServer(), refreshFills()]);
-  };
-
-  const handleScrollToManage = () => {
-    if (manageCardRef.current) {
-      manageCardRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  };
+  async function sync() {
+    setSyncing(true);
+    try { await meshApi.sync(p!.address); invalidate(); } catch (e: any) { toast.error('Sync failed', { description: e?.message }); } finally { setSyncing(false); }
+  }
 
   return (
     <div className="container mx-auto py-4 sm:py-6 px-4 md:px-8 max-w-[1200px] space-y-6">
-      {serverLoading && !position ? (
-        <div className="text-center py-28 space-y-3">
-          <Loader2 className="w-10 h-10 animate-spin mx-auto text-emerald-400" />
-          <p className="text-zinc-400 text-sm font-medium">Loading pool covenant state…</p>
+      <Link to="/mesh?tab=pools" className="inline-flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300"><ArrowLeft className="w-3.5 h-3.5" />Pools</Link>
+
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center gap-4 min-w-0">
+          <PoolPairLabel token={token} side={p.side} size={36} />
+          <PoolStatusBadge status={p.status} />
+          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full border border-white/10 text-zinc-400">Fixed price · V2</span>
+          <span className="text-[11px] font-mono px-2 py-0.5 rounded-full border border-white/10 text-zinc-400">{(p.feeBps / 100).toFixed(2)}% fee</span>
         </div>
-      ) : !position ? (
-        <div className="p-12 text-center bg-[#0C0C0F] border border-white/10 rounded-3xl space-y-4 max-w-lg mx-auto my-16 shadow-2xl">
-          <AlertTriangle className="w-12 h-12 text-amber-400 mx-auto" />
-          <h2 className="text-2xl font-bold text-white">Pool Position Not Found</h2>
-          <p className="text-zinc-400 text-xs leading-relaxed">
-            The requested UTXO (<code className="font-mono text-emerald-400">{txid?.slice(0, 10)}…:{vout}</code>) has either been fully docked or has not yet been indexed.
-          </p>
-          <Link
-            to="/mesh"
-            className="inline-flex items-center gap-2 px-5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition-all shadow-lg"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span>Return to Pools</span>
-          </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" className="rounded-xl" onClick={sync} disabled={syncing}>
+            <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${syncing ? 'animate-spin' : ''}`} />Sync with chain
+          </Button>
+          <Link to="/trade"><Button size="sm" className="rounded-xl"><ArrowRightLeft className="w-3.5 h-3.5 mr-1.5" />Trade</Button></Link>
         </div>
-      ) : (
-        <>
-          {/* ─── 1. Pool Header & Actions Bar ─── */}
-          <MeshPoolHeader
-            position={position}
-            isRefreshing={isRefreshingBalance}
-            onRefresh={handleSyncAll}
-            isDrained={isDrained}
-            onOpenManage={() => setIsManageOpen(true)}
-            onOpenAddLiquidity={() => setIsManageOpen(true)}
-          />
+      </div>
 
-          {/* ─── Spent UTXO Warning Banner ─── */}
-          {position.isSpent && (
-            <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
-                <div>
-                  <h4 className="text-sm font-bold text-amber-300">Covenant Pool UTXO Spent / Closed</h4>
-                  <p className="text-xs text-amber-200/80">
-                    This UTXO was redeemed or rebalanced into a new strategy. Reserves on this specific UTXO are 0.
-                  </p>
-                </div>
-              </div>
-              <a
-                href={`https://chipnet.chaingraph.cash/tx/${position.txid}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/30 text-amber-300 text-xs font-semibold shrink-0 transition-all"
-              >
-                View on Explorer
-              </a>
-            </div>
-          )}
-
-          {/* ─── Paired / Multi-Leg Bundle Linkage Card ─── */}
-          {(position.bundleId || (position.reverseAddress && position.reverseAddress !== '0x' + '00'.repeat(32))) && (
-            <MeshPoolBundleCard
-              bundleId={position.bundleId}
-              pairRole={position.pairRole}
-              reverseAddress={position.reverseAddress}
-              pairName={position.pairName}
-              symbolIn={position.symbolIn || 'BCH'}
-              symbolOut={position.symbolOut || tokenOutName}
-            />
-          )}
-
-          {/* ─── 2. 2-Column Workstation Layout ─── */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            {/* ── Left Column (7 cols): Interactive Chart & Transactions ── */}
-            <div className="lg:col-span-7 space-y-6">
-              {/* Interactive Chart Card (Price / Volume / Liquidity / Depth / Stats & Health) */}
-              <MeshPoolChart
-                position={position}
-                liveBchPrice={livePrice}
-                effectiveReserveBch={effectiveReserveBch}
-                effectiveReserveUsd={effectiveReserveUsd}
-                effectiveTokenAmount={effectiveTokenAmount}
-                volume24hUsd={28140}
-                totalFills={totalFills}
-                totalBchVolume={totalBchVolume}
-                totalFeesEarnedBch={totalFeesEarnedBch}
-              />
-
-              {/* Transactions Feed */}
-              <MeshPoolActivityTable
-                fills={fills}
-                totalFills={totalFills}
-                totalBchVolume={totalBchVolume}
-                loading={fillsLoading}
-                onRefresh={refreshFills}
-                tokenQuoteSymbol={tokenOutName}
-              />
-            </div>
-
-            {/* ── Right Column (5 cols): Manage LP, Stats Card & Links Card ── */}
-            <div className="lg:col-span-5 space-y-6" ref={manageCardRef}>
-              {/* Manage LP Card (Top-up, Withdraw/Dock, Rebalance) */}
-              <MeshPoolManageCard
-                position={position}
-                isConnected={isConnected}
-                isDrained={isDrained}
-                effectiveReserveSats={effectiveReserveSats}
-                effectiveTokenAmount={effectiveTokenAmount}
-                liveBchPrice={livePrice}
-                isDocking={isDocking}
-                isToppingUp={isToppingUp}
-                isRebalancing={isRebalancing}
-                onDock={handleDock}
-                onTopUp={handleTopUp}
-                onRebalance={handleRebalance}
-              />
-
-              {/* Stats Card (Desktop view — on mobile it's also available in top chart tabs) */}
-              <div className="hidden lg:block">
-                <MeshPoolStatsCard
-                  position={position}
-                  effectiveReserveBch={effectiveReserveBch}
-                  effectiveReserveUsd={effectiveReserveUsd}
-                  effectiveTokenAmount={effectiveTokenAmount}
-                  liveBchPrice={livePrice}
-                  totalFills={totalFills}
-                  totalBchVolume={totalBchVolume}
-                  totalFeesEarnedBch={totalFeesEarnedBch}
-                />
-              </div>
-
-              {/* Links Card (Pair Address, BCH Native, CashToken Category ID) */}
-              <MeshPoolLinksCard position={position} />
-            </div>
-          </div>
-
-          {/* ─── 3. Desktop Modal Popup for Manage (Top-Up / Dock / Rebalance) ─── */}
-          <div className="hidden sm:block">
-            <Dialog open={isManageOpen} onOpenChange={setIsManageOpen}>
-              <DialogContent className="max-w-lg bg-[#0c0c10] border border-white/10 p-0 overflow-hidden rounded-3xl shadow-2xl text-white">
-                <DialogHeader className="sr-only">
-                  <DialogTitle>Manage Covenant Position</DialogTitle>
-                  <DialogDescription>Top-up, dock or rebalance your position</DialogDescription>
-                </DialogHeader>
-                <div className="max-h-[80vh] overflow-y-auto">
-                  <MeshPoolManageCard
-                    position={position}
-                    isConnected={isConnected}
-                    isDrained={isDrained}
-                    effectiveReserveSats={effectiveReserveSats}
-                    effectiveTokenAmount={effectiveTokenAmount}
-                    liveBchPrice={livePrice}
-                    isDocking={isDocking}
-                    isToppingUp={isToppingUp}
-                    isRebalancing={isRebalancing}
-                    onDock={async (p) => {
-                      await handleDock(p);
-                      setIsManageOpen(false);
-                    }}
-                    onTopUp={async (a) => {
-                      await handleTopUp(a);
-                      setIsManageOpen(false);
-                    }}
-                    onRebalance={async (params) => {
-                      await handleRebalance(params);
-                      setIsManageOpen(false);
-                    }}
-                  />
-                </div>
-              </DialogContent>
-            </Dialog>
-          </div>
-
-          {/* ─── 4. Mobile Bottom Slide-Up Drawer for Manage (Top-Up / Dock / Rebalance) ─── */}
-          <div className="block sm:hidden">
-            <Drawer open={isManageOpen} onOpenChange={setIsManageOpen}>
-              <DrawerContent className="max-h-[90vh] bg-[#0c0c10] border-t border-white/10 rounded-t-3xl shadow-2xl text-white">
-                <DrawerHeader className="px-4 pt-3 pb-0">
-                  <div className="mx-auto w-10 h-1 rounded-full bg-zinc-600 mb-2" />
-                  <DrawerTitle className="text-sm font-bold text-white">Manage Position</DrawerTitle>
-                  <DrawerDescription className="text-xs text-zinc-400">
-                    Top-up, withdraw, or rebalance your covenant
-                  </DrawerDescription>
-                </DrawerHeader>
-                <div className="overflow-y-auto px-4 pb-6">
-                  <MeshPoolManageCard
-                    position={position}
-                    isConnected={isConnected}
-                    isDrained={isDrained}
-                    effectiveReserveSats={effectiveReserveSats}
-                    effectiveTokenAmount={effectiveTokenAmount}
-                    liveBchPrice={livePrice}
-                    isDocking={isDocking}
-                    isToppingUp={isToppingUp}
-                    isRebalancing={isRebalancing}
-                    onDock={async (p) => {
-                      await handleDock(p);
-                      setIsManageOpen(false);
-                    }}
-                    onTopUp={async (a) => {
-                      await handleTopUp(a);
-                      setIsManageOpen(false);
-                    }}
-                    onRebalance={async (params) => {
-                      await handleRebalance(params);
-                      setIsManageOpen(false);
-                    }}
-                  />
-                </div>
-              </DrawerContent>
-            </Drawer>
-          </div>
-        </>
+      {p.successor && (
+        <div className="p-4 rounded-2xl bg-violet-500/10 border border-violet-500/25 text-xs text-violet-200 flex items-center justify-between gap-3">
+          <span>This pool was repriced. Its reserve moved to a new pool.</span>
+          <Link to={poolUrl(p.successor)} className="font-semibold underline shrink-0">Open the new pool</Link>
+        </div>
       )}
+      {p.status === 'exhausted' && (
+        <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/25 text-xs text-amber-200">
+          The pool's reserve is below the covenant minimum, so it no longer fills. Its funds are still in the covenant — the owner can withdraw them below.
+        </div>
+      )}
+
+      {/* KPIs */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <StatTile label="Pool value" value={formatSatsCompact(p.valueSats)} sub={bchUsd ? formatUsd(satsToUsd(p.valueSats, bchUsd)) : `tokens at ${p.priceSource} price`} />
+        <StatTile label={`Trader price (1 BCH =)`} value={trader ? `${formatNumber(trader, 4)} ${token.symbol}` : '—'}
+          sub={vsMarket === null ? 'no market reference' : `${vsMarket >= 0 ? '+' : ''}${vsMarket.toFixed(2)}% vs Cauldron`} />
+        <StatTile label="Volume 7d" value={formatSatsCompact(p.stats.volume7dSats)} sub={`all time ${formatSatsCompact(p.stats.volumeAllSats)} · ${p.stats.fillCount} fills`} />
+        <StatTile label="LP fees 7d" value={formatSatsCompact(p.stats.fees7dSats)} accent="text-emerald-400"
+          sub={`all time ${formatSatsCompact(p.stats.feesAllSats)} · APR est. ${formatPct(p.stats.feeApr7dPct)}`} />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <div className="lg:col-span-7 space-y-6">
+          <Panel title="Pool value" action={<span className="text-[11px] text-zinc-500">after each event</span>}>
+            <PoolValueChart pool={p} events={activity.data?.events ?? []} token={token} />
+          </Panel>
+          <Panel title="Activity" action={<span className="text-[11px] text-zinc-500">{activity.data?.total ?? 0} events</span>}>
+            <PoolActivityTable pool={p} events={activity.data?.events ?? []} token={token} network={network} loading={activity.isLoading} />
+          </Panel>
+        </div>
+
+        <div className="lg:col-span-5 space-y-6">
+          <PoolManagePanel pool={p} token={token} />
+
+          <Panel title="Position">
+            <div className="space-y-2.5 text-xs">
+              <Row label="Reserves"><PoolReserves pool={p} token={token} /></Row>
+              <Row label="Available to trade">{p.side === 'SELL_BCH' ? formatSatsCompact(p.availableOut) : tokenAmount(p.availableOut, token)}</Row>
+              <Row label="Deposited">{formatSatsCompact(p.stats.deposited.sats)}{BigInt(p.stats.deposited.tokens) > 0n && ` + ${tokenAmount(p.stats.deposited.tokens, token)}`}</Row>
+              <Row label="Withdrawn">{formatSatsCompact(p.stats.withdrawn.sats)}{BigInt(p.stats.withdrawn.tokens) > 0n && ` + ${tokenAmount(p.stats.withdrawn.tokens, token)}`}</Row>
+              <Row label="P&L vs holding" title="Current value plus withdrawals minus deposits, all at today's price">
+                <span className={pnl >= 0n ? 'text-emerald-400' : 'text-rose-400'}>{pnl >= 0n ? '+' : ''}{formatSatsCompact(p.stats.pnlSats)}</span>
+              </Row>
+              <Row label="UTXOs">{p.utxos.length}{p.utxos.some(u => !u.valid) && <span className="text-amber-400"> · {p.utxos.filter(u => !u.valid).length} below minimum</span>}</Row>
+              <Row label="Created">{timeAgo(p.createdAt)}</Row>
+              <Row label="Last fill">{timeAgo(p.lastFillAt)}</Row>
+            </div>
+          </Panel>
+
+          <Panel title="Covenant">
+            <div className="space-y-2.5 text-xs">
+              <CopyRow label="Pool address" value={p.address} href={explorerAddress(network, p.address)} />
+              <CopyRow label="Token category" value={p.tokenCategory} />
+              <Row label="LP"><Link to={lpUrl(p.ownerPkh)} className="font-mono text-zinc-300 hover:text-white underline-offset-2 hover:underline">{shortHex(p.ownerAddress, 8, 6)}</Link></Row>
+              <Row label="Price (covenant)"><span className="font-mono">{p.priceNum} / {p.priceDen}</span></Row>
+              {p.predecessor && <Row label="Repriced from"><Link to={poolUrl(p.predecessor)} className="font-mono underline">{shortHex(p.predecessor, 8, 6)}</Link></Row>}
+              {(pool.data?.bundle.length ?? 0) > 0 && (
+                <Row label="Other side">{pool.data!.bundle.map(b => <Link key={b} to={poolUrl(b)} className="font-mono underline block">{shortHex(b, 8, 6)}</Link>)}</Row>
+              )}
+            </div>
+          </Panel>
+        </div>
+      </div>
     </div>
   );
+}
+
+function Row({ label, title, children }: { label: string; title?: string; children: React.ReactNode }) {
+  return (
+    <div className="flex justify-between gap-4" title={title}>
+      <span className="text-zinc-500 shrink-0">{label}</span>
+      <span className="text-zinc-200 text-right font-mono min-w-0">{children}</span>
+    </div>
+  );
+}
+
+function CopyRow({ label, value, href }: { label: string; value: string; href?: string }) {
+  return (
+    <Row label={label}>
+      <span className="inline-flex items-center gap-1.5">
+        {shortHex(value, 8, 6)}
+        <button type="button" onClick={() => { void navigator.clipboard.writeText(value); toast.success('Copied'); }} className="text-zinc-500 hover:text-white"><Copy className="w-3 h-3" /></button>
+        {href && <a href={href} target="_blank" rel="noreferrer" className="text-zinc-500 hover:text-white"><ExternalLink className="w-3 h-3" /></a>}
+      </span>
+    </Row>
+  );
+}
+
+/** /mesh/pool/:txid/:vout (legacy outpoint links) → the pool's address page. */
+export function MeshPoolOutpointRedirect() {
+  const { txid, vout } = useParams();
+  const navigate = useNavigate();
+  const [missing, setMissing] = useState(false);
+  useEffect(() => {
+    if (!txid) return;
+    meshApi.byOutpoint(txid, Number(vout ?? 0))
+      .then(r => navigate(poolUrl(r.address), { replace: true }))
+      .catch(() => setMissing(true));
+  }, [txid, vout, navigate]);
+  if (missing) return <Navigate to="/mesh?tab=pools" replace />;
+  return <div className="py-28 text-center text-zinc-400 text-sm"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-3" />Finding pool…</div>;
 }
 
 export default MeshPoolDetailPage;

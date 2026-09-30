@@ -11,7 +11,7 @@ import { ReceiveModal } from '@/components/portfolio/ReceiveModal';
 import { Link } from 'react-router-dom';
 import { useState, useMemo } from 'react';
 import { notifyToast as toast } from '@/lib/notify-toast';
-import { useMeshServer } from '@/hooks/useMeshServer';
+import { useMeshLp, useMeshSigner, useMeshStats } from '@/hooks/useMesh';
 // ============================================================================
 // Portfolio Page — /portfolio
 // ============================================================================
@@ -24,14 +24,13 @@ export default function PortfolioPage() {
     const [copied, setCopied] = useState(false);
     const [showMore, setShowMore] = useState(false);
 
-    // Mesh pool stats
-    const { positions, bchUsdPrice } = useMeshServer(30_000);
-    const liveBchPrice = bchUsdPrice() || 324.4;
-    const totalMeshPools = positions.length;
-    const accruedFeeSats = useMemo(() => {
-        return positions.reduce((acc, p) => acc + Number(p.earnedFeeSats || 0), 0);
-    }, [positions]);
-    const accruedFeeBch = accruedFeeSats / 1e8;
+    // Mesh pool stats for the connected wallet (from the server's pool ledger)
+    const meshWallet = useMeshSigner();
+    const meshLp = useMeshLp(meshWallet.pkh ?? undefined);
+    const meshStats = useMeshStats();
+    const totalMeshPools = meshLp.data?.lp.activePools ?? 0;
+    const accruedFeeBch = Number(meshLp.data?.lp.feesAllSats ?? 0) / 1e8;
+    const liveBchPrice = meshStats.data?.bchUsd ?? null;
 
     // Prefer WDK EVM address as the primary handle; fall back across chains
     const primaryAddress = wdk.evmAddress || wdk.solanaAddress || wdk.bchAddress || null;
@@ -250,10 +249,10 @@ export default function PortfolioPage() {
                                 <div className="space-y-1">
                                     <div className="text-xs text-zinc-500">Accrued LP Fees</div>
                                     <div className="text-2xl font-black font-mono text-emerald-400">
-                                        {accruedFeeBch > 0 ? accruedFeeBch.toFixed(4) : '0.0042'} BCH
+                                        {accruedFeeBch.toFixed(6)} BCH
                                     </div>
                                     <div className="text-[11px] text-zinc-500">
-                                        ≈ ${((accruedFeeBch > 0 ? accruedFeeBch : 0.0042) * liveBchPrice).toFixed(2)}
+                                        {liveBchPrice ? `≈ $${(accruedFeeBch * liveBchPrice).toFixed(2)}` : 'fees earned by your pools'}
                                     </div>
                                 </div>
                             </div>
