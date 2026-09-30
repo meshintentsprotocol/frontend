@@ -1,0 +1,220 @@
+{
+  "generatedBy": "meshserver/scripts/gen-pool-vectors.ts",
+  "artifactHash": "863fd70d7e376d30eaa29fb156d634d06a75bced6a3ae027752ab9a81436d977",
+  "vectors": {
+    "chipnet": [
+      {
+        "params": {
+          "ownerPkh": "324dbd54c4706343a589f1c58aa31b434e0d664f",
+          "tokenCategoryIn": "dfe50223c8d5cba8dcef8dff6d92b61deb88a8ba44947367f2b746487b56039b",
+          "tokenCategoryOut": "0x",
+          "priceNum": 3215375,
+          "priceDen": 1000,
+          "feeBps": 30
+        },
+        "address": "bchtest:pvzr7se6wl7vxa4lshsrekv86quvkcz5u0plc9nh4r6q7q95yhz2k0pqmpkvj",
+        "tokenAddress": "bchtest:rvzr7se6wl7vxa4lshsrekv86quvkcz5u0plc9nh4r6q7q95yhz2kaju6ch4e",
+        "lockingBytecode": "aa20043f433a77fcc376bf85e03cd987d038cb6054e3c3fc1677a8f40f00b425c4ab87",
+        "constructorArgs": [
+          "0x324dbd54c4706343a589f1c58aa31b434e0d664f",
+          "0x9b03567b4846b7f267739444baa888eb1db6926dff8defdca8cbd5c82302e5df",
+          "0x",
+          "3215375",
+          "1000",
+          "30"
+        ]
+      },
+      {
+        "params": {
+          "ownerPkh": "324dbd54c4706343a589f1c58aa31b434e0d664f",
+          "tokenCategoryIn": "0x",
+          "tokenCategoryOut": "dfe50223c8d5cba8dcef8dff6d92b61deb88a8ba44947367f2b746487b56039b",
+          "priceNum": 307257,
+          "priceDen": 1000000000,
+          "feeBps": 30
+        },
+        "address": "bchtest:pw6snpq07uw9eudccqgypju73g358267xw3hraj5gat7tf8cx6qjgn6nget76",
+        "tokenAddress": "bchtest:rw6snpq07uw9eudccqgypju73g358267xw3hraj5gat7tf8cx6qjgpf0fq283",
+        "lockingBytecode": "aa20b509840ff71c5cf1b8c01040cb9e8a2343ab5e33a371f6544757e5a4f836812487",
+        "constructorArgs": [
+          "0x324dbd54c4706343a589f1c58aa31b434e0d664f",
+          "0x",
+          "0x9b03567b4846b7f267739444baa888eb1db6926dff8defdca8cbd5c82302e5df",
+          "307257",
+          "1000000000",
+          "30"
+        ]
+      },
+      {
+        "params": {
+          "ownerPkh": "c1b835e7056268ade2f3653188c4a76bd4d98215",
+          "tokenCategoryIn": "dfe50223c8d5cba8dcef8dff6d92b61deb88a8ba44947367f2b746487b56039b",
+          "tokenCategoryOut": "0x",
+          "priceNum": 2000,
+          "priceDen": 1,
+          "feeBps": 0
+        },
+        "address": "bchtest:pwplqx5t3r8prkdev07jcwr74t06qfgkl480nkmegz04gwsm850ejqzzfrs38",
+        "tokenAddress": "bchtest:rwplqx5t3r8prkdev07jcwr74t06qfgkl480nkmegz04gwsm850ejj37g63gv",
+        "lockingBytecode": "aa2083f01a8b88ce11d9b963fd2c387eaadfa02516fd4ef9db79409f543a1b3d1f9987",
+        "constructorArgs": [
+          "0xc1b835e7056268ade2f3653188c4a76bd4d98215",
+          "0x9b03567b4846b7f267739444baa888eb1db6926dff8defdca8cbd5c82302e5df",
+          "0x",
+          "2000",
+          "1",
+          "0"
+        ]
+      },
+      {
+        "params": {
+          "ownerPkh": "abababababababababababababababababababab",
+          "tokenCategoryIn": "0x",
+          "tokenCategoryOut": "7fab3da44f2138e51aa056ee2b29835f70f10d3d96b06ef959937763e82c3137",
+          "priceNum": 1,
+          "priceDen": 2100,
+          "feeBps": 100
+        },
+        "address": "bchtest:pdnw4tgme0m3rat8kpaye8gk4762e5e2hyprgv24g6ad28hax8l8g4n5a34zf",
+        "tokenAddress": "bchtest:rdnw4tgme0m3rat8kpaye8gk4762e5e2hyprgv24g6ad28hax8l8g8qgug5mz",
+        "lockingBytecode": "aa2066eaad1bcbf711f567b07a4c9d16afb4acd32ab90234315546bad51efd31fe7487",
+        "constructorArgs": [
+          "0xabababababababababababababababababababab",
+          "0x",
+          "0x37312ce863779359f96eb0963d0df1705f83292bee56a01ae538214fa43dab7f",
+          "1",
+          "2100",
+          "100"
+        ]
+      },
+      {
+        "params": {
+          "ownerPkh": "0xCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCD",
+          "tokenCategoryIn": "BCH",
+          "tokenCategoryOut": "0x7FAB3DA44F2138E51AA056EE2B29835F70F10D3D96B06EF959937763E82C3137",
+          "priceNum": 9007199254740991,
+          "priceDen": 3,
+          "feeBps": 9999
+        },
+        "address": "bchtest:p004fztja5y7gnuuu36dtyr23x7apkvqjehjnvw5sg25098ax697k3hqk33e4",
+        "tokenAddress": "bchtest:r004fztja5y7gnuuu36dtyr23x7apkvqjehjnvw5sg25098ax697kryuhgsq7",
+        "lockingBytecode": "aa20df548972ed09e44f9ce474d5906a89bdd0d980966f29b1d482154794fd368beb87",
+        "constructorArgs": [
+          "0xcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+          "0x",
+          "0x37312ce863779359f96eb0963d0df1705f83292bee56a01ae538214fa43dab7f",
+          "9007199254740991",
+          "3",
+          "9999"
+        ]
+      }
+    ],
+    "mainnet": [
+      {
+        "params": {
+          "ownerPkh": "324dbd54c4706343a589f1c58aa31b434e0d664f",
+          "tokenCategoryIn": "dfe50223c8d5cba8dcef8dff6d92b61deb88a8ba44947367f2b746487b56039b",
+          "tokenCategoryOut": "0x",
+          "priceNum": 3215375,
+          "priceDen": 1000,
+          "feeBps": 30
+        },
+        "address": "bitcoincash:pvzr7se6wl7vxa4lshsrekv86quvkcz5u0plc9nh4r6q7q95yhz2kvx39e9eq",
+        "tokenAddress": "bitcoincash:rvzr7se6wl7vxa4lshsrekv86quvkcz5u0plc9nh4r6q7q95yhz2k74dyqyqt",
+        "lockingBytecode": "aa20043f433a77fcc376bf85e03cd987d038cb6054e3c3fc1677a8f40f00b425c4ab87",
+        "constructorArgs": [
+          "0x324dbd54c4706343a589f1c58aa31b434e0d664f",
+          "0x9b03567b4846b7f267739444baa888eb1db6926dff8defdca8cbd5c82302e5df",
+          "0x",
+          "3215375",
+          "1000",
+          "30"
+        ]
+      },
+      {
+        "params": {
+          "ownerPkh": "324dbd54c4706343a589f1c58aa31b434e0d664f",
+          "tokenCategoryIn": "0x",
+          "tokenCategoryOut": "dfe50223c8d5cba8dcef8dff6d92b61deb88a8ba44947367f2b746487b56039b",
+          "priceNum": 307257,
+          "priceDen": 1000000000,
+          "feeBps": 30
+        },
+        "address": "bitcoincash:pw6snpq07uw9eudccqgypju73g358267xw3hraj5gat7tf8cx6qjgsazkpctg",
+        "tokenAddress": "bitcoincash:rw6snpq07uw9eudccqgypju73g358267xw3hraj5gat7tf8cx6qjgzw7hcejr",
+        "lockingBytecode": "aa20b509840ff71c5cf1b8c01040cb9e8a2343ab5e33a371f6544757e5a4f836812487",
+        "constructorArgs": [
+          "0x324dbd54c4706343a589f1c58aa31b434e0d664f",
+          "0x",
+          "0x9b03567b4846b7f267739444baa888eb1db6926dff8defdca8cbd5c82302e5df",
+          "307257",
+          "1000000000",
+          "30"
+        ]
+      },
+      {
+        "params": {
+          "ownerPkh": "c1b835e7056268ade2f3653188c4a76bd4d98215",
+          "tokenCategoryIn": "dfe50223c8d5cba8dcef8dff6d92b61deb88a8ba44947367f2b746487b56039b",
+          "tokenCategoryOut": "0x",
+          "priceNum": 2000,
+          "priceDen": 1,
+          "feeBps": 0
+        },
+        "address": "bitcoincash:pwplqx5t3r8prkdev07jcwr74t06qfgkl480nkmegz04gwsm850ejr9nhmry4",
+        "tokenAddress": "bitcoincash:rwplqx5t3r8prkdev07jcwr74t06qfgkl480nkmegz04gwsm850ej3k0kzza7",
+        "lockingBytecode": "aa2083f01a8b88ce11d9b963fd2c387eaadfa02516fd4ef9db79409f543a1b3d1f9987",
+        "constructorArgs": [
+          "0xc1b835e7056268ade2f3653188c4a76bd4d98215",
+          "0x9b03567b4846b7f267739444baa888eb1db6926dff8defdca8cbd5c82302e5df",
+          "0x",
+          "2000",
+          "1",
+          "0"
+        ]
+      },
+      {
+        "params": {
+          "ownerPkh": "abababababababababababababababababababab",
+          "tokenCategoryIn": "0x",
+          "tokenCategoryOut": "7fab3da44f2138e51aa056ee2b29835f70f10d3d96b06ef959937763e82c3137",
+          "priceNum": 1,
+          "priceDen": 2100,
+          "feeBps": 100
+        },
+        "address": "bitcoincash:pdnw4tgme0m3rat8kpaye8gk4762e5e2hyprgv24g6ad28hax8l8gk59rfxhm",
+        "tokenAddress": "bitcoincash:rdnw4tgme0m3rat8kpaye8gk4762e5e2hyprgv24g6ad28hax8l8gy8ezs8ws",
+        "lockingBytecode": "aa2066eaad1bcbf711f567b07a4c9d16afb4acd32ab90234315546bad51efd31fe7487",
+        "constructorArgs": [
+          "0xabababababababababababababababababababab",
+          "0x",
+          "0x37312ce863779359f96eb0963d0df1705f83292bee56a01ae538214fa43dab7f",
+          "1",
+          "2100",
+          "100"
+        ]
+      },
+      {
+        "params": {
+          "ownerPkh": "0xCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCDCD",
+          "tokenCategoryIn": "BCH",
+          "tokenCategoryOut": "0x7FAB3DA44F2138E51AA056EE2B29835F70F10D3D96B06EF959937763E82C3137",
+          "priceNum": 9007199254740991,
+          "priceDen": 3,
+          "feeBps": 9999
+        },
+        "address": "bitcoincash:p004fztja5y7gnuuu36dtyr23x7apkvqjehjnvw5sg25098ax697kjs3gfzv8",
+        "tokenAddress": "bitcoincash:r004fztja5y7gnuuu36dtyr23x7apkvqjehjnvw5sg25098ax697kqrdfsr4v",
+        "lockingBytecode": "aa20df548972ed09e44f9ce474d5906a89bdd0d980966f29b1d482154794fd368beb87",
+        "constructorArgs": [
+          "0xcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+          "0x",
+          "0x37312ce863779359f96eb0963d0df1705f83292bee56a01ae538214fa43dab7f",
+          "9007199254740991",
+          "3",
+          "9999"
+        ]
+      }
+    ]
+  }
+}

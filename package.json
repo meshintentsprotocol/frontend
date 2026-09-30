@@ -7,7 +7,9 @@
         "dev": "vite",
         "build": "node --max-old-space-size=4096 node_modules/vite/bin/vite.js build",
         "lint": "eslint .",
-        "preview": "vite preview"
+        "preview": "vite preview",
+        "test": "vitest run",
+        "check:mesh-artifact": "node scripts/check-mesh-artifact.mjs"
     },
     "dependencies": {
         "@aptos-labs/ts-sdk": "^5.2.0",

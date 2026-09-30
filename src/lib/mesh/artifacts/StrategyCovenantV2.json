@@ -1,0 +1,110 @@
+{
+  "contractName": "StrategyCovenantV2",
+  "constructorInputs": [
+    {
+      "name": "ownerPkh",
+      "type": "bytes20"
+    },
+    {
+      "name": "tokenCategoryIn",
+      "type": "bytes"
+    },
+    {
+      "name": "tokenCategoryOut",
+      "type": "bytes"
+    },
+    {
+      "name": "priceNumerator",
+      "type": "int"
+    },
+    {
+      "name": "priceDenominator",
+      "type": "int"
+    },
+    {
+      "name": "feeBps",
+      "type": "int"
+    }
+  ],
+  "abi": [
+    {
+      "name": "fill",
+      "inputs": []
+    },
+    {
+      "name": "dock",
+      "inputs": [
+        {
+          "name": "ownerPk",
+          "type": "pubkey"
+        },
+        {
+          "name": "ownerSig",
+          "type": "sig"
+        }
+      ]
+    }
+  ],
+  "bytecode": "OP_6 OP_PICK OP_0 OP_NUMEQUAL OP_IF OP_INPUTINDEX OP_DUP OP_OUTPUTBYTECODE OP_OVER OP_UTXOBYTECODE OP_EQUALVERIFY OP_0 OP_0 OP_5 OP_PICK OP_0 OP_EQUAL OP_IF OP_0 OP_3 OP_PICK OP_UTXOTOKENCATEGORY OP_0 OP_EQUAL OP_NOTIF OP_3 OP_PICK OP_UTXOTOKENCATEGORY OP_6 OP_PICK OP_EQUALVERIFY OP_3 OP_PICK OP_UTXOTOKENAMOUNT OP_NIP OP_ENDIF OP_3 OP_PICK OP_OUTPUTTOKENCATEGORY OP_6 OP_PICK OP_EQUALVERIFY OP_3 OP_PICK OP_OUTPUTTOKENAMOUNT OP_OVER OP_SUB OP_3 OP_ROLL OP_DROP OP_SWAP OP_TOALTSTACK OP_SWAP OP_FROMALTSTACK OP_3 OP_PICK OP_UTXOVALUE OP_4 OP_PICK OP_OUTPUTVALUE OP_SUB OP_ROT OP_DROP OP_SWAP OP_3 OP_PICK OP_OUTPUTVALUE e803 OP_GREATERTHANOREQUAL OP_VERIFY OP_DROP OP_ELSE OP_4 OP_PICK OP_0 OP_EQUALVERIFY OP_2 OP_PICK OP_UTXOTOKENCATEGORY OP_6 OP_PICK OP_EQUALVERIFY OP_2 OP_PICK OP_OUTPUTTOKENCATEGORY OP_6 OP_PICK OP_EQUALVERIFY OP_2 OP_PICK OP_UTXOTOKENAMOUNT OP_3 OP_PICK OP_OUTPUTTOKENAMOUNT OP_SUB OP_NIP OP_2 OP_PICK OP_OUTPUTVALUE OP_3 OP_PICK OP_UTXOVALUE OP_SUB OP_ROT OP_DROP OP_SWAP OP_ENDIF OP_OVER OP_0 OP_GREATERTHAN OP_VERIFY OP_DUP OP_0 OP_GREATERTHAN OP_VERIFY OP_7 OP_ROLL OP_MUL 1027 OP_MUL OP_SWAP OP_6 OP_ROLL OP_MUL 1027 OP_7 OP_ROLL OP_SUB OP_MUL OP_LESSTHANOREQUAL OP_VERIFY OP_2DROP OP_2DROP OP_DROP OP_1 OP_ELSE OP_6 OP_ROLL OP_1 OP_NUMEQUALVERIFY OP_6 OP_PICK OP_HASH160 OP_EQUALVERIFY OP_6 OP_ROLL OP_6 OP_ROLL OP_CHECKSIGVERIFY OP_2DROP OP_2DROP OP_DROP OP_1 OP_ENDIF",
+  "source": "pragma cashscript ^0.12.0;\n\n// =============================================================================\n// StrategyCovenantV2 — Fixed-rate BCHMesh liquidity pool (payment-enforced)\n// =============================================================================\n//\n// One UTXO = one pool. The pool pairs BCH with ONE CashToken category and\n// trades in one direction: exactly one of tokenCategoryIn / tokenCategoryOut\n// is 0x (BCH).\n//\n//   tokenCategoryOut == 0x : pool GIVES BCH,   RECEIVES tokenCategoryIn tokens\n//   tokenCategoryIn  == 0x : pool GIVES tokens, RECEIVES BCH\n//\n// Differences from V1 (which could be drained, see PaymentBypass.poc.ts):\n//   1. No caller-supplied amountIn. The traded amounts are DERIVED from the\n//      pool's own input vs. its recreated output, so the pool is paid by\n//      construction: whatever leaves the pool must be matched by what arrives.\n//   2. The recreated pool must be the output at this.activeInputIndex. Each\n//      pool UTXO in a transaction therefore owns a distinct output, which rules\n//      out two pool inputs \"sharing\" one recreated output.\n//\n// Pricing (maker-favourable, integer):\n//   amountOut * priceDen * 10000 <= amountIn * priceNum * (10000 - feeBps)\n//\n// A pool can be traded against by anyone at the LP's price; that is the\n// intended behaviour of a resting fixed-rate order. The LP exits with dock().\n// =============================================================================\n\ncontract StrategyCovenantV2(\n    bytes20 ownerPkh,\n    bytes tokenCategoryIn,\n    bytes tokenCategoryOut,\n    int priceNumerator,\n    int priceDenominator,\n    int feeBps\n) {\n    function fill() {\n        int i = this.activeInputIndex;\n\n        // The pool lives on at the output with the same index as its input.\n        require(tx.outputs[i].lockingBytecode == tx.inputs[i].lockingBytecode);\n\n        int amountIn = 0;\n        int amountOut = 0;\n\n        if (tokenCategoryOut == 0x) {\n            // Pool gives BCH, receives tokenCategoryIn.\n            // The pool input may not hold tokens yet (first fill).\n            int tokensBefore = 0;\n            if (tx.inputs[i].tokenCategory != 0x) {\n                require(tx.inputs[i].tokenCategory == tokenCategoryIn);\n                tokensBefore = tx.inputs[i].tokenAmount;\n            }\n            require(tx.outputs[i].tokenCategory == tokenCategoryIn);\n\n            amountIn = tx.outputs[i].tokenAmount - tokensBefore;\n            amountOut = tx.inputs[i].value - tx.outputs[i].value;\n            require(tx.outputs[i].value >= 1000);\n        } else {\n            // Pool gives tokenCategoryOut, receives BCH.\n            require(tokenCategoryIn == 0x);\n            require(tx.inputs[i].tokenCategory == tokenCategoryOut);\n            // Output must keep the category (so at least 1 token remains; the LP docks the rest).\n            require(tx.outputs[i].tokenCategory == tokenCategoryOut);\n\n            amountOut = tx.inputs[i].tokenAmount - tx.outputs[i].tokenAmount;\n            amountIn = tx.outputs[i].value - tx.inputs[i].value;\n        }\n\n        require(amountIn > 0);\n        require(amountOut > 0);\n        require(amountOut * priceDenominator * 10000 <= amountIn * priceNumerator * (10000 - feeBps));\n    }\n\n    function dock(pubkey ownerPk, sig ownerSig) {\n        require(hash160(ownerPk) == ownerPkh);\n        require(checkSig(ownerSig, ownerPk));\n    }\n}\n",
+  "debug": {
+    "bytecode": "5679009c63c076cd78c78800005579008763005379ce0087645379ce5679885379d077685379d15679885379d37894537a757c6b7c6c5379c65479cc947b757c5379cc02e803a2697567547900885279ce5679885279d15679885279d05379d394775279cc5379c6947b757c687800a0697600a069577a95021027957c567a95021027577a9495a1696d6d755167567a519d5679a988567a567aad6d6d755168",
+    "sourceMap": "37:4:73:5;;;;;38:16:38:37;41:27:41:28;:16::45:1;:59::60:0;:49::77:1;:8::79;43:23:43:24:0;44:24:44:25;46:12:46:28;;:32::34;:12:::1;:36:59:9:0;49:31:49:32;50:26:50:27;;:16::42:1;:46::48:0;:16:::1;::53:13:0;51:34:51:35;;:24::50:1;:54::69:0;;:16::71:1;52:41:52:42:0;;:31::55:1;:16::56;50:50:53:13;54:31:54:32:0;;:20::47:1;:51::66:0;;:12::68:1;56:34:56:35:0;;:23::48:1;:51::63:0;:23:::1;:12::64;;;;;;;57:34:57:35:0;;:24::42:1;:56::57:0;;:45::64:1;:24;:12::65;;;58:31:58:32:0;;:20::39:1;:43::47:0;:20:::1;:12::49;46:36:59:9;59:15:68::0;61:20:61:35;;:39::41;:12::43:1;62:30:62:31:0;;:20::46:1;:50::66:0;;:12::68:1;64:31:64:32:0;;:20::47:1;:51::67:0;;:12::69:1;66:34:66:35:0;;:24::48:1;:62::63:0;;:51::76:1;:24;:12::77;67:34:67:35:0;;:23::42:1;:55::56:0;;:45::63:1;:23;:12::64;;;59:15:68:9;70:16:70:24:0;:27::28;:16:::1;:8::30;71:16:71:25:0;:28::29;:16:::1;:8::31;72:28:72:44:0;;:16:::1;:47::52:0;:16:::1;:56::64:0;:67::81;;:56:::1;:85::90:0;:93::99;;:85:::1;:56::100;:16;:8::102;37:4:73:5;;;;;75::78::0;;;;76:24:76:31;;:16::32:1;:8::46;77:25:77:33:0;;:35::42;;:8::45:1;75:4:78:5;;;;29:0:79:1",
+    "logs": [],
+    "requires": [
+      {
+        "ip": 16,
+        "line": 41
+      },
+      {
+        "ip": 36,
+        "line": 51
+      },
+      {
+        "ip": 47,
+        "line": 54
+      },
+      {
+        "ip": 75,
+        "line": 58
+      },
+      {
+        "ip": 81,
+        "line": 61
+      },
+      {
+        "ip": 87,
+        "line": 62
+      },
+      {
+        "ip": 93,
+        "line": 64
+      },
+      {
+        "ip": 116,
+        "line": 70
+      },
+      {
+        "ip": 120,
+        "line": 71
+      },
+      {
+        "ip": 136,
+        "line": 72
+      },
+      {
+        "ip": 149,
+        "line": 76
+      },
+      {
+        "ip": 154,
+        "line": 77
+      }
+    ]
+  },
+  "compiler": {
+    "name": "cashc",
+    "version": "0.12.1"
+  },
+  "updatedAt": "2026-09-28T11:15:47.681Z"
+}
