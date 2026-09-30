@@ -15,7 +15,8 @@ import { useWDK } from '@/context/WDKProvider';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { ConnectWalletButton } from '@/components/connect-wallet-button';
 import { useLocation } from 'react-router-dom';
-import { PriceService, PRICE_FEEDS } from '@/lib/pyth';
+import { PriceService } from '@/lib/pyth';
+import { marketSymbolFor } from '@/lib/marketData';
 import { CauldronService } from '@/lib/cauldron';
 import { CASHTOKEN_RELAYER_URL, CASHTOKEN_RELAYER_MAINNET_URL, EVM_RELAYER_URL, EVM_RELAYER_MAINNET_URL, BCH_SOLANA_RELAYER_URL } from '@/lib/config';
 import axios from 'axios';
@@ -237,7 +238,8 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
 
     const getTokenPrice = useCallback((token: Token): number => {
         const cleanSymbol = token.symbol.replace('.b', '').toUpperCase();
-        const feedKey = Object.keys(PRICE_FEEDS).find(k => k.toUpperCase() === cleanSymbol);
+        // CashTokens are priced by Cauldron; only native/bridged assets use the market feed.
+        const feedKey = token.chain === 'bch' && token.categoryId ? null : marketSymbolFor(token.symbol);
         if (feedKey && prices[feedKey]) {
             const formatted = PriceService.formatPrice(prices[feedKey]);
             if (formatted > 0) return formatted;
@@ -246,8 +248,7 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
         if (cauldronPrices[cleanSymbol] > 0) return cauldronPrices[cleanSymbol];
         if (token.categoryId && cauldronPrices[token.categoryId] > 0) return cauldronPrices[token.categoryId];
         if (token.priceUsd && token.priceUsd > 0) return token.priceUsd;
-        if (cleanSymbol === 'BCH') return 390.0;
-        return 0;
+        return 0; // unknown — callers show "–" rather than a guessed price
     }, [prices, cauldronPrices]);
 
     /** USD mid from Pyth/CoinGecko. Indicative only — the solver does not trade at this. */
@@ -272,6 +273,12 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
      */
     const [fillableRatio, setFillableRatio] = useState(0);
     const [quoteUnavailable, setQuoteUnavailable] = useState(false);
+    /**
+     * Set when the mesh server priced the pair but settles intents on a different
+     * BCH network (e.g. a chipnet server asked for a mainnet quote). The quote is a
+     * real Cauldron price, but an intent created from it would never be filled.
+     */
+    const [settlementBlocked, setSettlementBlocked] = useState<string | null>(null);
 
     const getRelayerTokenSymbol = useCallback((token: Token) => {
         if (token.chain === 'solana') {
@@ -309,15 +316,28 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                 network: isMainnet ? 'mainnet' : 'chipnet',
             }).then(res => {
                 if (cancelled) return;
+                if (res.data?.executable === false) {
+                    setSettlementBlocked(`This mesh server settles on ${res.data.settlementNetwork}, so ${isMainnet ? 'mainnet' : 'chipnet'} swaps can't be filled here. Point the app at a ${isMainnet ? 'mainnet' : 'chipnet'} mesh server to trade.`);
+                    setFillableRatio(0);
+                    setQuoteUnavailable(true);
+                    return;
+                }
+                setSettlementBlocked(null);
                 const units = Number(res.data?.buyAmount ?? 0) / Math.pow(10, buyToken.decimals || 0);
                 setFillableRatio(units > 0 ? units / Number(sellAmount) : 0);
                 setQuoteUnavailable(false);
-            }).catch(() => {
+            }).catch(err => {
                 if (cancelled) return;
+                // A 404 "no liquidity" still reports which network the server settles on.
+                const data = err?.response?.data;
+                setSettlementBlocked(data?.executable === false
+                    ? `This mesh server settles on ${data.settlementNetwork}; ${isMainnet ? 'mainnet' : 'chipnet'} swaps can't be filled here.`
+                    : null);
                 setFillableRatio(0);
                 setQuoteUnavailable(true);
             });
         } else if (isRelayerCross) {
+            setSettlementBlocked(null);
             const sellSym = getRelayerTokenSymbol(sellToken);
             const buySym = getRelayerTokenSymbol(buyToken);
             const sellBaseUnits = Math.floor(Number(sellAmount) * Math.pow(10, sellToken.decimals || 0));
@@ -337,6 +357,7 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                 setQuoteUnavailable(false);
             });
         } else {
+            setSettlementBlocked(null);
             setFillableRatio(0);
             setQuoteUnavailable(false);
         }
@@ -399,7 +420,9 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
             }).then(res => {
                 const quoteBuyAmount = res.data.buyAmount;
                 const buyDecimals = buyToken.decimals || 0;
-                if (quoteBuyAmount && Number(quoteBuyAmount) > 0) {
+                if (res.data.executable === false) {
+                    setBuyAmount('0'); // priced on another network — not fillable here
+                } else if (quoteBuyAmount && Number(quoteBuyAmount) > 0) {
                     setBuyAmount((Number(quoteBuyAmount) / Math.pow(10, buyDecimals)).toFixed(6));
                 } else {
                     setBuyAmount('0'); // Relayer says no route / unprofitable
@@ -464,16 +487,10 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                     setBuyAmount('0');
                 }
             }).catch(e => {
-                console.warn('Relayer quote endpoint error, using fallback oracle price:', e?.message);
-                const sellPrice = getTokenPrice(sellToken);
-                const buyPrice = getTokenPrice(buyToken);
-                if (sellPrice > 0 && buyPrice > 0) {
-                    const usdValue = Number(sellAmount) * sellPrice;
-                    let estimated = (usdValue / buyPrice) * 0.997; // 0.3% fee
-                    setBuyAmount(estimated.toFixed(6));
-                } else {
-                    setBuyAmount('0');
-                }
+                // No solver quote → no amount. A USD-mid estimate here looked like a
+                // real quote and produced intents no relayer would fill.
+                console.warn('Relayer quote endpoint error:', e?.message);
+                setBuyAmount('0');
             });
             return;
         }
@@ -543,6 +560,7 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
     const canSubmit = useMemo(() => {
         if (!sellAmount || Number(sellAmount) <= 0) return false;
         if (!buyAmount || Number(buyAmount) <= 0) return false;
+        if (swapType === 'same-chain' && settlementBlocked) return false;
         if (needsBCHWallet && !bchConnected) return false;
         if (needsSolanaWallet && !solanaConnected) return false;
         if (needsEthWallet && !ethConnected) return false;
@@ -550,7 +568,7 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
         if (swapType === 'bch-to-xmr' && (!xmrAddress || !xmrViewKey || !xmrSpendKey)) return false;
         if (swapType === 'xmr-to-bch' && !bchConnected) return false;
         return true;
-    }, [sellAmount, buyAmount, needsBCHWallet, bchConnected, needsSolanaWallet, solanaConnected, needsEthWallet, ethConnected, needsMovementWallet, movementConnected, swapType, xmrAddress, xmrViewKey, xmrSpendKey]);
+    }, [sellAmount, buyAmount, settlementBlocked, needsBCHWallet, bchConnected, needsSolanaWallet, solanaConnected, needsEthWallet, ethConnected, needsMovementWallet, movementConnected, swapType, xmrAddress, xmrViewKey, xmrSpendKey]);
 
     const parseCustomExpiry = (val: string): number => {
         const str = val.trim().toLowerCase();
@@ -675,6 +693,17 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
         }
         if (!sellAmount || Number(sellAmount) <= 0) {
             return <Button className="w-full h-14 text-base font-semibold rounded-2xl bg-white/[0.04] text-white/40 hover:bg-white/[0.04]" disabled>Enter an amount</Button>;
+        }
+        if (swapType === 'same-chain' && settlementBlocked) {
+            return (
+                <div className="space-y-2">
+                    <div className="flex items-start gap-2 text-xs text-amber-200/80 bg-amber-500/[0.06] border border-amber-500/20 rounded-lg px-2.5 py-2">
+                        <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
+                        <span>{settlementBlocked}</span>
+                    </div>
+                    <Button className="w-full h-14 text-base font-semibold rounded-2xl bg-white/[0.04] text-white/40 hover:bg-white/[0.04]" disabled>Swaps unavailable on this network</Button>
+                </div>
+            );
         }
         if (sellBalance !== null && Number(sellAmount) > sellBalance) {
             return <Button className="w-full h-14 text-base font-semibold rounded-2xl bg-red-500/15 text-red-300 hover:bg-red-500/15" disabled>Insufficient {sellToken.symbol} balance</Button>;

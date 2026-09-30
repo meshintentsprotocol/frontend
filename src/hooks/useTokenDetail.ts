@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
-import { CoinGeckoService, CoinGeckoService_extended, CG_ID_MAP, type CoinDetail } from '@/lib/coingecko';
 import { CauldronService, type CauldronTokenData } from '@/lib/cauldron';
 import { PriceService } from '@/lib/pyth';
-import type { PriceData } from '@/types';
+import { MarketService, marketSymbolFor, type MarketDetail } from '@/lib/marketData';
 import { resolveTokenIconUri } from '@/lib/tokenIcons';
 import { BcmrClient } from '@/lib/bcmr';
+import { logoForSymbol } from '@/lib/tokenLogos';
 
 export interface TokenDetail {
     symbol: string;
@@ -36,25 +36,19 @@ export interface TokenDetail {
     explorerLinks: string[];
     bcmrCategory?: string;
     // raw data for advanced use
-    raw?: CoinDetail | CauldronTokenData;
+    raw?: MarketDetail | CauldronTokenData;
 }
 
-// Approximate BCH/USD fallback when Pyth is unavailable
-const BCH_FALLBACK_USD = 380;
-
-function safeBchPrice(pythPrices: Record<string, PriceData>): number {
-    try {
-        const p = pythPrices['BCH'];
-        if (p) {
-            const val = PriceService.formatPrice(p);
-            if (val > 0) return val;
-        }
-    } catch { /* non-fatal */ }
-    return BCH_FALLBACK_USD;
+/** Live BCH/USD from the mesh feed; 0 when unavailable (USD fields then show "–"). */
+async function liveBchUsd(): Promise<number> {
+    const prices = await PriceService.getLatestPrices();
+    return prices['BCH'] ? PriceService.formatPrice(prices['BCH']) : 0;
 }
 
 function resolveChain(sym: string, isMainnet: boolean): string {
+    if (sym.endsWith('(MOVE)')) return 'Movement';
     switch (sym) {
+        case 'BTC':  return 'Bitcoin';
         case 'BCH':  return 'Bitcoin Cash';
         case 'SOL':  return 'Solana';
         case 'USDC': return 'Solana';
@@ -78,10 +72,10 @@ export function useTokenDetail(
 
             // ── CashToken ────────────────────────────────────────────────────
             if (isCashToken) {
-                const [market, bcmr, pythPrices] = await Promise.all([
+                const [market, bcmr, bchPrice] = await Promise.all([
                     CauldronService.getTokenDetail(tokenId, isMainnet),
                     BcmrClient.get(tokenId, isMainnet).catch(() => null),
-                    PriceService.getLatestPrices().catch(() => ({})),
+                    liveBchUsd(),
                 ]);
                 if (!market && !bcmr) return null;
 
@@ -96,11 +90,9 @@ export function useTokenDetail(
                 };
                 const meta = CauldronService.metadataOf(detail, bcmr);
 
-                const bchPrice = safeBchPrice(pythPrices as Record<string, PriceData>);
-
                 const tokenBchPrice = detail.price_now ? detail.price_now / 1e8 : 0;
                 const priceUsd = detail.price_now_usd
-                    || (tokenBchPrice > 0 ? tokenBchPrice * bchPrice : 0);
+                    || (tokenBchPrice > 0 && bchPrice > 0 ? tokenBchPrice * bchPrice : 0);
 
                 const tvlBch = detail.tvl_sats ? detail.tvl_sats / 1e8 : 0;
                 const volBch = detail.trade_volume ? detail.trade_volume / 1e8 : 0;
@@ -132,8 +124,8 @@ export function useTokenDetail(
                     change7d,
                     marketCap: null,
                     fdv: null,
-                    volume24h: volBch > 0 ? volBch * bchPrice : null,
-                    tvlUsd: tvlBch > 0 ? tvlBch * bchPrice : null,
+                    volume24h: volBch > 0 && bchPrice > 0 ? volBch * bchPrice : null,
+                    tvlUsd: tvlBch > 0 && bchPrice > 0 ? tvlBch * bchPrice : null,
                     // Cauldron has no intraday high/low — avoid misleading price_24h_usd
                     high24h: null,
                     low24h: null,
@@ -149,73 +141,40 @@ export function useTokenDetail(
                 } satisfies TokenDetail;
             }
 
-            // ── Cross-chain ──────────────────────────────────────────────────
+            // ── Cross-chain (priced by the mesh server's market feed) ────────
             const sym = tokenId.toUpperCase();
-            const cgId = CG_ID_MAP[sym];
-
-            const [cgList, detail, pythPrices] = await Promise.all([
-                CoinGeckoService.getMarketData([sym]).catch(() => ({})),
-                cgId ? CoinGeckoService_extended.getCoinDetail(cgId) : Promise.resolve(null),
-                PriceService.getLatestPrices().catch(() => ({})),
-            ]);
-
-            const cgMap = cgList as Record<string, import('@/lib/coingecko').CoinData | undefined>;
-            const cg = cgMap[sym];
-            const typedPyth = pythPrices as Record<string, PriceData>;
-            const pythKey = Object.keys(typedPyth).find(k => k.toUpperCase() === sym);
-            const priceFromPyth = pythKey ? PriceService.formatPrice(typedPyth[pythKey]) : 0;
-            const priceUsd = (priceFromPyth > 0 ? priceFromPyth : cg?.current_price) ?? 0;
-
-            const iconFallback = cg?.image || `/logos/${sym.toLowerCase()}.svg`;
-            const icon = detail?.image?.large || detail?.image?.small || iconFallback;
+            const marketSym = marketSymbolFor(sym);
+            const detail = marketSym ? await MarketService.getMarket(marketSym).catch(() => null) : null;
+            const info = detail?.info ?? null;
 
             const crossChainDecimals: Record<string, number> = {
-                BCH: 8, SOL: 9, USDC: 6, USDT: 6, ETH: 18, 'WETH.E': 8, MOVE: 8, XMR: 12, BNB: 18,
+                BCH: 8, SOL: 9, USDC: 6, USDT: 6, ETH: 18, BTC: 8, MOVE: 8, XMR: 12, BNB: 18,
             };
-            const decimals = crossChainDecimals[sym] ?? 8;
-
-            // Safe access — CoinGecko may rate-limit; market_data fields may be absent
-            const md = detail?.market_data;
-            const links = detail?.links;
-
-            const blockchainSites = Array.isArray(links?.blockchain_site)
-                ? links.blockchain_site.filter((s: string) => Boolean(s)).slice(0, 3)
-                : [];
-            const homepage = Array.isArray(links?.homepage)
-                ? (links.homepage.find((h: string) => Boolean(h)) ?? null)
-                : null;
-            const descriptionText = typeof detail?.description?.en === 'string'
-                ? detail.description.en.replace(/<[^>]*>/g, '').trim()
-                : '';
 
             return {
                 symbol: sym,
-                name: detail?.name || cg?.name || sym,
-                icon,
-                decimals,
+                name: info?.name || sym,
+                icon: logoForSymbol(sym) ?? info?.image ?? '',
+                decimals: crossChainDecimals[marketSym ?? sym] ?? 8,
                 chain: resolveChain(sym, isMainnet),
                 isCashToken: false,
-                priceUsd,
-                change1h: md?.price_change_percentage_1h_in_currency?.usd
-                    ?? cg?.price_change_percentage_1h_in_currency
-                    ?? null,
-                change24h: md?.price_change_percentage_24h_in_currency?.usd
-                    ?? cg?.price_change_percentage_24h_in_currency
-                    ?? null,
-                change7d: md?.price_change_percentage_7d_in_currency?.usd ?? null,
-                marketCap: md?.market_cap?.usd ?? cg?.market_cap ?? null,
-                fdv: md?.fully_diluted_valuation?.usd ?? cg?.fully_diluted_valuation ?? null,
-                volume24h: md?.total_volume?.usd ?? cg?.total_volume ?? null,
+                priceUsd: detail && !detail.stale && detail.price ? detail.price : 0,
+                change1h: info?.change1h ?? null,
+                change24h: detail?.change24h ?? null,
+                change7d: info?.change7d ?? null,
+                marketCap: info?.marketCap ?? null,
+                fdv: info?.fdv ?? null,
+                volume24h: info?.volume24h ?? null,
                 tvlUsd: null,
-                high24h: md?.high_24h?.usd ?? null,
-                low24h: md?.low_24h?.usd ?? null,
-                ath: md?.ath?.usd ?? null,
-                atl: md?.atl?.usd ?? null,
-                circulatingSupply: md?.circulating_supply ?? null,
-                totalSupply: md?.total_supply ?? null,
-                description: descriptionText,
-                website: homepage,
-                explorerLinks: blockchainSites,
+                high24h: info?.high24h ?? null,
+                low24h: info?.low24h ?? null,
+                ath: info?.ath ?? null,
+                atl: info?.atl ?? null,
+                circulatingSupply: info?.circulatingSupply ?? null,
+                totalSupply: info?.totalSupply ?? null,
+                description: info?.description ?? '',
+                website: info?.homepage ?? null,
+                explorerLinks: info?.explorers ?? [],
                 raw: detail ?? undefined,
             } satisfies TokenDetail;
         },

@@ -149,33 +149,6 @@ export const CauldronService = {
     },
 
     /**
-     * Fetch price history for charting.
-     * period: '1h' | '24h' | '7d' | '30d' | '365d' | 'all'
-     */
-    async getPriceHistory(
-        tokenId: string,
-        period: '1h' | '24h' | '7d' | '30d' | '365d' | 'all',
-        isMainnet = false
-    ): Promise<Array<{ timestamp: number; price_sats: number }>> {
-        const apiUrl = isMainnet ? this.MAINNET_API_URL : this.CHIPNET_API_URL;
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 8000);
-        try {
-            const res = await fetch(
-                `${apiUrl}/tokens/${tokenId}/price_history?period=${period}`,
-                { signal: controller.signal }
-            );
-            if (!res.ok) return [];
-            const data = await res.json();
-            return Array.isArray(data) ? data : (data.prices ?? data.history ?? []);
-        } catch {
-            return [];
-        } finally {
-            clearTimeout(timer);
-        }
-    },
-
-    /**
      * The one place token metadata is read off a Cauldron row. The `bcmr` block
      * is BCMR data (from the BCHMesh BCMR service on the server path, Cauldron's
      * embedded copy on the direct path). Pass `bcmr` (a BcmrClient result) to

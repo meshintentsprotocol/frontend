@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer, YAxis } from 'recharts';
 import { cn } from '@/lib/utils';
-import { formatCurrency } from '@/lib/coingecko';
+import { formatCurrency } from '@/lib/marketData';
 
 interface PortfolioChartProps {
     data: { time: string; value: number }[];

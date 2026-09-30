@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { PortfolioToken } from '@/hooks/usePortfolio';
-import { formatCurrency, formatCompactNumber } from '@/lib/coingecko';
+import { formatCurrency, formatCompactNumber } from '@/lib/marketData';
 import { cn } from '@/lib/utils';
 import { TokenChainIcon } from '@/components/common/TokenChainIcon';
 

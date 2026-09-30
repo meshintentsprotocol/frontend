@@ -12,6 +12,7 @@ import { TokenProtocolTransactions } from '@/components/explore/TokenProtocolTra
 import { BCHSwapCard } from '@/components/bch-swap/BCHSwapCard';
 import type { BCHOrderType, Token } from '@/types';
 import { Drawer, DrawerContent, DrawerTrigger } from '@/components/ui/drawer';
+import { TokenChainIcon } from '@/components/common/TokenChainIcon';
 
 // URL scheme:
 //   Cross-chain:  /explore/tokens/BCH   → tokenId = "BCH"
@@ -101,6 +102,7 @@ export function TokenDetailPage() {
             : detail.chain === 'Solana' ? 'solana'
             : detail.chain === 'Monero' ? 'xmr'
             : detail.chain === 'Bitcoin Cash' ? 'bch'
+            : detail.chain === 'Movement' ? 'movement'
             : 'ethereum',
         categoryId: isCashToken ? tokenId : undefined,
         priceUsd: detail.priceUsd,
@@ -170,14 +172,13 @@ export function TokenDetailPage() {
                         </div>
                     ) : detail ? (
                         <div className="flex items-start gap-4">
-                            <img
-                                src={detail.icon}
-                                alt={detail.symbol}
-                                className="h-12 w-12 rounded-full bg-white/[0.04] flex-shrink-0 object-cover"
-                                onError={e => {
-                                    (e.target as HTMLImageElement).src =
-                                        `https://api.dicebear.com/7.x/identicon/svg?seed=${detail.symbol}`;
-                                }}
+                            {/* Same resolver as the list rows: IPFS gateway fallbacks, then identicon */}
+                            <TokenChainIcon
+                                tokenIcon={detail.icon}
+                                tokenName={detail.symbol}
+                                chain={isCashToken ? 'bitcoin-cash' : detail.chain}
+                                size="lg"
+                                className="mt-1"
                             />
                             <div className="min-w-0">
                                 <div className="flex flex-wrap items-center gap-2 mb-1">

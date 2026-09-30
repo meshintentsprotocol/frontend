@@ -1,28 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
-import { CoinGeckoService_extended, CG_ID_MAP, type ChartPoint } from '@/lib/coingecko';
-import { CauldronService } from '@/lib/cauldron';
-import { PriceService } from '@/lib/pyth';
+import { MarketService, marketSymbolFor, type ChartPoint, type ChartRange } from '@/lib/marketData';
 
-export type TimeRange = '1H' | '1D' | '1W' | '1M' | '1Y' | 'ALL';
+export type TimeRange = ChartRange;
 
-const RANGE_TO_CG_DAYS: Record<TimeRange, number | 'max'> = {
-    '1H':  0.042,   // ~1 hour worth of data
-    '1D':  1,
-    '1W':  7,
-    '1M':  30,
-    '1Y':  365,
-    'ALL': 'max',
-};
-
-const RANGE_TO_CAULDRON_PERIOD: Record<TimeRange, '1h' | '24h' | '7d' | '30d' | '365d' | 'all'> = {
-    '1H':  '1h',
-    '1D':  '24h',
-    '1W':  '7d',
-    '1M':  '30d',
-    '1Y':  '365d',
-    'ALL': 'all',
-};
-
+/**
+ * USD price history for the token detail chart, served by the mesh server:
+ *   CashToken  → Cauldron trade history, USD aligned to BCH/USD at each point
+ *   otherwise  → exchange candles (Kraken / OKX)
+ * Points without a USD value (BCH/USD unavailable) are dropped.
+ */
 export function useTokenChart(
     tokenId: string,
     isCashToken: boolean,
@@ -33,32 +19,16 @@ export function useTokenChart(
         queryKey: ['token-chart', tokenId, isCashToken, range, isMainnet],
         queryFn: async () => {
             if (isCashToken) {
-                const period = RANGE_TO_CAULDRON_PERIOD[range];
-                const [history, pythPrices] = await Promise.all([
-                    CauldronService.getPriceHistory(tokenId, period, isMainnet),
-                    PriceService.getLatestPrices(),
-                ]);
-
-                const bchPrice = pythPrices['BCH']
-                    ? PriceService.formatPrice(pythPrices['BCH'])
-                    : 0;
-
-                if (history.length === 0) return [];
-
-                return history.map(p => ({
-                    time: p.timestamp * 1000,  // ensure ms for chart
-                    price: (p.price_sats / 1e8) * bchPrice,
-                }));
+                const history = await MarketService.getTokenHistory(tokenId, range, isMainnet);
+                return history
+                    .filter((p): p is { time: number; priceSats: number; price: number } => p.price !== null && p.price > 0)
+                    .map(p => ({ time: p.time, price: p.price }));
             }
-
-            // Cross-chain: CoinGecko
-            const cgId = CG_ID_MAP[tokenId.toUpperCase()];
-            if (!cgId) return [];
-
-            const days = RANGE_TO_CG_DAYS[range];
-            return CoinGeckoService_extended.getMarketChart(cgId, days);
+            const symbol = marketSymbolFor(tokenId);
+            if (!symbol) return [];
+            return MarketService.getChart(symbol, range);
         },
-        staleTime: 2 * 60_000,   // 2 minutes — chart data doesn't need to be real-time
+        staleTime: 60_000,
         retry: 1,
     });
 }

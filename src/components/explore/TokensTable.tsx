@@ -1,17 +1,18 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { CoinGeckoService, CoinData, formatCompactNumber } from '@/lib/coingecko';
+import { MarketService, marketSymbolFor, formatCompactNumber } from '@/lib/marketData';
+import { usePrices } from '@/hooks/usePrices';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { ChainFilter } from '@/pages/ExplorePage';
 import { ArrowUpRight, ArrowDownRight, Layers } from 'lucide-react';
-import { CauldronService, CauldronTokenData } from '@/lib/cauldron';
-import { PriceService, PRICE_FEEDS } from '@/lib/pyth';
-import { PriceData } from '@/types';
+import { CauldronService } from '@/lib/cauldron';
 import { useWDK } from '@/context/WDKProvider';
 import { TokenChainIcon } from '@/components/common/TokenChainIcon';
 import { resolveTokenIconUri } from '@/lib/tokenIcons';
+import { logoForSymbol } from '@/lib/tokenLogos';
 
 type AssetChain = 'Bitcoin Cash' | 'EVM' | 'Solana' | 'Movement' | 'Monero';
 interface Asset {
@@ -25,7 +26,8 @@ interface Asset {
 
 // Tokens available per network. Mirrors MAINNET_SWAP_TOKENS / ALL_BCH_SWAP_TOKENS
 // in components/bch-swap/BCHTokenSelector.tsx so this table represents what is
-// actually swappable on the active network.
+// actually swappable on the active network. Prices resolve through
+// marketSymbolFor(), so "USDC (MOVE)" is priced as USDC.
 const MAINNET_ASSETS: Asset[] = [
     { symbol: "BCH", name: "Bitcoin Cash", chain: "Bitcoin Cash", chainId: "bitcoin-cash", icon: "/logos/bitcoin-cash-bch-logo.svg" },
     { symbol: "BNB", name: "BNB", chain: "EVM", chainId: "bsc", icon: "/logos/bnb-bnb-logo.svg" },
@@ -58,69 +60,55 @@ export function TokensTable({ activeChain, refreshTrigger }: TokensTableProps) {
     const { bchNetwork } = useWDK();
     const isMainnet = bchNetwork === 'mainnet';
     const navigate = useNavigate();
-    const [coinData, setCoinData] = useState<Record<string, CoinData>>({});
-    const [pythPrices, setPythPrices] = useState<Record<string, PriceData>>({});
-    const [initialLoading, setInitialLoading] = useState(true);
-    const [isRefetching, setIsRefetching] = useState(false);
-    const [cashTokens, setCashTokens] = useState<CauldronTokenData[]>([]);
-
     const ASSETS: Asset[] = isMainnet ? MAINNET_ASSETS : TESTNET_ASSETS;
 
-    useEffect(() => {
-        let isMounted = true;
-        const fetchTokens = async () => {
-            setIsRefetching(true);
-            try {
-                const symbols = ASSETS.map(a => a.symbol);
-                const [cg, apiTokens, pyth] = await Promise.all([
-                    CoinGeckoService.getMarketData(symbols),
-                    CauldronService.getTopCashTokens(50, isMainnet),
-                    PriceService.getLatestPrices(),
-                ]);
-                if (!isMounted) return;
-                setCoinData(cg);
-                setCashTokens(apiTokens);
-                setPythPrices(pyth);
-            } catch (e) {
-                console.error("Tokens fetch failed", e);
-            }
-            if (isMounted) {
-                setInitialLoading(false);
-                setIsRefetching(false);
-            }
-        };
-        fetchTokens();
-        return () => { isMounted = false; };
-    }, [refreshTrigger, isMainnet]);
+    // All three come from the mesh server and are shared app-wide via react-query.
+    const { prices, refetch: refetchPrices } = usePrices();
+    const markets = useQuery({
+        queryKey: ['markets'],
+        queryFn: () => MarketService.getMarkets(),
+        staleTime: 60_000,
+        refetchInterval: 60_000,
+        placeholderData: keepPreviousData,
+    });
+    const cashTokenQuery = useQuery({
+        queryKey: ['cauldron-top-tokens', isMainnet ? 'mainnet' : 'chipnet'],
+        queryFn: () => CauldronService.getTopCashTokens(50, isMainnet),
+        staleTime: 60_000,
+        refetchInterval: 60_000,
+        placeholderData: keepPreviousData,
+    });
+    const cashTokens = cashTokenQuery.data ?? [];
 
-    // Resolve a USD price for a given symbol — prefer Pyth, fall back to CoinGecko.
+    useEffect(() => {
+        if (refreshTrigger === 0) return;
+        refetchPrices();
+        markets.refetch();
+        cashTokenQuery.refetch();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [refreshTrigger]);
+
+    const isRefetching = markets.isFetching || cashTokenQuery.isFetching;
+    // Skeleton rows only on the very first load; afterwards a missing value is "-".
+    const pricesLoaded = Object.keys(prices).length > 0 || markets.isFetched;
+    const showSkeleton = !pricesLoaded && cashTokenQuery.isLoading;
+
     const getPriceUsd = (symbol: string): number | null => {
-        const key = Object.keys(PRICE_FEEDS).find(k => k.toUpperCase() === symbol.toUpperCase());
-        if (key && pythPrices[key]) {
-            const p = PriceService.formatPrice(pythPrices[key]);
-            if (p > 0) return p;
-        }
-        const cg = coinData[symbol];
-        if (cg?.current_price) return cg.current_price;
-        return null;
+        const market = marketSymbolFor(symbol);
+        return market && prices[market] ? prices[market].price : null;
     };
 
-    // Pyth BCH/USD — used for all CashToken sats→USD conversions
-    const bchPriceUsd = useMemo(() => {
-        const p = pythPrices['BCH'] ? PriceService.formatPrice(pythPrices['BCH']) : 0;
-        return p > 0 ? p : (coinData['BCH']?.current_price || 0);
-    }, [pythPrices, coinData]);
-
-    const showSkeleton = initialLoading && Object.keys(coinData).length === 0 && Object.keys(pythPrices).length === 0;
+    // Live BCH/USD — every CashToken sats→USD conversion uses it; 0 = unknown.
+    const bchPriceUsd = prices['BCH']?.price ?? 0;
 
     const filteredAssets = ASSETS.filter(a => activeChain === 'All' || a.chain === activeChain);
     const filteredCashTokens = activeChain === 'All' || activeChain === 'Bitcoin Cash' ? cashTokens : [];
 
     const formatPct = (val: number | null | undefined) => {
-        if (val === null || val === undefined) return '-';
+        if (val === null || val === undefined || !Number.isFinite(val)) return <span className="text-muted-foreground">-</span>;
         const isPos = val >= 0;
         return (
-            <span className={cn("flex items-center gap-0.5", isPos ? "text-green-400" : "text-red-400")}>
+            <span className={cn("flex items-center justify-end gap-0.5", isPos ? "text-green-400" : "text-red-400")}>
                 {isPos ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
                 {Math.abs(val).toFixed(2)}%
             </span>
@@ -144,7 +132,7 @@ export function TokensTable({ activeChain, refreshTrigger }: TokensTableProps) {
             )}
 
             <div className="px-4 py-2 border-b border-white/[0.06] flex items-center justify-between text-xs text-muted-foreground">
-                <span>Prices via <span className="text-emerald-400 font-medium">Pyth Network</span>, CashToken metrics via <span className="text-emerald-400 font-medium">Cauldron Indexer</span></span>
+                <span>Prices via <span className="text-emerald-400 font-medium">BCHMesh market feed</span> (exchange median), CashToken metrics via <span className="text-emerald-400 font-medium">Cauldron Indexer</span></span>
                 <span className={cn(
                     "text-[10px] font-semibold px-2 py-0.5 rounded-full border",
                     isMainnet
@@ -196,16 +184,16 @@ export function TokensTable({ activeChain, refreshTrigger }: TokensTableProps) {
                         ) : (
                             filteredAssets.map((asset) => {
                                 const usd = getPriceUsd(asset.symbol);
-                                const cg = coinData[asset.symbol];
-                                const priceStr = usd !== null ? formatUsd(usd) : '-';
-                                const pythKey = Object.keys(PRICE_FEEDS).find(k => k.toUpperCase() === asset.symbol.toUpperCase());
-                                const sourcedByPyth = !!(pythKey && pythPrices[pythKey]);
+                                const market = marketSymbolFor(asset.symbol);
+                                const row = market ? markets.data?.[market] : undefined;
+                                const live = market ? prices[market] : undefined;
+                                const sourceLabel = live ? (live.sources.includes('pyth') ? 'Pyth' : 'Live') : null;
 
                                 return (
                                     <TableRow
                                         key={`${asset.symbol}-${asset.chain}`}
                                         className="hover:bg-white/[0.02] border-white/[0.06] transition-colors cursor-pointer"
-                                        onClick={() => navigate(`/explore/tokens/${asset.symbol}`)}
+                                        onClick={() => navigate(`/explore/tokens/${encodeURIComponent(asset.symbol)}`)}
                                     >
                                         <TableCell>
                                             <div className="flex items-center gap-3">
@@ -226,45 +214,61 @@ export function TokensTable({ activeChain, refreshTrigger }: TokensTableProps) {
                                                         )}>
                                                             {asset.chain}
                                                         </Badge>
-                                                        {sourcedByPyth && (
-                                                            <span className="text-[8px] font-semibold text-emerald-400/70 uppercase tracking-wider">Pyth</span>
+                                                        {live && sourceLabel && (
+                                                            <span
+                                                                className="text-[8px] font-semibold text-emerald-400/70 uppercase tracking-wider"
+                                                                title={`Median of ${live.sources.join(', ')}`}
+                                                            >
+                                                                {sourceLabel}
+                                                            </span>
                                                         )}
                                                     </div>
                                                 </div>
                                             </div>
                                         </TableCell>
                                         <TableCell className="text-right font-medium">
-                                            {usd === null ? <div className="h-4 w-16 bg-white/5 rounded animate-pulse ml-auto" /> : priceStr}
+                                            {usd !== null
+                                                ? formatUsd(usd, { max: usd < 1 ? 6 : 2 })
+                                                : pricesLoaded
+                                                    ? <span className="text-muted-foreground">-</span>
+                                                    : <div className="h-4 w-16 bg-white/5 rounded animate-pulse ml-auto" />}
                                         </TableCell>
                                         <TableCell className="text-right text-sm">
-                                            {!cg ? <span className="text-muted-foreground">-</span> : formatPct(cg.price_change_percentage_1h_in_currency)}
+                                            {formatPct(row?.change1h)}
                                         </TableCell>
                                         <TableCell className="text-right text-sm">
-                                            {!cg ? <span className="text-muted-foreground">-</span> : formatPct(cg.price_change_percentage_24h_in_currency)}
+                                            {formatPct(live?.change24h)}
                                         </TableCell>
                                         <TableCell className="text-right text-muted-foreground font-medium hidden md:table-cell text-sm">
-                                            {!cg ? <span>-</span> : formatCompactNumber(cg.fully_diluted_valuation)}
+                                            {formatCompactNumber(row?.fdv)}
                                         </TableCell>
                                         <TableCell className="text-right text-muted-foreground font-medium hidden sm:table-cell text-sm">
-                                            {!cg ? <span>-</span> : formatCompactNumber(cg.total_volume)}
+                                            {formatCompactNumber(row?.volume24h)}
                                         </TableCell>
                                     </TableRow>
                                 );
                             })
                         )}
 
-                        {filteredCashTokens.length > 0 && filteredCashTokens.map(ct => {
+                        {!showSkeleton && filteredCashTokens.map(ct => {
                             const { symbol: sym, iconRaw } = CauldronService.metadataOf(ct);
-                            const icon = resolveTokenIconUri(iconRaw, ct.token_id);
+                            const icon = resolveTokenIconUri(iconRaw ?? logoForSymbol(sym), ct.token_id);
+                            const registered = ct.metadata_source !== 'cauldron-listing';
+                            const displayName = registered
+                                ? (ct.display_name || sym)
+                                : `Unregistered ${ct.token_id.slice(0, 6)}…`;
                             const change24h = Number.isFinite(ct.change_24h_bp) ? ct.change_24h_bp / 100 : null; // bp → percent
                             const change7d = Number.isFinite(ct.change_7d_bp) ? ct.change_7d_bp / 100 : 0;
-                            // price_now is sats per whole (display) token; bchPriceUsd from Pyth
+                            // price_now is sats per whole (display) token
                             const tokenBchPrice = ct.price_now ? ct.price_now / 1e8 : 0;
-                            const calculatedUsdPrice = ct.price_now_usd > 0 ? ct.price_now_usd : (tokenBchPrice * bchPriceUsd);
+                            // Prefer our BCH/USD so every row shares one rate; server USD otherwise
+                            const calculatedUsdPrice = tokenBchPrice > 0 && bchPriceUsd > 0
+                                ? tokenBchPrice * bchPriceUsd
+                                : ct.price_now_usd > 0 ? ct.price_now_usd : 0;
                             const tvlBch = ct.tvl_sats ? ct.tvl_sats / 1e8 : 0;
-                            const tvlUsd = tvlBch * bchPriceUsd;
+                            const tvlUsd = bchPriceUsd > 0 ? tvlBch * bchPriceUsd : null;
                             const volBch = ct.trade_volume ? ct.trade_volume / 1e8 : 0;
-                            const volUsd = volBch * bchPriceUsd;
+                            const volUsd = bchPriceUsd > 0 ? volBch * bchPriceUsd : null;
 
                             return (
                                 <TableRow
@@ -274,17 +278,31 @@ export function TokensTable({ activeChain, refreshTrigger }: TokensTableProps) {
                                 >
                                     <TableCell>
                                         <div className="flex items-center gap-3">
-                                            <TokenChainIcon tokenIcon={icon} tokenName={ct.display_name || sym} chain="bitcoin-cash" size="sm" />
+                                            <TokenChainIcon tokenIcon={icon} tokenName={registered ? displayName : sym} chain="bitcoin-cash" size="sm" />
                                             <div className="flex flex-col min-w-0">
                                                 <div className="flex items-center gap-2">
-                                                    <span className="font-semibold text-sm truncate" title={ct.display_name || sym}>{ct.display_name || sym}</span>
-                                                    <span className="text-xs text-muted-foreground uppercase tracking-wide">{sym}</span>
+                                                    <span
+                                                        className={cn("font-semibold text-sm truncate", !registered && "text-muted-foreground")}
+                                                        title={registered ? displayName : ct.token_id}
+                                                    >
+                                                        {displayName}
+                                                    </span>
+                                                    {registered && <span className="text-xs text-muted-foreground uppercase tracking-wide">{sym}</span>}
                                                 </div>
                                                 <div className="mt-0.5 flex items-center gap-1.5">
                                                     <Badge variant="outline" className="text-[9px] h-3.5 px-1.5 border-emerald-500/20 text-emerald-400 font-medium">
                                                         <Layers className="w-2.5 h-2.5 mr-1 inline" />
                                                         CashToken
                                                     </Badge>
+                                                    {!registered && (
+                                                        <Badge
+                                                            variant="outline"
+                                                            className="text-[9px] h-3.5 px-1.5 border-amber-500/20 text-amber-300/80 font-medium"
+                                                            title="No BCMR registry describes this token — name, symbol and decimals are unverified"
+                                                        >
+                                                            Unverified
+                                                        </Badge>
+                                                    )}
                                                     <span className="text-[8px] font-mono text-muted-foreground/60 truncate max-w-[80px]" title={ct.token_id}>
                                                         {ct.token_id.slice(0, 6)}…{ct.token_id.slice(-4)}
                                                     </span>

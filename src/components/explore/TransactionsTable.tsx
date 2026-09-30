@@ -15,6 +15,9 @@ import {
     BCH_SOLANA_RELAYER_URL,
     EVM_RELAYER_URL,
 } from '@/lib/config';
+import { PriceService } from '@/lib/pyth';
+import { marketSymbolFor } from '@/lib/marketData';
+import { logoForSymbol } from '@/lib/tokenLogos';
 
 // ============================================================================
 // Token & Chain icon maps
@@ -27,23 +30,9 @@ const CHAIN_ICONS: Record<string, string> = {
     'Monero': '/logos/monero.svg',
 };
 
-const TOKEN_ICONS: Record<string, string> = {
-    'BCH': '/logos/bitcoin-cash-bch-logo.svg',
-    'SOL': '/logos/solana.svg',
-    'MOVE': '/logos/movement.svg',
-    'ETH': '/logos/ethereum-eth-logo.svg',
-    'BNB': '/logos/bnb-bnb-logo.svg',
-    'USDC': '/logos/usd-coin-usdc-logo.svg',
-    'USDT': '/logos/usdt-svgrepo-com.svg',
-    'pUSD': '/logos/usd-coin-usdc-logo.svg',
-    'PUSD': '/logos/usd-coin-usdc-logo.svg',
-    'mUSD': '/logos/usd-coin-usdc-logo.svg',
-    'FUR': '/logos/fur-logo.svg',
-    'WBTC': '/logos/wbtc-logo.svg',
-    'XMR': '/logos/monero.svg',
-    'USDC.e': 'https://raw.githubusercontent.com/kitelabs-io/mvmt-tokens/main/logos/USDC.png',
-    'USDT.e': 'https://raw.githubusercontent.com/kitelabs-io/mvmt-tokens/main/logos/USDT.png',
-};
+// Symbols this table recognises; logos resolve through the shared map in lib/tokenLogos.
+const KNOWN_SYMBOLS = ['BCH', 'SOL', 'MOVE', 'ETH', 'BNB', 'BTC', 'USDC', 'USDT', 'XMR', 'PUSD', 'USDC.E', 'USDT.E', 'WETH.E', 'WBTC'];
+const iconFor = (symbol: string): string | undefined => logoForSymbol(symbol) ?? undefined;
 
 interface ExplorerTx {
     id: string;
@@ -78,22 +67,22 @@ function getTimeAgo(timestamp: number): string {
 
 function parseTokenInfo(tokenRaw?: string): { symbol: string; icon?: string; decimals: number } {
     if (!tokenRaw || tokenRaw.toUpperCase() === 'BCH' || tokenRaw === '0x' || tokenRaw === '') {
-        return { symbol: 'BCH', icon: TOKEN_ICONS['BCH'], decimals: 8 };
+        return { symbol: 'BCH', icon: iconFor('BCH'), decimals: 8 };
     }
     const clean = tokenRaw.startsWith('0x') ? tokenRaw.slice(2).toLowerCase() : tokenRaw.toLowerCase();
     if (clean === 'dfe50223c8d5cba8dcef8dff6d92b61deb88a8ba44947367f2b746487b56039b') {
-        return { symbol: 'pUSD', icon: TOKEN_ICONS['pUSD'], decimals: 2 };
+        return { symbol: 'pUSD', icon: iconFor('pUSD'), decimals: 2 };
     }
     if (clean === 'e7979ccdae259293c7d0bee45ce8b7ad7660ea99477f802ed6a5161b0d30e6b8') {
-        return { symbol: 'PUSD', icon: TOKEN_ICONS['PUSD'], decimals: 2 };
+        return { symbol: 'PUSD', icon: iconFor('PUSD'), decimals: 2 };
     }
     if (clean === 'c9e5e317c4613cc92f2ea69d2f2d966e3b5dfd4642c67ad3a94eb751bf8c3065') {
-        return { symbol: 'mUSD', icon: TOKEN_ICONS['mUSD'], decimals: 2 };
+        return { symbol: 'mUSD', icon: iconFor('mUSD'), decimals: 2 };
     }
     const upper = tokenRaw.toUpperCase();
-    if (TOKEN_ICONS[upper]) {
+    if (KNOWN_SYMBOLS.includes(upper)) {
         const decimals = upper === 'SOL' ? 9 : upper === 'ETH' || upper === 'BNB' ? 18 : upper === 'USDC' || upper === 'USDT' ? 6 : 8;
-        return { symbol: upper, icon: TOKEN_ICONS[upper], decimals };
+        return { symbol: upper, icon: iconFor(upper), decimals };
     }
     if (clean.length === 64) {
         return { symbol: `CT:${clean.slice(0, 6)}…`, decimals: 2 };
@@ -114,16 +103,10 @@ function parseAmount(raw: any, decimals: number): number {
     return n;
 }
 
-function getUsdPrice(symbol: string): number {
-    const s = symbol.toUpperCase();
-    if (s === 'BCH') return 390;
-    if (s === 'SOL') return 150;
-    if (s === 'ETH') return 3100;
-    if (s === 'BNB') return 580;
-    if (s === 'MOVE') return 0.8;
-    if (s === 'XMR') return 160;
-    if (s.includes('USD')) return 1.0;
-    return 1.0;
+/** USD per unit from the live price map; 0 when the symbol has no live price. */
+function getUsdPrice(symbol: string, usd: Record<string, number>): number {
+    const market = marketSymbolFor(symbol);
+    return market ? usd[market] ?? 0 : 0;
 }
 
 function getChainFromSwapType(swapType: string): 'Movement' | 'Solana' | 'Bitcoin Cash' | 'EVM' | 'Monero' {
@@ -162,7 +145,7 @@ function getExplorerUrl(order: BCHOrder, network: 'mainnet' | 'chipnet'): string
 }
 
 function TxTokenIcon({ symbol, icon }: { symbol: string; icon?: string }) {
-    const url = icon || TOKEN_ICONS[symbol];
+    const url = icon || iconFor(symbol);
     return (
         <div className="h-7 w-7 rounded-full bg-white/5 border border-white/10 flex items-center justify-center overflow-hidden flex-shrink-0">
             {url ? (
@@ -212,6 +195,10 @@ export function TransactionsTable({ activeChain, refreshTrigger }: { activeChain
         const loadOrders = async () => {
             setIsRefetching(true);
             const allTxs: ExplorerTx[] = [];
+            const spot = await PriceService.getLatestPrices();
+            const usd: Record<string, number> = Object.fromEntries(
+                Object.entries(spot).map(([sym, p]) => [sym, PriceService.formatPrice(p)]),
+            );
 
             // 1. BCHMesh / CashToken Live Intents (Dutch Market, Limit Orders, TWAP)
             try {
@@ -236,7 +223,7 @@ export function TransactionsTable({ activeChain, refreshTrigger }: { activeChain
                         labelType = 'TWAP Slice';
                     }
 
-                    const usdVal = (sellAmount * getUsdPrice(sellInfo.symbol)) || (buyAmount * getUsdPrice(buyInfo.symbol)) || 0;
+                    const usdVal = (sellAmount * getUsdPrice(sellInfo.symbol, usd)) || (buyAmount * getUsdPrice(buyInfo.symbol, usd)) || 0;
 
                     let expUrl = item.explorerUrl || item.fillExplorerUrl;
                     const txHash = item.fillTxid || item.txid || item.id;
@@ -278,18 +265,18 @@ export function TransactionsTable({ activeChain, refreshTrigger }: { activeChain
                     const moveTxs = history.map((order: any, idx: number): ExplorerTx => {
                         const sellSym = order.sellToken?.symbol || order.sell_token || 'MOVE';
                         const buySym = order.buyToken?.symbol || order.buy_token || 'USDC';
-                        const mockUsdPrice = getUsdPrice(sellSym);
+                        const usdPrice = getUsdPrice(sellSym, usd);
                         const st = order.status === 'completed' || order.status === 'filled' || order.status === 'FILLED' ? 'Completed' : order.status || 'Pending';
                         return {
                             id: order.id || order.nonce || order.orderId || `move-${sellSym}-${buySym}-${order.createdAt || order.timestamp || Date.now()}-${idx}`,
                             timestamp: order.createdAt || order.timestamp || Date.now(),
                             sellToken: sellSym,
-                            sellIcon: order.sellToken?.icon || TOKEN_ICONS[sellSym],
+                            sellIcon: order.sellToken?.icon || iconFor(sellSym),
                             sellAmount: Number(order.sellAmount || order.sell_amount) || 0,
                             buyToken: buySym,
-                            buyIcon: order.buyToken?.icon || TOKEN_ICONS[buySym],
+                            buyIcon: order.buyToken?.icon || iconFor(buySym),
                             buyAmount: Number(order.buyAmount || order.buy_amount) || 0,
-                            usdValue: (Number(order.sellAmount || order.sell_amount) || 0) * mockUsdPrice,
+                            usdValue: (Number(order.sellAmount || order.sell_amount) || 0) * usdPrice,
                             wallet: order.maker ? `${order.maker.slice(0, 6)}...${order.maker.slice(-4)}` : 'Unknown',
                             chain: 'Movement',
                             txHash: order.txid || order.fulfillTxId || order.order_hash,
@@ -312,18 +299,18 @@ export function TransactionsTable({ activeChain, refreshTrigger }: { activeChain
                     const bchTxs = bchOrders.map((order): ExplorerTx => {
                         const sellSym = order.sellToken?.symbol || '?';
                         const buySym = order.buyToken?.symbol || '?';
-                        const mockUsdPrice = getUsdPrice(sellSym);
+                        const usdPrice = getUsdPrice(sellSym, usd);
                         const statusMap: Record<string, string> = { pending: 'Pending', filled: 'Completed', claimed: 'Claimed', claimable: 'Claimable', cancelled: 'Failed', expired: 'Expired' };
                         return {
                             id: `${net}_${order.id}`,
                             timestamp: order.createdAt,
                             sellToken: sellSym,
-                            sellIcon: order.sellToken?.icon || TOKEN_ICONS[sellSym],
+                            sellIcon: order.sellToken?.icon || iconFor(sellSym),
                             sellAmount: order.sellAmount,
                             buyToken: buySym,
-                            buyIcon: order.buyToken?.icon || TOKEN_ICONS[buySym],
+                            buyIcon: order.buyToken?.icon || iconFor(buySym),
                             buyAmount: order.buyAmount,
-                            usdValue: order.sellAmount * mockUsdPrice,
+                            usdValue: order.sellAmount * usdPrice,
                             wallet: order.contractAddress ? `${order.contractAddress.slice(0, 10)}...` : 'Local',
                             chain: getChainFromSwapType(order.swapType),
                             txHash: order.txid || order.fillTxid,
@@ -367,18 +354,18 @@ export function TransactionsTable({ activeChain, refreshTrigger }: { activeChain
                         else explorerUrl = `https://explorer.movementnetwork.xyz/txn/${sourceId}?network=testnet`;
                     }
 
-                    const mockUsdPrice = getUsdPrice(sellSym);
+                    const usdPrice = getUsdPrice(sellSym, usd);
 
                     return {
                         id: `cc_${intent.id}`,
                         timestamp: intent.createdAt ? (intent.createdAt > 1e12 ? intent.createdAt : intent.createdAt * 1000) : Date.now(),
                         sellToken: sellSym,
-                        sellIcon: TOKEN_ICONS[sellSym],
+                        sellIcon: iconFor(sellSym),
                         sellAmount: Number(intent.sellAmount) / 1e8 || 0,
                         buyToken: buySym,
-                        buyIcon: TOKEN_ICONS[buySym],
+                        buyIcon: iconFor(buySym),
                         buyAmount: Number(intent.buyAmount) / 1e8 || 0,
-                        usdValue: (Number(intent.sellAmount) / 1e8 || 0) * mockUsdPrice,
+                        usdValue: (Number(intent.sellAmount) / 1e8 || 0) * usdPrice,
                         wallet: intent.makerAddress ? `${intent.makerAddress.slice(0, 8)}...` : 'Relayer',
                         chain,
                         txHash: sourceId,
@@ -508,7 +495,9 @@ export function TransactionsTable({ activeChain, refreshTrigger }: { activeChain
 
                                         {/* USD Value */}
                                         <TableCell className="text-right font-medium text-emerald-400">
-                                            ${tx.usdValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            {tx.usdValue > 0
+                                                ? `$${tx.usdValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                                : <span className="text-muted-foreground">-</span>}
                                         </TableCell>
 
                                         {/* Sold */}

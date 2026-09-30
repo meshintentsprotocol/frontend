@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { ArrowUpRight, ArrowDownLeft, RefreshCw, Navigation, Globe, Copy, Check, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { formatCurrency } from '@/lib/coingecko';
+import { formatCurrency } from '@/lib/marketData';
 import { ActivityService } from '@/lib/activity';
 import { BCHOrder } from '@/types';
 import { OrderStatusPill } from '@/components/bch-swap/OrderStatusBadge';

@@ -1,96 +1,65 @@
 /**
  * usePrices — single source of truth for token USD prices.
  *
- * Price comes from Pyth (high-frequency, no strict rate limit); the 24h change
- * comes from CoinGecko (Pyth carries no change figure). Both are independent
- * queries so a CoinGecko rate-limit never blocks price display, and both are
- * shared/de-duplicated across every consumer via the app-wide QueryClient.
+ * Price and 24h change both come from the BCHMesh server's aggregated feed
+ * (/api/v1/prices), shared across every consumer via the app-wide QueryClient.
+ * Stale entries are dropped, so a token without a live price is simply absent.
  */
 
 import { useMemo } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
-import { PriceService } from '@/lib/pyth';
-import { CoinGeckoService } from '@/lib/coingecko';
+import { MarketService, type SpotPrice } from '@/lib/marketData';
 import { readPersisted } from '@/lib/persist';
 
 export interface TokenPrice {
-    /** USD price (Pyth). */
+    /** USD price */
     price: number;
-    /** 24h change percentage (CoinGecko). */
+    /** 24h change percentage (0 when no source reports one) */
     change24h: number;
+    /** Venues that produced this price (coinbase, okx, kraken, pyth, …) */
+    sources: string[];
 }
 
 export type PriceMap = Record<string, TokenPrice>;
 
-const PYTH_KEY = ['prices', 'pyth'] as const;
-const CG_KEY = ['prices', 'coingecko'] as const;
+const PRICES_KEY = ['prices', 'mesh'] as const;
+/** Matches the server's PRICE_STALE_MS. */
+const PRICE_MAX_AGE_MS = 5 * 60_000;
 
-// Symbols we need a 24h change figure for.
-const CG_SYMBOLS = ['SOL', 'BCH', 'BTC', 'USDC', 'USDT', 'ETH', 'BNB', 'XMR'];
-
-type PythPrices = Record<string, number>;
-type ChangeMap = Record<string, number>;
+type SpotMap = Record<string, SpotPrice>;
 
 export function usePrices() {
-    const pyth = useQuery<PythPrices>({
-        queryKey: PYTH_KEY,
+    const query = useQuery<SpotMap>({
+        queryKey: PRICES_KEY,
         queryFn: async () => {
-            const raw = await PriceService.getLatestPrices();
-            const out: PythPrices = {};
-            for (const [symbol, data] of Object.entries(raw)) {
-                out[symbol] = PriceService.formatPrice(data);
-            }
-            // Empty means the Pyth request failed — throw so react-query keeps
-            // the previous prices rather than zeroing every token's USD value.
-            if (Object.keys(out).length === 0) {
-                throw new Error('Pyth returned no prices');
-            }
-            return out;
+            const spot = await MarketService.getPrices();
+            // Empty means the server has nothing yet — throw so react-query keeps
+            // the previous prices rather than blanking every USD value.
+            if (Object.keys(spot).length === 0) throw new Error('Mesh server returned no prices');
+            return spot;
         },
         staleTime: 10_000,
         refetchInterval: 15_000,
         placeholderData: keepPreviousData,
-        initialData: () => readPersisted<PythPrices>([...PYTH_KEY])?.data,
-        initialDataUpdatedAt: () => readPersisted([...PYTH_KEY])?.updatedAt,
-    });
-
-    const coingecko = useQuery<ChangeMap>({
-        queryKey: CG_KEY,
-        queryFn: async () => {
-            const market = await CoinGeckoService.getMarketData(CG_SYMBOLS);
-            const out: ChangeMap = {};
-            for (const [symbol, data] of Object.entries(market)) {
-                out[symbol] = data.price_change_percentage_24h_in_currency ?? 0;
-            }
-            return out;
-        },
-        staleTime: 60_000,
-        refetchInterval: 60_000,
-        placeholderData: keepPreviousData,
-        initialData: () => readPersisted<ChangeMap>([...CG_KEY])?.data,
-        initialDataUpdatedAt: () => readPersisted([...CG_KEY])?.updatedAt,
+        initialData: () => readPersisted<SpotMap>([...PRICES_KEY])?.data,
+        initialDataUpdatedAt: () => readPersisted([...PRICES_KEY])?.updatedAt,
     });
 
     const prices = useMemo<PriceMap>(() => {
-        const pythData = pyth.data ?? {};
-        const changeData = coingecko.data ?? {};
         const merged: PriceMap = {};
-        for (const symbol of new Set([...Object.keys(pythData), ...Object.keys(changeData)])) {
-            merged[symbol] = {
-                price: pythData[symbol] ?? 0,
-                change24h: changeData[symbol] ?? 0,
-            };
+        const now = Date.now();
+        for (const [symbol, p] of Object.entries(query.data ?? {})) {
+            // `stale` is judged at fetch time; a persisted snapshot can outlive it.
+            if (p.stale || !(p.price > 0) || now - p.updatedAt > PRICE_MAX_AGE_MS) continue;
+            merged[symbol] = { price: p.price, change24h: p.change24h ?? 0, sources: p.sources };
         }
         return merged;
-    }, [pyth.data, coingecko.data]);
+    }, [query.data]);
 
     return {
         prices,
-        isLoading: pyth.isLoading,
-        isFetching: pyth.isFetching || coingecko.isFetching,
-        refetch: () => {
-            pyth.refetch();
-            coingecko.refetch();
-        },
+        isLoading: query.isLoading,
+        isFetching: query.isFetching,
+        refetch: () => { query.refetch(); },
     };
 }
