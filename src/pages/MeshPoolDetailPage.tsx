@@ -15,7 +15,7 @@ import {
   Panel, PoolPairLabel, PoolStatusBadge, StatTile, lpUrl, poolUrl, tokenAmount, useTokenInfo,
 } from '@/components/mesh/pools/shared';
 import { PoolReserves } from '@/components/mesh/pools/PoolsTable';
-import { PoolManagePanel } from '@/components/mesh/pools/PoolManagePanel';
+import { V2MigrationPanel } from '@/components/mesh/v3/V2MigrationPanel';
 import { PoolActivityTable, PoolValueChart } from '@/components/mesh/pools/PoolActivity';
 import { V3PoolDetail } from '@/components/mesh/v3/V3PoolDetail';
 
@@ -82,7 +82,7 @@ export function MeshPoolDetailPage() {
         <div className="flex items-center gap-4 min-w-0">
           <PoolPairLabel token={token} side={p.side} size={36} />
           <PoolStatusBadge status={p.status} />
-          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full border border-white/10 text-zinc-400">Fixed price · V2</span>
+          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full border border-amber-500/30 text-amber-300">V2 · migrate to V3</span>
           <span className="text-[11px] font-mono px-2 py-0.5 rounded-full border border-white/10 text-zinc-400">{(p.feeBps / 100).toFixed(2)}% fee</span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -126,7 +126,8 @@ export function MeshPoolDetailPage() {
         </div>
 
         <div className="lg:col-span-5 space-y-6">
-          <PoolManagePanel pool={p} token={token} />
+          <V2MigrationPanel pools={[p]} />
+          <p className="text-[11px] text-zinc-500 px-1">Top-up and reprice for V2 pools are in the V2 app. Here you can withdraw, or migrate the pool to V3.</p>
 
           <Panel title="Position">
             <div className="space-y-2.5 text-xs">

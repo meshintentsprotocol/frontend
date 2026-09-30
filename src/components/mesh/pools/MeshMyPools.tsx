@@ -10,6 +10,7 @@ import { describePending, loadPending, registerPending, removePending, type Pend
 import { formatPct, formatSatsCompact, formatUsd, satsToUsd, shortHex } from '@/lib/mesh/format';
 import { EmptyState, Panel, PoolStatusBadge, StatTile } from './shared';
 import { PoolsTable } from './PoolsTable';
+import { V2MigrationPanel } from '@/components/mesh/v3/V2MigrationPanel';
 
 /** Pools funded in this browser whose registration did not complete. */
 export function PendingRegistrationsBanner() {
@@ -104,6 +105,7 @@ export function MeshMyPools({ onCreateNew }: { onCreateNew: () => void }) {
               </div>
             </Panel>
           )}
+          <V2MigrationPanel pools={mine.data?.pools ?? []} />
           <Panel title="Pools" action={
             <div className="flex gap-1 p-1 rounded-lg bg-black/40 border border-white/[0.06]">
               {([['active,exhausted', 'Open'], ['all', 'Including closed']] as const).map(([s, l]) => (
@@ -113,7 +115,7 @@ export function MeshMyPools({ onCreateNew }: { onCreateNew: () => void }) {
           }>
             {mine.isError
               ? <div className="text-xs text-amber-300">Could not load pools: {(mine.error as Error).message}</div>
-              : <PoolsTable pools={mine.data?.pools ?? []} bchUsd={bchUsd} loading={mine.isLoading}
+              : <PoolsTable pools={(mine.data?.pools ?? []).filter(p => p.contractName !== 'StrategyCovenantV2')} bchUsd={bchUsd} loading={mine.isLoading}
                   empty={<EmptyState title="You have no pools yet">Create a pool to start earning fees on Mesh fills. <button className="underline" onClick={onCreateNew}>Create one</button></EmptyState>} />}
           </Panel>
         </>
