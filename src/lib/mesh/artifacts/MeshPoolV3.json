@@ -1,0 +1,218 @@
+{
+  "contractName": "MeshPoolV3",
+  "constructorInputs": [
+    {
+      "name": "ownerPkh",
+      "type": "bytes20"
+    },
+    {
+      "name": "reserveCat",
+      "type": "bytes32"
+    },
+    {
+      "name": "cat0",
+      "type": "bytes32"
+    },
+    {
+      "name": "num0",
+      "type": "bytes8"
+    },
+    {
+      "name": "den0",
+      "type": "bytes8"
+    },
+    {
+      "name": "rNum0",
+      "type": "bytes8"
+    },
+    {
+      "name": "rDen0",
+      "type": "bytes8"
+    },
+    {
+      "name": "cat1",
+      "type": "bytes32"
+    },
+    {
+      "name": "num1",
+      "type": "bytes8"
+    },
+    {
+      "name": "den1",
+      "type": "bytes8"
+    },
+    {
+      "name": "rNum1",
+      "type": "bytes8"
+    },
+    {
+      "name": "rDen1",
+      "type": "bytes8"
+    },
+    {
+      "name": "cat2",
+      "type": "bytes32"
+    },
+    {
+      "name": "num2",
+      "type": "bytes8"
+    },
+    {
+      "name": "den2",
+      "type": "bytes8"
+    },
+    {
+      "name": "rNum2",
+      "type": "bytes8"
+    },
+    {
+      "name": "rDen2",
+      "type": "bytes8"
+    },
+    {
+      "name": "feeBps",
+      "type": "bytes2"
+    },
+    {
+      "name": "proceedsMode",
+      "type": "bytes2"
+    },
+    {
+      "name": "proceedsHash",
+      "type": "bytes32"
+    }
+  ],
+  "abi": [
+    {
+      "name": "fill",
+      "inputs": []
+    },
+    {
+      "name": "dock",
+      "inputs": [
+        {
+          "name": "ownerPk",
+          "type": "pubkey"
+        },
+        {
+          "name": "ownerSig",
+          "type": "sig"
+        }
+      ]
+    }
+  ],
+  "bytecode": "14 OP_PICK OP_0 OP_NUMEQUAL OP_IF 0000000000000000000000000000000000000000000000000000000000000000 OP_INPUTINDEX OP_DUP OP_TXINPUTCOUNT OP_ADD OP_OVER OP_OUTPUTBYTECODE OP_2 OP_PICK OP_UTXOBYTECODE OP_EQUALVERIFY OP_0 OP_5 OP_PICK OP_4 OP_PICK OP_EQUAL OP_IF OP_2 OP_PICK OP_UTXOTOKENCATEGORY OP_0 OP_EQUALVERIFY OP_2 OP_PICK OP_OUTPUTTOKENCATEGORY OP_0 OP_EQUALVERIFY OP_2 OP_PICK OP_OUTPUTVALUE e803 OP_GREATERTHANOREQUAL OP_VERIFY OP_2 OP_PICK OP_UTXOVALUE OP_3 OP_PICK OP_OUTPUTVALUE OP_SUB OP_NIP OP_ELSE OP_2 OP_PICK OP_UTXOTOKENCATEGORY OP_6 OP_PICK OP_EQUALVERIFY OP_2 OP_PICK OP_OUTPUTTOKENCATEGORY OP_6 OP_PICK OP_EQUALVERIFY OP_2 OP_PICK OP_OUTPUTVALUE OP_3 OP_PICK OP_UTXOVALUE OP_GREATERTHANOREQUAL OP_VERIFY OP_2 OP_PICK OP_UTXOTOKENAMOUNT OP_3 OP_PICK OP_OUTPUTTOKENAMOUNT OP_SUB OP_NIP OP_ENDIF OP_3 OP_PICK OP_0 OP_3 OP_PICK OP_OUTPUTTOKENCATEGORY OP_DUP OP_0 OP_EQUAL OP_IF OP_4 OP_PICK OP_OUTPUTVALUE OP_ROT OP_DROP OP_SWAP OP_ELSE OP_DUP OP_SIZE OP_NIP 20 OP_NUMEQUALVERIFY OP_DUP OP_3 OP_ROLL OP_DROP OP_SWAP OP_TOALTSTACK OP_SWAP OP_FROMALTSTACK OP_4 OP_PICK OP_OUTPUTTOKENAMOUNT OP_ROT OP_DROP OP_SWAP OP_ENDIF OP_2 OP_PICK OP_9 OP_PICK OP_EQUAL OP_NOT OP_VERIFY OP_10 OP_PICK OP_12 OP_ROLL OP_13 OP_ROLL OP_14 OP_ROLL OP_6 OP_PICK OP_14 OP_ROLL OP_EQUAL OP_IF OP_13 OP_PICK OP_4 OP_ROLL OP_DROP OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_FROMALTSTACK OP_FROMALTSTACK OP_ELSE OP_6 OP_PICK OP_15 OP_PICK OP_EQUAL OP_IF OP_15 OP_PICK OP_4 OP_ROLL OP_DROP OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_FROMALTSTACK OP_FROMALTSTACK OP_16 OP_PICK OP_3 OP_ROLL OP_DROP OP_SWAP OP_TOALTSTACK OP_SWAP OP_FROMALTSTACK 11 OP_PICK OP_ROT OP_DROP OP_SWAP 12 OP_PICK OP_NIP OP_ELSE OP_6 OP_PICK 14 OP_PICK OP_EQUALVERIFY 14 OP_PICK OP_4 OP_ROLL OP_DROP OP_SWAP OP_TOALTSTACK OP_SWAP OP_TOALTSTACK OP_SWAP OP_FROMALTSTACK OP_FROMALTSTACK 15 OP_PICK OP_3 OP_ROLL OP_DROP OP_SWAP OP_TOALTSTACK OP_SWAP OP_FROMALTSTACK 16 OP_PICK OP_ROT OP_DROP OP_SWAP 17 OP_PICK OP_NIP OP_ENDIF OP_ENDIF OP_3 OP_PICK OP_BIN2NUM OP_3 OP_PICK OP_BIN2NUM 1b OP_ROLL OP_BIN2NUM OP_DUP OP_0 OP_NUMEQUAL OP_IF OP_11 OP_PICK OP_OUTPUTBYTECODE 76a914 OP_16 OP_PICK OP_CAT 88ac OP_CAT OP_EQUALVERIFY OP_ELSE OP_DUP OP_1 OP_NUMEQUAL OP_IF OP_11 OP_PICK OP_OUTPUTBYTECODE aa20 1e OP_PICK OP_CAT 87 OP_CAT OP_EQUALVERIFY OP_ELSE OP_DUP OP_2 OP_NUMEQUALVERIFY OP_4 OP_PICK OP_BIN2NUM OP_0 OP_GREATERTHAN OP_VERIFY OP_3 OP_PICK OP_BIN2NUM OP_0 OP_GREATERTHAN OP_VERIFY 0000000000000000 OP_8 OP_OVER OP_CAT OP_8 OP_CAT OP_OVER OP_CAT OP_8 OP_CAT OP_OVER OP_CAT OP_8 OP_CAT OP_OVER OP_CAT 20 OP_CAT OP_11 OP_PICK OP_CAT 20 OP_16 OP_PICK OP_CAT 020200 OP_CAT OP_2 OP_CAT 1e OP_PICK OP_CAT OP_OVER OP_CAT OP_OVER OP_CAT OP_8 OP_CAT OP_8 OP_PICK OP_CAT OP_8 OP_CAT OP_9 OP_PICK OP_CAT OP_8 OP_CAT OP_6 OP_PICK OP_CAT OP_8 OP_CAT OP_7 OP_PICK OP_CAT 20 OP_CAT 12 OP_PICK OP_CAT 20 OP_CAT OP_12 OP_PICK OP_CAT 14 OP_CAT 11 OP_PICK OP_CAT OP_ACTIVEBYTECODE 2c01 OP_SPLIT OP_NIP OP_15 OP_PICK OP_OUTPUTBYTECODE aa20 OP_2OVER OP_CAT OP_HASH256 OP_CAT 87 OP_CAT OP_EQUALVERIFY OP_2DROP OP_2DROP OP_ENDIF OP_ENDIF 1b OP_ROLL OP_BIN2NUM OP_DUP OP_0 OP_GREATERTHANOREQUAL OP_VERIFY OP_DUP 1027 OP_LESSTHAN OP_VERIFY OP_3 OP_PICK OP_0 OP_GREATERTHAN OP_VERIFY OP_2 OP_PICK OP_0 OP_GREATERTHAN OP_VERIFY OP_9 OP_PICK OP_0 OP_GREATERTHAN OP_VERIFY OP_11 OP_PICK OP_0 OP_GREATERTHAN OP_VERIFY OP_11 OP_ROLL OP_3 OP_ROLL OP_MUL 1027 OP_MUL OP_9 OP_ROLL OP_4 OP_ROLL OP_MUL 1027 OP_3 OP_ROLL OP_SUB OP_MUL OP_LESSTHANOREQUAL OP_VERIFY OP_2DROP OP_2DROP OP_2DROP OP_2DROP OP_2DROP OP_2DROP OP_2DROP OP_2DROP OP_2DROP OP_2DROP OP_2DROP OP_2DROP OP_DROP OP_1 OP_ELSE 14 OP_ROLL OP_1 OP_NUMEQUALVERIFY 14 OP_PICK OP_HASH160 OP_EQUALVERIFY 14 OP_ROLL 14 OP_ROLL OP_CHECKSIGVERIFY OP_2DROP OP_2DROP OP_2DROP OP_2DROP OP_2DROP OP_2DROP OP_2DROP OP_2DROP OP_2DROP OP_DROP OP_1 OP_ENDIF",
+  "source": "pragma cashscript ^0.12.0;\n\n// =============================================================================\n// MeshPoolV3 — proceeds-routed, multi-asset liquidity pool\n// =============================================================================\n//\n// The pool UTXO holds only its RESERVE (BCH, or one fungible token). What it\n// receives never stays in the pool: it goes to a PROCEEDS output bound to the\n// pool's own input, so one reserve can face several assets and token↔token\n// pools are possible (a UTXO can carry only one token category).\n//\n//   i = this.activeInputIndex        reserve recreated at outputs[i]\n//   j = i + tx.inputs.length         proceeds at outputs[j]  (unique per input)\n//\n// Amounts are derived, never passed in:\n//   amountOut = reserve change inputs[i] → outputs[i]\n//   amountIn  = what outputs[j] carries (sats, or tokens of an accepted category)\n// The price is the slot whose asset actually arrived in outputs[j].\n//\n// Parameters are fixed-width pushes (no 1-byte values, which minimal-push rules\n// would turn into OP_N), so the redeem script's parameter prefix has constant\n// length. BCH is written as 32 zero bytes; token categories use the VM's byte\n// order. An unused slot repeats reserveCat, which can never be received.\n//\n// Proceeds destination (proceedsMode, little-endian bytes2):\n//   0  the owner's P2PKH\n//   1  a fixed P2SH32 (proceedsHash), e.g. a reverse pool (one-way recycling)\n//   2  mirror: the reverse pool of the matched slot, rebuilt at run time from\n//      this pool's own bytecode (closed-loop recycling, no hash cycle):\n//        reserve = received asset; slot 0 = (this reserve, rNum_k, rDen_k,\n//        num_k, den_k); unused slots; same owner and fee; mode 2; hash 0.\n//      The mirror of that pool is this pool again when this pool is a\n//      single-slot mirror pool with canonical unused slots and a zero hash.\n//\n// Redeem script = constructor-arg pushes (last arg first) + template body.\n// Every push has a fixed size, so the prefix is always 300 bytes:\n//   hash 33 + mode 3 + fee 3 + 3 slots × (4 × 9 + 33) + reserve 33 + owner 21.\n//\n// dock(): owner signature, no output rules (withdraw, reprice, rebalance).\n// =============================================================================\n\ncontract MeshPoolV3(\n    bytes20 ownerPkh,\n    bytes32 reserveCat,\n    bytes32 cat0, bytes8 num0, bytes8 den0, bytes8 rNum0, bytes8 rDen0,\n    bytes32 cat1, bytes8 num1, bytes8 den1, bytes8 rNum1, bytes8 rDen1,\n    bytes32 cat2, bytes8 num2, bytes8 den2, bytes8 rNum2, bytes8 rDen2,\n    bytes2 feeBps,\n    bytes2 proceedsMode,\n    bytes32 proceedsHash\n) {\n    function fill() {\n        bytes32 bch = 0x0000000000000000000000000000000000000000000000000000000000000000;\n        int i = this.activeInputIndex;\n        int j = i + tx.inputs.length;\n\n        // ── Reserve: recreated at the pool's own index, same bytecode ─────────\n        require(tx.outputs[i].lockingBytecode == tx.inputs[i].lockingBytecode);\n        int amountOut = 0;\n        if (reserveCat == bch) {\n            // Pure BCH reserve: no token may enter or stay in the pool UTXO.\n            require(tx.inputs[i].tokenCategory == 0x);\n            require(tx.outputs[i].tokenCategory == 0x);\n            require(tx.outputs[i].value >= 1000);\n            amountOut = tx.inputs[i].value - tx.outputs[i].value;\n        } else {\n            require(tx.inputs[i].tokenCategory == reserveCat);\n            require(tx.outputs[i].tokenCategory == reserveCat);\n            // The carrier sats of a token reserve can't be taken.\n            require(tx.outputs[i].value >= tx.inputs[i].value);\n            amountOut = tx.inputs[i].tokenAmount - tx.outputs[i].tokenAmount;\n        }\n\n        // ── Proceeds: the received asset, at outputs[j] ────────────────────\n        bytes received = bch;\n        int amountIn = 0;\n        bytes proceedsCat = tx.outputs[j].tokenCategory;\n        if (proceedsCat == 0x) {\n            amountIn = tx.outputs[j].value;\n        } else {\n            // A mutable or minting NFT adds a capability byte (33 bytes) and is\n            // refused. An immutable NFT is invisible to introspection; it can only\n            // ride along as an extra, since the price uses the fungible amount.\n            require(proceedsCat.length == 32);\n            received = proceedsCat;\n            amountIn = tx.outputs[j].tokenAmount;\n        }\n        require(received != reserveCat);\n\n        // Price of the slot whose asset arrived (kept as raw bytes for mirror mode).\n        bytes n = num0;\n        bytes d = den0;\n        bytes rn = rNum0;\n        bytes rd = rDen0;\n        if (received == cat0) {\n            n = num0;\n        } else if (received == cat1) {\n            n = num1;\n            d = den1;\n            rn = rNum1;\n            rd = rDen1;\n        } else {\n            require(received == cat2);\n            n = num2;\n            d = den2;\n            rn = rNum2;\n            rd = rDen2;\n        }\n        int num = int(n);\n        int den = int(d);\n\n        // ── Destination of the proceeds ─────────────────────────────────────\n        int mode = int(proceedsMode);\n        if (mode == 0) {\n            require(tx.outputs[j].lockingBytecode == new LockingBytecodeP2PKH(ownerPkh));\n        } else if (mode == 1) {\n            require(tx.outputs[j].lockingBytecode == new LockingBytecodeP2SH32(proceedsHash));\n        } else {\n            require(mode == 2);\n            require(int(rn) > 0);\n            require(int(rd) > 0);\n            // Unused slot of the reverse pool: its reserve category and zero prices\n            // (pushed last-arg-first: rDen, rNum, den, num, cat).\n            bytes zero8 = 0x0000000000000000;\n            bytes unusedSlot = 0x08 + zero8 + 0x08 + zero8 + 0x08 + zero8 + 0x08 + zero8 + 0x20 + received;\n            bytes reversePrefix = 0x20 + bch                                     // proceedsHash = 0\n                + 0x020200                                                      // proceedsMode = 2\n                + 0x02 + feeBps                                                 // same fee\n                + unusedSlot + unusedSlot                                       // slots 2, 1\n                + 0x08 + d + 0x08 + n + 0x08 + rd + 0x08 + rn + 0x20 + reserveCat // slot 0\n                + 0x20 + received                                               // reserveCat\n                + 0x14 + ownerPkh;                                              // ownerPkh\n            bytes body = this.activeBytecode.split(300)[1];\n            require(tx.outputs[j].lockingBytecode == new LockingBytecodeP2SH32(hash256(reversePrefix + body)));\n        }\n\n        // ── Price ───────────────────────────────────────────────────────────\n        int fee = int(feeBps);\n        require(fee >= 0);\n        require(fee < 10000);\n        require(num > 0);\n        require(den > 0);\n        require(amountIn > 0);\n        require(amountOut > 0);\n        require(amountOut * den * 10000 <= amountIn * num * (10000 - fee));\n    }\n\n    function dock(pubkey ownerPk, sig ownerSig) {\n        require(hash160(ownerPk) == ownerPkh);\n        require(checkSig(ownerSig, ownerPk));\n    }\n}\n",
+  "debug": {
+    "bytecode": "011479009c63200000000000000000000000000000000000000000000000000000000000000000c076c39378cd5279c788005579547987635279ce00885279d100885279cc02e803a2695279c65379cc9477675279ce5679885279d15679885279cc5379c6a2695279d05379d39477685379005379d1760087635479cc7b757c6776827701209d76537a757c6b7c6c5479d37b757c68527959798791695a795c7a5d7a5e7a56795e7a87635d79547a757c6b7c6b7c6c6c6756795f7987635f79547a757c6b7c6b7c6c6c6079537a757c6b7c6c0111797b757c0112797767567901147988011479547a757c6b7c6b7c6c6c011579537a757c6b7c6c0116797b757c011779776868537981537981011b7a8176009c635b79cd0376a91460797e0288ac7e886776519c635b79cd02aa20011e797e01877e886776529d54798100a06953798100a06908000000000000000058787e587e787e587e787e587e787e01207e5b797e012060797e030202007e527e011e797e787e787e587e58797e587e59797e587e56797e587e57797e01207e0112797e01207e5c797e01147e0111797ec1022c017f775f79cd02aa20707eaa7e01877e886d6d6868011b7a817600a269760210279f69537900a069527900a069597900a0695b7900a0695b7a537a9502102795597a547a95021027537a9495a1696d6d6d6d6d6d6d6d6d6d6d6d75516701147a519d011479a98801147a01147aad6d6d6d6d6d6d6d6d6d755168",
+    "sourceMap": "52:4:146:5;;;;;53:22:53:88;54:16:54:37;55::55:17;:20::36;:16:::1;58:27:58:28:0;:16::45:1;:59::60:0;;:49::77:1;:8::79;59:24:59:25:0;60:12:60:22;;:26::29;;:12:::1;:31:66:9:0;62:30:62:31;;:20::46:1;:50::52:0;:12::54:1;63:31:63:32:0;;:20::47:1;:51::53:0;:12::55:1;64:31:64:32:0;;:20::39:1;:43::47:0;:20:::1;:12::49;65:34:65:35:0;;:24::42:1;:56::57:0;;:45::64:1;:24;:12::65;66:15:72:9:0;67:30:67:31;;:20::46:1;:50::60:0;;:12::62:1;68:31:68:32:0;;:20::47:1;:51::61:0;;:12::63:1;70:31:70:32:0;;:20::39:1;:53::54:0;;:43::61:1;:20;:12::63;71:34:71:35:0;;:24::48:1;:62::63:0;;:51::76:1;:24;:12::77;66:15:72:9;75:25:75:28:0;;76:23:76:24;77:39:77:40;;:28::55:1;78:12:78:23:0;:27::29;:12:::1;:31:80:9:0;79:34:79:35;;:23::42:1;:12::43;;;80:15:87:9:0;84:20:84:31;:::38:1;;:42::44:0;:12::46:1;85:23:85:34:0;:12::35:1;;;;;;;86:34:86::0;;:23::48:1;:12::49;;;80:15:87:9;88:16:88:24:0;;:28::38;;:16:::1;;:8::40;91:18:91:22:0;;92::92;;93:19:93:24;;94::94;;95:12:95:20;;:24::28;;:12:::1;:30:97:9:0;96:16:96:20;;:12::21:1;;;;;;;;;;97:15:108:9:0;:19:97:27;;:31::35;;:19:::1;:37:102:9:0;98:16:98:20;;:12::21:1;;;;;;;;;;99:16:99:20:0;;:12::21:1;;;;;;;100:17:100:22:0;;:12::23:1;;;101:17:101:22:0;;:12::23:1;102:15:108:9:0;103:20:103:28;;:32::36;;:12::38:1;104:16:104:20:0;;:12::21:1;;;;;;;;;;105:16:105:20:0;;:12::21:1;;;;;;;106:17:106:22:0;;:12::23:1;;;107:17:107:22:0;;:12::23:1;102:15:108:9;97;109:22:109:23:0;;:18::24:1;110:22:110:23:0;;:18::24:1;113:23:113:35:0;;:19::36:1;114:12:114:16:0;:20::21;:12:::1;:23:116:9:0;115:31:115:32;;:20::49:1;:53::87:0;:78::86;;:53::87:1;;;:12::89;116:15:135:9:0;:19:116:23;:27::28;:19:::1;:30:118:9:0;117:31:117:32;;:20::49:1;:53::92:0;:79::91;;:53::92:1;;;:12::94;118:15:135:9:0;119:20:119:24;:28::29;:12::31:1;120:24:120:26:0;;:20::27:1;:30::31:0;:20:::1;:12::33;121:24:121:26:0;;:20::27:1;:30::31:0;:20:::1;:12::33;124:26:124:44:0;125:31:125:35;:38::43;:31:::1;:46::50:0;:31:::1;:53::58:0;:31:::1;:61::65:0;:31:::1;:68::73:0;:31:::1;:76::80:0;:31:::1;:83::88:0;:31:::1;:91::95:0;:31:::1;:98::106:0;;:31:::1;126:34:126:38:0;:41::44;;:34:::1;127:18:127:26:0;126:34:::1;128:18:128:22:0;126:34:::1;128:25::31:0;;126:34:::1;129:18:129:28:0;126:34:::1;129:31::41:0;126:34:::1;130:18:130:22:0;126:34:::1;130:25::26:0;;126:34:::1;130:29::33:0;126:34:::1;130:36::37:0;;126:34:::1;130:40::44:0;126:34:::1;130:47::49:0;;126:34:::1;130:52::56:0;126:34:::1;130:59::61:0;;126:34:::1;130:64::68:0;126:34:::1;130:71::81:0;;126:34:::1;131:18:131:22:0;126:34:::1;131:25::33:0;;126:34:::1;132:18:132:22:0;126:34:::1;132:25::33:0;;126:34:::1;133:25:133:44:0;:51::54;:25::55:1;:::58;134:31:134:32:0;;:20::49:1;:53::109:0;:87::107;::::1;:79::108;:53::109;;;:12::111;118:15:135:9;;;116;138:22:138:28:0;;:18::29:1;139:16:139:19:0;:23::24;:16:::1;:8::26;140:16:140:19:0;:22::27;:16:::1;:8::29;141:16:141:19:0;;:22::23;:16:::1;:8::25;142:16:142:19:0;;:22::23;:16:::1;:8::25;143:16:143:24:0;;:27::28;:16:::1;:8::30;144:16:144:25:0;;:28::29;:16:::1;:8::31;145:16:145:25:0;;:28::31;;:16:::1;:34::39:0;:16:::1;:43::51:0;;:54::57;;:43:::1;:61::66:0;:69::72;;:61:::1;:43::73;:16;:8::75;52:4:146:5;;;;;;;;;;;;;;;148::151::0;;;;149:24:149:31;;:16::32:1;:8::46;150:25:150:33:0;;:35::42;;:8::45:1;148:4:151:5;;;;;;;;;;;42:0:152:1",
+    "logs": [],
+    "requires": [
+      {
+        "ip": 35,
+        "line": 58
+      },
+      {
+        "ip": 47,
+        "line": 62
+      },
+      {
+        "ip": 52,
+        "line": 63
+      },
+      {
+        "ip": 58,
+        "line": 64
+      },
+      {
+        "ip": 73,
+        "line": 67
+      },
+      {
+        "ip": 79,
+        "line": 68
+      },
+      {
+        "ip": 87,
+        "line": 70
+      },
+      {
+        "ip": 118,
+        "line": 84
+      },
+      {
+        "ip": 140,
+        "line": 88
+      },
+      {
+        "ip": 208,
+        "line": 103
+      },
+      {
+        "ip": 262,
+        "line": 115
+      },
+      {
+        "ip": 277,
+        "line": 117
+      },
+      {
+        "ip": 281,
+        "line": 119
+      },
+      {
+        "ip": 287,
+        "line": 120
+      },
+      {
+        "ip": 293,
+        "line": 121
+      },
+      {
+        "ip": 379,
+        "line": 134
+      },
+      {
+        "ip": 390,
+        "line": 139
+      },
+      {
+        "ip": 394,
+        "line": 140
+      },
+      {
+        "ip": 399,
+        "line": 141
+      },
+      {
+        "ip": 404,
+        "line": 142
+      },
+      {
+        "ip": 409,
+        "line": 143
+      },
+      {
+        "ip": 414,
+        "line": 144
+      },
+      {
+        "ip": 433,
+        "line": 145
+      },
+      {
+        "ip": 456,
+        "line": 149
+      },
+      {
+        "ip": 461,
+        "line": 150
+      }
+    ]
+  },
+  "compiler": {
+    "name": "cashc",
+    "version": "0.12.1"
+  },
+  "updatedAt": "2026-09-30T05:41:42.290Z"
+}

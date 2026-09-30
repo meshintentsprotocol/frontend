@@ -13,6 +13,7 @@ const TYPE_STYLE: Record<PoolEvent['type'], string> = {
   FILL: 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20',
   WITHDRAW: 'bg-rose-500/10 text-rose-300 border-rose-500/20',
   REPRICE: 'bg-violet-500/10 text-violet-300 border-violet-500/20',
+  RECYCLE: 'bg-amber-500/10 text-amber-300 border-amber-500/20',
 };
 
 /** What happened, in words, from the pool's point of view. */

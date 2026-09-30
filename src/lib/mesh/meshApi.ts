@@ -1,14 +1,36 @@
 /**
- * Typed client for the meshserver pool API (/api/v1/pools, /lps, /stats).
+ * Typed client for the meshserver pool API (/api/v1/pools, /lps, /stats,
+ * /strategies). V2 (StrategyCovenantV2) and V3 (MeshPoolV3) pools share the
+ * pool routes; V3 pools carry a `v3` block.
  *
  * Amounts are strings of base units (sats or token units). Errors are thrown as
  * MeshApiError with the server's status and message — never swallowed.
  * Pure module (base URL passed in) so live scripts can use it from node.
  */
 import type { PoolParams, PoolSide } from './pool';
+import type { V3ParamsJson } from './v3/v3Pool';
 
 export type PoolStatus = 'active' | 'exhausted' | 'closed';
-export type PoolEventType = 'DEPOSIT' | 'FILL' | 'WITHDRAW' | 'REPRICE';
+export type PoolEventType = 'DEPOSIT' | 'FILL' | 'WITHDRAW' | 'REPRICE' | 'RECYCLE';
+export type PoolContractName = 'StrategyCovenantV2' | 'MeshPoolV3';
+
+/** V3 params as the server returns them, with per-asset trader prices and proceeds destinations. */
+export interface V3Info extends Omit<V3ParamsJson, 'slots'> {
+  modeName: 'owner' | 'fixed' | 'mirror';
+  proceedsAddress?: string;
+  constructorArgs: string[];
+  slots: Array<{
+    index: number; cat: string; num: string; den: string; rNum: string; rDen: string;
+    traderOutPerIn: string;
+    proceeds: { kind: 'owner' } | { kind: 'fixed'; lockingBytecode: string } | { kind: 'mirror'; address: string; lockingBytecode: string };
+  }>;
+}
+
+export interface AssetStatsJson {
+  asset: string; fills: number; proceeds: string; proceedsValueSats: string;
+  volume24hSats: string; volume7dSats: string; volumeAllSats: string;
+  fees24hSats: string; fees7dSats: string; feesAllSats: string;
+}
 
 export interface PoolStatsJson {
   volume24hSats: string; volume7dSats: string; volumeAllSats: string;
@@ -19,13 +41,16 @@ export interface PoolStatsJson {
   netDepositedSats: string;
   pnlSats: string;
   feeApr7dPct: number | null;
+  proceedsValueSats?: string;       // V3: value of everything paid out as proceeds
+  byAsset?: AssetStatsJson[];       // V3: per accepted asset
 }
 
 export interface Pool {
   address: string;
   tokenAddress: string;
-  contractName: 'StrategyCovenantV2';
+  contractName: PoolContractName;
   constructorArgs: string[];
+  v3?: V3Info;
   ownerPkh: string;
   ownerAddress: string;
   side: PoolSide;
@@ -75,6 +100,13 @@ export interface PoolEvent {
   external?: boolean;
   successor?: string;
   predecessor?: string;
+  // V3
+  asset?: string;
+  slot?: number;
+  recycledTo?: string;
+  proceedsLock?: string;
+  from?: string;
+  legs?: Array<{ asset: string; slot: number; amountIn: string; amountOut: string; lpEdge: string; proceedsLock: string; proceedsVout: number }>;
   // present on cross-pool activity rows
   address?: string;
   side?: PoolSide;
@@ -112,6 +144,74 @@ export interface PairSummary {
   bidDepthSats: string;
   askDepthTokens: string;
 }
+
+export interface TokenPairSummary { give: string; take: string; address: string; outPerIn: string; depth: string; feeBps: number }
+
+export interface PoolPreviewV3 {
+  address: string;
+  tokenAddress: string;
+  lockingBytecode: string;
+  contractName: 'MeshPoolV3';
+  constructorArgs: string[];
+  artifactHash: string;
+  v3: V3Info;
+  minFunding: { sats: string; tokens: string; note: string };
+  registered: boolean;
+}
+
+export interface RegisterItemV3 {
+  v3: V3ParamsJson;
+  txid: string;
+  vout: number;
+  pairName?: string;
+  bundleId?: string;
+  pairRole?: 'FORWARD' | 'REVERSE' | 'STANDALONE';
+}
+
+// ── Strategies ───────────────────────────────────────────────────────────────
+
+export interface StrategyTemplate { id: string; name: string; summary: string; params: Record<string, string> }
+
+export interface StrategyPoolPreview {
+  role: string;
+  contractName: 'MeshPoolV3';
+  address: string;
+  tokenAddress: string;
+  lockingBytecode: string;
+  fundTo: string;
+  deposit: { sats: string; token?: { category: string; amount: string } };
+  v3: V3Info;
+  registered: boolean;
+}
+
+export interface StrategyPreview {
+  template: string;
+  pools: StrategyPoolPreview[];
+  totals: { sats: string; tokens: Record<string, string> };
+}
+
+export interface StrategySummary {
+  id: string; template: string; ownerPkh: string; txid: string; createdAt: number;
+  params: Record<string, unknown>; replaces?: string; replacedBy?: string;
+  status: PoolStatus;
+  poolCount: number; activePools: number;
+  valueSats: string; volume24hSats: string; volume7dSats: string;
+  feesAllSats: string; fees7dSats: string; pnlSats: string; fillCount: number;
+  pools: Array<{ address: string; role: string; status: PoolStatus }>;
+}
+
+export interface RebalancePlan {
+  strategy: string;
+  close: Array<{ address: string; contractName: PoolContractName; constructorArgs?: string[];
+    utxos: Array<{ txid: string; vout: number; sats: string; tokens: string; category: string | null }> }>;
+  open: StrategyPoolPreview[];
+  available: { sats: string; tokens: Record<string, string> };
+  needs: { sats: string; tokens: Record<string, string> };
+  shortfall: Record<string, string>;
+  note: string;
+}
+
+export interface StrategyInput { template: string; ownerPkh: string; params: Record<string, unknown> }
 
 export interface LpSummary {
   rank?: number;
@@ -225,10 +325,13 @@ export function createMeshApi(baseUrl: string, fetchImpl: typeof fetch = (...a) 
   return {
     baseUrl: base,
     preview: (params: PoolParams) => call<PoolPreview>('POST', '/api/v1/pools/preview', params),
+    previewV3: (v3: V3ParamsJson) => call<PoolPreviewV3>('POST', '/api/v1/pools/preview', { contractName: 'MeshPoolV3', v3 }),
     /** 201 all registered · 207 some failed (see results) · 4xx all failed. 207 does not throw. */
     register: (items: RegisterItem[]) => call<RegisterResult>('POST', '/api/v1/pools', { pools: items }, [207]),
+    registerV3: (items: RegisterItemV3[]) =>
+      call<RegisterResult>('POST', '/api/v1/pools', { pools: items.map(i => ({ contractName: 'MeshPoolV3', ...i })) }, [207]),
     list: (q: PoolListQuery = {}) => call<{ total: number; count: number; pools: Pool[] }>('GET', `/api/v1/pools${qs(q as any)}`),
-    pairs: () => call<{ pairs: PairSummary[] }>('GET', '/api/v1/pools/pairs'),
+    pairs: () => call<{ pairs: PairSummary[]; tokenPairs?: TokenPairSummary[] }>('GET', '/api/v1/pools/pairs'),
     marketRef: (token: string) => call<MarketRef>('GET', `/api/v1/pools/market-ref${qs({ token })}`),
     recentActivity: (q: { limit?: number; type?: PoolEventType } = {}) =>
       call<{ count: number; events: Array<PoolEvent & { ownerPkh?: string }> }>('GET', `/api/v1/pools/activity${qs(q)}`),
@@ -241,6 +344,15 @@ export function createMeshApi(baseUrl: string, fetchImpl: typeof fetch = (...a) 
     lp: (owner: string) => call<LpDetail>('GET', `/api/v1/lps/${enc(owner)}`),
     stats: () => call<MeshNetworkStats>('GET', '/api/v1/stats'),
     orderbook: (pair: string) => call<any>('GET', `/api/v1/orderbook${qs({ pair })}`),
+    // strategies
+    templates: () => call<{ templates: StrategyTemplate[] }>('GET', '/api/v1/strategies/templates'),
+    previewStrategy: (input: StrategyInput) => call<StrategyPreview>('POST', '/api/v1/strategies/preview', input),
+    registerStrategy: (input: StrategyInput & { txid: string; replaces?: string }) =>
+      call<{ strategy: StrategySummary }>('POST', '/api/v1/strategies', input),
+    strategies: (owner?: string) => call<{ count: number; strategies: StrategySummary[] }>('GET', `/api/v1/strategies${qs({ owner })}`),
+    strategy: (id: string) => call<{ strategy: StrategySummary; pools: Pool[] }>('GET', `/api/v1/strategies/${enc(id)}`),
+    rebalancePlan: (id: string, body: { template?: string; params?: Record<string, unknown> }) =>
+      call<RebalancePlan>('POST', `/api/v1/strategies/${enc(id)}/rebalance-plan`, body),
   };
 }
 

@@ -27,7 +27,7 @@ export class PoolTxError extends Error {
   constructor(message: string, readonly code: 'INSUFFICIENT_FUNDS' | 'INVALID_AMOUNT' | 'POOL_CHANGED' | 'BROADCAST') { super(message); }
 }
 
-interface In { utxo: Utxo; unlocker: Unlocker; p2pkh: boolean }
+export interface In { utxo: Utxo; unlocker: Unlocker; p2pkh: boolean }
 export interface Out { to: Uint8Array | string; amount: bigint; token?: { category: string; amount: bigint; nft?: any } }
 
 export interface BuiltTx { builder: TransactionBuilder; fee: bigint; size: number; inputs: number; outputs: Out[] }
@@ -56,7 +56,7 @@ function measure(signer: MeshSigner, ins: In[], outs: Out[]): number {
  * Add wallet BCH inputs until the transaction pays its fee, and put the
  * surplus into a change output (`change.to`, inserted at `change.at`).
  */
-function balance(
+export function balance(
   signer: MeshSigner, ins: In[], outs: Out[], walletPlain: Utxo[], feeRate: number,
   change: { to: Uint8Array | string; at?: number; min?: bigint } = { to: signer.address },
 ): BuiltTx {
@@ -96,7 +96,7 @@ function balance(
 }
 
 /** Pick token UTXOs of `category` covering `amount`; returns the inputs and the token change. */
-function selectTokens(utxos: Utxo[], category: string, amount: bigint): { picked: Utxo[]; change: bigint } {
+export function selectTokens(utxos: Utxo[], category: string, amount: bigint): { picked: Utxo[]; change: bigint } {
   const cands = utxos
     .filter(u => u.token && !u.token.nft && normCategory(u.token.category) === category)
     .sort((a, b) => (b.token!.amount > a.token!.amount ? 1 : -1));
