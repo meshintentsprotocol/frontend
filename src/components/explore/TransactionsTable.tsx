@@ -12,12 +12,13 @@ import {
     BCH_MESH_SERVER_URL,
     CASHTOKEN_RELAYER_URL,
     CROSS_CHAIN_RELAYER_URL,
-    BCH_SOLANA_RELAYER_URL,
-    EVM_RELAYER_URL,
 } from '@/lib/config';
 import { PriceService } from '@/lib/pyth';
 import { marketSymbolFor } from '@/lib/marketData';
 import { logoForSymbol } from '@/lib/tokenLogos';
+import { resolveTokenIconUri } from '@/lib/tokenIcons';
+import { BcmrClient } from '@/lib/bcmr';
+import { CauldronService } from '@/lib/cauldron';
 
 // ============================================================================
 // Token & Chain icon maps
@@ -30,8 +31,6 @@ const CHAIN_ICONS: Record<string, string> = {
     'Monero': '/logos/monero.svg',
 };
 
-// Symbols this table recognises; logos resolve through the shared map in lib/tokenLogos.
-const KNOWN_SYMBOLS = ['BCH', 'SOL', 'MOVE', 'ETH', 'BNB', 'BTC', 'USDC', 'USDT', 'XMR', 'PUSD', 'USDC.E', 'USDT.E', 'WETH.E', 'WBTC'];
 const iconFor = (symbol: string): string | undefined => logoForSymbol(symbol) ?? undefined;
 
 interface ExplorerTx {
@@ -65,43 +64,43 @@ function getTimeAgo(timestamp: number): string {
     return `${Math.floor(diff / 86400000)}d ago`;
 }
 
-function parseTokenInfo(tokenRaw?: string): { symbol: string; icon?: string; decimals: number } {
-    if (!tokenRaw || tokenRaw.toUpperCase() === 'BCH' || tokenRaw === '0x' || tokenRaw === '') {
-        return { symbol: 'BCH', icon: iconFor('BCH'), decimals: 8 };
+interface CashTokenInfo { symbol: string; icon?: string; decimals: number; usd: number }
+
+/**
+ * Symbol, decimals, logo and USD price (per whole token) for CashToken categories,
+ * resolved like the Tokens tab: BCMR first, then the Cauldron list, then the shared
+ * symbol logo map; the identicon fallback comes from resolveTokenIconUri.
+ */
+async function cashTokenInfo(categories: string[], isMainnet: boolean): Promise<Map<string, CashTokenInfo>> {
+    const cats = [...new Set(categories.filter(c => c && c !== '0x' && c.toUpperCase() !== 'BCH').map(c => c.toLowerCase()))];
+    const out = new Map<string, CashTokenInfo>();
+    if (!cats.length) return out;
+    const [bcmr, listed] = await Promise.all([
+        BcmrClient.getMany(cats, isMainnet).catch(() => ({} as Record<string, null>)),
+        CauldronService.getTopCashTokens(200, isMainnet).catch(() => []),
+    ]);
+    const byId = new Map(listed.map(t => [t.token_id.toLowerCase(), t]));
+    for (const c of cats) {
+        const b = bcmr[c] ?? null;
+        const l = byId.get(c);
+        const m = l ? CauldronService.metadataOf(l, b) : null;
+        const symbol = b?.symbol || m?.symbol || `${c.slice(0, 6)}…`;
+        out.set(c, {
+            symbol,
+            decimals: b?.decimals ?? m?.decimals ?? 0,
+            icon: resolveTokenIconUri(b?.icon ?? m?.iconRaw ?? logoForSymbol(symbol), c),
+            usd: l?.price_now_usd ?? 0,
+        });
     }
-    const clean = tokenRaw.startsWith('0x') ? tokenRaw.slice(2).toLowerCase() : tokenRaw.toLowerCase();
-    if (clean === 'dfe50223c8d5cba8dcef8dff6d92b61deb88a8ba44947367f2b746487b56039b') {
-        return { symbol: 'pUSD', icon: iconFor('pUSD'), decimals: 2 };
-    }
-    if (clean === 'e7979ccdae259293c7d0bee45ce8b7ad7660ea99477f802ed6a5161b0d30e6b8') {
-        return { symbol: 'PUSD', icon: iconFor('PUSD'), decimals: 2 };
-    }
-    if (clean === 'c9e5e317c4613cc92f2ea69d2f2d966e3b5dfd4642c67ad3a94eb751bf8c3065') {
-        return { symbol: 'mUSD', icon: iconFor('mUSD'), decimals: 2 };
-    }
-    const upper = tokenRaw.toUpperCase();
-    if (KNOWN_SYMBOLS.includes(upper)) {
-        const decimals = upper === 'SOL' ? 9 : upper === 'ETH' || upper === 'BNB' ? 18 : upper === 'USDC' || upper === 'USDT' ? 6 : 8;
-        return { symbol: upper, icon: iconFor(upper), decimals };
-    }
-    if (clean.length === 64) {
-        return { symbol: `CT:${clean.slice(0, 6)}…`, decimals: 2 };
-    }
-    return { symbol: tokenRaw, decimals: 8 };
+    return out;
 }
 
-function parseAmount(raw: any, decimals: number): number {
-    if (raw === undefined || raw === null || raw === '') return 0;
-    const n = Number(raw);
-    if (isNaN(n)) return 0;
-    // If the number is already formatted as a small float (e.g. 0.05 BCH), use as is
-    if (n < 1000 && !Number.isInteger(n)) return n;
-    // If integer, scale by decimals
-    if (decimals > 0 && n >= 100) {
-        return n / Math.pow(10, decimals);
-    }
-    return n;
-}
+/** Server intent status → table label. */
+const INTENT_STATUS: Record<string, string> = {
+    filled: 'Completed', active: 'Active', awaiting_funding: 'Awaiting funding', underfunded: 'Underfunded',
+    scheduled: 'Scheduled', expired: 'Expired', refund_pending: 'Refund pending', refunded: 'Refunded',
+    cancelled: 'Cancelled', closed_external: 'Closed',
+};
 
 /** USD per unit from the live price map; 0 when the symbol has no live price. */
 function getUsdPrice(symbol: string, usd: Record<string, number>): number {
@@ -160,9 +159,10 @@ function TxTokenIcon({ symbol, icon }: { symbol: string; icon?: string }) {
 function statusColor(status: string): string {
     const s = status.toLowerCase();
     if (s === 'completed' || s === 'claimed' || s === 'filled' || s === 'active') return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
-    if (s === 'pending' || s === 'locked') return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
+    if (s === 'pending' || s === 'locked' || s === 'awaiting funding' || s === 'scheduled' || s === 'underfunded') return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
     if (s === 'claimable') return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
-    if (s === 'failed' || s === 'cancelled' || s === 'expired') return 'bg-red-500/10 text-red-400 border-red-500/20';
+    if (s === 'refunded' || s === 'refund pending') return 'bg-orange-500/10 text-orange-400 border-orange-500/20';
+    if (s === 'failed' || s === 'cancelled' || s === 'expired' || s === 'closed') return 'bg-red-500/10 text-red-400 border-red-500/20';
     return 'bg-zinc-500/10 text-zinc-400 border-zinc-500/20';
 }
 
@@ -200,42 +200,49 @@ export function TransactionsTable({ activeChain, refreshTrigger }: { activeChain
                 Object.entries(spot).map(([sym, p]) => [sym, PriceService.formatPrice(p)]),
             );
 
-            // 1. BCHMesh / CashToken Live Intents (Dutch Market, Limit Orders, TWAP)
+            // 1. BCHMesh intents: limit, Dutch (market) and TWAP slices, CashTokens and BCH
             try {
-                const meshRes = await axios.get(`${meshServerUrl}/intents`, { timeout: 6000 });
+                const [meshRes, health] = await Promise.all([
+                    axios.get(`${meshServerUrl}/intents`, { timeout: 6000 }),
+                    axios.get(`${meshServerUrl}/health`, { timeout: 4000 }).catch(() => null),
+                ]);
                 const { active = [], completed = [] } = meshRes.data || {};
-                const meshIntents = [...active, ...completed];
+                const meshIntents: any[] = [...active, ...completed];
+                const meshNetwork: 'mainnet' | 'chipnet' = health?.data?.network === 'mainnet' ? 'mainnet' : 'chipnet';
+
+                // Amounts are base units; symbols, decimals and logos come from BCMR and the
+                // Cauldron list, like the Tokens tab.
+                const tokens = await cashTokenInfo(
+                    meshIntents.flatMap(i => [i.sellToken, i.buyToken]),
+                    meshNetwork === 'mainnet',
+                );
+                const info = (t?: string) => (!t || t.toUpperCase() === 'BCH' || t === '0x'
+                    ? { symbol: 'BCH', icon: iconFor('BCH'), decimals: 8, usd: getUsdPrice('BCH', usd) }
+                    : tokens.get(t.toLowerCase()) ?? { symbol: `${t.slice(0, 6)}…`, icon: undefined, decimals: 0, usd: 0 });
+                const slicesPerTwap = new Map<string, number>();
+                for (const i of meshIntents) if (i.twapOrderId) slicesPerTwap.set(i.twapOrderId, (slicesPerTwap.get(i.twapOrderId) ?? 0) + 1);
 
                 const meshTxs = meshIntents.map((item: any): ExplorerTx => {
-                    const sellInfo = parseTokenInfo(item.sellToken);
-                    const buyInfo = parseTokenInfo(item.buyToken);
+                    const sellInfo = info(item.sellToken);
+                    const buyInfo = info(item.buyToken);
+                    const sellAmount = Number(item.sellAmount ?? 0) / 10 ** sellInfo.decimals;
+                    // filled: what the maker actually received; otherwise the order's minimum
+                    const got = item.fillSources
+                        ? Number(item.fillSources.mesh ?? 0) + Number(item.fillSources.cauldron ?? 0) + Number(item.fillSources.solver ?? 0)
+                        : 0;
+                    const buyAmount = (item.status === 'filled' && got > 0 ? got : Number(item.minAmountOut ?? item.buyAmount ?? 0)) / 10 ** buyInfo.decimals;
 
-                    const sellAmount = parseAmount(item.sellAmount, sellInfo.decimals);
-                    const buyAmount = parseAmount(item.buyAmount, buyInfo.decimals);
+                    const labelType = item.twapOrderId
+                        ? `TWAP ${(item.twapSliceIndex ?? 0) + 1}/${slicesPerTwap.get(item.twapOrderId) ?? '?'}`
+                        : item.type === 'dutch' ? 'Dutch Market' : 'Limit Order';
+                    const usdVal = sellAmount * sellInfo.usd || buyAmount * buyInfo.usd || 0;
 
-                    let labelType = 'CashToken';
-                    const rawType = (item.type || item.intentType || '').toLowerCase();
-                    if (rawType.includes('dutch') || rawType.includes('market')) {
-                        labelType = 'Dutch Market';
-                    } else if (rawType.includes('limit')) {
-                        labelType = 'Limit Order';
-                    } else if (rawType.includes('twap')) {
-                        labelType = 'TWAP Slice';
-                    }
-
-                    const usdVal = (sellAmount * getUsdPrice(sellInfo.symbol, usd)) || (buyAmount * getUsdPrice(buyInfo.symbol, usd)) || 0;
-
-                    let expUrl = item.explorerUrl || item.fillExplorerUrl;
-                    const txHash = item.fillTxid || item.txid || item.id;
-                    if (!expUrl && txHash && !txHash.startsWith('intent_')) {
-                        expUrl = `https://chipnet.imaginary.cash/tx/${txHash}`;
-                    }
-
-                    const walletStr = item.makerAddress || item.contractAddress || 'Chipnet';
+                    const txHash = item.fillTxid || item.refundTxid || undefined;
+                    const walletStr = item.makerAddress || item.contractAddress || meshNetwork;
                     const displayWallet = walletStr.length > 12 ? `${walletStr.slice(0, 8)}...${walletStr.slice(-4)}` : walletStr;
 
                     return {
-                        id: `mesh_${item.id || item.intentId || Math.random()}`,
+                        id: `mesh_${item.intentId || item.id}`,
                         timestamp: item.createdAt ? (item.createdAt > 1e12 ? item.createdAt : item.createdAt * 1000) : Date.now(),
                         sellToken: sellInfo.symbol,
                         sellIcon: sellInfo.icon,
@@ -247,10 +254,12 @@ export function TransactionsTable({ activeChain, refreshTrigger }: { activeChain
                         wallet: displayWallet,
                         chain: 'Bitcoin Cash',
                         txHash,
-                        explorerUrl: expUrl,
+                        explorerUrl: item.explorerUrl || (item.contractAddress
+                            ? (meshNetwork === 'mainnet' ? `https://blockchair.com/bitcoin-cash/address/${item.contractAddress}` : `https://chipnet.imaginary.cash/address/${item.contractAddress}`)
+                            : undefined),
                         type: labelType,
-                        status: item.status === 'filled' ? 'Completed' : (item.status || 'Active'),
-                        network: 'chipnet',
+                        status: INTENT_STATUS[item.status] ?? item.status ?? 'Active',
+                        network: meshNetwork,
                     };
                 });
                 allTxs.push(...meshTxs);
