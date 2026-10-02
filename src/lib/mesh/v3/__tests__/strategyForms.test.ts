@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { TEMPLATE_FORMS, decimalOf, satsPerUnitFromTokenPerBch, toBaseUnits, toServerParams } from '../strategyForms';
+import { TEMPLATE_FORMS, decimalOf, fromServerParams, satsPerUnitFromTokenPerBch, toBaseUnits, toServerParams, tokenPerBchText } from '../strategyForms';
 
 const PUSD = 'dfe50223c8d5cba8dcef8dff6d92b61deb88a8ba44947367f2b746487b56039b';
 const MUSD = 'b4863d5773c7a269b6fe3b9f7ce2ce1098ab71c0b046ef2a39058d5e30b1f353';
@@ -50,5 +50,41 @@ describe('template params', () => {
 
   it('missing fields are reported by label', () => {
     expect(() => toServerParams('grid', { token: PUSD, low: '600', high: '400', rungs: '4', feeBps: '30' }, dec)).toThrow(/deposit is required/);
+  });
+});
+
+describe('suggestions → form → server params', () => {
+  // what GET /strategies/suggest returns around a 3250 sats-per-unit pUSD mid (MUSD 32.5)
+  const SUGGESTED: Record<string, Record<string, unknown>> = {
+    fixed: { token: PUSD, side: 'bid', satsPerToken: '3233.75', feeBps: 30 },
+    spread: { token: PUSD, bidSatsPerToken: '3233.75', askSatsPerToken: '3266.25', feeBps: 30, proceeds: 'recycle' },
+    'multi-pair': { tokens: [{ token: PUSD, satsPerToken: '3233.75' }, { token: MUSD, satsPerToken: '32.3375' }], feeBps: 30 },
+    'stable-pair': { tokenA: PUSD, tokenB: MUSD, rate: '100', spreadBps: 20, feeBps: 10 },
+    'recycling-pair': { token: PUSD, start: 'bch', buySatsPerToken: '3217.5', sellSatsPerToken: '3282.5', feeBps: 30 },
+    grid: { token: PUSD, lowSatsPerToken: '3087.5', highSatsPerToken: '3412.5', rungs: 4, feeBps: 30 },
+    'take-profit': { token: PUSD, fromSatsPerToken: '3315', toSatsPerToken: '3737.5', steps: 4, feeBps: 30 },
+    accumulate: { token: PUSD, fromSatsPerToken: '3185', toSatsPerToken: '2762.5', steps: 4, feeBps: 30 },
+  };
+  const DEPOSITS: Record<string, Record<string, string>> = {
+    fixed: { deposit: '0.01' }, spread: { depositBch: '0.01', depositTokens: '5' }, 'multi-pair': { depositBch: '0.01' },
+    'stable-pair': { depositA: '5', depositB: '5' }, 'recycling-pair': { depositBch: '0.01' }, grid: { depositBch: '0.04' },
+    'take-profit': { depositTokens: '8' }, accumulate: { depositBch: '0.04' },
+  };
+  const close = (a: unknown, b: unknown) => Math.abs(Number(a) / Number(b) - 1) < 1e-3;
+
+  it.each(Object.keys(SUGGESTED))('%s: prices survive the round trip (within rounding)', id => {
+    const tokens: Record<string, string> = { token: PUSD, token1: PUSD, token2: MUSD, tokenA: PUSD, tokenB: MUSD };
+    const form = { ...tokens, ...fromServerParams(id, SUGGESTED[id]!, dec, tokens), ...DEPOSITS[id] };
+    const back = toServerParams(id, form, dec) as Record<string, any>;
+    for (const [k, v] of Object.entries(SUGGESTED[id]!)) {
+      if (k === 'tokens') (v as any[]).forEach((t, i) => expect(close(back.tokens[i].satsPerToken, t.satsPerToken)).toBe(true));
+      else if (/[sS]atsPerToken$|^rate$/.test(k)) expect(close(back[k], v)).toBe(true);
+      else if (k !== 'token' && k !== 'tokenA' && k !== 'tokenB' && k !== 'side' && k !== 'start') expect(String(back[k])).toBe(String(v));
+    }
+  });
+
+  it('"1 BCH = P tokens" text: 4–6 significant digits', () => {
+    expect(tokenPerBchText('3250', 2)).toBe('307.6923');
+    expect(tokenPerBchText('0', 2)).toBeUndefined();
   });
 });

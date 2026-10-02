@@ -18,9 +18,11 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { TokenSelectModal, CHIPNET_DEFAULT_TOKENS, type MeshToken } from '@/components/mesh/TokenSelectModal';
-import { meshApi, useInvalidateMesh, useMarketRef, useMeshHealth, useMeshSigner, useSignerBalances, useStrategyTemplates } from '@/hooks/useMesh';
-import { formFor, toServerParams, type FieldSpec } from '@/lib/mesh/v3/strategyForms';
-import { parseV3Params, v3ContractFor } from '@/lib/mesh/v3/v3Pool';
+import { meshApi, useInvalidateMesh, useMarketRef, useMeshHealth, useMeshSigner, useSignerBalances, useStrategySuggest, useStrategyTemplates } from '@/hooks/useMesh';
+import { formFor, fromServerParams, toServerParams, type FieldSpec } from '@/lib/mesh/v3/strategyForms';
+import { pusdCategory } from '@/lib/pusd';
+import { MarketStrip, RecyclePill, VsMid } from '@/components/mesh/ui/defi';
+import { v3ContractFor } from '@/lib/mesh/v3/v3Pool';
 import { poolLevels } from '@/lib/mesh/v3/v3Display';
 import { buildDeployV3, buildRebalanceV3, type ClosePool, type V3Deposit } from '@/lib/mesh/v3/v3Tx';
 import { sendPoolTx, type BuiltTx } from '@/lib/mesh/poolTx';
@@ -35,15 +37,25 @@ const FEE_TIERS = [5, 30, 50, 100];
 const PUSD = CHIPNET_DEFAULT_TOKENS[1]!.categoryId!;
 const MUSD = CHIPNET_DEFAULT_TOKENS[2]!.categoryId!;
 
-export const strategyUrl = (id: string) => `/mesh/strategy/${encodeURIComponent(id)}`;
+import { strategyUrl } from './StrategyCard';
+export { strategyUrl };
 
-function defaults(fields: FieldSpec[]): Record<string, string> {
+/** Form defaults: pUSD of the wallet's network as the main token (MUSD as the second one on chipnet). */
+function defaults(fields: FieldSpec[], network: string): Record<string, string> {
   const v: Record<string, string> = {};
+  const main = network === 'mainnet' ? pusdCategory(true) : PUSD;
   for (const f of fields) {
     if (f.default !== undefined) v[f.key] = f.default;
-    if (f.kind === 'token' && !f.optional) v[f.key] = /2|B$/.test(f.key) ? MUSD : PUSD;
+    if (f.kind === 'token' && !f.optional) v[f.key] = /2|B$/.test(f.key) ? (network === 'mainnet' ? '' : MUSD) : main;
   }
   return v;
+}
+
+/** The /suggest query for a template's current tokens. */
+function suggestQuery(templateId: string, v: Record<string, string>) {
+  if (templateId === 'multi-pair') return { template: templateId, tokens: [v.token1, v.token2, v.token3].filter(Boolean) as string[] };
+  if (templateId === 'stable-pair') return { template: templateId, tokenA: v.tokenA, tokenB: v.tokenB };
+  return { template: templateId, token: v.token };
 }
 
 function useDebounced<T>(value: T, ms = 400): T {
@@ -62,7 +74,7 @@ export function StrategyBuilder({ templateId, onBack, replaces }: { templateId: 
   const form = formFor(templateId);
   const meta = templates.data?.templates.find(t => t.id === templateId);
 
-  const [values, setValues] = useState<Record<string, string>>(() => defaults(form?.fields ?? []));
+  const [values, setValues] = useState<Record<string, string>>(() => defaults(form?.fields ?? [], wallet.network));
   const [tokenModal, setTokenModal] = useState<string | null>(null);
   const [review, setReview] = useState<{ built: BuiltTx; input: StrategyInput; preview: StrategyPreview } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -80,7 +92,25 @@ export function StrategyBuilder({ templateId, onBack, replaces }: { templateId: 
   const mainToken = values.token ?? values.token1 ?? values.tokenA ?? '';
   const main = infoOf(mainToken);
   const market = useMarketRef(mainToken || undefined);
-  const marketPrice = market.data?.cauldron ? tokenPerBchFromSatsPerUnit(market.data.cauldron.satsPerToken, main.decimals) : null;
+  // Market mid per token from /suggest (Cauldron, else Mesh); Cauldron ref as the fallback on older servers.
+  const suggest = useStrategySuggest(form ? suggestQuery(templateId, values) : null);
+  const ctxOf = (cat: string) => suggest.data?.market?.[cat] ?? null;
+  const midOf = (cat: string): number | null => ctxOf(cat)?.midSatsPerToken
+    ?? (cat === mainToken && market.data?.cauldron ? Number(market.data.cauldron.satsPerToken) : null);
+  const mainMid = midOf(mainToken);
+  const marketPrice = mainMid ? Number(tokenPerBchFromSatsPerUnit(String(mainMid), main.decimals)) : null;
+  const applySuggestion = (onlyEmpty: boolean) => {
+    const p = suggest.data?.params;
+    if (!p) return;
+    const next = fromServerParams(templateId, p, c => infoOf(c).decimals, values);
+    setValues(prev => {
+      const merged = { ...prev };
+      for (const [k, v] of Object.entries(next)) if (!onlyEmpty || !prev[k]) merged[k] = v;
+      return merged;
+    });
+  };
+  // Fill empty prices from the market once a suggestion arrives (never overwrite what the LP typed).
+  useEffect(() => { applySuggestion(true); }, [suggest.data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Form → server params (exact unit conversion)
   const input = useMemo((): { input?: StrategyInput; error?: string } => {
@@ -219,6 +249,11 @@ export function StrategyBuilder({ templateId, onBack, replaces }: { templateId: 
       );
     }
     const suffix = f.kind === 'price' ? tokenOf?.symbol : f.kind === 'bch' ? 'BCH' : f.kind === 'tokenAmount' ? tokenOf?.symbol : f.kind === 'bps' ? 'bps' : f.kind === 'rate' ? 'B' : '';
+    // market for this field's token: mid in sats per unit, and "1 BCH = P tokens"
+    const fieldMid = f.kind === 'price' && tokenOf?.category ? midOf(tokenOf.category) : null;
+    const fieldMarket = fieldMid && tokenOf ? 1e8 / (fieldMid * 10 ** tokenOf.decimals) : null;
+    const priceSats = Number(v) > 0 && tokenOf ? 1e8 / (Number(v) * 10 ** tokenOf.decimals) : null;
+    const vsMidBps = fieldMid && priceSats ? Math.round((priceSats / fieldMid - 1) * 10_000) : null;
     const bal = balances.data;
     const walletHint = f.kind === 'bch' && bal ? formatSatsCompact(bal.sats)
       : f.kind === 'tokenAmount' && bal && tokenOf ? `${formatUnits(bal.tokens[tokenOf.category] ?? 0n, tokenOf.decimals)} ${tokenOf.symbol}` : null;
@@ -231,10 +266,13 @@ export function StrategyBuilder({ templateId, onBack, replaces }: { templateId: 
           {suffix && <span className="text-xs font-semibold text-zinc-300 shrink-0">{suffix}</span>}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {f.kind === 'price' && marketPrice && tokenOf?.category === mainToken && [-2, -1, 0, 1, 2].map(d => (
-            <button key={d} type="button" onClick={() => set(f.key, (marketPrice * (1 + d / 100)).toFixed(Math.min(4, Math.max(2, main.decimals))))}
-              className="px-2 py-0.5 rounded-md text-[10px] font-mono border border-white/10 text-zinc-400 hover:text-white">{d === 0 ? 'Market' : `${d > 0 ? '+' : ''}${d}%`}</button>
+          {f.kind === 'price' && fieldMarket && [-5, -2, -1, 0, 1, 2, 5].map(d => (
+            // ±% of the price in sats: +d% sats per token = fewer tokens per BCH
+            <button key={d} type="button" onClick={() => set(f.key, (fieldMarket / (1 + d / 100)).toFixed(fieldMarket >= 1000 ? 2 : 4))}
+              aria-label={d === 0 ? 'Set to the market price' : `Set ${d > 0 ? d + '% above' : -d + '% below'} the market price`}
+              className="px-2 py-0.5 rounded-md text-[10px] font-mono border border-white/10 text-zinc-400 hover:text-white hover:border-sky-400/40">{d === 0 ? 'Mid' : `${d > 0 ? '+' : ''}${d}%`}</button>
           ))}
+          {f.kind === 'price' && v && fieldMid && <VsMid bps={vsMidBps} />}
           {walletHint && <span className="text-[10px] text-zinc-500 font-mono">Wallet: {walletHint}</span>}
         </div>
       </div>
@@ -252,7 +290,18 @@ export function StrategyBuilder({ templateId, onBack, replaces }: { templateId: 
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         <Panel title="Parameters" className="lg:col-span-6">
-          {form.fields.map(f => (
+          {mainToken && (
+            <div className="space-y-2">
+              <MarketStrip ctx={ctxOf(mainToken)} symbol={main.symbol} decimals={main.decimals} loading={suggest.isLoading && !market.data} />
+              {suggest.data?.params && (
+                <button type="button" onClick={() => applySuggestion(false)}
+                  className="text-[11px] font-semibold text-sky-300 hover:text-sky-200 underline-offset-2 hover:underline">
+                  Use suggested prices around the market
+                </button>
+              )}
+            </div>
+          )}
+          {form.fields.filter(f => f.key !== 'recyclePrice' || values.proceeds === 'recycle').map(f => (
             <div key={f.key} className="space-y-1.5">
               <div className="text-xs font-semibold text-zinc-400">{f.label}{f.optional ? <span className="text-zinc-600 font-normal"> · optional</span> : null}</div>
               {field(f)}
@@ -280,9 +329,16 @@ export function StrategyBuilder({ templateId, onBack, replaces }: { templateId: 
                         <span className="font-mono text-zinc-300">{p.deposit.token ? `${formatUnits(p.deposit.token.amount, infoOf(p.deposit.token.category).decimals)} ${infoOf(p.deposit.token.category).symbol}` : formatSatsCompact(p.deposit.sats)}</span>
                       </div>
                       <div className="flex justify-between gap-2 text-zinc-500">
-                        <span>Gives {reserve} for {accepts}{p.v3.modeName === 'mirror' ? ' · recycles' : ''}</span>
+                        <span>Gives {reserve} for {accepts}</span>
                         <span className="font-mono">{shortHex(p.address, 8, 6)}</span>
                       </div>
+                      {(p.market?.length || p.v3.modeName === 'mirror') ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                          {p.market?.[0] && <VsMid bps={p.market[0].vsMidBps} />}
+                          {p.market?.[0]?.reverseVsMidBps !== undefined && <span className="text-[10px] text-zinc-500">trades back <VsMid bps={p.market[0].reverseVsMidBps} /></span>}
+                          {p.v3.modeName === 'mirror' && <RecyclePill />}
+                        </div>
+                      ) : null}
                     </div>
                   );
                 })}

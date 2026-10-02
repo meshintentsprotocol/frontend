@@ -43,6 +43,12 @@ export interface TemplateForm {
 }
 
 const FEE: FieldSpec = { key: 'feeBps', label: 'Pool fee', kind: 'bps', default: '30' };
+/** Keep proceeds in Mesh (mirror mode) or pay them to the wallet. */
+const proceedsField = (def: 'wallet' | 'recycle'): FieldSpec => ({
+  key: 'proceeds', label: 'Proceeds', kind: 'choice', default: def,
+  help: 'Recycle keeps your liquidity in Mesh: what a pool receives opens the reverse pool, which trades it back',
+  choices: [{ value: 'recycle', label: 'Keep in Mesh (recycle)' }, { value: 'wallet', label: 'Pay to my wallet' }],
+});
 
 export const TEMPLATE_FORMS: TemplateForm[] = [
   { id: 'fixed', icon: 'Target', deposit: 'BCH (bid) or the token (ask)', earns: 'The fee on every fill at your price',
@@ -53,6 +59,9 @@ export const TEMPLATE_FORMS: TemplateForm[] = [
       FEE,
       { key: 'deposit', label: 'Deposit', kind: 'bch', help: 'BCH for a bid; for an ask, enter the token amount below instead' },
       { key: 'depositTokens', label: 'Token deposit (ask)', kind: 'tokenAmount', token: 'token', optional: true },
+      proceedsField('wallet'),
+      { key: 'recyclePrice', label: 'Trade-back price (recycle)', kind: 'price', token: 'token', optional: true,
+        help: 'With recycle: where the reverse pool trades back — fewer tokens per BCH than a bid, more than an ask' },
     ] },
   { id: 'spread', icon: 'ArrowLeftRight', deposit: 'BCH and the token', earns: 'The spread between your bid and ask, plus the fee',
     fields: [
@@ -62,6 +71,7 @@ export const TEMPLATE_FORMS: TemplateForm[] = [
       FEE,
       { key: 'depositBch', label: 'BCH for the bid', kind: 'bch' },
       { key: 'depositTokens', label: 'Tokens for the ask', kind: 'tokenAmount', token: 'token' },
+      proceedsField('recycle'),
     ] },
   { id: 'multi-pair', icon: 'Network', deposit: 'BCH once', earns: 'Fills in any of 2–3 tokens from the same BCH',
     fields: [
@@ -171,13 +181,16 @@ export function toServerParams(id: string, v: Record<string, string>, dec: Decim
   switch (id) {
     case 'fixed': {
       const side = v.side === 'ask' ? 'ask' : 'bid';
+      const recycle = v.proceeds === 'recycle';
       return { token: need('token'), side, satsPerToken: price('price', 'token'), feeBps: fee,
-        deposit: side === 'bid' ? sats('deposit') : units('depositTokens', 'token') };
+        deposit: side === 'bid' ? sats('deposit') : units('depositTokens', 'token'),
+        ...(recycle ? { proceeds: 'recycle', recycleSatsPerToken: price('recyclePrice', 'token') } : {}) };
     }
     case 'spread':
       // bid: more tokens per BCH ⇒ fewer sats per token than the ask
       return { token: need('token'), bidSatsPerToken: price('bid', 'token'), askSatsPerToken: price('ask', 'token'), feeBps: fee,
-        depositSats: sats('depositBch'), depositTokens: units('depositTokens', 'token') };
+        depositSats: sats('depositBch'), depositTokens: units('depositTokens', 'token'),
+        ...(v.proceeds === 'recycle' ? { proceeds: 'recycle' } : {}) };
     case 'multi-pair': {
       const tokens = [1, 2, 3].filter(i => opt(`token${i}`)).map(i => ({ token: v[`token${i}`]!, satsPerToken: price(`price${i}`, `token${i}`) }));
       return { tokens, feeBps: fee, depositSats: sats('depositBch') };
@@ -208,6 +221,50 @@ export function toServerParams(id: string, v: Record<string, string>, dec: Decim
     default:
       throw new Error(`unknown template ${id}`);
   }
+}
+
+/** sats per token base unit → "1 BCH = P tokens" as a form string (4–6 significant digits). */
+export function tokenPerBchText(satsPerUnit: unknown, decimals: number): string | undefined {
+  const s = Number(satsPerUnit);
+  if (!(s > 0) || !Number.isFinite(s)) return undefined;
+  const v = 1e8 / (s * 10 ** decimals);
+  const d = v >= 1000 ? 2 : v >= 1 ? 4 : 8;
+  return v.toFixed(d).replace(/\.?0+$/, '');
+}
+
+/**
+ * Server params (e.g. a /strategies/suggest result) → form values for the
+ * template: prices back to "1 BCH = P tokens", counts, fee, choices. Deposits
+ * and tokens are left as they are.
+ */
+export function fromServerParams(id: string, p: Record<string, any>, dec: Decimals, current: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  const put = (k: string, v: unknown) => { if (v !== undefined && v !== null && v !== '') out[k] = String(v); };
+  const tok = (k: string) => current[k] ?? p[k];
+  const tpb = (sats: unknown, tokenKey: string) => { const t = tok(tokenKey); return t ? tokenPerBchText(sats, dec(t)) : undefined; };
+  put('feeBps', p.feeBps);
+  switch (id) {
+    case 'fixed': put('price', tpb(p.satsPerToken, 'token')); put('side', p.side); put('recyclePrice', tpb(p.recycleSatsPerToken, 'token')); break;
+    case 'spread': put('bid', tpb(p.bidSatsPerToken, 'token')); put('ask', tpb(p.askSatsPerToken, 'token')); put('proceeds', p.proceeds); break;
+    case 'multi-pair':
+      (Array.isArray(p.tokens) ? p.tokens : []).forEach((t: any, i: number) => {
+        const key = `token${i + 1}`;
+        const cat = current[key] || t?.token;
+        if (cat) put(`price${i + 1}`, tokenPerBchText(t?.satsPerToken, dec(cat)));
+      });
+      break;
+    case 'stable-pair': {
+      const a = tok('tokenA'); const b = tok('tokenB'); const r = Number(p.rate);
+      if (a && b && r > 0) put('rate', (r * 10 ** dec(a) / 10 ** dec(b)).toFixed(6).replace(/\.?0+$/, ''));
+      put('spreadBps', p.spreadBps);
+      break;
+    }
+    case 'recycling-pair': put('buy', tpb(p.buySatsPerToken, 'token')); put('sell', tpb(p.sellSatsPerToken, 'token')); put('start', p.start); break;
+    case 'grid': put('low', tpb(p.lowSatsPerToken, 'token')); put('high', tpb(p.highSatsPerToken, 'token')); put('rungs', p.rungs); break;
+    case 'take-profit':
+    case 'accumulate': put('from', tpb(p.fromSatsPerToken, 'token')); put('to', tpb(p.toSatsPerToken, 'token')); put('steps', p.steps); break;
+  }
+  return out;
 }
 
 /** Token categories a form value set refers to (for metadata lookups). */
