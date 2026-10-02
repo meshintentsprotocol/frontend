@@ -6,9 +6,12 @@ import { traderTokenPerBch } from '@/lib/mesh/pool';
 import { poolLevels } from '@/lib/mesh/v3/v3Display';
 import { V3PoolLabel, amountOf, useAssetInfo } from '@/components/mesh/v3/V3PoolDetail';
 import { formatNumber, formatPct, formatSatsCompact } from '@/lib/mesh/format';
+import { RecyclePill, StatusPill, VsMid, poolVsMidBps } from '@/components/mesh/ui/defi';
 import {
-  EmptyState, PoolPairLabel, PoolStatusBadge, SatsValue, poolUrl, tokenAmount, useTokenInfo, type TokenInfo,
+  EmptyState, PoolPairLabel, SatsValue, poolUrl, tokenAmount, useTokenInfo, type TokenInfo,
 } from './shared';
+
+const DAY = 86_400;
 
 /** What the pool holds: its reserve and what it has received so far. */
 export function PoolReserves({ pool, token }: { pool: Pool; token: TokenInfo }) {
@@ -43,10 +46,13 @@ function V3PriceCell({ pool }: { pool: Pool }) {
   const asset = useAssetInfo([v3.reserve, ...v3.slots.map(s => s.cat)]);
   const lv = poolLevels(pool.address, v3, c => asset(c).decimals).filter(l => !l.fromMirror);
   if (!lv.length) return <span className="text-zinc-500 text-xs">token↔token</span>;
+  const market = Number(pool.marketSatsPerToken);
+  const vs = market > 0 ? poolVsMidBps(v3, market) : null;
   return (
     <div className="font-mono">
       {lv.slice(0, 2).map((l, i) => <div key={i} className="text-zinc-200">{formatNumber(l.traderTokenPerBch, 4)} <span className="text-[10px] text-zinc-500">{asset(l.token).symbol}/BCH</span></div>)}
       {lv.length > 2 && <div className="text-[10px] text-zinc-500">+{lv.length - 2} more</div>}
+      {vs !== null && <VsMid bps={vs} />}
     </div>
   );
 }
@@ -88,6 +94,7 @@ export function PoolsTable({ pools, bchUsd, loading, empty, showOwner = false }:
                 className="border-b border-white/[0.04] hover:bg-white/[0.03] cursor-pointer transition-colors">
                 <td className="px-2 py-3">
                   {pool.v3 ? <V3PoolLabel pool={pool} /> : <PoolPairLabel token={token} side={pool.side} />}
+                  {pool.v3?.modeName === 'mirror' && <RecyclePill className="mt-1" />}
                   {showOwner && <div className="text-[10px] text-zinc-600 font-mono mt-0.5">LP {pool.ownerAddress.split(':')[1]?.slice(0, 10)}…</div>}
                 </td>
                 <td className="px-2 py-3">{pool.v3 ? <V3PriceCell pool={pool} /> : <PoolPrice pool={pool} token={token} />}</td>
@@ -96,8 +103,10 @@ export function PoolsTable({ pools, bchUsd, loading, empty, showOwner = false }:
                 <td className="px-2 py-3"><SatsValue sats={pool.valueSats} bchUsd={bchUsd} className="text-zinc-200" /></td>
                 <td className="px-2 py-3 font-mono text-zinc-300">{formatSatsCompact(pool.stats.volume7dSats)}</td>
                 <td className="px-2 py-3 font-mono text-emerald-400">{formatSatsCompact(pool.stats.fees7dSats)}</td>
-                <td className="px-2 py-3 font-mono text-zinc-300">{formatPct(pool.stats.feeApr7dPct)}</td>
-                <td className="px-2 py-3"><PoolStatusBadge status={pool.status} /></td>
+                <td className="px-2 py-3 font-mono text-zinc-300" title={Date.now() / 1000 - pool.createdAt < DAY ? 'Shown after 24 h of history' : undefined}>
+                  {Date.now() / 1000 - pool.createdAt < DAY ? '—' : formatPct(pool.stats.feeApr7dPct)}
+                </td>
+                <td className="px-2 py-3"><StatusPill status={pool.status} /></td>
               </tr>
             );
           })}

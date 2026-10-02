@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Layers, PlusCircle, Trophy, Wifi, WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -16,18 +15,18 @@ export function MeshNetworkHero({ onTab }: { onTab: (t: 'positions' | 'leaderboa
   const s = stats.data;
   const usd = (sats?: string) => (s ? formatUsd(satsToUsd(sats ?? '0', s.bchUsd)) : '—');
   return (
-    <div className="w-full bg-[#0038ff] rounded-3xl p-6 sm:p-8 md:p-10 text-white relative overflow-hidden shadow-2xl border border-blue-400/20 space-y-6">
-      <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-blue-400/20 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
+    <div className="w-full rounded-3xl p-6 sm:p-8 md:p-10 text-white relative overflow-hidden shadow-2xl border border-white/[0.08] bg-[radial-gradient(120%_120%_at_100%_0%,rgba(16,185,129,0.14),transparent_55%),linear-gradient(180deg,#0d1016,#08090c)] space-y-6">
+      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-emerald-400/50 to-transparent" />
       <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div className="space-y-2">
-          <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight font-heading">Pools &amp; Liquidity</h1>
-          <p className="text-xs sm:text-sm md:text-base text-blue-100 max-w-2xl leading-relaxed">
-            Fixed-price BCH liquidity pools. Your funds stay in a covenant only you can withdraw; solvers route orders to your pool and the covenant enforces your price and fee on every fill.
+          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight font-heading">Pools &amp; Liquidity</h1>
+          <p className="text-xs sm:text-sm md:text-base text-zinc-400 max-w-2xl leading-relaxed">
+            Liquidity strategies on Bitcoin Cash. Your funds stay in covenants only you can withdraw; solvers route orders to your pools and the covenant enforces your prices and fee on every fill. Recycling pools keep the proceeds working inside Mesh.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <div className={cn('flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-semibold font-mono',
-            health.data ? 'bg-black/20 border-white/20 text-blue-200' : 'bg-red-500/20 border-red-500/30 text-red-200')}>
+            health.data ? 'bg-emerald-500/10 border-emerald-400/25 text-emerald-200' : 'bg-red-500/20 border-red-500/30 text-red-200')}>
             {health.data ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
             {health.data ? `${health.data.network} · ${health.data.latencyMs}ms` : health.isLoading ? 'connecting…' : 'Mesh server offline'}
           </div>
@@ -37,8 +36,8 @@ export function MeshNetworkHero({ onTab }: { onTab: (t: 'positions' | 'leaderboa
           <Button onClick={() => onTab('leaderboard')} variant="outline" className="h-10 px-4 rounded-full border-white/20 bg-white/10 hover:bg-white/20 text-white font-bold text-xs">
             <Trophy className="w-3.5 h-3.5 mr-1.5 text-yellow-300" />Leaderboard
           </Button>
-          <Button onClick={() => onTab('create')} className="h-10 px-5 rounded-full bg-white text-blue-900 hover:bg-blue-50 font-bold text-xs">
-            <PlusCircle className="w-4 h-4 mr-1.5 text-blue-700" />New pool
+          <Button onClick={() => onTab('create')} className="h-10 px-5 rounded-full font-bold text-xs shadow-[0_0_24px_-6px_rgba(16,185,129,0.6)]">
+            <PlusCircle className="w-4 h-4 mr-1.5" />New position
           </Button>
         </div>
       </div>
@@ -55,9 +54,9 @@ export function MeshNetworkHero({ onTab }: { onTab: (t: 'positions' | 'leaderboa
 function HeroStat({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: string }) {
   return (
     <div className="space-y-1 min-w-0">
-      <div className="text-[11px] text-blue-200 font-medium font-sans">{label}</div>
+      <div className="text-[11px] text-zinc-400 font-medium font-sans">{label}</div>
       <div className={cn('text-2xl sm:text-3xl font-bold truncate', accent ?? 'text-white')}>{value}</div>
-      {sub && <div className="text-[11px] text-blue-200/80 truncate">{sub}</div>}
+      {sub && <div className="text-[11px] text-zinc-500 truncate">{sub}</div>}
     </div>
   );
 }
@@ -102,7 +101,6 @@ export function PairsTable({ pairs, bchUsd, onProvide }: { pairs: PairSummary[];
 }
 
 export function MeshPoolsOverview({ onTab }: { onTab: (t: 'positions' | 'leaderboard' | 'create', token?: string) => void }) {
-  const navigate = useNavigate();
   const stats = useMeshStats();
   const pairs = useMeshPairs();
   const [status, setStatus] = useState<'active' | 'all'>('active');
