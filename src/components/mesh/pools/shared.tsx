@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils';
 import type { Pool, PoolStatus } from '@/lib/mesh/meshApi';
 import type { PoolSide } from '@/lib/mesh/pool';
 import { formatUnits, formatSatsCompact, formatUsd, satsToUsd, shortHex } from '@/lib/mesh/format';
+import { PUSD_CHIPNET, PUSD_MAINNET, pusdToken } from '@/lib/pusd';
 
 export const BCH_ICON = '/logos/bitcoin-cash-bch-logo.svg';
 
@@ -24,6 +25,11 @@ export function useTokenInfo(categories: Array<string | undefined>) {
     const c = (category ?? '').toLowerCase();
     const m = data?.[c];
     if (m) return { category: c, symbol: m.symbol || c.slice(0, 6).toUpperCase(), name: m.name || m.symbol, decimals: m.decimals ?? 0, icon: m.icon, known: true };
+    // pUSD is the default pair everywhere: keep its name and decimals even when BCMR has no entry
+    if (c === PUSD_MAINNET || c === PUSD_CHIPNET) {
+      const t = pusdToken(c === PUSD_MAINNET);
+      return { category: c, symbol: t.symbol, name: t.name, decimals: t.decimals, icon: t.icon, known: true };
+    }
     return { category: c, symbol: c.slice(0, 6).toUpperCase(), name: c, decimals: 0, icon: null, known: false };
   };
   return { get, loading: isLoading };

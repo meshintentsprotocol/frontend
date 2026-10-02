@@ -96,6 +96,27 @@ export function useStrategies(owner: string | undefined | null) {
   });
 }
 
+/**
+ * Market context and suggested params for a template (null until a token is chosen).
+ * A server without /suggest (before 2026-10-02) answers 404 → treated as "no suggestion".
+ */
+export function useStrategySuggest(q: { template: string; token?: string; tokens?: string[]; tokenA?: string; tokenB?: string } | null) {
+  return useQuery({
+    queryKey: ['mesh', 'suggest', q?.template, q?.token, q?.tokens?.join(','), q?.tokenA, q?.tokenB],
+    queryFn: () => meshApi.suggest(q!),
+    enabled: !!q && !!(q.token || q.tokens?.length || (q.tokenA && q.tokenB)),
+    staleTime: 30_000, refetchInterval: 60_000, retry: (n, e: any) => e?.status !== 404 && n < 1,
+  });
+}
+
+/** Idle liquidity for an owner (wallet proceeds, stale / one-sided pools, dust). */
+export function useIdle(owner: string | undefined | null) {
+  return useQuery({
+    queryKey: ['mesh', 'idle', owner ?? ''], queryFn: () => meshApi.idle(owner!), enabled: !!owner,
+    refetchInterval: 60_000, staleTime: 30_000, retry: (n, e: any) => e?.status !== 404 && n < 1,
+  });
+}
+
 export function useStrategy(id: string | undefined) {
   return useQuery({
     queryKey: keys.strategy(id ?? ''), queryFn: () => meshApi.strategy(id!), enabled: !!id,

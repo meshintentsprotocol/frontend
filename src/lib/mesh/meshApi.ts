@@ -170,7 +170,51 @@ export interface RegisterItemV3 {
 
 // ── Strategies ───────────────────────────────────────────────────────────────
 
-export interface StrategyTemplate { id: string; name: string; summary: string; params: Record<string, string> }
+/** One template parameter (server units: sats per token base unit, base-unit amounts). */
+export interface TemplateField {
+  key: string;
+  label: string;
+  type: 'token' | 'price' | 'rate' | 'amount' | 'int' | 'bps' | 'enum' | 'tokenList';
+  asset?: string | { field: string; map: Record<string, string> };
+  rate?: { give: string; take: string };
+  required: boolean;
+  min?: number; max?: number; default?: string | number;
+  options?: Array<{ value: string; label: string }>;
+  help: string;
+}
+
+export interface StrategyTemplate {
+  id: string; name: string; summary: string; params: Record<string, string>;
+  // present on servers with the field schema (2026-10-02+)
+  category?: string; recycles?: boolean; deposit?: string; earns?: string; risk?: string; fields?: TemplateField[];
+}
+
+/** Market context for one token (prices: sats per token base unit). */
+export interface MarketContext {
+  token: string;
+  symbol: string | null; decimals: number | null; icon: string | null;
+  cauldron: { satsPerToken: string; bchReserve: string; tokenReserve: string; poolAddress: string } | null;
+  mesh: { bestBid: { satsPerToken: string; address: string } | null; bestAsk: { satsPerToken: string; address: string } | null };
+  midSatsPerToken: number | null;
+  midSource: 'cauldron' | 'mesh-mid' | 'mesh-bid' | 'mesh-ask' | null;
+  bchUsd: number | null;
+  tokenUsd: number | null;
+}
+
+export interface StrategySuggestion {
+  template: string;
+  market: Record<string, MarketContext>;
+  params: Record<string, unknown> | null;
+  reason?: string;
+}
+
+/** A slot's price against the market mid. */
+export interface SlotMarket {
+  asset: string; side: 'buys' | 'sells' | 'swaps';
+  satsPerToken?: number; midSatsPerToken?: number | null; vsMidBps: number | null;
+  reverseSatsPerToken?: number; reverseVsMidBps?: number | null;
+  gives?: string; reservePerUnit?: number;
+}
 
 export interface StrategyPoolPreview {
   role: string;
@@ -181,6 +225,7 @@ export interface StrategyPoolPreview {
   fundTo: string;
   deposit: { sats: string; token?: { category: string; amount: string } };
   v3: V3Info;
+  market?: SlotMarket[];
   registered: boolean;
 }
 
@@ -188,26 +233,72 @@ export interface StrategyPreview {
   template: string;
   pools: StrategyPoolPreview[];
   totals: { sats: string; tokens: Record<string, string> };
+  market?: Record<string, MarketContext>;
 }
+
+export interface StrategyIdleFlag { kinds: IdleKind[]; items: string[]; reasons: string[]; valueSats: string }
 
 export interface StrategySummary {
   id: string; template: string; ownerPkh: string; txid: string; createdAt: number;
-  params: Record<string, unknown>; replaces?: string; replacedBy?: string;
+  params: Record<string, unknown>; replaces?: string; replacedBy?: string; recycledFrom?: string[];
   status: PoolStatus;
   poolCount: number; activePools: number;
   valueSats: string; volume24hSats: string; volume7dSats: string;
   feesAllSats: string; fees7dSats: string; pnlSats: string; fillCount: number;
   pools: Array<{ address: string; role: string; status: PoolStatus }>;
+  // 2026-10-02+
+  inventory?: { sats: string; tokens: Record<string, string> };
+  /** null before 24 h of history */
+  feeApr7dPct?: number | null;
+  lastFillAt?: number | null;
+  lastActivityAt?: number | null;
+  /** owner listings only */
+  idle?: StrategyIdleFlag | null;
 }
 
 export interface RebalancePlan {
   strategy: string;
-  close: Array<{ address: string; contractName: PoolContractName; constructorArgs?: string[];
-    utxos: Array<{ txid: string; vout: number; sats: string; tokens: string; category: string | null }> }>;
+  close: ClosePlan[];
   open: StrategyPoolPreview[];
+  market?: Record<string, MarketContext>;
   available: { sats: string; tokens: Record<string, string> };
   needs: { sats: string; tokens: Record<string, string> };
   shortfall: Record<string, string>;
+  note: string;
+}
+
+export interface ClosePlan {
+  address: string; contractName: PoolContractName; constructorArgs?: string[];
+  utxos: Array<{ txid: string; vout: number; sats: string; tokens: string; category: string | null }>;
+}
+
+// ── Recycle ──────────────────────────────────────────────────────────────────
+
+export type IdleKind = 'wallet' | 'stale' | 'one-sided' | 'dust';
+
+export interface IdleItem {
+  id: string; kind: IdleKind; reason: string; valueSats: string;
+  pools?: string[]; strategy?: string; asset?: string; amount?: string; token?: string;
+  lastFillAt?: number | null; vsMidBps?: number | null;
+}
+
+export interface IdleReport {
+  owner: string; count: number; totalValueSats: string; items: IdleItem[];
+  thresholds: { staleAfterSec: number; offMidBps: number; dustSats: string };
+}
+
+export interface RecyclePlan {
+  owner: string;
+  items: IdleItem[];
+  close: ClosePlan[];
+  open: Array<{ template: 'recycling-pair'; params: Record<string, unknown>; part: number; pools: StrategyPoolPreview[] }>;
+  freed: { sats: string; tokens: Record<string, string> };
+  fromWallet: { sats: string; tokens: Record<string, string> };
+  toWallet: { sats: string; tokens: Record<string, string> };
+  needs: { sats: string; tokens: Record<string, string> };
+  spreadBps: number; feeBps: number;
+  notes: string[];
+  recycledFrom: string[];
   note: string;
 }
 
@@ -345,10 +436,17 @@ export function createMeshApi(baseUrl: string, fetchImpl: typeof fetch = (...a) 
     stats: () => call<MeshNetworkStats>('GET', '/api/v1/stats'),
     orderbook: (pair: string) => call<any>('GET', `/api/v1/orderbook${qs({ pair })}`),
     // strategies
-    templates: () => call<{ templates: StrategyTemplate[] }>('GET', '/api/v1/strategies/templates'),
+    templates: () => call<{ templates: StrategyTemplate[]; limits?: Record<string, number> }>('GET', '/api/v1/strategies/templates'),
+    /** Market context + suggested params. `tokens` for multi-pair, `tokenA`/`tokenB` for stable-pair. */
+    suggest: (q: { template: string; token?: string; tokens?: string[]; tokenA?: string; tokenB?: string }) =>
+      call<StrategySuggestion>('GET', `/api/v1/strategies/suggest${qs({ ...q, tokens: q.tokens?.join(',') })}`),
     previewStrategy: (input: StrategyInput) => call<StrategyPreview>('POST', '/api/v1/strategies/preview', input),
-    registerStrategy: (input: StrategyInput & { txid: string; replaces?: string }) =>
+    registerStrategy: (input: StrategyInput & { txid: string; replaces?: string; part?: number; recycledFrom?: string[] }) =>
       call<{ strategy: StrategySummary }>('POST', '/api/v1/strategies', input),
+    // recycle
+    idle: (owner: string) => call<IdleReport>('GET', `/api/v1/recycle/idle${qs({ owner })}`),
+    recyclePlan: (body: { owner: string; items?: string[]; spreadBps?: number; feeBps?: number }) =>
+      call<RecyclePlan>('POST', '/api/v1/recycle/plan', body),
     strategies: (owner?: string) => call<{ count: number; strategies: StrategySummary[] }>('GET', `/api/v1/strategies${qs({ owner })}`),
     strategy: (id: string) => call<{ strategy: StrategySummary; pools: Pool[] }>('GET', `/api/v1/strategies/${enc(id)}`),
     rebalancePlan: (id: string, body: { template?: string; params?: Record<string, unknown> }) =>

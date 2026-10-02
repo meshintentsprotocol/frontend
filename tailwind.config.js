@@ -4,6 +4,11 @@ export default {
 	content: ["./index.html", "./src/**/*.{ts,tsx,js,jsx}"],
 	theme: {
 		extend: {
+			fontFamily: {
+				// DeFi data surfaces (MeshDocs/AlphaV3/10): headings in Space Grotesk, numbers in JetBrains Mono
+				heading: ['"Space Grotesk"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+				mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'monospace'],
+			},
 			borderRadius: {
 				lg: 'var(--radius)',
 				md: 'calc(var(--radius) - 2px)',
