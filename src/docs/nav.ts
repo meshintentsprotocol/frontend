@@ -291,6 +291,7 @@ export const NAV: NavSection[] = [
                 items: [
                     { slug: 'api/pools', title: 'Pools', method: 'GET' },
                     { slug: 'api/strategies', title: 'Strategies', method: 'POST', badge: 'new' },
+                    { slug: 'api/recycle', title: 'Recycle', method: 'POST', badge: 'new' },
                     { slug: 'api/positions', title: 'Positions', method: 'GET' },
                     { slug: 'api/orderbook', title: 'Orderbook', method: 'GET' },
                     { slug: 'api/rebalance', title: 'Rebalance quote', method: 'POST' },

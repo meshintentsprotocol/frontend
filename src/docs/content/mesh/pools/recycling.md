@@ -49,12 +49,18 @@ Strategy totals include the mirror pools, so value, fees and P&L cover the whole
 - If the price leaves your range for good, the loop stops with all capital on one side. [Rebalance](api/strategies) re-centres it in one transaction.
 - One base unit always stays in a token pool.
 
-## Recycling idle liquidity (planned)
+## Keep proceeds in Mesh from the start
 
-Liquidity can also go idle *after* the fact:
+**Spread** and **fixed** strategies have a **Proceeds** choice:
+- **Spread with recycle** (the app's default) puts both pools in mirror mode. The bid's mirror *is* the ask pool, and vice versa, so each side refills the other.
+- **Fixed with recycle** takes a trade-back price: above your bid, or below your ask.
+
+## Recycle idle liquidity
+
+Liquidity can still go idle after the fact:
 - proceeds sitting in your wallet from wallet-mode pools;
 - pools priced far from the market that never fill;
 - ranges stuck on one side;
 - dust.
 
-A **Recycle** action is planned to put all of it back to work in one signature, defaulting to mirror mode. The design is in `MeshDocs/AlphaV3/11-recycle-idle-liquidity.md`.
+**My pools** shows an idle banner with the reason for each item. **Recycle** reopens what you choose as recycling pairs around today's price, in **one signature**. The rules and the API are on the [Recycle API](api/recycle) page.

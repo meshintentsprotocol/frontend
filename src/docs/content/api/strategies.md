@@ -118,7 +118,7 @@ Per slot, `side` is `buys` (BCH reserve paying for a token), `sells` (token rese
   "method": "POST",
   "path": "/api/v1/strategies",
   "summary": "Register a deploy transaction: every pool's outpoint is found on-chain first, then all are registered (all or nothing). Pass replaces to link a rebalance.",
-  "body": { "template": "grid", "ownerPkh": "<40 hex>", "params": { "…": "same params as the preview" }, "txid": "<64 hex>", "replaces": "stg-… (optional)" },
+  "body": { "template": "grid", "ownerPkh": "<40 hex>", "params": { "…": "same params as the preview" }, "txid": "<64 hex>", "replaces": "stg-… (optional)", "part": "1 (optional: several strategies from one tx)", "recycledFrom": ["stg-… (optional)"] },
   "responses": [
     { "status": 201, "body": { "strategy": { "id": "stg-<first 24 hex of txid>", "status": "active", "poolCount": 4 } } },
     { "status": 404, "body": { "error": "pool 'rung-2' (bchtest:p…) has no unspent output from <txid>" } },
@@ -144,7 +144,11 @@ Per slot, `side` is `buys` (BCH reserve paying for a token), `sells` (token rese
 }
 ```
 
-`feeApr7dPct` is an estimate: the last 7 days of fee income, annualised over the current value.
+`feeApr7dPct` is an estimate: the last 7 days of fee income, annualised over the current value. It is `null` until the strategy has 24 hours of history. Owner listings (`?owner=`) also carry `idle` (`kinds`, `reasons`, `valueSats`) when part of the strategy is [idle](api/recycle).
+
+**Proceeds.** `fixed` and `spread` take `proceeds: "wallet" | "recycle"` (default `wallet`).
+- `spread` with `recycle` puts both pools in mirror mode, so each side refills the other.
+- `fixed` with `recycle` needs `recycleSatsPerToken`: the trade-back price, above a bid or below an ask.
 
 ```endpoint
 {
