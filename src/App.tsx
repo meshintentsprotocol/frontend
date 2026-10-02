@@ -18,7 +18,7 @@ import PortfolioComingSoonPage from './pages/PortfolioComingSoonPage';
 import ProPage from "./pages/ProPage"
 import { MonitorPage } from "./pages/MonitorPage"
 import { SolverPage } from "./pages/SolverPage"
-import { AdminPage } from "./pages/AdminPage"
+import { adminRoutes } from "./admin/AdminRoutes"
 import { AnalyticsTracker } from "@/components/common/AnalyticsTracker"
 import { ScrollToTop } from "@/components/common/ScrollToTop"
 
@@ -156,19 +156,13 @@ function App() {
                                                             <main className="flex-1 pt-24"><PortfolioComingSoonPage variant="points" /></main>
                                                         </div>
                                                     } />
-                                                    <Route path="/admin" element={
-                                                        <div className="flex flex-col min-h-screen bg-[#050505]">
-                                                            <Header />
-                                                            <main className="flex-1 pt-20"><AdminPage /></main>
-                                                        </div>
-                                                    } />
+                                                    {adminRoutes}
                                                     <Route path="/adminpool" element={
                                                         <div className="flex flex-col min-h-screen bg-[#050505]">
                                                             <Header />
                                                             <main className="flex-1 pt-20"><AdminPoolPage /></main>
                                                         </div>
                                                     } />
-                                                    <Route path="/admin/pools" element={<Navigate to="/adminpool" replace />} />
                                                     <Route path="/resolver" element={<Navigate to="/" replace />} />
                                                     <Route path="/monitor" element={
                                                         <div className="flex flex-col min-h-screen">
