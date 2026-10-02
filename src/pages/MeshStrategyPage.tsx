@@ -8,22 +8,22 @@ import React, { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQueries } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { AlertTriangle, ArrowLeft, Loader2, Lock, MinusCircle, Repeat, Shuffle } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Loader2, Lock, MinusCircle, Recycle, Repeat, Shuffle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { meshApi, useInvalidateMesh, useMeshSigner, useMeshStats, useSignerBalances, useStrategy, useStrategyTemplates } from '@/hooks/useMesh';
+import { meshApi, useIdle, useInvalidateMesh, useMeshSigner, useMeshStats, useSignerBalances, useStrategy, useStrategySuggest, useStrategyTemplates } from '@/hooks/useMesh';
 import type { Pool, PoolEvent } from '@/lib/mesh/meshApi';
-import { formatSatsCompact, formatUnits, formatUsd, satsToUsd, shortHex, timeAgo } from '@/lib/mesh/format';
+import { formatPct, formatSatsCompact, formatUsd, satsToUsd, shortHex, timeAgo } from '@/lib/mesh/format';
 import { poolLevels } from '@/lib/mesh/v3/v3Display';
-import { parseV3Params, v3ContractFor } from '@/lib/mesh/v3/v3Pool';
+import { v3ContractFor } from '@/lib/mesh/v3/v3Pool';
 import { buildWithdrawV3, type ClosePool } from '@/lib/mesh/v3/v3Tx';
-import { formFor, toServerParams } from '@/lib/mesh/v3/strategyForms';
 import { sendPoolTx, type BuiltTx } from '@/lib/mesh/poolTx';
-import { addPending, registerWithRetry, removePending } from '@/lib/mesh/pendingRegistrations';
-import { Panel, PoolStatusBadge, StatTile, poolUrl } from '@/components/mesh/pools/shared';
+import { Panel, poolUrl } from '@/components/mesh/pools/shared';
+import { DefiCard, IdlePill, InventoryBar, MarketStrip, MetricCell, RecyclePill, StatusPill, TemplateIcon, VsMid, poolVsMidBps, templateName, tokensPerBch } from '@/components/mesh/ui/defi';
+import { RecycleDialog } from '@/components/mesh/strategies/RecycleDialog';
+import { strategyRecycles } from '@/components/mesh/strategies/StrategyCard';
 import { PriceLadder } from '@/components/mesh/strategies/PriceLadder';
 import { strategyUrl } from '@/components/mesh/strategies/StrategyBuilder';
 import { V3PoolLabel, amountOf, useAssetInfo } from '@/components/mesh/v3/V3PoolDetail';
-import { Input } from '@/components/ui/input';
 
 export function MeshStrategyPage() {
   const { id: raw } = useParams();
@@ -36,6 +36,10 @@ export function MeshStrategyPage() {
   const cats = useMemo(() => [...new Set(pools.flatMap(p => (p.v3 ? [p.v3.reserve, ...p.v3.slots.map(x => x.cat)] : [])))], [pools]);
   const asset = useAssetInfo(cats);
   const activity = useQueries({ queries: pools.map(p => ({ queryKey: ['mesh', 'activity', p.address], queryFn: () => meshApi.activity(p.address, { limit: 50 }), refetchInterval: 20_000 })) });
+  const firstToken = cats.find(c => c !== '0x');
+  const market = useStrategySuggest(s && firstToken ? { template: s.template === 'multi-pair' || s.template === 'stable-pair' ? 'fixed' : s.template, token: firstToken } : null);
+  const idle = useIdle(wallet.pkh && s && wallet.pkh === s.ownerPkh ? wallet.pkh : null);
+  const [recycleOpen, setRecycleOpen] = useState(false);
 
   if (q.isLoading) return <div className="py-28 text-center text-zinc-400 text-sm"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-3 text-emerald-400" />Loading strategy…</div>;
   if (!s) {
@@ -53,6 +57,14 @@ export function MeshStrategyPage() {
   const roleOf = (address: string) => s.pools.find(x => x.address === address)?.role ?? 'member';
   const mainToken = cats.find(c => c !== '0x') ?? '';
   const levels = pools.flatMap(p => (p.v3 ? poolLevels(p.address, p.v3, c => asset(c).decimals, roleOf(p.address)) : [])).filter(l => l.token === mainToken);
+  const mainInfo = asset(mainToken);
+  const ctx = market.data?.market?.[mainToken] ?? null;
+  const mid = ctx?.midSatsPerToken ?? null;
+  const marketTokensPerBch = mid ? tokensPerBch(mid, mainInfo.decimals) : null;
+  const myIdle = idle.data?.items.filter(i => i.strategy === s.id) ?? [];
+  const value = Number(s.valueSats);
+  const bchPart = s.inventory ? Number(s.inventory.sats) : null;
+  const ageH = (Date.now() / 1000 - s.createdAt) / 3600;
   const events = activity.flatMap((a, i) => (a.data?.events ?? []).map(e => ({ ...e, pool: pools[i]! })))
     .sort((a, b) => b.time - a.time).slice(0, 60) as Array<PoolEvent & { pool: Pool }>;
   const links = pools.flatMap(p => (p.v3?.slots ?? []).filter(x => x.proceeds.kind === 'mirror').map(x => ({ from: p, to: (x.proceeds as { address: string }).address })));
@@ -61,12 +73,31 @@ export function MeshStrategyPage() {
     <div className="container mx-auto py-4 sm:py-6 px-4 md:px-8 max-w-[1200px] space-y-6">
       <Link to="/mesh?tab=positions" className="inline-flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300"><ArrowLeft className="w-3.5 h-3.5" />My positions</Link>
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight capitalize">{s.template.replace('-', ' ')} strategy</h1>
-          <p className="text-xs text-zinc-500 font-mono mt-1">{s.id} · deployed {timeAgo(s.createdAt)}</p>
+        <div className="flex items-center gap-3 min-w-0">
+          <TemplateIcon id={s.template} className="w-11 h-11" />
+          <div className="min-w-0">
+            <h1 className="font-heading text-2xl sm:text-3xl font-bold text-white tracking-tight">{templateName(s.template)}</h1>
+            <p className="text-xs text-zinc-500 font-mono mt-1 truncate">{s.id} · deployed {timeAgo(s.createdAt)}</p>
+          </div>
         </div>
-        <div className="flex items-center gap-2"><PoolStatusBadge status={s.status} /></div>
+        <div className="flex flex-wrap items-center gap-2">
+          {strategyRecycles(s) && <RecyclePill />}
+          {myIdle.length > 0 && <IdlePill title={myIdle.map(i => i.reason).join(' · ')} />}
+          <StatusPill status={s.status} />
+        </div>
       </div>
+      {myIdle.length > 0 && idle.data && (
+        <DefiCard tone="idle" className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="text-xs text-amber-100">
+            <div className="font-heading text-sm font-semibold text-white">Part of this strategy is idle</div>
+            {myIdle.map(i => <div key={i.id} className="text-[11px] text-amber-200/90">{i.reason} · <span className="font-mono">{formatSatsCompact(i.valueSats)}</span></div>)}
+          </div>
+          <Button className="rounded-xl font-bold shrink-0" onClick={() => setRecycleOpen(true)}><Recycle className="w-4 h-4 mr-1.5" />Recycle</Button>
+          <RecycleDialog open={recycleOpen} onOpenChange={setRecycleOpen}
+            report={{ ...idle.data, items: myIdle, count: myIdle.length, totalValueSats: myIdle.reduce((a, i) => a + BigInt(i.valueSats), 0n).toString() }}
+            infoOf={c => asset(c)} bchUsd={bchUsd} />
+        </DefiCard>
+      )}
       {s.replacedBy && (
         <div className="p-4 rounded-2xl bg-violet-500/10 border border-violet-500/25 text-xs text-violet-200 flex justify-between gap-3">
           <span>This strategy was rebalanced; its funds moved to a new one.</span><Link className="underline font-semibold" to={strategyUrl(s.replacedBy)}>Open it</Link>
@@ -74,16 +105,27 @@ export function MeshStrategyPage() {
       )}
       {s.replaces && <div className="text-[11px] text-zinc-500">Rebalanced from <Link className="underline" to={strategyUrl(s.replaces)}>{s.replaces.slice(0, 16)}…</Link></div>}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatTile label="Value" value={formatSatsCompact(s.valueSats)} sub={bchUsd ? formatUsd(satsToUsd(s.valueSats, bchUsd)) : undefined} />
-        <StatTile label="P&L" value={`${pnl >= 0n ? '+' : ''}${formatSatsCompact(s.pnlSats)}`} accent={pnl >= 0n ? 'text-emerald-400' : 'text-rose-400'} sub="value + withdrawn + proceeds − deposits" />
-        <StatTile label="Volume 7d" value={formatSatsCompact(s.volume7dSats)} sub={`${s.fillCount} fills`} />
-        <StatTile label="Fees" value={formatSatsCompact(s.feesAllSats)} accent="text-emerald-400" sub={`7d ${formatSatsCompact(s.fees7dSats)}`} />
-      </div>
+      <DefiCard className="space-y-4">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <MetricCell label="Value" value={formatSatsCompact(s.valueSats)} sub={bchUsd ? formatUsd(satsToUsd(s.valueSats, bchUsd)) : undefined} />
+          <MetricCell label="P&L" value={`${pnl >= 0n ? '+' : ''}${formatSatsCompact(s.pnlSats)}`} accent={pnl >= 0n ? 'text-emerald-300' : 'text-rose-300'} sub="value + withdrawn + proceeds − deposits" />
+          <MetricCell label="Fees" value={formatSatsCompact(s.feesAllSats)} accent="text-emerald-300" sub={`7d ${formatSatsCompact(s.fees7dSats)}`} />
+          <MetricCell label="Fee APR" value={s.feeApr7dPct !== null && s.feeApr7dPct !== undefined ? formatPct(s.feeApr7dPct) : '—'}
+            sub={s.feeApr7dPct === null || s.feeApr7dPct === undefined ? (ageH < 24 ? 'after 24 h of history' : 'no value yet') : 'estimate · last 7d'} />
+          <MetricCell label="Volume 7d" value={formatSatsCompact(s.volume7dSats)} sub={`${s.fillCount} fills${s.lastFillAt ? ` · last ${timeAgo(s.lastFillAt)}` : ''}`} />
+        </div>
+        {bchPart !== null && value > 0 && (
+          <InventoryBar segments={[
+            { label: 'BCH', valueSats: Math.min(bchPart, value), tone: 'bch' },
+            { label: mainToken ? mainInfo.symbol : 'Tokens', valueSats: Math.max(0, value - bchPart), tone: 'token' },
+          ]} />
+        )}
+      </DefiCard>
+      {mainToken && <MarketStrip ctx={ctx} symbol={mainInfo.symbol} decimals={mainInfo.decimals} loading={market.isLoading} />}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         <div className="lg:col-span-7 space-y-6">
-          {levels.length > 0 && <Panel title="Price ladder"><PriceLadder levels={levels} symbol={asset(mainToken).symbol} /></Panel>}
+          {levels.length > 0 && <Panel title="Price ladder"><PriceLadder levels={levels} market={marketTokensPerBch} symbol={mainInfo.symbol} /></Panel>}
           <Panel title="Pools" action={<span className="text-[11px] text-zinc-500">{s.activePools} of {s.poolCount} active</span>}>
             <div className="space-y-2">
               {pools.map(p => (
@@ -94,7 +136,8 @@ export function MeshStrategyPage() {
                   </div>
                   <div className="text-right text-xs space-y-1 shrink-0">
                     <div className="font-mono text-zinc-200">{p.v3 ? amountOf(p.v3.reserve === '0x' ? p.reserves.sats : p.reserves.tokens, asset(p.v3.reserve)) : formatSatsCompact(p.valueSats)}</div>
-                    <PoolStatusBadge status={p.status} />
+                    {p.v3 && mid && <div><VsMid bps={poolVsMidBps(p.v3, mid)} /></div>}
+                    <StatusPill status={p.status} />
                   </div>
                 </Link>
               ))}
