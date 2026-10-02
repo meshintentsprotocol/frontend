@@ -16,6 +16,8 @@ export interface PendingRegistration {
   items?: RegisterItem[];
   v3Items?: RegisterItemV3[];
   strategy?: StrategyInput & { replaces?: string };
+  /** Several strategies from one transaction (recycle), registered with part indexes. */
+  strategies?: Array<StrategyInput & { part?: number; recycledFrom?: string[] }>;
   createdAt: number;
   lastError?: string;
 }
@@ -43,6 +45,7 @@ export function removePending(txid: string): void {
 
 /** What a pending entry holds, in words. */
 export function describePending(p: PendingRegistration): string {
+  if (p.strategies?.length) return `recycle (${p.strategies.length} strateg${p.strategies.length === 1 ? 'y' : 'ies'})`;
   if (p.strategy) return `${p.strategy.template} strategy`;
   const n = (p.items?.length ?? 0) + (p.v3Items?.length ?? 0);
   return `${n} pool${n === 1 ? '' : 's'}`;
@@ -50,6 +53,19 @@ export function describePending(p: PendingRegistration): string {
 
 /** Register a pending entry; resolves to the first pool address or the strategy id. */
 export async function registerPending(api: MeshApi, p: PendingRegistration): Promise<{ address?: string; strategyId?: string }> {
+  if (p.strategies?.length) {
+    // several strategies from one transaction (a recycle); ones already registered are fine
+    let first: string | undefined;
+    for (const s of p.strategies) {
+      try {
+        const r = await api.registerStrategy({ ...s, txid: p.txid });
+        first ??= r.strategy.id;
+      } catch (e: any) {
+        if (e?.status !== 409) throw e;
+      }
+    }
+    return { strategyId: first };
+  }
   if (p.strategy) {
     const r = await api.registerStrategy({ ...p.strategy, txid: p.txid });
     return { strategyId: r.strategy.id, address: r.strategy.pools[0]?.address };
