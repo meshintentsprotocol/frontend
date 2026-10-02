@@ -60,66 +60,45 @@ export interface BCHSwapParams {
 }
 
 // ── TWAP Interfaces ─────────────────────────────────────────────────────────
+// Shapes returned by the Mesh server's /api/v1/twap routes: a TWAP order is N
+// Dutch-auction slice intents, each filled or refunded on its own.
 
-export interface TwapSliceProjection {
-    sliceIndex:       number;
-    sliceAmountIn:    string;
-    estimatedTimeSec: number;
-    bestPoolAddress?: string;
-    projectedRate:    number;
-    estimatedOut:     string;
-    makerFeeSats:     string;
-}
-
-export interface TwapQuoteResponse {
-    tokenIn:                string;
-    tokenOut:               string;
-    totalAmountIn:          string;
-    numSlices:              number;
-    intervalSec:            number;
-    sliceAmountIn:          string;
-    totalDurationSec:       number;
-    estimatedTotalOut:      string;
-    averageRate:            number;
-    totalMakerFeeSats:      string;
-    estimatedNetworkFeeSats: string;
-    priceImpactSavingsPct:  number;
-    slices:                 TwapSliceProjection[];
-    eligiblePoolCount:      number;
-}
-
-export interface TwapSliceRecord {
-    sliceIndex:         number;
-    executedAt:         number;
-    txid:               string;
-    poolAddress:        string;
-    amountIn:           string;
-    amountOut:          string;
-    makerFeeSats:       string;
-    effectivePrice:     number;
+/** One slice: the server's intent view (the fields the UI uses). */
+export interface TwapSliceView {
+    intentId:          string;
+    status:            string;   // awaiting_funding | funded | filled | refunded | refund_pending | …
+    sellAmount:        string;
+    minAmountOut:      string;
+    startBuyAmount?:   string;
+    endBuyAmount?:     string;
+    startTime?:        number;
+    duration?:         number;
+    refundEligibleAt:  number;
+    fillTxid?:         string;
+    fillMethod?:       string;
+    fillSources?:      { mesh: string; cauldron: string; solver: string };
+    refundTxid?:       string;
+    explorerUrl?:      string;
+    lastFillError?:    string;
+    twapSliceIndex?:   number;
 }
 
 export interface TwapOrderRecord {
-    orderId:            string;
-    creatorPkh:         string;
-    creatorAddress:     string;
-    side:               'BUY' | 'SELL';
-    tokenIn:            string;
-    tokenOut:           string;
-    totalAmountIn:      string;
-    sliceAmountIn:      string;
-    numSlices:          number;
-    intervalSec:        number;
-    startTime:          number;
-    maxPricePerUnit?:   string;
-    status:             'PENDING' | 'RUNNING' | 'PAUSED' | 'COMPLETED' | 'CANCELLED';
-    slicesCompleted:    number;
-    accumulatedAmountIn: string;
-    accumulatedAmountOut: string;
-    totalFeesPaidSats:  string;
-    sliceFills:         TwapSliceRecord[];
-    createdAt:          number;
-    updatedAt:          number;
+    orderId:          string;
+    status:           'AWAITING_FUNDING' | 'RUNNING' | 'COMPLETED' | 'PARTIALLY_FILLED' | 'REFUNDED';
+    creatorAddress:   string;
+    creatorPkh:       string;
+    tokenIn:          string;
+    tokenOut:         string;
+    numSlices:        number;
+    slicesFilled:     number;
+    slicesRefunded:   number;
+    totalAmountIn:    string;
+    slices:           TwapSliceView[];
+    /** Only in the submit response. */
+    intervalSec?:     number;
+    sliceWindowSec?:  number;
+    funding?:         Array<{ to: string; satoshis: string; token?: { category: string; amount: string } }>;
 }
 
 /**

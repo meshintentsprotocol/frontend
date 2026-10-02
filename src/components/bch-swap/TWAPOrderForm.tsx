@@ -1,20 +1,19 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import {
-  Clock, Layers, ShieldCheck, Sparkles, TrendingUp,
-  AlertTriangle, Loader2, ArrowRight, Check
-} from 'lucide-react';
+import { Clock, Layers, Loader2, ShieldCheck, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { Token, TwapQuoteResponse } from '@/types';
-import { useTWAP } from '@/hooks/useTWAP';
+import type { Token } from '@/types';
+import { useTWAP, pkhOfAddress, type SliceQuote } from '@/hooks/useTWAP';
 import { ConnectWalletButton } from '@/components/connect-wallet-button';
-import { cashAddressToLockingBytecode, binToHex } from '@bitauth/libauth';
 import { toast } from 'sonner';
-
 import { usePrices } from '@/hooks/usePrices';
 
+/**
+ * TWAP: the order is split into N Dutch-auction slice intents on the Mesh
+ * server. Slice k opens k·interval after the first and is filled (Mesh pools,
+ * Cauldron, solver) at no less than its minimum, or refunded when its window
+ * ends. All slices are funded in one transaction.
+ */
 interface TWAPOrderFormProps {
   sellToken: Token;
   buyToken: Token;
@@ -27,149 +26,116 @@ interface TWAPOrderFormProps {
   sellBalance?: number | null;
 }
 
-function derivePkhFromAddress(address: string): string {
-  if (!address) return '';
-  if (/^[0-9a-fA-F]{40}$/.test(address)) return address;
-  const fullAddr = address.includes(':')
-    ? address
-    : (address.startsWith('1') || address.startsWith('3') ? address : `bchtest:${address}`);
-  try {
-    const decoded = cashAddressToLockingBytecode(fullAddr);
-    if (typeof decoded !== 'string') {
-      if (decoded.bytecode.length === 25) {
-        return binToHex(decoded.bytecode.slice(3, 23));
-      } else if (decoded.bytecode.length === 23) {
-        return binToHex(decoded.bytecode.slice(2, 22));
-      } else {
-        return binToHex(decoded.bytecode.slice(3, 23));
-      }
-    }
-  } catch (e) {
-    console.warn('[TWAP] PKH derivation error:', e);
-  }
-  return '';
-}
-
-const SLICE_PRESETS = [
-  { value: 5, label: '5' },
-  { value: 10, label: '10' },
-  { value: 20, label: '20' },
-  { value: 50, label: '50' },
-];
-
+// The server accepts 1..48 slices and each slice's BCH side >= 10,000 sats. Slices are
+// spaced in chain time, which moves about one block (~10 min) at a time, so shorter
+// intervals would not actually spread the slices out.
+const SLICE_PRESETS = [2, 5, 10, 20];
 const INTERVAL_PRESETS = [
-  { value: 60, label: '1m' },
-  { value: 300, label: '5m' },
-  { value: 900, label: '15m' },
+  { value: 600, label: '10m' },
+  { value: 1800, label: '30m' },
   { value: 3600, label: '1h' },
+  { value: 14400, label: '4h' },
 ];
+const SLIPPAGE_PRESETS = [50, 100, 200, 500]; // bps
+const MIN_SLICE_SATS = 10_000;
+
+const toBase = (v: string, decimals: number) => Math.floor(Number(v || 0) * Math.pow(10, decimals));
+const fromBase = (v: string | number, decimals: number) => Number(v) / Math.pow(10, decimals);
 
 export function TWAPOrderForm({
   sellToken,
   buyToken,
   sellAmount,
-  onSellAmountChange,
   onOrderPlaced,
   userAddress,
   userPkh,
   isConnected = true,
   sellBalance = null,
 }: TWAPOrderFormProps) {
-  const [numSlices, setNumSlices] = useState<number>(10);
-  const [intervalSec, setIntervalSec] = useState<number>(60);
-  const [limitProtection, setLimitProtection] = useState<boolean>(false);
-  const [maxPriceLimit, setMaxPriceLimit] = useState<string>('');
+  const [numSlices, setNumSlices] = useState<number>(5);
+  const [intervalSec, setIntervalSec] = useState<number>(600);
+  const [slippageBps, setSlippageBps] = useState<number>(100);
+  const [quote, setQuote] = useState<SliceQuote | null>(null);
+  const [quoteError, setQuoteError] = useState<string | null>(null);
+  const [quoting, setQuoting] = useState(false);
 
   const { prices } = usePrices();
-  const cleanSellSym = sellToken.symbol.replace('.b', '').toUpperCase();
-  const sellTokenPrice = prices[cleanSellSym]?.price || prices[sellToken.symbol]?.price || 0;
-  const cleanBuySym = buyToken.symbol.replace('.b', '').toUpperCase();
-  const buyTokenPrice = prices[cleanBuySym]?.price || prices[buyToken.symbol]?.price || 0;
-
-  const { fetchQuote, submitOrder, currentQuote, quoteLoading, loading } = useTWAP();
+  const { quoteSlice, submitOrder, loading } = useTWAP();
 
   const isSellBCH = sellToken.chain === 'bch' && (sellToken.symbol === 'BCH' || sellToken.type === 'native');
   const isBuyBCH = buyToken.chain === 'bch' && (buyToken.symbol === 'BCH' || buyToken.type === 'native');
+  const tokenIn = isSellBCH ? '0x' : (sellToken.categoryId ?? '');
+  const tokenOut = isBuyBCH ? '0x' : (buyToken.categoryId ?? '');
+  const sellDecimals = sellToken.decimals ?? (isSellBCH ? 8 : 0);
+  const buyDecimals = buyToken.decimals ?? (isBuyBCH ? 8 : 0);
 
-  const tokenIn = isSellBCH 
-    ? '0x' 
-    : (sellToken.categoryId || (sellToken.type && sellToken.type !== 'native' ? sellToken.type : 'dfe50223c8d5cba8dcef8dff6d92b61deb88a8ba44947367f2b746487b56039b'));
+  const sellPrice = prices[sellToken.symbol.replace('.b', '').toUpperCase()]?.price || prices[sellToken.symbol]?.price || 0;
 
-  const tokenOut = isBuyBCH 
-    ? '0x' 
-    : (buyToken.categoryId || (buyToken.type && buyToken.type !== 'native' ? buyToken.type : 'dfe50223c8d5cba8dcef8dff6d92b61deb88a8ba44947367f2b746487b56039b'));
+  const totalIn = toBase(sellAmount, sellDecimals);
+  const sliceIn = Math.floor(totalIn / numSlices);
 
-  const side: 'BUY' | 'SELL' = isSellBCH ? 'SELL' : 'BUY';
-
-  // Trigger quote fetching when parameters change
+  // Executable quote for one slice, debounced
   useEffect(() => {
-    if (!sellAmount || Number(sellAmount) <= 0) return;
-    const decimals = sellToken.decimals ?? (isSellBCH ? 8 : 0);
-    const baseUnits = Math.round(Number(sellAmount) * Math.pow(10, decimals));
-    fetchQuote({
-      tokenIn,
-      tokenOut,
-      totalAmountIn: baseUnits.toString(),
-      numSlices,
-      intervalSec,
-      maxPricePerUnit: limitProtection && maxPriceLimit ? maxPriceLimit : undefined,
-    });
-  }, [sellAmount, numSlices, intervalSec, limitProtection, maxPriceLimit, tokenIn, tokenOut, sellToken.decimals, isSellBCH, fetchQuote]);
+    setQuote(null); setQuoteError(null);
+    if (!tokenIn || !tokenOut || sliceIn <= 0) return;
+    let cancelled = false;
+    setQuoting(true);
+    const t = setTimeout(() => {
+      quoteSlice(tokenIn, tokenOut, String(sliceIn))
+        .then(q => { if (!cancelled) setQuote(q); })
+        .catch(e => { if (!cancelled) setQuoteError(e.message); })
+        .finally(() => { if (!cancelled) setQuoting(false); });
+    }, 400);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [tokenIn, tokenOut, sliceIn, quoteSlice]);
 
-  const sliceSize = useMemo(() => {
-    if (!sellAmount || Number(sellAmount) <= 0) return '0';
-    return (Number(sellAmount) / numSlices).toFixed(Math.min(sellToken.decimals || 4, 6));
-  }, [sellAmount, numSlices, sellToken.decimals]);
+  const startOut = quote ? BigInt(quote.buyAmount) : 0n;
+  const minOut = (startOut * BigInt(10_000 - slippageBps)) / 10_000n;
 
-  const totalDurationFormatted = useMemo(() => {
-    const totalSec = (numSlices - 1) * intervalSec;
-    if (totalSec < 60) return `${totalSec}s`;
-    if (totalSec < 3600) return `${Math.round(totalSec / 60)} mins`;
-    return `${(totalSec / 3600).toFixed(1)} hrs`;
+  const sliceTooSmall = useMemo(() => {
+    if (isSellBCH) return sliceIn > 0 && sliceIn < MIN_SLICE_SATS;
+    if (isBuyBCH) return quote !== null && minOut < BigInt(MIN_SLICE_SATS);
+    return false; // token↔token: the server values it and says so
+  }, [isSellBCH, isBuyBCH, sliceIn, quote, minOut]);
+
+  const totalDuration = useMemo(() => {
+    const s = (numSlices - 1) * intervalSec;
+    if (s < 3600) return `${Math.round(s / 60)} min`;
+    return `${(s / 3600).toFixed(1)} h`;
   }, [numSlices, intervalSec]);
 
   const handlePlaceTwap = async () => {
-    const effectivePkh = userPkh || derivePkhFromAddress(userAddress);
-    if (!userAddress || !effectivePkh) {
-      toast.error('Connect your BCH wallet first to submit TWAP orders');
-      return;
-    }
-    if (!sellAmount || Number(sellAmount) <= 0) {
-      toast.error('Enter a valid sell amount');
-      return;
-    }
-    if (sellBalance !== null && Number(sellAmount) > sellBalance) {
-      toast.error(`Insufficient ${sellToken.symbol} balance`);
-      return;
-    }
-
-    const decimals = sellToken.decimals ?? (isSellBCH ? 8 : 0);
-    const baseUnits = Math.round(Number(sellAmount) * Math.pow(10, decimals));
-
+    const pkh = userPkh || pkhOfAddress(userAddress);
+    if (!userAddress || !pkh) { toast.error('Connect your BCH wallet first'); return; }
+    if (!quote) { toast.error('No route for this pair right now'); return; }
     const res = await submitOrder({
-      creatorPkh: effectivePkh,
       creatorAddress: userAddress,
-      side,
+      creatorPkh: pkh,
       tokenIn,
       tokenOut,
-      totalAmountIn: baseUnits.toString(),
+      totalAmountIn: String(totalIn),
       numSlices,
       intervalSec,
-      maxPricePerUnit: limitProtection && maxPriceLimit ? maxPriceLimit : undefined,
+      startAmountOutPerSlice: startOut.toString(),
+      minAmountOutPerSlice: minOut.toString(),
     });
-
     if (res) {
-      toast.success(
-        `TWAP Order Created! ${numSlices} slices of ${sliceSize} ${sellToken.symbol} every ${intervalSec}s`,
-        { duration: 6000 }
-      );
+      toast.success(`TWAP placed: ${numSlices} slices every ${intervalSec / 60} min`, {
+        description: `All slices funded in tx ${res.fundingTxid.slice(0, 12)}…`,
+        duration: 8000,
+      });
       onOrderPlaced?.();
+    } else {
+      toast.error('TWAP order failed — see the message below the form');
     }
   };
 
+  const fmtOut = (v: bigint) => `${fromBase(v.toString(), buyDecimals).toLocaleString(undefined, { maximumFractionDigits: Math.min(buyDecimals, 8) })} ${buyToken.symbol}`;
+  const unsupported = !tokenIn || !tokenOut;
+
   return (
     <div className="space-y-4 pt-1">
-      {/* ── 1. Slices Configuration ── */}
+      {/* ── 1. Slices ── */}
       <div className="p-3.5 bg-white/[0.02] border border-white/5 rounded-2xl space-y-2.5">
         <div className="flex items-center justify-between text-xs">
           <label className="text-zinc-400 font-semibold flex items-center gap-1.5">
@@ -178,104 +144,86 @@ export function TWAPOrderForm({
           </label>
           <span className="font-mono text-zinc-300 font-bold">{numSlices} slices</span>
         </div>
-
-        {/* Slice Presets */}
         <div className="grid grid-cols-4 gap-1.5">
-          {SLICE_PRESETS.map(preset => (
-            <button
-              key={preset.value}
-              type="button"
-              onClick={() => setNumSlices(preset.value)}
-              className={cn(
-                "py-1.5 rounded-xl text-xs font-mono font-bold transition-all border",
-                numSlices === preset.value
-                  ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300 shadow-sm"
-                  : "bg-white/[0.02] border-white/5 text-zinc-400 hover:text-white hover:bg-white/[0.05]"
-              )}
-            >
-              {preset.label}
+          {SLICE_PRESETS.map(n => (
+            <button key={n} type="button" onClick={() => setNumSlices(n)}
+              className={cn('py-1.5 rounded-xl text-xs font-mono font-bold transition-all border',
+                numSlices === n ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 shadow-sm' : 'bg-white/[0.02] border-white/5 text-zinc-400 hover:text-white hover:bg-white/[0.05]')}>
+              {n}
             </button>
           ))}
         </div>
       </div>
 
-      {/* ── 2. Interval Duration Configuration ── */}
+      {/* ── 2. Interval ── */}
       <div className="p-3.5 bg-white/[0.02] border border-white/5 rounded-2xl space-y-2.5">
         <div className="flex items-center justify-between text-xs">
           <label className="text-zinc-400 font-semibold flex items-center gap-1.5">
             <Clock className="w-3.5 h-3.5 text-emerald-400" />
             Execution Interval
           </label>
-          <span className="font-mono text-zinc-300 font-bold">{intervalSec}s per slice</span>
+          <span className="font-mono text-zinc-300 font-bold">every {intervalSec >= 3600 ? `${intervalSec / 3600} h` : `${intervalSec / 60} min`}</span>
         </div>
-
-        {/* Interval Presets */}
         <div className="grid grid-cols-4 gap-1.5">
-          {INTERVAL_PRESETS.map(preset => (
-            <button
-              key={preset.value}
-              type="button"
-              onClick={() => setIntervalSec(preset.value)}
-              className={cn(
-                "py-1.5 rounded-xl text-xs font-mono font-bold transition-all border",
-                intervalSec === preset.value
-                  ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300 shadow-sm"
-                  : "bg-white/[0.02] border-white/5 text-zinc-400 hover:text-white hover:bg-white/[0.05]"
-              )}
-            >
-              {preset.label}
+          {INTERVAL_PRESETS.map(p => (
+            <button key={p.value} type="button" onClick={() => setIntervalSec(p.value)}
+              className={cn('py-1.5 rounded-xl text-xs font-mono font-bold transition-all border',
+                intervalSec === p.value ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 shadow-sm' : 'bg-white/[0.02] border-white/5 text-zinc-400 hover:text-white hover:bg-white/[0.05]')}>
+              {p.label}
             </button>
           ))}
         </div>
       </div>
 
-      {/* ── 3. TWAP Live Breakdown Card ── */}
-      <div className="p-4 bg-gradient-to-br from-emerald-500/[0.06] via-teal-500/[0.03] to-transparent border border-emerald-500/20 rounded-2xl space-y-2.5 text-xs">
-        <div className="flex items-center justify-between pb-2 border-b border-emerald-500/10">
-          <span className="text-zinc-400 font-medium">Pyth Oracle Price</span>
-          <span className="font-mono font-bold text-emerald-400">
-            {sellTokenPrice > 0 ? `$${sellTokenPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })} USD / ${sellToken.symbol}` : 'Live feed syncing...'}
-          </span>
+      {/* ── 3. Price protection ── */}
+      <div className="p-3.5 bg-white/[0.02] border border-white/5 rounded-2xl space-y-2.5">
+        <div className="flex items-center justify-between text-xs">
+          <label className="text-zinc-400 font-semibold flex items-center gap-1.5">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+            Max slippage per slice
+          </label>
+          <span className="font-mono text-zinc-300 font-bold">{(slippageBps / 100).toFixed(1)}%</span>
         </div>
-
-        <div className="flex items-center justify-between pb-2 border-b border-emerald-500/10">
-          <span className="text-zinc-400 font-medium">Slice Size</span>
-          <div className="text-right">
-            <span className="font-mono font-bold text-white block">
-              {sliceSize} {sellToken.symbol}
-            </span>
-            {sellTokenPrice > 0 && (
-              <span className="font-mono text-[10px] text-zinc-400 block">
-                ~${(Number(sliceSize) * sellTokenPrice).toFixed(2)} USD
-              </span>
-            )}
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between pb-2 border-b border-emerald-500/10">
-          <span className="text-zinc-400 font-medium">Estimated Duration</span>
-          <span className="font-mono font-bold text-emerald-400">
-            {totalDurationFormatted}
-          </span>
-        </div>
-
-        <div className="flex items-center justify-between pb-2 border-b border-emerald-500/10">
-          <span className="text-zinc-400 font-medium">Est. Price Impact Savings</span>
-          <span className="font-mono font-bold text-emerald-300 inline-flex items-center gap-1">
-            <TrendingUp className="w-3 h-3" />
-            ~{currentQuote?.priceImpactSavingsPct || '1.15'}%
-          </span>
-        </div>
-
-        <div className="flex items-center justify-between">
-          <span className="text-zinc-400 font-medium">Total Value & Fees</span>
-          <span className="font-mono text-zinc-300 text-right block">
-            {sellTokenPrice > 0 ? `~$${(Number(sellAmount || 0) * sellTokenPrice).toFixed(2)} USD (${numSlices * 1000} sats fee)` : `${numSlices * 1000} sats fee`}
-          </span>
+        <div className="grid grid-cols-4 gap-1.5">
+          {SLIPPAGE_PRESETS.map(b => (
+            <button key={b} type="button" onClick={() => setSlippageBps(b)}
+              className={cn('py-1.5 rounded-xl text-xs font-mono font-bold transition-all border',
+                slippageBps === b ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 shadow-sm' : 'bg-white/[0.02] border-white/5 text-zinc-400 hover:text-white hover:bg-white/[0.05]')}>
+              {(b / 100).toFixed(1)}%
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* ── 4. Submit CTA Button ── */}
+      {/* ── 4. Breakdown ── */}
+      <div className="p-4 bg-gradient-to-br from-emerald-500/[0.06] via-teal-500/[0.03] to-transparent border border-emerald-500/20 rounded-2xl space-y-2.5 text-xs">
+        <Row label="Market price">
+          {sellPrice > 0 ? `$${sellPrice.toLocaleString(undefined, { maximumFractionDigits: 4 })} / ${sellToken.symbol}` : '—'}
+        </Row>
+        <Row label="Slice size">
+          {sliceIn > 0 ? `${fromBase(sliceIn, sellDecimals).toLocaleString(undefined, { maximumFractionDigits: Math.min(sellDecimals, 8) })} ${sellToken.symbol}` : '—'}
+          {sellPrice > 0 && sliceIn > 0 && <span className="block text-[10px] text-zinc-400">~${(fromBase(sliceIn, sellDecimals) * sellPrice).toFixed(2)}</span>}
+        </Row>
+        <Row label="Expected per slice">
+          {quoting ? <Loader2 className="w-3 h-3 animate-spin inline" /> : quote ? fmtOut(startOut) : '—'}
+          {quote?.routeName && <span className="block text-[10px] text-zinc-400">{quote.routeName}</span>}
+        </Row>
+        <Row label="Minimum per slice">{quote ? fmtOut(minOut) : '—'}</Row>
+        <Row label="Duration" last>{totalDuration} · unfilled slices refund after their window</Row>
+      </div>
+
+      {(quoteError || sliceTooSmall || unsupported) && (
+        <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-200">
+          <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+          <span>
+            {unsupported ? 'This token has no category id; TWAP needs a CashToken or BCH on both sides.'
+              : sliceTooSmall ? `Each slice must be worth at least ${MIN_SLICE_SATS.toLocaleString()} sats — use fewer slices or a larger amount.`
+              : `No route: ${quoteError}`}
+          </span>
+        </div>
+      )}
+
+      {/* ── 5. Submit ── */}
       {!isConnected ? (
         <ConnectWalletButton className="w-full h-14 rounded-2xl" />
       ) : !sellAmount || Number(sellAmount) <= 0 ? (
@@ -290,18 +238,22 @@ export function TWAPOrderForm({
         <Button
           className="w-full h-14 text-base font-semibold bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 rounded-2xl shadow-lg shadow-emerald-500/20 disabled:opacity-50 transition-all font-heading"
           onClick={handlePlaceTwap}
-          disabled={loading || quoteLoading}
+          disabled={loading || quoting || !quote || sliceTooSmall || unsupported}
         >
-          {loading ? (
-            <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Submitting TWAP Order…</>
-          ) : (
-            <>
-              <Clock className="w-4 h-4 mr-2" />
-              Place TWAP · {numSlices} Slices ({intervalSec}s)
-            </>
-          )}
+          {loading
+            ? <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Placing and funding slices…</>
+            : <><Clock className="w-4 h-4 mr-2" /> Place TWAP · {numSlices} slices</>}
         </Button>
       )}
+    </div>
+  );
+}
+
+function Row({ label, children, last }: { label: string; children: ReactNode; last?: boolean }) {
+  return (
+    <div className={cn('flex items-start justify-between gap-3', !last && 'pb-2 border-b border-emerald-500/10')}>
+      <span className="text-zinc-400 font-medium">{label}</span>
+      <span className="font-mono font-bold text-white text-right">{children}</span>
     </div>
   );
 }
