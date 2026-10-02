@@ -2,7 +2,7 @@
 title: TWAP orders
 description: Quote, submit and track TWAP orders made of Dutch-auction slices.
 status: ready
-updated: 2026-09-28
+updated: 2026-10-02
 sources: BCHMesh/meshserver/src/api/routes/twap.ts, MeshDocs/BetaLaunch/03-v2-implementation-and-e2e-flows.md
 ---
 
@@ -20,7 +20,7 @@ sources: BCHMesh/meshserver/src/api/routes/twap.ts, MeshDocs/BetaLaunch/03-v2-im
     { "name": "intervalSec", "in": "body", "type": "number", "description": "Seconds between slice starts, ≥ 60. Default 600." },
     { "name": "minAmountOutPerSlice", "in": "body", "type": "string", "required": true, "description": "Each slice's endBuyAmount (price protection)." },
     { "name": "startAmountOutPerSlice", "in": "body", "type": "string", "description": "Each slice's startBuyAmount. Defaults to the minimum." },
-    { "name": "sliceWindowSec", "in": "body", "type": "number", "description": "Auction window per slice. Default max(intervalSec, 600)." },
+    { "name": "sliceWindowSec", "in": "body", "type": "number", "description": "How long each slice stays fillable, in chain time. Default max(intervalSec, 3600); at least 1800 (400 otherwise), because chain time moves a block at a time." },
     { "name": "frontendPkh", "in": "body", "type": "string", "description": "Applied to every slice." },
     { "name": "userSurplusShareBps", "in": "body", "type": "number", "description": "Applied to every slice." }
   ],
@@ -50,7 +50,7 @@ sources: BCHMesh/meshserver/src/api/routes/twap.ts, MeshDocs/BetaLaunch/03-v2-im
         "totalAmountIn": "400000",
         "slices": [{ "id": "…", "type": "dutch", "status": "awaiting_funding", "twapSliceIndex": 0 }],
         "intervalSec": 600,
-        "sliceWindowSec": 600,
+        "sliceWindowSec": 3600,
         "funding": [{ "to": "bchtest:p…", "satoshis": "100000" }]
       }
     },

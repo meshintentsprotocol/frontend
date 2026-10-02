@@ -139,21 +139,36 @@ export const NAV: NavSection[] = [
                 ],
             },
             {
-                title: 'Strategy pools',
+                title: 'V3 pools & strategies',
                 items: [
-                    { slug: 'mesh/pools/strategy-pools', title: 'Strategy pools' },
+                    { slug: 'mesh/v3/meshpool-v3', title: 'MeshPoolV3 pools', badge: 'new' },
+                    { slug: 'mesh/strategies/overview', title: 'How strategies work', badge: 'new' },
+                    { slug: 'mesh/pools/recycling', title: 'Recycling', badge: 'new' },
+                    {
+                        title: 'Strategy templates',
+                        items: [
+                            { slug: 'mesh/strategies/fixed', title: 'Fixed price' },
+                            { slug: 'mesh/strategies/spread', title: 'Spread market' },
+                            { slug: 'mesh/strategies/multi-pair', title: 'Multi-pair quote' },
+                            { slug: 'mesh/strategies/stable-pair', title: 'Stable pair' },
+                            { slug: 'mesh/strategies/recycling-pair', title: 'Recycling pair' },
+                            { slug: 'mesh/strategies/grid', title: 'Grid' },
+                            { slug: 'mesh/strategies/take-profit', title: 'Take-profit ladder' },
+                            { slug: 'mesh/strategies/accumulate', title: 'Accumulate ladder' },
+                        ],
+                    },
+                    { slug: 'mesh/pools/oracle', title: 'Oracle strategies', badge: 'soon' },
+                ],
+            },
+            {
+                title: 'V2 pools (retired)',
+                collapsed: true,
+                items: [
+                    { slug: 'mesh/pools/strategy-pools', title: 'Strategy pools (V2)' },
                     { slug: 'mesh/pools/lifecycle', title: 'Pool lifecycle' },
                     { slug: 'mesh/pools/pricing', title: 'Pricing math' },
                     { slug: 'mesh/pools/bulk-reconfiguration', title: 'Bulk reconfiguration' },
-                    {
-                        title: 'Advanced strategies',
-                        collapsed: true,
-                        items: [
-                            { slug: 'mesh/pools/oracle', title: 'Oracle strategies', badge: 'soon' },
-                            { slug: 'mesh/pools/recycling', title: 'Multi-pair recycling', badge: 'soon' },
-                            { slug: 'mesh/pools/dutch-decay', title: 'Dutch-decay strategies', badge: 'soon' },
-                        ],
-                    },
+                    { slug: 'mesh/pools/dutch-decay', title: 'Dutch-decay strategies', badge: 'soon' },
                 ],
             },
             {
@@ -275,6 +290,7 @@ export const NAV: NavSection[] = [
                 title: 'Liquidity',
                 items: [
                     { slug: 'api/pools', title: 'Pools', method: 'GET' },
+                    { slug: 'api/strategies', title: 'Strategies', method: 'POST', badge: 'new' },
                     { slug: 'api/positions', title: 'Positions', method: 'GET' },
                     { slug: 'api/orderbook', title: 'Orderbook', method: 'GET' },
                     { slug: 'api/rebalance', title: 'Rebalance quote', method: 'POST' },
