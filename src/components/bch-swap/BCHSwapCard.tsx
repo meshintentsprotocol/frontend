@@ -30,6 +30,7 @@ import { useActiveWallet } from '@/hooks/useActiveWallet';
 import { useExternalBCHWallet } from '@/context/ExternalBCHWalletProvider';
 import { TWAPOrderForm } from './TWAPOrderForm';
 import { cashAddressToLockingBytecode, binToHex } from '@bitauth/libauth';
+import { pusdToken, PUSD_MAINNET, PUSD_CHIPNET } from '@/lib/pusd';
 
 // ============================================================================
 // BCH Swap Card — Uniswap-style unified swap card
@@ -102,15 +103,17 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    // Default pair: BCH → pUSD of the active network (PUSD on mainnet, PUSDTEST on chipnet).
+    const initialNetwork = useWDK().bchNetwork;
     const initialBuyToken = useMemo(() => {
         if (anchorToken && anchorSideProp === 'buy') return anchorToken;
         // CashToken sell-side anchor → pair with BCH so the swap makes sense
         if (anchorToken && anchorSideProp === 'sell' && anchorToken.type === 'cashtoken') return BCH_TOKENS[0];
         const buyParam = queryParams.get('buy');
         if (buyParam) {
-            return ALL_BCH_SWAP_TOKENS.find(t => t.symbol.toUpperCase() === buyParam.toUpperCase()) || SOLANA_TOKENS[0];
+            return ALL_BCH_SWAP_TOKENS.find(t => t.symbol.toUpperCase() === buyParam.toUpperCase()) || pusdToken(initialNetwork === 'mainnet');
         }
-        return SOLANA_TOKENS[0];
+        return pusdToken(initialNetwork === 'mainnet');
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -180,14 +183,17 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
     // Skip the anchor side — anchor tokens can be dynamic CashTokens absent from the
     // static list; resetting them would override the token-detail-page pin.
     useEffect(() => {
-        const allowed = new Set(availableTokens.map(t => `${t.chain}:${t.symbol}`));
+        const pusd = pusdToken(isMainnet);
+        const allowed = new Set([...availableTokens, pusd].map(t => `${t.chain}:${t.symbol}`));
         const anchorIsSell = !!anchorToken && anchorSide === 'sell';
         const anchorIsBuy  = !!anchorToken && anchorSide === 'buy';
-        if (!anchorIsSell && !allowed.has(`${sellToken.chain}:${sellToken.symbol}`)) {
-            setSellToken(BCH_TOKENS[0]);
+        // pUSD of the other network → this network's pUSD
+        const otherPusd = (t: Token) => (t.categoryId === PUSD_MAINNET || t.categoryId === PUSD_CHIPNET) && t.categoryId !== pusd.categoryId;
+        if (!anchorIsSell && (otherPusd(sellToken) || !allowed.has(`${sellToken.chain}:${sellToken.symbol}`))) {
+            setSellToken(otherPusd(sellToken) ? pusd : BCH_TOKENS[0]);
         }
-        if (!anchorIsBuy && !allowed.has(`${buyToken.chain}:${buyToken.symbol}`)) {
-            setBuyToken(isMainnet ? ETH_TOKENS[0] : SOLANA_TOKENS[0]);
+        if (!anchorIsBuy && (otherPusd(buyToken) || !allowed.has(`${buyToken.chain}:${buyToken.symbol}`))) {
+            setBuyToken(pusd);
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isMainnet]);

@@ -14,13 +14,9 @@ import { TokenChainIcon } from '@/components/common/TokenChainIcon';
 import { SendModal } from '@/components/portfolio/SendModal';
 import { ReceiveModal } from '@/components/portfolio/ReceiveModal';
 import { notifyToast as toast } from '@/lib/notify-toast';
-// PUSD CashToken category IDs (always display these alongside BCH for external wallets)
-const PUSD_MAINNET = 'a8158f8233c24c1d56e1c9196e40e7c80d03591cd1e4f8cde23c1f5b0be5c5c5'; // placeholder — replace with real category
-const PUSD_CHIPNET = ''; // placeholder — replace with real chipnet category
-
-function getPusdCategory(isMainnet: boolean) {
-    return isMainnet ? PUSD_MAINNET : PUSD_CHIPNET;
-}
+import { pusdCategory } from '@/lib/pusd';
+// pUSD per network (always shown alongside BCH for external wallets)
+const getPusdCategory = pusdCategory;
 
 // ============================================================================
 // Wallet Tokens Tab — WDK-driven token list
