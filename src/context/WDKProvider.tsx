@@ -9,12 +9,13 @@
  * - Bitcoin Cash: Chipnet & Mainnet (mainnet-js)
  * - Movement / Aptos: m/44'/637'/0'/0'/0' (@aptos-labs/ts-sdk)
  *
- * Session: volatile seed in sessionStorage (15-min auto-lock on inactivity).
+ * Session: volatile seed in sessionStorage (auto-lock on inactivity, 15 min unless changed in Settings).
  * Persistence: AES-GCM encrypted seed in localStorage (unlocked with password).
  */
 
 import { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo, type ReactNode } from 'react';
 import { encryptAndStore, decryptFromStorage, hasStoredWallet } from '@/lib/crypto';
+import { getAutoLockMs } from '@/lib/appSettings';
 import WalletManagerSolana from '@tetherto/wdk-wallet-solana';
 import WalletManagerBtc, { ElectrumWs } from '@tetherto/wdk-wallet-btc';
 import { createKeyPairSignerFromPrivateKeyBytes } from '@solana/signers';
@@ -201,7 +202,6 @@ async function initializeWallet(seedPhrase: string) {
 }
 
 const BCH_NETWORK_KEY = 'wdk_bch_network';
-const SESSION_TIMEOUT_MS = 15 * 60 * 1000;
 
 function loadBchNetworkPref(): BchNetwork {
     try {
@@ -254,7 +254,7 @@ export function WDKProvider({ children }: { children: ReactNode }) {
         if (!storedSeed || !lastActive) return;
 
         const timePassed = Date.now() - parseInt(lastActive, 10);
-        if (timePassed >= SESSION_TIMEOUT_MS) {
+        if (timePassed >= getAutoLockMs()) {
             sessionStorage.removeItem('wdk_session_seed');
             return;
         }
@@ -289,7 +289,7 @@ export function WDKProvider({ children }: { children: ReactNode }) {
         if (!state.isInitialized) return;
         const interval = setInterval(() => {
             const last = sessionStorage.getItem('wdk_session_last_active');
-            if (last && Date.now() - parseInt(last, 10) > SESSION_TIMEOUT_MS) {
+            if (last && Date.now() - parseInt(last, 10) > getAutoLockMs()) {
                 sessionStorage.removeItem('wdk_session_seed');
                 sessionStorage.removeItem('wdk_session_last_active');
                 window.location.reload();
