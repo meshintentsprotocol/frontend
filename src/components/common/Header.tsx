@@ -8,6 +8,7 @@ import { useWDK } from '@/context/WDKProvider';
 
 import { MeshNavDropdown } from '@/components/common/MeshNavDropdown';
 import { TradeNavDropdown } from '@/components/common/TradeNavDropdown';
+import { PortfolioNavDropdown } from '@/components/common/PortfolioNavDropdown';
 import { LogoMenuDropdown } from '@/components/common/LogoMenuDropdown';
 import { MobileNavMenu } from '@/components/common/MobileNavMenu';
 
@@ -76,22 +77,8 @@ export function Header() {
                         {/* 3. Pool Dropdown Menu */}
                         <MeshNavDropdown />
 
-                        {/* 4. Portfolio */}
-                        <Link
-                            to="/portfolio"
-                            className={cn(
-                                "text-[15px] font-semibold transition-all duration-300 hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)] relative group py-2",
-                                (location.pathname === '/portfolio' || location.pathname.startsWith('/portfolio/'))
-                                    ? "text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]"
-                                    : "text-zinc-300"
-                            )}
-                        >
-                            Portfolio
-                            <span className={cn(
-                                "absolute bottom-0 left-0 w-full h-[2px] bg-emerald-400 scale-x-0 transition-transform duration-300 group-hover:scale-x-100 origin-left shadow-[0_0_8px_rgba(52,211,153,0.8)]",
-                                (location.pathname === '/portfolio' || location.pathname.startsWith('/portfolio/')) && "scale-x-100"
-                            )} />
-                        </Link>
+                        {/* 4. Portfolio Dropdown Menu */}
+                        <PortfolioNavDropdown />
 
                         {/* 5. Knowledgehub */}
                         <Link

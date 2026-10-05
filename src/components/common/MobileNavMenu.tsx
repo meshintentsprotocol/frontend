@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { useWDK } from '@/context/WDKProvider';
 import { MESH_PAGES } from '@/components/common/MeshNavDropdown';
 import { TRADE_PAGES } from '@/components/common/TradeNavDropdown';
+import { PORTFOLIO_PAGES } from '@/components/common/PortfolioNavDropdown';
 
 // ============================================================================
 // Mobile navigation — bottom sheet opened from the header's menu button
@@ -41,7 +42,7 @@ const APP_ITEMS: AppItem[] = [
     { name: 'Trade', path: '/trade', icon: ArrowLeftRight, matches: p => p === '/trade' || p === '/twap', children: TRADE_PAGES },
     { name: 'Explore', path: '/explore', icon: Compass, matches: under('/explore') },
     { name: 'Pool', path: '/mesh', icon: Droplets, matches: p => p.startsWith('/mesh') || p === '/orderbook', children: MESH_PAGES },
-    { name: 'Portfolio', path: '/portfolio', icon: Wallet, matches: under('/portfolio') },
+    { name: 'Portfolio', path: '/portfolio', icon: Wallet, matches: under('/portfolio'), children: PORTFOLIO_PAGES },
 ];
 
 const LINK_GROUPS: { title: string; links: SubLink[] }[] = [
