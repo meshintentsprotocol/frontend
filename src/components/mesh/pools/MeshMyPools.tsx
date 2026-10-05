@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { PlusCircle, Wallet, Loader2 } from 'lucide-react';
+import { Droplets, Layers, PlusCircle, Wallet, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -10,6 +10,11 @@ import { EmptyState, Panel, StatTile } from './shared';
 import { PoolsTable } from './PoolsTable';
 import { V2MigrationPanel } from '@/components/mesh/v3/V2MigrationPanel';
 import { MyStrategies } from '@/components/mesh/strategies/MyStrategies';
+import { Pager, usePagination } from '@/components/common/Pager';
+
+/** The two lists on the positions page; kept in the URL as ?view=. */
+export type PositionsView = 'strategies' | 'pools';
+const POOLS_PER_PAGE = 10;
 
 /** Pools funded in this browser whose registration did not complete. */
 export function PendingRegistrationsBanner() {
@@ -49,7 +54,7 @@ export function PendingRegistrationsBanner() {
   );
 }
 
-export function MeshMyPools({ onCreateNew }: { onCreateNew: () => void }) {
+export function MeshMyPools({ view, onView, onCreateNew }: { view: PositionsView; onView: (view: PositionsView) => void; onCreateNew: () => void }) {
   const wallet = useMeshSigner();
   const stats = useMeshStats();
   const [status, setStatus] = useState<'active,exhausted' | 'all'>('active,exhausted');
@@ -59,6 +64,14 @@ export function MeshMyPools({ onCreateNew }: { onCreateNew: () => void }) {
   useMeshPoolStream();
   const bchUsd = stats.data?.bchUsd;
   const summary = lp.data?.lp;
+  const myStrategies = strategies.data?.strategies ?? [];
+  // pools that belong to a strategy are shown under Strategies, not here
+  const standalonePools = (mine.data?.pools ?? []).filter(p => p.contractName !== 'StrategyCovenantV2');
+  const poolPages = usePagination(standalonePools, POOLS_PER_PAGE, status);
+  const views = [
+    { id: 'strategies', label: 'Strategies', icon: Layers, count: myStrategies.filter(s => s.status !== 'closed').length },
+    { id: 'pools', label: 'Pools', icon: Droplets, count: standalonePools.length },
+  ] as const;
 
   return (
     <div className="space-y-6">
@@ -85,8 +98,18 @@ export function MeshMyPools({ onCreateNew }: { onCreateNew: () => void }) {
             <StatTile label="P&L vs holding" value={summary ? `${BigInt(summary.pnlSats) >= 0n ? '+' : ''}${formatSatsCompact(summary.pnlSats)}` : '—'}
               accent={summary && BigInt(summary.pnlSats) < 0n ? 'text-rose-400' : 'text-emerald-400'} sub={summary ? `${summary.activePools} active of ${summary.poolCount}` : undefined} />
           </div>
-          <MyStrategies owner={wallet.pkh} strategies={strategies.data?.strategies ?? []} bchUsd={bchUsd} loading={strategies.isLoading} onCreateNew={onCreateNew} />
           <V2MigrationPanel pools={mine.data?.pools ?? []} />
+          <div className="flex w-fit gap-1 rounded-xl border border-white/[0.06] bg-black/40 p-1" role="tablist" aria-label="Positions">
+            {views.map(({ id, label, icon: Icon, count }) => (
+              <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => onView(id)}
+                className={cn('flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-semibold transition-colors', view === id ? 'bg-white/10 text-white' : 'text-zinc-500 hover:text-zinc-300')}>
+                <Icon className="h-3.5 w-3.5" />{label} <span className="font-mono text-zinc-500">{count}</span>
+              </button>
+            ))}
+          </div>
+          {view === 'strategies' ? (
+            <MyStrategies owner={wallet.pkh} strategies={myStrategies} bchUsd={bchUsd} loading={strategies.isLoading} onCreateNew={onCreateNew} />
+          ) : (
           <Panel title="Pools" action={
             <div className="flex gap-1 p-1 rounded-lg bg-black/40 border border-white/[0.06]">
               {([['active,exhausted', 'Open'], ['all', 'Including closed']] as const).map(([s, l]) => (
@@ -96,9 +119,11 @@ export function MeshMyPools({ onCreateNew }: { onCreateNew: () => void }) {
           }>
             {mine.isError
               ? <div className="text-xs text-amber-300">Could not load pools: {(mine.error as Error).message}</div>
-              : <PoolsTable pools={(mine.data?.pools ?? []).filter(p => p.contractName !== 'StrategyCovenantV2')} bchUsd={bchUsd} loading={mine.isLoading}
+              : <PoolsTable pools={poolPages.pageItems} bchUsd={bchUsd} loading={mine.isLoading}
                   empty={<EmptyState title="You have no pools yet">Create a pool to start earning fees on Mesh fills. <button className="underline" onClick={onCreateNew}>Create one</button></EmptyState>} />}
+            <Pager page={poolPages.page} pageCount={poolPages.pageCount} onPage={poolPages.setPage} className="mt-4" />
           </Panel>
+          )}
         </>
       )}
     </div>

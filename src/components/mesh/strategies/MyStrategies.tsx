@@ -13,8 +13,10 @@ import { useTokenInfo } from '@/components/mesh/pools/shared';
 import { DefiCard } from '@/components/mesh/ui/defi';
 import { StrategyCard, strategyTokens } from './StrategyCard';
 import { RecycleDialog } from './RecycleDialog';
+import { Pager, usePagination } from '@/components/common/Pager';
 
 type Filter = 'open' | 'idle' | 'all';
+const STRATEGIES_PER_PAGE = 6;
 const KIND_LABEL: Record<IdleKind, string> = { wallet: 'in your wallet', stale: 'not filling', 'one-sided': 'out of range', dust: 'dust' };
 
 export function MyStrategies({ owner, strategies, bchUsd, loading, onCreateNew }: {
@@ -35,6 +37,8 @@ export function MyStrategies({ owner, strategies, bchUsd, loading, onCreateNew }
   const shown = strategies
     .filter(s => (filter === 'all' ? true : filter === 'idle' ? !!s.idle : s.status !== 'closed'))
     .sort((a, b) => Number(!!b.idle) - Number(!!a.idle) || Number(BigInt(b.valueSats) - BigInt(a.valueSats)));
+
+  const pages = usePagination(shown, STRATEGIES_PER_PAGE, filter);
 
   const report = idle.data;
   const idleKinds = report ? [...new Set(report.items.map(i => i.kind))] : [];
@@ -78,7 +82,7 @@ export function MyStrategies({ owner, strategies, bchUsd, loading, onCreateNew }
         </div>
       ) : shown.length ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {shown.map(s => <StrategyCard key={s.id} s={s} infoOf={infoOf} bchUsd={bchUsd} />)}
+          {pages.pageItems.map(s => <StrategyCard key={s.id} s={s} infoOf={infoOf} bchUsd={bchUsd} />)}
         </div>
       ) : (
         <DefiCard className="flex flex-col items-center gap-3 py-10 text-center">
@@ -87,6 +91,8 @@ export function MyStrategies({ owner, strategies, bchUsd, loading, onCreateNew }
           {filter !== 'idle' && <Button variant="outline" onClick={onCreateNew} className="rounded-xl"><PlusCircle className="mr-1.5 h-4 w-4" />Create a strategy</Button>}
         </DefiCard>
       )}
+
+      <Pager page={pages.page} pageCount={pages.pageCount} onPage={pages.setPage} />
 
       {report && report.count > 0 && (
         <RecycleDialog open={recycleOpen} onOpenChange={setRecycleOpen} report={report} infoOf={infoOf} bchUsd={bchUsd} />

@@ -133,7 +133,7 @@ export function MeshNavDropdown({ className }: MeshNavDropdownProps) {
                 const Icon = item.icon;
                 const isActive =
                   currentUrl === item.path ||
-                  (item.path === '/mesh?tab=positions' && location.pathname === '/mesh' && !location.search) ||
+                  (item.path === '/mesh?tab=positions' && location.pathname === '/mesh' && (!location.search || currentUrl.startsWith('/mesh?tab=positions&'))) ||
                   (item.path === location.pathname);
 
                 return (

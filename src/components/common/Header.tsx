@@ -201,7 +201,7 @@ export function Header() {
                                         const currentUrl = location.pathname + location.search;
                                         const isActive =
                                             currentUrl === page.path ||
-                                            (page.path === '/mesh?tab=positions' && location.pathname === '/mesh' && !location.search) ||
+                                            (page.path === '/mesh?tab=positions' && location.pathname === '/mesh' && (!location.search || currentUrl.startsWith('/mesh?tab=positions&'))) ||
                                             (page.path === location.pathname);
                                         return (
                                             <Link
