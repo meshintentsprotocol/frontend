@@ -1,12 +1,14 @@
 import { useState } from 'react';
-import { AlertTriangle, Check, Copy, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { AlertTriangle, Check, Copy, Eye, EyeOff, Loader2, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useWDK } from '@/context/WDKProvider';
 import { decryptFromStorage, hasStoredWallet } from '@/lib/crypto';
+import { isWalletBackedUp, markWalletBackedUp } from '@/lib/appSettings';
 import { notifyToast as toast } from '@/lib/notify-toast';
 
 // ============================================================================
-// Recovery phrase view — password-gated seed phrase reveal
+// Recovery phrase view — password-gated seed phrase reveal, and where the user
+// confirms they have backed the phrase up
 // ============================================================================
 
 export function RecoveryPhraseView() {
@@ -17,6 +19,7 @@ export function RecoveryPhraseView() {
     const [unlockError, setUnlockError] = useState<string | null>(null);
     const [copiedSeed, setCopiedSeed] = useState(false);
     const hasEncrypted = hasStoredWallet();
+    const [backedUp, setBackedUp] = useState(() => isWalletBackedUp(wdk.evmAddress));
 
     const handleUnlock = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -43,6 +46,13 @@ export function RecoveryPhraseView() {
         setCopiedSeed(false);
     };
 
+    const confirmBackup = () => {
+        if (!wdk.evmAddress) return;
+        markWalletBackedUp(wdk.evmAddress);
+        setBackedUp(true);
+        toast.success('Recovery phrase marked as backed up');
+    };
+
     const copySeed = () => {
         if (!revealedSeed) return;
         navigator.clipboard.writeText(revealedSeed);
@@ -61,6 +71,18 @@ export function RecoveryPhraseView() {
 
     return (
         <div className="space-y-3">
+            {backedUp ? (
+                <div className="flex items-center gap-2 text-[11px] text-emerald-300 bg-emerald-500/[0.06] border border-emerald-500/15 rounded-lg p-2.5">
+                    <ShieldCheck className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span>You confirmed this phrase is backed up.</span>
+                </div>
+            ) : (
+                <div className="flex items-start gap-2 text-[11px] text-amber-300 bg-amber-500/[0.06] border border-amber-500/15 rounded-lg p-2.5">
+                    <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                    <span>Not backed up yet. Reveal the phrase, write it down offline, then confirm below.</span>
+                </div>
+            )}
+
             <div className="flex items-start gap-2 text-[11px] text-yellow-400/90 bg-yellow-500/[0.06] border border-yellow-500/15 rounded-lg p-2.5">
                 <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
                 <span>Anyone with your seed phrase can drain your wallet. Never share it.</span>
@@ -98,6 +120,16 @@ export function RecoveryPhraseView() {
                             ? <><Check className="w-3 h-3 mr-1 text-emerald-400" /> Copied</>
                             : <><Copy className="w-3 h-3 mr-1" /> Copy seed phrase</>}
                     </Button>
+                    {!backedUp && wdk.evmAddress && (
+                        <Button
+                            type="button"
+                            size="sm"
+                            className="w-full h-9 text-[11px] bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30"
+                            onClick={confirmBackup}
+                        >
+                            <ShieldCheck className="w-3 h-3 mr-1" /> I've written it down
+                        </Button>
+                    )}
                 </div>
             ) : hasEncrypted ? (
                 <form onSubmit={handleUnlock} className="space-y-2">

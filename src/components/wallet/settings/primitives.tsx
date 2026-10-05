@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { ArrowLeft, ArrowUpRight, ChevronDown, ChevronRight } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 
 // ============================================================================
@@ -24,6 +25,8 @@ interface SettingsRowProps {
     description?: string;
     /** Current value shown before the chevron on navigating rows. */
     value?: string;
+    /** Draws the value as a warning that wants the user's attention. */
+    valueTone?: 'default' | 'warning';
     /** Inline control (toggle, select, segmented control). Makes the row static. */
     control?: ReactNode;
     /** Navigates to a sub-view or runs an action; renders a chevron. */
@@ -35,7 +38,7 @@ interface SettingsRowProps {
 const ROW_CLASS = 'flex items-center gap-3 min-h-[44px] w-full px-2 py-1.5 rounded-lg text-left';
 const ROW_INTERACTIVE = 'hover:bg-white/[0.04] focus-visible:bg-white/[0.06] focus-visible:outline-none transition-colors';
 
-export function SettingsRow({ icon: Icon, label, description, value, control, onClick, href }: SettingsRowProps) {
+export function SettingsRow({ icon: Icon, label, description, value, valueTone = 'default', control, onClick, href }: SettingsRowProps) {
     const body = (
         <>
             <Icon className="h-4 w-4 shrink-0 text-white/55" />
@@ -61,7 +64,11 @@ export function SettingsRow({ icon: Icon, label, description, value, control, on
         return (
             <button type="button" onClick={onClick} className={cn(ROW_CLASS, ROW_INTERACTIVE)}>
                 {body}
-                {value && <span className="shrink-0 text-[11px] text-white/40">{value}</span>}
+                {value && (
+                    <span className={cn('shrink-0 text-[11px]', valueTone === 'warning' ? 'font-semibold text-amber-300' : 'text-white/40')}>
+                        {value}
+                    </span>
+                )}
                 <ChevronRight className="h-4 w-4 shrink-0 text-white/30" />
             </button>
         );
@@ -132,6 +139,26 @@ export function SegmentedControl<T extends string>({ options, value, onChange, a
                 </button>
             ))}
         </div>
+    );
+}
+
+interface SettingsSwitchProps {
+    checked: boolean;
+    onChange: (checked: boolean) => void;
+    ariaLabel: string;
+    disabled?: boolean;
+}
+
+/** Compact on/off toggle sized for a settings row. */
+export function SettingsSwitch({ checked, onChange, ariaLabel, disabled }: SettingsSwitchProps) {
+    return (
+        <Switch
+            aria-label={ariaLabel}
+            checked={checked}
+            disabled={disabled}
+            onCheckedChange={onChange}
+            className="h-5 w-9 data-[state=checked]:bg-emerald-500 data-[state=unchecked]:bg-white/15 [&>span]:h-4 [&>span]:w-4 [&>span]:bg-white data-[state=checked]:[&>span]:translate-x-4"
+        />
     );
 }
 

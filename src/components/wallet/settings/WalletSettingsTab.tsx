@@ -1,17 +1,20 @@
 import { useState } from 'react';
 import {
-    BookOpen, Contrast, EyeOff, Gavel, Info, KeyRound, Languages, Lock, LogOut,
-    Moon, PlugZap, ScrollText, Sun, Timer, Wallet,
+    BellRing, BookOpen, Contrast, EyeOff, Info, KeyRound, Languages, Lock, LogOut,
+    Moon, PlugZap, ScrollText, SlidersHorizontal, Sun, Timer, Wallet,
 } from 'lucide-react';
-import { Switch } from '@/components/ui/switch';
 import { useWDK } from '@/context/WDKProvider';
 import { useExternalBCHWallet } from '@/context/ExternalBCHWalletProvider';
 import { useTheme } from '@/context/theme-provider';
 import { hasStoredWallet } from '@/lib/crypto';
 import {
-    AUTO_LOCK_MINUTES_OPTIONS, formatAuctionDuration, getAppSettings, saveAppSettings,
+    AUTO_LOCK_MINUTES_OPTIONS, MUTABLE_TOAST_LEVELS, formatAuctionDuration, getAppSettings,
+    isWalletBackedUp, saveAppSettings,
 } from '@/lib/appSettings';
-import { SegmentedControl, SettingsRow, SettingsSection, SettingsSelect, SettingsSubpage } from './primitives';
+import {
+    SegmentedControl, SettingsRow, SettingsSection, SettingsSelect, SettingsSubpage, SettingsSwitch,
+} from './primitives';
+import { NotificationsView } from './views/NotificationsView';
 import { AddressesView } from './views/AddressesView';
 import { RecoveryPhraseView } from './views/RecoveryPhraseView';
 import { TradingView } from './views/TradingView';
@@ -22,10 +25,11 @@ import { AboutView, APP_VERSION } from './views/AboutView';
 // second-level views for anything that needs more than one row
 // ============================================================================
 
-type SettingsView = 'root' | 'trading' | 'addresses' | 'recovery' | 'about';
+type SettingsView = 'root' | 'trading' | 'notifications' | 'addresses' | 'recovery' | 'about';
 
 const VIEW_TITLES: Record<Exclude<SettingsView, 'root'>, string> = {
     trading: 'Trading defaults',
+    notifications: 'Notifications',
     addresses: 'Addresses',
     recovery: 'Recovery phrase',
     about: 'About',
@@ -61,6 +65,7 @@ export function WalletSettingsTab({
         return (
             <SettingsSubpage title={VIEW_TITLES[view]} onBack={() => setView('root')}>
                 {view === 'trading' && <TradingView />}
+                {view === 'notifications' && <NotificationsView />}
                 {view === 'addresses' && <AddressesView onConnectExternal={onConnectExternal} />}
                 {view === 'recovery' && <RecoveryPhraseView />}
                 {view === 'about' && <AboutView />}
@@ -73,7 +78,12 @@ export function WalletSettingsTab({
         saveAppSettings({ autoLockMinutes: minutes });
     };
 
+    const settings = getAppSettings();
     const externalCount = extBCH.wallets.length;
+    // Errors can't be muted, so they always count as on.
+    const toastLevels = MUTABLE_TOAST_LEVELS.length + 1;
+    const mutedCount = settings.mutedToasts.length;
+    const backedUp = isWalletBackedUp(wdk.evmAddress);
 
     return (
         <div className="flex flex-col min-h-full pt-3">
@@ -113,19 +123,24 @@ export function WalletSettingsTab({
                         icon={EyeOff}
                         label="Hide balances"
                         control={
-                            <Switch
-                                aria-label="Hide balances"
+                            <SettingsSwitch
+                                ariaLabel="Hide balances"
                                 checked={!balanceVisible}
-                                onCheckedChange={hidden => onBalanceVisibleChange(!hidden)}
-                                className="h-5 w-9 data-[state=checked]:bg-emerald-500 data-[state=unchecked]:bg-white/15 [&>span]:h-4 [&>span]:w-4 [&>span]:bg-white data-[state=checked]:[&>span]:translate-x-4"
+                                onChange={hidden => onBalanceVisibleChange(!hidden)}
                             />
                         }
                     />
                     <SettingsRow
-                        icon={Gavel}
+                        icon={SlidersHorizontal}
                         label="Trading defaults"
-                        value={formatAuctionDuration(getAppSettings().defaultAuctionDuration)}
+                        value={`${formatAuctionDuration(settings.defaultAuctionDuration)} · ${settings.defaultSlippageBps / 100}%`}
                         onClick={() => setView('trading')}
+                    />
+                    <SettingsRow
+                        icon={BellRing}
+                        label="Notifications"
+                        value={mutedCount === 0 ? 'All on' : `${toastLevels - mutedCount} of ${toastLevels} on`}
+                        onClick={() => setView('notifications')}
                     />
                 </SettingsSection>
 
@@ -157,7 +172,13 @@ export function WalletSettingsTab({
                             }
                         />
                         {wdk.seedPhrase && (
-                            <SettingsRow icon={ScrollText} label="Recovery phrase" onClick={() => setView('recovery')} />
+                            <SettingsRow
+                                icon={ScrollText}
+                                label="Recovery phrase"
+                                value={backedUp ? undefined : 'Not backed up'}
+                                valueTone="warning"
+                                onClick={() => setView('recovery')}
+                            />
                         )}
                         {hasEncrypted && (
                             <SettingsRow icon={KeyRound} label="Change password" onClick={onChangePassword} />
