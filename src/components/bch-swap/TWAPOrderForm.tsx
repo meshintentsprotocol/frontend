@@ -7,6 +7,7 @@ import { useTWAP, pkhOfAddress, type SliceQuote } from '@/hooks/useTWAP';
 import { ConnectWalletButton } from '@/components/connect-wallet-button';
 import { toast } from 'sonner';
 import { usePrices } from '@/hooks/usePrices';
+import { SLIPPAGE_BPS_PRESETS, getAppSettings } from '@/lib/appSettings';
 
 /**
  * TWAP: the order is split into N Dutch-auction slice intents on the Mesh
@@ -36,7 +37,7 @@ const INTERVAL_PRESETS = [
   { value: 3600, label: '1h' },
   { value: 14400, label: '4h' },
 ];
-const SLIPPAGE_PRESETS = [50, 100, 200, 500]; // bps
+const SLIPPAGE_PRESETS = SLIPPAGE_BPS_PRESETS; // bps
 const MIN_SLICE_SATS = 10_000;
 
 const toBase = (v: string, decimals: number) => Math.floor(Number(v || 0) * Math.pow(10, decimals));
@@ -54,7 +55,7 @@ export function TWAPOrderForm({
 }: TWAPOrderFormProps) {
   const [numSlices, setNumSlices] = useState<number>(5);
   const [intervalSec, setIntervalSec] = useState<number>(600);
-  const [slippageBps, setSlippageBps] = useState<number>(100);
+  const [slippageBps, setSlippageBps] = useState<number>(() => getAppSettings().defaultSlippageBps);
   const [quote, setQuote] = useState<SliceQuote | null>(null);
   const [quoteError, setQuoteError] = useState<string | null>(null);
   const [quoting, setQuoting] = useState(false);
