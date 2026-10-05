@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Wallet, Bell, Settings, ChevronDown } from 'lucide-react';
+import { Wallet, Bell, History } from 'lucide-react';
 import { useWDK } from '@/context/WDKProvider';
 import { WalletOnboardingModal } from '@/components/wallet/WalletOnboardingModal';
 import { WalletPopup, hasUnseenNotifications } from '@/components/wallet/WalletPopup';
-import { SettingsModal } from '@/components/wallet/SettingsModal';
+import { OrdersPopup } from '@/components/bch-swap/OrdersPopup';
 import { cn } from '@/lib/utils';
 
 type PopupTab = 'wallet' | 'notifications';
@@ -12,7 +12,7 @@ export function ConnectWalletButton({ className }: { className?: string }) {
     const wdk = useWDK();
     const [showOnboarding, setShowOnboarding] = useState(false);
     const [showPopup, setShowPopup] = useState(false);
-    const [showSettings, setShowSettings] = useState(false);
+    const [showOrders, setShowOrders] = useState(false);
     const [popupTab, setPopupTab] = useState<PopupTab>('wallet');
     const [hasUnseen, setHasUnseen] = useState(false);
 
@@ -38,7 +38,7 @@ export function ConnectWalletButton({ className }: { className?: string }) {
         <div className={cn("flex items-center gap-2", className)}>
             <WalletOnboardingModal open={showOnboarding} onClose={() => setShowOnboarding(false)} />
             <WalletPopup open={showPopup} onClose={() => setShowPopup(false)} initialTab={popupTab} />
-            <SettingsModal open={showSettings} onClose={() => setShowSettings(false)} />
+            <OrdersPopup open={showOrders} onClose={() => setShowOrders(false)} />
 
             {connectedChains.length === 0 ? (
                 <button
@@ -80,14 +80,14 @@ export function ConnectWalletButton({ className }: { className?: string }) {
                             )}
                         </button>
 
-                        {/* Settings */}
+                        {/* Orders & history */}
                         <button
-                            onClick={() => setShowSettings(true)}
-                            title="Settings"
-                            aria-label="Settings"
+                            onClick={() => setShowOrders(true)}
+                            title="Orders & history"
+                            aria-label="Orders & history"
                             className="flex items-center justify-center h-8 w-8 rounded-lg text-zinc-400 hover:text-white hover:bg-white/[0.06] transition-colors"
                         >
-                            <Settings className="h-4 w-4" />
+                            <History className="h-4 w-4" />
                         </button>
                     </div>
 
