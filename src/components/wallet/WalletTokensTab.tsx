@@ -61,6 +61,18 @@ function getWalletTokens(isMainnet: boolean): WalletTokenDef[] {
     ];
 }
 
+// Chain filter chips. BCH is the default view; 'all' shows every chain.
+const ALL_CHAINS = 'all';
+const DEFAULT_CHAIN = 'Bitcoin Cash';
+const CHAIN_CHIPS: Record<string, { label: string; icon: string }> = {
+    'Bitcoin Cash': { label: 'BCH', icon: '/logos/bitcoin-cash-bch-logo.svg' },
+    'Bitcoin': { label: 'BTC', icon: '/logos/bitcoin-btc-logo.svg' },
+    'Ethereum': { label: 'ETH', icon: '/logos/ethereum-eth-logo.svg' },
+    'BSC': { label: 'BSC', icon: '/logos/bnb-bnb-logo.svg' },
+    'Solana': { label: 'Solana', icon: '/assets/solanaLogo.png' },
+    'Movement': { label: 'Movement', icon: '/logos/movement.svg' },
+};
+
 interface WalletTokensTabProps {
     balanceVisible: boolean;
     activeTokens: PortfolioToken[];
@@ -90,6 +102,7 @@ export function WalletTokensTab({ balanceVisible, activeTokens, loading, onClose
     const [isLoadingDynamic, setIsLoadingDynamic] = useState(false);
     const [expandedKey, setExpandedKey] = useState<string | null>(null);
     const [copiedKey, setCopiedKey] = useState<string | null>(null);
+    const [chainFilter, setChainFilter] = useState<string>(DEFAULT_CHAIN);
     
     // Global active wallet state
     const { activeWalletId, setActiveWalletId } = useActiveWallet();
@@ -288,6 +301,20 @@ export function WalletTokensTab({ balanceVisible, activeTokens, loading, onClose
         return out;
     }, [activeWalletId, WALLET_TOKENS, heldCashTokens, dynamicTokens, extData, wdk.bchNetwork]);
 
+    // Chains that have at least one row, in list order. If the selected chain is
+    // gone (wallet or network switch), fall back to BCH, then to everything.
+    const chains = [...new Set<string>(displayTokens.map(t => t.chain))];
+    const activeChain = chainFilter === ALL_CHAINS || chains.includes(chainFilter)
+        ? chainFilter
+        : chains.includes(DEFAULT_CHAIN) ? DEFAULT_CHAIN : ALL_CHAINS;
+    const visibleTokens = activeChain === ALL_CHAINS ? displayTokens : displayTokens.filter(t => t.chain === activeChain);
+    const chipClass = (selected: boolean) => cn(
+        'flex shrink-0 items-center gap-1.5 h-7 px-2.5 rounded-full text-[11px] font-semibold border transition-colors',
+        selected
+            ? 'bg-white/[0.1] text-white border-white/[0.16]'
+            : 'bg-white/[0.02] text-white/45 border-white/[0.06] hover:bg-white/[0.05] hover:text-white/70',
+    );
+
     return (
         <div className="space-y-1">
             {/* Global Wallet Switcher — ALWAYS shown */}
@@ -348,20 +375,38 @@ export function WalletTokensTab({ balanceVisible, activeTokens, loading, onClose
                 </div>
             </div>
 
+            {/* Chain filter — only when there is more than one chain to choose from */}
+            {chains.length > 1 && (
+                <div role="tablist" aria-label="Filter by chain" className="flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    <button type="button" role="tab" aria-selected={activeChain === ALL_CHAINS} onClick={() => setChainFilter(ALL_CHAINS)} className={chipClass(activeChain === ALL_CHAINS)}>
+                        All
+                    </button>
+                    {chains.map(chain => {
+                        const chip = CHAIN_CHIPS[chain];
+                        return (
+                            <button key={chain} type="button" role="tab" aria-selected={activeChain === chain} onClick={() => setChainFilter(chain)} className={chipClass(activeChain === chain)}>
+                                {chip && <img src={chip.icon} alt="" className="h-3.5 w-3.5 object-contain" />}
+                                {chip?.label ?? chain}
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
+
             <div className="flex items-center justify-between px-1 py-1">
                 <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold flex items-center gap-2">
-                    {displayTokens.length} Assets
+                    {visibleTokens.length} Assets
                     {(isLoadingDynamic || loading || isExtLoading) && <Loader2 className="animate-spin h-3 w-3" />}
                 </span>
             </div>
 
-            {displayTokens.length === 0 && (
+            {visibleTokens.length === 0 && (
                 <div className="text-center py-8 text-xs text-muted-foreground">
                     No assets to display
                 </div>
             )}
 
-            {displayTokens.map((token) => {
+            {visibleTokens.map((token) => {
                 const { balance, valueUsd, change24h } = getTokenData(token);
                 const decimals = token.decimals > 6 ? 6 : token.decimals;
                 const rowKey = token.type ? `${token.chain}-${token.type}` : `${token.chain}-${token.symbol}`;
