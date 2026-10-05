@@ -3,18 +3,14 @@ import { useWDK } from '@/context/WDKProvider';
 import { useBCHWallet } from '@/context/BCHWalletProvider';
 import { useExternalBCHWallet } from '@/context/ExternalBCHWalletProvider';
 import { useBchAddressBalance } from '@/hooks/useBchAddressBalance';
-import { Button } from '@/components/ui/button';
-import { Copy, ExternalLink, KeyRound, Wallet, Eye, EyeOff, Check, Lock, Loader2, AlertTriangle, BookOpen, Plus, WifiOff, Wifi } from 'lucide-react';
+import { Copy, ExternalLink, KeyRound, Wallet, Check, Loader2, Plus, WifiOff, Wifi } from 'lucide-react';
 import { notifyToast as toast } from '@/lib/notify-toast';
-import { decryptFromStorage, hasStoredWallet } from '@/lib/crypto';
 import { cn } from '@/lib/utils';
 
 // ============================================================================
-// Wallet Addresses Tab — WDK-only view (Networks · Security · About)
+// Addresses view — every chain address derived from the seed, plus any
+// connected external BCH wallets
 // ============================================================================
-
-const APP_NAME = 'BCH Intents Swap';
-const APP_VERSION = '0.1.0';
 
 function copyAddress(address: string, label: string) {
     navigator.clipboard.writeText(address);
@@ -24,16 +20,6 @@ function copyAddress(address: string, label: string) {
 function formatAddr(addr: string) {
     if (addr.length <= 20) return addr;
     return `${addr.slice(0, 10)}…${addr.slice(-6)}`;
-}
-
-/** Small uppercase section divider. */
-function SectionLabel({ children }: { children: ReactNode }) {
-    return (
-        <div className="flex items-center gap-2 px-1 mb-2">
-            <span className="text-[10px] uppercase tracking-[0.14em] text-white/40 font-bold">{children}</span>
-            <span className="flex-1 h-px bg-white/[0.06]" />
-        </div>
-    );
 }
 
 // ============================================================================
@@ -135,64 +121,16 @@ function ChainAddressRow({ icon, iconNode, chainName, networkLabel, networkColor
     );
 }
 
-interface WalletAddressesTabProps {
-    /** Opens the wallet-popup's change-password modal (wired by WalletPopup). */
-    onChangePassword?: () => void;
+interface AddressesViewProps {
     /** Opens the connect-external-wallet modal (wired by WalletPopup). */
     onConnectExternal?: () => void;
 }
 
-export function WalletAddressesTab({ onChangePassword, onConnectExternal }: WalletAddressesTabProps) {
+export function AddressesView({ onConnectExternal }: AddressesViewProps) {
     const wdk = useWDK();
     const bchWallet = useBCHWallet();
     const extBCH = useExternalBCHWallet();
     const isMainnet = wdk.bchNetwork === 'mainnet';
-
-    // Password-gated seed phrase reveal
-    const [revealOpen, setRevealOpen] = useState(false);
-    const [password, setPassword] = useState('');
-    const [revealedSeed, setRevealedSeed] = useState<string | null>(null);
-    const [unlocking, setUnlocking] = useState(false);
-    const [unlockError, setUnlockError] = useState<string | null>(null);
-    const [copiedSeed, setCopiedSeed] = useState(false);
-    const hasEncrypted = hasStoredWallet();
-
-    const handleUnlock = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!password) return;
-        setUnlocking(true);
-        setUnlockError(null);
-        try {
-            const seed = await decryptFromStorage(password);
-            if (!seed) {
-                setUnlockError('Incorrect password');
-                setUnlocking(false);
-                return;
-            }
-            setRevealedSeed(seed);
-            setPassword('');
-        } catch {
-            setUnlockError('Failed to decrypt — wrong password');
-        } finally {
-            setUnlocking(false);
-        }
-    };
-
-    const closeReveal = () => {
-        setRevealOpen(false);
-        setRevealedSeed(null);
-        setPassword('');
-        setUnlockError(null);
-        setCopiedSeed(false);
-    };
-
-    const copySeed = () => {
-        if (!revealedSeed) return;
-        navigator.clipboard.writeText(revealedSeed);
-        setCopiedSeed(true);
-        toast.success('Seed phrase copied');
-        setTimeout(() => setCopiedSeed(false), 1500);
-    };
 
     if (!wdk.isInitialized) {
         return (
@@ -213,7 +151,7 @@ export function WalletAddressesTab({ onChangePassword, onConnectExternal }: Wall
         .filter(Boolean).length;
 
     return (
-        <div className="space-y-5 pt-2">
+        <div className="space-y-4">
             {/* ─── Self-custodial header — compact identity strip ─── */}
             <div className="relative rounded-xl bg-gradient-to-br from-emerald-500/[0.06] via-emerald-500/[0.02] to-transparent border border-emerald-500/20 p-3 overflow-hidden">
                 <div className="absolute -top-10 -right-10 w-28 h-28 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
@@ -351,194 +289,6 @@ export function WalletAddressesTab({ onChangePassword, onConnectExternal }: Wall
                             onDisconnect={() => extBCH.disconnectWallet(extWallet.id)}
                         />
                     ))}
-                </div>
-            </div>
-
-            {/* ═══════════════ SECURITY ═══════════════ */}
-            <div>
-                <SectionLabel>Security</SectionLabel>
-                <div className="space-y-2">
-                    {/* Password-gated seed phrase reveal */}
-                    {wdk.seedPhrase && (
-                        <div className="rounded-xl bg-white/[0.02] border border-white/[0.06] p-3">
-                            {!revealOpen && (
-                                <button
-                                    onClick={() => setRevealOpen(true)}
-                                    className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-semibold bg-white/[0.03] border border-white/10 text-white/60 hover:text-white/90 hover:bg-white/[0.05] transition-colors"
-                                >
-                                    <Lock className="w-3.5 h-3.5" />
-                                    Reveal Seed Phrase
-                                </button>
-                            )}
-
-                            {revealOpen && !revealedSeed && (
-                                <form onSubmit={handleUnlock} className="space-y-2">
-                                    <div className="flex items-start gap-2 text-[10px] text-yellow-400/90 bg-yellow-500/[0.06] border border-yellow-500/15 rounded-lg p-2">
-                                        <AlertTriangle className="w-3 h-3 mt-0.5 flex-shrink-0" />
-                                        <span>Anyone with your seed phrase can drain your wallet. Never share it.</span>
-                                    </div>
-                                    {hasEncrypted ? (
-                                        <>
-                                            <label className="text-[10px] uppercase tracking-wider text-white/50 font-semibold">
-                                                Wallet password
-                                            </label>
-                                            <input
-                                                type="password"
-                                                autoFocus
-                                                value={password}
-                                                onChange={e => { setPassword(e.target.value); setUnlockError(null); }}
-                                                placeholder="Enter the password you set"
-                                                className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs font-mono text-white placeholder:text-white/30 focus:border-emerald-500/40 focus:outline-none"
-                                            />
-                                            {unlockError && (
-                                                <p className="text-[10px] text-red-400">{unlockError}</p>
-                                            )}
-                                            <div className="flex gap-2">
-                                                <Button
-                                                    type="submit"
-                                                    size="sm"
-                                                    className="flex-1 h-8 text-[11px] bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30"
-                                                    disabled={unlocking || !password}
-                                                >
-                                                    {unlocking ? <Loader2 className="w-3 h-3 animate-spin" /> : <Eye className="w-3 h-3 mr-1" />}
-                                                    {unlocking ? 'Unlocking…' : 'Reveal'}
-                                                </Button>
-                                                <Button
-                                                    type="button"
-                                                    size="sm"
-                                                    variant="ghost"
-                                                    className="h-8 text-[11px] text-white/60 hover:text-white"
-                                                    onClick={closeReveal}
-                                                >
-                                                    Cancel
-                                                </Button>
-                                            </div>
-                                        </>
-                                    ) : (
-                                        <div className="space-y-2">
-                                            <p className="text-[10px] text-white/60">
-                                                This wallet wasn't saved with a password (session-only). The seed is held in memory for this session.
-                                            </p>
-                                            <div className="flex gap-2">
-                                                <Button
-                                                    type="button"
-                                                    size="sm"
-                                                    className="flex-1 h-8 text-[11px] bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30"
-                                                    onClick={() => setRevealedSeed(wdk.seedPhrase)}
-                                                >
-                                                    <Eye className="w-3 h-3 mr-1" /> Reveal anyway
-                                                </Button>
-                                                <Button
-                                                    type="button"
-                                                    size="sm"
-                                                    variant="ghost"
-                                                    className="h-8 text-[11px] text-white/60 hover:text-white"
-                                                    onClick={closeReveal}
-                                                >
-                                                    Cancel
-                                                </Button>
-                                            </div>
-                                        </div>
-                                    )}
-                                </form>
-                            )}
-
-                            {revealOpen && revealedSeed && (
-                                <div className="space-y-2">
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-[10px] uppercase tracking-wider text-emerald-400 font-semibold">
-                                            Seed phrase
-                                        </span>
-                                        <button
-                                            onClick={closeReveal}
-                                            className="text-[10px] text-white/50 hover:text-white flex items-center gap-1"
-                                        >
-                                            <EyeOff className="w-3 h-3" /> Hide
-                                        </button>
-                                    </div>
-                                    <div className="grid grid-cols-3 gap-1 p-2.5 rounded-lg bg-red-500/[0.04] border border-red-500/15">
-                                        {revealedSeed.split(' ').map((word, i) => (
-                                            <span key={i} className="font-mono text-[10px] px-1.5 py-1 rounded bg-white/[0.04] text-white/80">
-                                                <span className="text-white/30">{i + 1}.</span> {word}
-                                            </span>
-                                        ))}
-                                    </div>
-                                    <Button
-                                        type="button"
-                                        size="sm"
-                                        variant="ghost"
-                                        className="w-full h-7 text-[10px] text-white/60 hover:text-white bg-white/[0.03] border border-white/10"
-                                        onClick={copySeed}
-                                    >
-                                        {copiedSeed
-                                            ? <><Check className="w-3 h-3 mr-1 text-emerald-400" /> Copied</>
-                                            : <><Copy className="w-3 h-3 mr-1" /> Copy seed phrase</>}
-                                    </Button>
-                                </div>
-                            )}
-
-                            <div className="mt-3 text-[10px] text-muted-foreground/60 text-center">
-                                All addresses derive from a single BIP-39 seed.
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Change password */}
-                    {hasEncrypted && onChangePassword && (
-                        <div className="rounded-xl bg-white/[0.02] border border-white/[0.06] p-3">
-                            <button
-                                onClick={onChangePassword}
-                                className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-semibold bg-white/[0.03] border border-white/10 text-white/60 hover:text-white/90 hover:bg-white/[0.05] transition-colors"
-                            >
-                                <KeyRound className="w-3.5 h-3.5" />
-                                Change Password
-                            </button>
-                            <div className="mt-2 text-[10px] text-muted-foreground/60 text-center">
-                                Re-encrypts your wallet under a new password.
-                            </div>
-                        </div>
-                    )}
-                </div>
-            </div>
-
-            {/* ═══════════════ ABOUT ═══════════════ */}
-            <div>
-                <SectionLabel>About</SectionLabel>
-                <div className="rounded-xl bg-white/[0.02] border border-white/[0.06] p-3">
-                    <div className="flex items-center gap-2.5">
-                        <div className="h-9 w-9 rounded-xl bg-black/40 flex items-center justify-center flex-shrink-0 overflow-hidden">
-                            <img src="/assets/bchintentslogo.png" alt={APP_NAME} className="h-full w-full object-contain" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <div className="text-xs font-semibold text-white tracking-tight">{APP_NAME}</div>
-                            <div className="text-[10px] text-white/40">Intent-based cross-chain swaps on Bitcoin Cash</div>
-                        </div>
-                        <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded border bg-emerald-500/10 text-emerald-300 border-emerald-500/25 uppercase tracking-wider">
-                            v{APP_VERSION}
-                        </span>
-                    </div>
-                    <div className="mt-2.5 pt-2.5 border-t border-white/[0.04] flex items-center gap-3">
-                        <a
-                            href="https://docs.intentsprotocol.xyz/"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-[10px] text-white/50 hover:text-emerald-300 transition-colors"
-                        >
-                            <BookOpen className="h-3 w-3" /> Docs
-                        </a>
-                        <a
-                            href="/terms"
-                            className="inline-flex items-center gap-1 text-[10px] text-white/50 hover:text-emerald-300 transition-colors"
-                        >
-                            Terms
-                        </a>
-                        <a
-                            href="/privacy"
-                            className="inline-flex items-center gap-1 text-[10px] text-white/50 hover:text-emerald-300 transition-colors"
-                        >
-                            Privacy
-                        </a>
-                    </div>
                 </div>
             </div>
         </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Wallet, Bell, LogOut, RefreshCw, Eye, EyeOff, CheckCircle2, Clock, XCircle, KeyRound, Plus } from 'lucide-react';
+import { X, Wallet, Bell, LogOut, RefreshCw, Eye, EyeOff, CheckCircle2, Clock, XCircle, Settings, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useWDK } from '@/context/WDKProvider';
@@ -8,11 +8,11 @@ import { WalletTokensTab } from './WalletTokensTab';
 import { WalletOrdersTab } from './WalletOrdersTab';
 import { WalletPoolsTab } from './WalletPoolsTab';
 import { WalletHistoryTab } from './WalletHistoryTab';
-import { WalletAddressesTab } from './WalletAddressesTab';
+import { WalletSettingsTab } from './settings/WalletSettingsTab';
 import { ChangePasswordModal } from './ChangePasswordModal';
 import { ConnectExternalWalletModal } from './ConnectExternalWalletModal';
 
-import { hasStoredWallet } from '@/lib/crypto';
+import { getAppSettings, saveAppSettings } from '@/lib/appSettings';
 import { notifyToast as toast } from '@/lib/notify-toast';
 import {
     setNotifNetwork, markNotificationsSeen, readNotifications, clearNotifications,
@@ -27,7 +27,7 @@ import { Drawer, DrawerContent, DrawerTitle, DrawerDescription } from '@/compone
 // ============================================================================
 
 type TopTab = 'wallet' | 'notifications';
-type SubTab = 'tokens' | 'pools' | 'orders' | 'history' | 'addresses';
+type SubTab = 'tokens' | 'pools' | 'orders' | 'history' | 'settings';
 
 // ============================================================================
 // Notifications Panel — Shows captured toast/notification events
@@ -142,7 +142,7 @@ interface WalletPopupProps {
 export function WalletPopup({ open, onClose, initialTab }: WalletPopupProps) {
     const [topTab, setTopTab] = useState<TopTab>('wallet');
     const [subTab, setSubTab] = useState<SubTab>('tokens');
-    const [balanceVisible, setBalanceVisible] = useState(true);
+    const [balanceVisible, setBalanceVisibleState] = useState(() => !getAppSettings().hideBalances);
     const [showChangePwd, setShowChangePwd] = useState(false);
     const [showConnectExt, setShowConnectExt] = useState(false);
     const panelRef = useRef<HTMLDivElement>(null);
@@ -205,6 +205,11 @@ export function WalletPopup({ open, onClose, initialTab }: WalletPopupProps) {
         if (open) refetchPortfolio();
     }, [open, refetchPortfolio]);
 
+    const setBalanceVisible = (visible: boolean) => {
+        setBalanceVisibleState(visible);
+        saveAppSettings({ hideBalances: !visible });
+    };
+
     const handleGlobalRefresh = () => {
         refetchPortfolio();
     };
@@ -265,16 +270,14 @@ export function WalletPopup({ open, onClose, initialTab }: WalletPopupProps) {
                             <Plus className="h-3.5 w-3.5" />
                         </Button>
                     )}
-                    {wdk.isInitialized && hasStoredWallet() && (
-                        <Button
-                            variant="ghost" size="icon"
-                            className="h-7 w-7 text-muted-foreground hover:text-emerald-400 hover:bg-emerald-500/10"
-                            onClick={() => { setTopTab('wallet'); setSubTab('addresses'); }}
-                            title="Addresses & Keys"
-                        >
-                            <KeyRound className="h-3.5 w-3.5" />
-                        </Button>
-                    )}
+                    <Button
+                        variant="ghost" size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-emerald-400 hover:bg-emerald-500/10"
+                        onClick={() => { setTopTab('wallet'); setSubTab('settings'); }}
+                        title="Settings"
+                    >
+                        <Settings className="h-3.5 w-3.5" />
+                    </Button>
                     <Button
                         variant="ghost" size="icon"
                         className="h-7 w-7 text-muted-foreground hover:text-red-400 hover:bg-red-500/10"
@@ -309,7 +312,7 @@ export function WalletPopup({ open, onClose, initialTab }: WalletPopupProps) {
                                     <RefreshCw className={cn("h-3 w-3", (portfolioLoading || portfolioRefetching) && "animate-spin")} />
                                 </Button>
                                 <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground hover:text-foreground"
-                                    onClick={() => setBalanceVisible(v => !v)}>
+                                    onClick={() => setBalanceVisible(!balanceVisible)}>
                                     {balanceVisible ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
                                 </Button>
                             </div>
@@ -380,7 +383,7 @@ export function WalletPopup({ open, onClose, initialTab }: WalletPopupProps) {
 
                     {/* ─── Sub Tabs ─── */}
                     <div className="flex border-b border-white/[0.06] shrink-0">
-                        {(['tokens', 'pools', 'orders', 'history', 'addresses'] as SubTab[]).map(tab => (
+                        {(['tokens', 'pools', 'orders', 'history', 'settings'] as SubTab[]).map(tab => (
                             <button
                                 key={tab}
                                 onClick={() => setSubTab(tab)}
@@ -405,7 +408,15 @@ export function WalletPopup({ open, onClose, initialTab }: WalletPopupProps) {
                         {subTab === 'pools' && <WalletPoolsTab onClose={onClose} />}
                         {subTab === 'orders' && <WalletOrdersTab />}
                         {subTab === 'history' && <WalletHistoryTab />}
-                        {subTab === 'addresses' && <WalletAddressesTab onChangePassword={() => setShowChangePwd(true)} onConnectExternal={() => setShowConnectExt(true)} />}
+                        {subTab === 'settings' && (
+                            <WalletSettingsTab
+                                balanceVisible={balanceVisible}
+                                onBalanceVisibleChange={setBalanceVisible}
+                                onChangePassword={() => setShowChangePwd(true)}
+                                onConnectExternal={() => setShowConnectExt(true)}
+                                onLock={handleLogout}
+                            />
+                        )}
                     </div>
                 </div>
             ) : (
