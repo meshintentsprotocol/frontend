@@ -231,6 +231,22 @@ export function SystemPage() {
                   ['Node', `${s.node} · pid ${s.pid}`],
                 ]} />
               </Section>
+              {s.scanner && s.solverLoop && (
+                <Section title="Loops & chain" description="What must keep running. A stall here raises an alert.">
+                  <KeyValue rows={[
+                    ['Scanner', <Pill tone={s.scanner.stalled ? 'rose' : 'emerald'} dot>{s.scanner.stalled ? 'Stalled' : s.scanner.sweeping ? 'Sweeping' : 'Running'}</Pill>],
+                    ['Last sweep', <span><TimeAgo at={s.scanner.lastSweepAt} /> · took {(s.scanner.lastSweepMs / 1000).toFixed(1)} s</span>],
+                    ['Chain reads in it', <span className={cn(s.scanner.errorsInLastSweep > 0 && 'text-amber-300')}>{s.scanner.readsInLastSweep} ({s.scanner.errorsInLastSweep} failed)</span>],
+                    ['Solver loop', <Pill tone={s.solverLoop.stalled ? 'rose' : 'emerald'} dot>{s.solverLoop.stalled ? 'Stalled' : s.solverLoop.running ? 'Filling' : 'Running'}</Pill>],
+                    ['Last cycle', <TimeAgo at={s.solverLoop.lastCycleAt} />],
+                    ['Last fill', <TimeAgo at={s.solverLoop.lastFillAt} />],
+                    ['Chain tip read', <TimeAgo at={s.chain.lastReadAt} />],
+                    s.electrum ? ['Connection reopened', `${s.electrum.reconnects} times (${s.electrum.reconnectsLast10Min} in 10 min)`] : null,
+                    s.alerts ? ['Alert webhook', s.alerts.webhookConfigured ? 'configured' : <span className="text-zinc-500">not set: alerts show in this console only</span>] : null,
+                    s.orders ? ['Unfunded orders', `${s.orders.unfunded} of ${s.orders.limitTotal} · ${s.orders.archiveWatched} archived and watched`] : null,
+                  ]} />
+                </Section>
+              )}
             </div>
             <Section title="Persistence" icon={<Database className="w-4 h-4 text-zinc-400" />} description="State files in the server's data directory.">
               <DataTable

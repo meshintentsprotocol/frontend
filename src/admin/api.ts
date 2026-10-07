@@ -71,7 +71,8 @@ export const buyAsset = (i: Pick<IntentView, 'buyToken'>) => asset(i.buyToken);
 
 export interface Alert { severity: 'error' | 'warn' | 'info'; code: string; title: string; detail: string; link?: string }
 export interface RouteFlags { meshEnabled: boolean; solverEnabled: boolean; cauldronEnabled: boolean; lastUpdated: number; reason?: string }
-export interface SolverWallet { ready: boolean; address: string | null; balanceSats: string | null; utxoCount: number; tokenUtxos: number; tokens: Record<string, string>; error: string | null }
+/** A snapshot the server refreshes in the background. With `error` set, the numbers are from the last read that worked (`readAt`). */
+export interface SolverWallet { ready: boolean; address: string | null; balanceSats: string | null; utxoCount: number; tokenUtxos: number; tokens: Record<string, string>; error: string | null; readAt?: number | null; readMs?: number | null; failures?: number }
 export interface FillWindow { count: number; byMethod: Partial<Record<FillMethod, number>>; bchVolumeSats: string }
 export interface Latency { count: number; avgSec: number | null; medianSec: number | null; p90Sec: number | null; maxSec: number | null }
 export type AssetMap = Record<string, string>;
@@ -198,8 +199,14 @@ export interface TwapOrder {
 export interface SystemInfo {
   network: string; port: number; node: string; pid: number; startedAt: number; uptimeSec: number;
   memory: { rssMb: number; heapUsedMb: number; heapTotalMb: number };
-  chain: { mtp: number; finalLocktime: number; lagSec: number };
-  security: { adminKeyConfigured: boolean; oracleSigning: boolean; oraclePubkey: string | null; treasuryPkh: string | null };
+  chain: { mtp: number; finalLocktime: number; lagSec: number; height?: number | null; lastReadAt?: number | null; failedReads?: number };
+  /** The loops that must keep running, and what watches them (absent on a server from before the stall alerts). */
+  scanner?: { running: boolean; sweeping: boolean; intervalMs: number; sweeps: number; lastSweepAt: number | null; lastSweepMs: number; readsInLastSweep: number; errorsInLastSweep: number; unreadableSweeps: number; stalled: boolean };
+  solverLoop?: { running: boolean; startedAt: number | null; cycles: number; lastCycleAt: number | null; lastCycleMs: number; lastFillAt: number | null; stalled: boolean };
+  electrum?: { reconnects: number; reconnectsLast10Min: number };
+  alerts?: { webhookConfigured: boolean; raised: Array<{ code: string; title: string; detail: string; since: number }> };
+  orders?: { unfunded: number; clients: number; limitPerClient: number; limitTotal: number; archiveWatched: number; restoredFromArchive: number };
+  security: { adminKeyConfigured: boolean; oracleSigning: boolean; oraclePubkey: string | null; treasuryPkh: string | null; trustProxy?: number | string | false };
   routing: { policy: string; meshPreferenceBps: string; protocolSurplusShareBps: string; protocolTakeCapBps: string; maxFillAttempts: number; maxFillLegs: number; v2Pools: boolean; flags: RouteFlags };
   solver: { scanIntervalMs: number; maxFillSats: string; minProfitSats: string; minProfitBps: number; maxSlippageBps: number; feePerByte: string; refund: Record<string, any> };
   idle: { staleSec: number; offMidBps: number; dustSats: string };
