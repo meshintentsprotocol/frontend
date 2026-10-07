@@ -2,7 +2,36 @@
     "buildCommand": "npm run build",
     "outputDirectory": "dist",
     "framework": "vite",
+    "functions": {
+        "api/page.ts": {
+            "includeFiles": "dist/index.html"
+        }
+    },
     "rewrites": [
+        {
+            "source": "/sitemap.xml",
+            "destination": "/api/sitemap"
+        },
+        {
+            "source": "/robots.txt",
+            "destination": "/api/robots"
+        },
+        {
+            "source": "/kb",
+            "destination": "/api/page?p=/kb"
+        },
+        {
+            "source": "/kb/:path*",
+            "destination": "/api/page?p=/kb/:path*"
+        },
+        {
+            "source": "/docs",
+            "destination": "/api/page?p=/docs"
+        },
+        {
+            "source": "/docs/:path((?!screenshots/).*)",
+            "destination": "/api/page?p=/docs/:path"
+        },
         {
             "source": "/api/(.*)",
             "destination": "/api/$1"
