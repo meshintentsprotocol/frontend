@@ -19,7 +19,7 @@ export const MESH_PAGES: MeshPageItem[] = [
     icon: Layers,
   },
   {
-    name: 'Top Pools',
+    name: 'Pools & Strategies',
     path: '/mesh?tab=pools',
     description: 'Deep liquidity depth & market pools',
     icon: TrendingUp,

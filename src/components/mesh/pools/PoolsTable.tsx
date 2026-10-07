@@ -70,8 +70,40 @@ export function PoolsTable({ pools, bchUsd, loading, empty, showOwner = false }:
   if (!loading && pools.length === 0) {
     return <>{empty ?? <EmptyState icon={<Layers className="w-8 h-8" />} title="No pools" />}</>;
   }
+  const young = (pool: Pool) => Date.now() / 1000 - pool.createdAt < DAY;
   return (
-    <div className="overflow-x-auto -mx-2">
+    <>
+      {/* small screens: one card per pool */}
+      <div className="md:hidden space-y-2">
+        {pools.map(pool => {
+          const token = get(pool.tokenCategory);
+          return (
+            <div key={pool.address} role="link" tabIndex={0} onClick={() => navigate(poolUrl(pool))} onKeyDown={e => { if (e.key === 'Enter') navigate(poolUrl(pool)); }}
+              className="p-3 rounded-2xl bg-black/30 border border-white/[0.06] active:bg-white/[0.04] cursor-pointer space-y-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  {pool.v3 ? <V3PoolLabel pool={pool} size={22} /> : <PoolPairLabel token={token} side={pool.side} size={22} />}
+                  {showOwner && <div className="text-[10px] text-zinc-600 font-mono mt-1">LP {pool.ownerAddress.split(':')[1]?.slice(0, 10)}…</div>}
+                </div>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <StatusPill status={pool.status} />
+                  {pool.v3?.modeName === 'mirror' && <RecyclePill />}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 text-xs">
+                <MobileCell label="Trader price">{pool.v3 ? <V3PriceCell pool={pool} /> : <PoolPrice pool={pool} token={token} />}</MobileCell>
+                <MobileCell label="Reserves">{pool.v3 ? <V3ReserveCell pool={pool} /> : <PoolReserves pool={pool} token={token} />}</MobileCell>
+                <MobileCell label="Value"><SatsValue sats={pool.valueSats} bchUsd={bchUsd} className="text-zinc-200" /></MobileCell>
+                <MobileCell label={`Fees 7d · ${(pool.feeBps / 100).toFixed(2)}% fee`}>
+                  <div className="font-mono text-emerald-400">{formatSatsCompact(pool.stats.fees7dSats)}</div>
+                  <div className="font-mono text-[11px] text-zinc-500">APR {young(pool) ? '—' : formatPct(pool.stats.feeApr7dPct)} · vol {formatSatsCompact(pool.stats.volume7dSats)}</div>
+                </MobileCell>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    <div className="hidden md:block overflow-x-auto -mx-2">
       <table className="w-full text-sm min-w-[860px]">
         <thead>
           <tr className="text-left text-[11px] uppercase tracking-wide text-zinc-500 border-b border-white/5">
@@ -112,7 +144,12 @@ export function PoolsTable({ pools, bchUsd, loading, empty, showOwner = false }:
           })}
         </tbody>
       </table>
-      {loading && pools.length === 0 && <div className="py-10 text-center text-xs text-zinc-500">Loading pools…</div>}
     </div>
+      {loading && pools.length === 0 && <div className="py-10 text-center text-xs text-zinc-500">Loading pools…</div>}
+    </>
   );
+}
+
+function MobileCell({ label, children }: { label: string; children: React.ReactNode }) {
+  return <div className="min-w-0"><div className="text-[10px] uppercase tracking-wide text-zinc-500 mb-0.5">{label}</div>{children}</div>;
 }

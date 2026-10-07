@@ -59,7 +59,7 @@ export function PoolActivityTable({ pool, events, token, network, loading }: {
                 {describe(e, pool, token)}
                 {e.type === 'FILL' && (
                   <div className="text-[10px] text-zinc-500 mt-0.5">
-                    {e.external ? 'external filler' : e.intentId ? `intent ${e.intentId.slice(0, 18)}` : 'Mesh solver'}
+                    {e.external ? 'external filler' : e.fillMethod === 'BALANCER' ? 'Mesh Balancer' : e.intentId ? `intent ${e.intentId.slice(0, 18)}` : 'Mesh solver'}
                     {e.makerPkh && <> · trader {e.makerPkh.slice(0, 8)}…</>}
                   </div>
                 )}

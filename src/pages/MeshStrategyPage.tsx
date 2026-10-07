@@ -17,8 +17,9 @@ import { poolLevels } from '@/lib/mesh/v3/v3Display';
 import { v3ContractFor } from '@/lib/mesh/v3/v3Pool';
 import { buildWithdrawV3, type ClosePool } from '@/lib/mesh/v3/v3Tx';
 import { sendPoolTx, type BuiltTx } from '@/lib/mesh/poolTx';
-import { Panel, poolUrl } from '@/components/mesh/pools/shared';
+import { Panel, PanelTabs, poolUrl } from '@/components/mesh/pools/shared';
 import { DefiCard, IdlePill, InventoryBar, MarketStrip, MetricCell, RecyclePill, StatusPill, TemplateIcon, VsMid, poolVsMidBps, templateName, tokensPerBch } from '@/components/mesh/ui/defi';
+import { ManageDock, useSmallScreen } from '@/components/mesh/ui/ManageDock';
 import { RecycleDialog } from '@/components/mesh/strategies/RecycleDialog';
 import { strategyRecycles } from '@/components/mesh/strategies/StrategyCard';
 import { PriceLadder } from '@/components/mesh/strategies/PriceLadder';
@@ -40,6 +41,8 @@ export function MeshStrategyPage() {
   const market = useStrategySuggest(s && firstToken ? { template: s.template === 'multi-pair' || s.template === 'stable-pair' ? 'fixed' : s.template, token: firstToken } : null);
   const idle = useIdle(wallet.pkh && s && wallet.pkh === s.ownerPkh ? wallet.pkh : null);
   const [recycleOpen, setRecycleOpen] = useState(false);
+  const [view, setView] = useState<'pools' | 'activity' | 'recycling'>('pools');
+  const small = useSmallScreen();
 
   if (q.isLoading) return <div className="py-28 text-center text-zinc-400 text-sm"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-3 text-emerald-400" />Loading strategy…</div>;
   if (!s) {
@@ -69,8 +72,24 @@ export function MeshStrategyPage() {
     .sort((a, b) => b.time - a.time).slice(0, 60) as Array<PoolEvent & { pool: Pool }>;
   const links = pools.flatMap(p => (p.v3?.slots ?? []).filter(x => x.proceeds.kind === 'mirror').map(x => ({ from: p, to: (x.proceeds as { address: string }).address })));
 
+  // Recycling is its own panel under Manage on large screens, a third view on small ones.
+  const recyclingTab = small && links.length > 0;
+  const shown = view === 'recycling' && !recyclingTab ? 'pools' : view;
+  const recycling = (
+    <div className="space-y-2 text-xs">
+      {links.map(l => (
+        <div key={`${l.from.address}-${l.to}`} className="flex items-center gap-2 text-zinc-400">
+          <Link className="font-mono underline" to={poolUrl(l.from.address)}>{shortHex(l.from.address, 6, 4)}</Link>
+          <Repeat className="w-3.5 h-3.5 text-amber-300" />
+          <Link className="font-mono underline" to={poolUrl(l.to)}>{shortHex(l.to, 6, 4)}</Link>
+          <span className="text-zinc-500">fills of one fund the other, at your prices</span>
+        </div>
+      ))}
+    </div>
+  );
+
   return (
-    <div className="container mx-auto py-4 sm:py-6 px-4 md:px-8 max-w-[1200px] space-y-6">
+    <div className="container mx-auto pt-4 sm:pt-6 pb-28 lg:pb-6 px-4 md:px-8 max-w-[1200px] space-y-6">
       <Link to="/mesh?tab=positions" className="inline-flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300"><ArrowLeft className="w-3.5 h-3.5" />My positions</Link>
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
@@ -126,8 +145,9 @@ export function MeshStrategyPage() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         <div className="lg:col-span-7 space-y-6">
           {levels.length > 0 && <Panel title="Price ladder"><PriceLadder levels={levels} market={marketTokensPerBch} symbol={mainInfo.symbol} /></Panel>}
-          <Panel title="Pools" action={<span className="text-[11px] text-zinc-500">{s.activePools} of {s.poolCount} active</span>}>
-            <div className="space-y-2">
+          <Panel title={<PanelTabs tabs={recyclingTab ? STRATEGY_VIEWS : STRATEGY_VIEWS.slice(0, 2)} value={shown} onChange={setView} />}
+            action={<span className="text-[11px] text-zinc-500">{shown === 'pools' ? `${s.activePools} of ${s.poolCount} active` : shown === 'activity' ? `${events.length} events` : null}</span>}>
+            {shown === 'pools' && <div className="space-y-2">
               {pools.map(p => (
                 <Link key={p.address} to={poolUrl(p.address)} className="flex items-center justify-between gap-3 p-3 rounded-xl bg-black/30 border border-white/[0.06] hover:border-white/20">
                   <div className="min-w-0 space-y-1">
@@ -141,24 +161,8 @@ export function MeshStrategyPage() {
                   </div>
                 </Link>
               ))}
-            </div>
-          </Panel>
-          {links.length > 0 && (
-            <Panel title="Recycling">
-              <div className="space-y-2 text-xs">
-                {links.map(l => (
-                  <div key={`${l.from.address}-${l.to}`} className="flex items-center gap-2 text-zinc-400">
-                    <Link className="font-mono underline" to={poolUrl(l.from.address)}>{shortHex(l.from.address, 6, 4)}</Link>
-                    <Repeat className="w-3.5 h-3.5 text-amber-300" />
-                    <Link className="font-mono underline" to={poolUrl(l.to)}>{shortHex(l.to, 6, 4)}</Link>
-                    <span className="text-zinc-500">fills of one fund the other, at your prices</span>
-                  </div>
-                ))}
-              </div>
-            </Panel>
-          )}
-          <Panel title="Activity">
-            {events.length === 0 ? <p className="text-xs text-zinc-500">No activity yet.</p> : (
+            </div>}
+            {shown === 'activity' && (events.length === 0 ? <p className="text-xs text-zinc-500">No activity yet.</p> : (
               <div className="space-y-1.5 text-xs">
                 {events.map(e => (
                   <div key={`${e.pool.address}-${e.txid}-${e.type}`} className="flex justify-between gap-3 py-1.5 border-b border-white/[0.04]">
@@ -172,16 +176,25 @@ export function MeshStrategyPage() {
                   </div>
                 ))}
               </div>
-            )}
+            ))}
+            {shown === 'recycling' && recycling}
           </Panel>
         </div>
         <div className="lg:col-span-5 space-y-6">
           <StrategyActions strategy={s} pools={pools} ownerPkh={s.ownerPkh} />
+          {!small && links.length > 0 && <Panel title="Recycling">{recycling}</Panel>}
         </div>
       </div>
     </div>
   );
 }
+
+const STRATEGY_VIEWS = [['pools', 'Pools'], ['activity', 'Activity'], ['recycling', 'Recycling']] as const;
+
+const STRATEGY_OPTIONS = [
+  { key: 'rebalance', label: 'Rebalance', icon: Shuffle },
+  { key: 'withdraw', label: 'Withdraw all', icon: MinusCircle, tone: 'danger' },
+] as const;
 
 /** Rebalance (N → M in one tx) and withdraw everything. Owner only. */
 function StrategyActions({ strategy, pools, ownerPkh }: { strategy: NonNullable<ReturnType<typeof useStrategy>['data']>['strategy']; pools: Pool[]; ownerPkh: string }) {
@@ -241,13 +254,7 @@ function StrategyActions({ strategy, pools, ownerPkh }: { strategy: NonNullable<
 
   const tmpl = templates.data?.templates.find(t => t.id === template);
   return (
-    <Panel title="Manage your strategy">
-      <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-black/40 border border-white/[0.06]">
-        {([['rebalance', 'Rebalance', Shuffle], ['withdraw', 'Withdraw all', MinusCircle]] as const).map(([k, l, Icon]) => (
-          <button key={k} type="button" onClick={() => { setMode(k); setError(null); }}
-            className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold ${mode === k ? 'bg-white/10 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}><Icon className="w-3.5 h-3.5" />{l}</button>
-        ))}
-      </div>
+    <ManageDock title="Manage your strategy" options={STRATEGY_OPTIONS} value={mode} onChange={k => { setMode(k); setError(null); }}>
       {mode === 'rebalance' && (
         <div className="space-y-3 text-xs">
           <p className="text-zinc-400">Closes every pool of this strategy and opens the new set in one transaction. Your wallet adds any missing funds and the fee.</p>
@@ -276,7 +283,7 @@ function StrategyActions({ strategy, pools, ownerPkh }: { strategy: NonNullable<
       )}
       {error && <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 text-[11px] text-amber-200">{error}</div>}
       {balances.data && <div className="text-[10px] text-zinc-500 font-mono">Wallet: {formatSatsCompact(balances.data.sats)}</div>}
-    </Panel>
+    </ManageDock>
   );
 }
 

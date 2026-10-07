@@ -12,12 +12,13 @@ import { meshApi, useMeshPool, useMeshPoolActivity, useMeshPoolStream, useMeshSi
 import { traderTokenPerBch, tokenPerBchFromSatsPerUnit } from '@/lib/mesh/pool';
 import { explorerAddress, formatNumber, formatPct, formatSatsCompact, formatUsd, satsToUsd, shortHex, timeAgo } from '@/lib/mesh/format';
 import {
-  Panel, PoolPairLabel, PoolStatusBadge, StatTile, lpUrl, poolUrl, tokenAmount, useTokenInfo,
+  Panel, PanelTabs, PoolPairLabel, PoolStatusBadge, StatTile, lpUrl, poolUrl, tokenAmount, useTokenInfo,
 } from '@/components/mesh/pools/shared';
 import { PoolReserves } from '@/components/mesh/pools/PoolsTable';
 import { V2MigrationPanel } from '@/components/mesh/v3/V2MigrationPanel';
 import { PoolActivityTable, PoolValueChart } from '@/components/mesh/pools/PoolActivity';
-import { V3PoolDetail } from '@/components/mesh/v3/V3PoolDetail';
+import { useSmallScreen } from '@/components/mesh/ui/ManageDock';
+import { POOL_INFO_TABS, V3PoolDetail } from '@/components/mesh/v3/V3PoolDetail';
 
 export function MeshPoolDetailPage() {
   const { address: raw } = useParams();
@@ -28,6 +29,8 @@ export function MeshPoolDetailPage() {
   const wallet = useMeshSigner();
   const invalidate = useInvalidateMesh();
   const [syncing, setSyncing] = useState(false);
+  const small = useSmallScreen();
+  const [info, setInfo] = useState<'activity' | 'position' | 'covenant'>(small ? 'activity' : 'position');
   useMeshPoolStream(pool.data?.pool.address);
 
   const p = pool.data?.pool;
@@ -67,6 +70,8 @@ export function MeshPoolDetailPage() {
   const market = token.known && p.priceSource === 'cauldron' ? tokenPerBchFromSatsPerUnit(p.marketSatsPerToken, token.decimals) : null;
   const vsMarket = trader && market ? (trader / market - 1) * 100 : null;
   const pnl = BigInt(p.stats.pnlSats);
+  const tab = info === 'activity' && !small ? 'position' : info;
+  const activityTable = <PoolActivityTable pool={p} events={activity.data?.events ?? []} token={token} network={network} loading={activity.isLoading} />;
 
   async function sync() {
     setSyncing(true);
@@ -120,17 +125,18 @@ export function MeshPoolDetailPage() {
           <Panel title="Pool value" action={<span className="text-[11px] text-zinc-500">after each event</span>}>
             <PoolValueChart pool={p} events={activity.data?.events ?? []} token={token} />
           </Panel>
-          <Panel title="Activity" action={<span className="text-[11px] text-zinc-500">{activity.data?.total ?? 0} events</span>}>
-            <PoolActivityTable pool={p} events={activity.data?.events ?? []} token={token} network={network} loading={activity.isLoading} />
-          </Panel>
+          {!small && (
+            <Panel title="Activity" action={<span className="text-[11px] text-zinc-500">{activity.data?.total ?? 0} events</span>}>{activityTable}</Panel>
+          )}
         </div>
 
         <div className="lg:col-span-5 space-y-6">
           <V2MigrationPanel pools={[p]} />
           <p className="text-[11px] text-zinc-500 px-1">Top-up and reprice for V2 pools are in the V2 app. Here you can withdraw, or migrate the pool to V3.</p>
 
-          <Panel title="Position">
-            <div className="space-y-2.5 text-xs">
+          <Panel title={<PanelTabs tabs={small ? POOL_INFO_TABS : POOL_INFO_TABS.slice(1)} value={tab} onChange={setInfo} />}>
+            {tab === 'activity' && activityTable}
+            {tab === 'position' && <div className="space-y-2.5 text-xs">
               <Row label="Reserves"><PoolReserves pool={p} token={token} /></Row>
               <Row label="Available to trade">{p.side === 'SELL_BCH' ? formatSatsCompact(p.availableOut) : tokenAmount(p.availableOut, token)}</Row>
               <Row label="Deposited">{formatSatsCompact(p.stats.deposited.sats)}{BigInt(p.stats.deposited.tokens) > 0n && ` + ${tokenAmount(p.stats.deposited.tokens, token)}`}</Row>
@@ -141,11 +147,8 @@ export function MeshPoolDetailPage() {
               <Row label="UTXOs">{p.utxos.length}{p.utxos.some(u => !u.valid) && <span className="text-amber-400"> · {p.utxos.filter(u => !u.valid).length} below minimum</span>}</Row>
               <Row label="Created">{timeAgo(p.createdAt)}</Row>
               <Row label="Last fill">{timeAgo(p.lastFillAt)}</Row>
-            </div>
-          </Panel>
-
-          <Panel title="Covenant">
-            <div className="space-y-2.5 text-xs">
+            </div>}
+            {tab === 'covenant' && <div className="space-y-2.5 text-xs">
               <CopyRow label="Pool address" value={p.address} href={explorerAddress(network, p.address)} />
               <CopyRow label="Token category" value={p.tokenCategory} />
               <Row label="LP"><Link to={lpUrl(p.ownerPkh)} className="font-mono text-zinc-300 hover:text-white underline-offset-2 hover:underline">{shortHex(p.ownerAddress, 8, 6)}</Link></Row>
@@ -154,7 +157,7 @@ export function MeshPoolDetailPage() {
               {(pool.data?.bundle.length ?? 0) > 0 && (
                 <Row label="Other side">{pool.data!.bundle.map(b => <Link key={b} to={poolUrl(b)} className="font-mono underline block">{shortHex(b, 8, 6)}</Link>)}</Row>
               )}
-            </div>
+            </div>}
           </Panel>
         </div>
       </div>

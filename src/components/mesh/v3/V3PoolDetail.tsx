@@ -19,7 +19,8 @@ import { buildDeployV3, buildWithdrawV3 } from '@/lib/mesh/v3/v3Tx';
 import { toBaseUnits } from '@/lib/mesh/v3/strategyForms';
 import { sendPoolTx, type BuiltTx } from '@/lib/mesh/poolTx';
 import { explorerAddress, explorerTx, formatNumber, formatPct, formatSatsCompact, formatUnits, formatUsd, satsToUsd, shortHex, timeAgo } from '@/lib/mesh/format';
-import { EmptyState, Panel, PoolStatusBadge, StatTile, TokenAvatar, lpUrl, poolUrl, useTokenInfo, type TokenInfo } from '@/components/mesh/pools/shared';
+import { EmptyState, Panel, PanelTabs, PoolStatusBadge, StatTile, TokenAvatar, lpUrl, poolUrl, useTokenInfo, type TokenInfo } from '@/components/mesh/pools/shared';
+import { ManageDock, useSmallScreen } from '@/components/mesh/ui/ManageDock';
 import { PoolValueChart } from '@/components/mesh/pools/PoolActivity';
 import { strategyUrl } from '@/components/mesh/strategies/StrategyBuilder';
 
@@ -98,7 +99,7 @@ export function V3ActivityTable({ pool, events, loading, network }: { pool: Pool
               <td className="px-2 py-2.5 text-zinc-400 whitespace-nowrap">{timeAgo(e.time)}{!e.confirmed && <span className="ml-1 text-amber-400">· pending</span>}</td>
               <td className="px-2 py-2.5"><span className={cn('px-2 py-0.5 rounded-full border text-[10px] font-semibold', TYPE_STYLE[e.type])}>{e.type}</span></td>
               <td className="px-2 py-2.5 text-zinc-300">{describe(e, pool, asset)}
-                {e.type === 'FILL' && <div className="text-[10px] text-zinc-500 mt-0.5">{e.external ? 'external filler' : e.intentId ? `intent ${e.intentId.slice(0, 18)}` : 'Mesh solver'}</div>}
+                {e.type === 'FILL' && <div className="text-[10px] text-zinc-500 mt-0.5">{e.external ? 'external filler' : e.fillMethod === 'BALANCER' ? 'Mesh Balancer' : e.intentId ? `intent ${e.intentId.slice(0, 18)}` : 'Mesh solver'}</div>}
               </td>
               <td className="px-2 py-2.5"><a href={explorerTx(network, e.txid)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-mono text-zinc-400 hover:text-white">{shortHex(e.txid, 6, 4)}<ExternalLink className="w-3 h-3" /></a></td>
             </tr>
@@ -119,10 +120,15 @@ export function V3PoolDetail({ pool: p, bundle, onSync, syncing }: { pool: Pool;
   const bchUsd = stats.data?.bchUsd ?? null;
   const pnl = BigInt(p.stats.pnlSats);
   const strategyId = p.bundleId?.startsWith('stg-') ? p.bundleId : null;
+  const small = useSmallScreen();
+  const [info, setInfo] = useState<'activity' | 'position' | 'covenant'>(small ? 'activity' : 'position');
+  // Activity is its own panel on large screens, a third view next to Position / Covenant on small ones.
+  const tab = info === 'activity' && !small ? 'position' : info;
+  const activityTable = <V3ActivityTable pool={p} events={activity.data?.events ?? []} loading={activity.isLoading} network={wallet.network} />;
   const byAsset = new Map((p.stats.byAsset ?? []).map(a => [a.asset, a]));
 
   return (
-    <div className="container mx-auto py-4 sm:py-6 px-4 md:px-8 max-w-[1200px] space-y-6">
+    <div className="container mx-auto pt-4 sm:pt-6 pb-28 lg:pb-6 px-4 md:px-8 max-w-[1200px] space-y-6">
       <Link to={strategyId ? strategyUrl(strategyId) : '/mesh?tab=pools'} className="inline-flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300"><ArrowLeft className="w-3.5 h-3.5" />{strategyId ? 'Strategy' : 'Pools'}</Link>
 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -186,28 +192,27 @@ export function V3PoolDetail({ pool: p, bundle, onSync, syncing }: { pool: Pool;
           <Panel title="Reserve value" action={<span className="text-[11px] text-zinc-500">after each event</span>}>
             <PoolValueChart pool={p} events={activity.data?.events ?? []} token={reserve.category === '0x' ? { ...reserve, decimals: 0 } : reserve} />
           </Panel>
-          <Panel title="Activity" action={<span className="text-[11px] text-zinc-500">{activity.data?.total ?? 0} events</span>}>
-            <V3ActivityTable pool={p} events={activity.data?.events ?? []} loading={activity.isLoading} network={wallet.network} />
-          </Panel>
+          {!small && (
+            <Panel title="Activity" action={<span className="text-[11px] text-zinc-500">{activity.data?.total ?? 0} events</span>}>{activityTable}</Panel>
+          )}
         </div>
         <div className="lg:col-span-5 space-y-6">
           <V3ManagePanel pool={p} reserve={reserve} />
-          <Panel title="Position">
-            <div className="space-y-2.5 text-xs">
+          <Panel title={<PanelTabs tabs={small ? POOL_INFO_TABS : POOL_INFO_TABS.slice(1)} value={tab} onChange={setInfo} />}>
+            {tab === 'activity' && activityTable}
+            {tab === 'position' && <div className="space-y-2.5 text-xs">
               <Row label="Deposited">{formatSatsCompact(p.stats.deposited.sats)}{BigInt(p.stats.deposited.tokens) > 0n && v3.reserve !== '0x' && ` + ${amountOf(p.stats.deposited.tokens, reserve)}`}</Row>
               <Row label="Withdrawn">{formatSatsCompact(p.stats.withdrawn.sats)}{BigInt(p.stats.withdrawn.tokens) > 0n && v3.reserve !== '0x' && ` + ${amountOf(p.stats.withdrawn.tokens, reserve)}`}</Row>
               <Row label="Proceeds paid out">{formatSatsCompact(p.stats.proceedsValueSats ?? '0')}</Row>
               <Row label="P&L"><span className={pnl >= 0n ? 'text-emerald-400' : 'text-rose-400'}>{pnl >= 0n ? '+' : ''}{formatSatsCompact(p.stats.pnlSats)}</span></Row>
               <Row label="Created">{timeAgo(p.createdAt)}</Row>
-            </div>
-          </Panel>
-          <Panel title="Covenant">
-            <div className="space-y-2.5 text-xs">
+            </div>}
+            {tab === 'covenant' && <div className="space-y-2.5 text-xs">
               <Row label="Pool address"><a className="inline-flex items-center gap-1 hover:text-white" href={explorerAddress(wallet.network, p.address)} target="_blank" rel="noreferrer">{shortHex(p.address, 8, 6)}<ExternalLink className="w-3 h-3" /></a></Row>
               <Row label="LP"><Link to={lpUrl(p.ownerPkh)} className="underline-offset-2 hover:underline">{shortHex(p.ownerAddress, 8, 6)}</Link></Row>
               {strategyId && <Row label="Strategy"><Link to={strategyUrl(strategyId)} className="underline">{strategyId.slice(0, 16)}…</Link></Row>}
               {bundle.length > 0 && <Row label="Same bundle">{bundle.map(b => <Link key={b} to={poolUrl(b)} className="underline block">{shortHex(b, 8, 6)}</Link>)}</Row>}
-            </div>
+            </div>}
           </Panel>
         </div>
       </div>
@@ -218,6 +223,13 @@ export function V3PoolDetail({ pool: p, bundle, onSync, syncing }: { pool: Pool;
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return <div className="flex justify-between gap-4"><span className="text-zinc-500 shrink-0">{label}</span><span className="text-zinc-200 text-right font-mono min-w-0">{children}</span></div>;
 }
+
+export const POOL_INFO_TABS = [['activity', 'Activity'], ['position', 'Position'], ['covenant', 'Covenant']] as const;
+
+const POOL_OPTIONS = [
+  { key: 'topup', label: 'Top up', icon: PlusCircle },
+  { key: 'withdraw', label: 'Withdraw', icon: MinusCircle, tone: 'danger' },
+] as const;
 
 /** Owner actions on a V3 pool: top up the reserve, withdraw (partial / full). */
 function V3ManagePanel({ pool, reserve }: { pool: Pool; reserve: TokenInfo }) {
@@ -282,13 +294,7 @@ function V3ManagePanel({ pool, reserve }: { pool: Pool; reserve: TokenInfo }) {
   const outShare = (v: bigint) => (percent === 100 ? v : (v * BigInt(percent * 100)) / 10_000n);
 
   return (
-    <Panel title="Manage your pool">
-      <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-black/40 border border-white/[0.06]">
-        {([['topup', 'Top up', PlusCircle], ['withdraw', 'Withdraw', MinusCircle]] as const).map(([k, l, Icon]) => (
-          <button key={k} type="button" onClick={() => { setTab(k); setError(null); }}
-            className={cn('flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-semibold', tab === k ? 'bg-white/10 text-white' : 'text-zinc-500 hover:text-zinc-300')}><Icon className="w-3.5 h-3.5" />{l}</button>
-        ))}
-      </div>
+    <ManageDock title="Manage your pool" options={POOL_OPTIONS} value={tab} onChange={k => { setTab(k); setError(null); }}>
       {tab === 'topup' && (
         <div className="space-y-3">
           <div className="flex justify-between text-xs text-zinc-400"><span>Add {reserve.symbol}</span><span className="font-mono">Wallet: {walletAsset === undefined ? '—' : amountOf(walletAsset, reserve)}</span></div>
@@ -319,6 +325,6 @@ function V3ManagePanel({ pool, reserve }: { pool: Pool; reserve: TokenInfo }) {
         </div>
       )}
       {error && <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 text-[11px] text-amber-200">{error}</div>}
-    </Panel>
+    </ManageDock>
   );
 }

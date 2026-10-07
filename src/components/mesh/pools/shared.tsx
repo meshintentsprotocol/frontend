@@ -113,6 +113,18 @@ export function Panel({ title, action, children, className }: { title?: React.Re
   );
 }
 
+/** Tab switcher for a Panel title: one panel, several views. */
+export function PanelTabs<K extends string>({ tabs, value, onChange }: { tabs: ReadonlyArray<readonly [K, string]>; value: K; onChange: (k: K) => void }) {
+  return (
+    <span className="flex items-center gap-1 p-1 -m-1 rounded-xl bg-black/40 border border-white/[0.06]">
+      {tabs.map(([k, label]) => (
+        <button key={k} type="button" onClick={() => onChange(k)}
+          className={cn('px-3 py-1.5 rounded-lg text-xs font-semibold', value === k ? 'bg-white/10 text-white' : 'text-zinc-500 hover:text-zinc-300')}>{label}</button>
+      ))}
+    </span>
+  );
+}
+
 export function EmptyState({ icon, title, children }: { icon?: React.ReactNode; title: string; children?: React.ReactNode }) {
   return (
     <div className="py-12 text-center space-y-3">
