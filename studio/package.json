@@ -1,0 +1,31 @@
+{
+    "name": "bch-intents-studio",
+    "private": true,
+    "version": "0.0.0",
+    "type": "module",
+    "scripts": {
+        "dev": "sanity dev",
+        "build": "sanity build",
+        "deploy": "sanity deploy",
+        "deploy:schema": "sanity schema deploy",
+        "typegen": "sanity schema extract && sanity typegen generate",
+        "import": "tsx scripts/import.ts"
+    },
+    "dependencies": {
+        "@sanity/vision": "^6.18.0",
+        "easymde": "^2.18.0",
+        "react": "^19.2.0",
+        "react-dom": "^19.2.0",
+        "sanity": "^6.18.0",
+        "sanity-plugin-markdown": "^9.0.14",
+        "styled-components": "^6.1.15"
+    },
+    "devDependencies": {
+        "@sanity/client": "^8.9.0",
+        "@types/node": "^24.10.4",
+        "@types/react": "^19.1.11",
+        "dotenv": "^16.6.1",
+        "tsx": "^4.7.0",
+        "typescript": "~5.8.3"
+    }
+}
