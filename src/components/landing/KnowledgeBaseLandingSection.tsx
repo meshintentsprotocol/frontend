@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { kbService, KBArticle } from '@/components/knowledge-base/kbService';
+import { useKb } from '@/components/knowledge-base/kbService';
 import { cn } from '@/lib/utils';
 
 const CATEGORY_TABS = [
@@ -33,7 +33,7 @@ export function KnowledgeBaseLandingSection() {
     const [selectedCategory, setSelectedCategory] = useState('all');
     const [searchQuery, setSearchQuery] = useState('');
 
-    const allArticles = kbService.getAllArticles();
+    const allArticles = useKb().getAllArticles();
 
     // Featured flagship article
     const featuredArticle = allArticles.find(a => a.id === 'bchmesh-protocol-intro') || allArticles[0];
@@ -45,7 +45,7 @@ export function KnowledgeBaseLandingSection() {
             const matchesSearch = !searchQuery || 
                 article.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 article.summary.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                article.tags.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()));
+                article.tags.some(t => t.title.toLowerCase().includes(searchQuery.toLowerCase()));
             return matchesCategory && matchesSearch;
         })
         .filter(article => article.id !== featuredArticle?.id)
@@ -171,7 +171,7 @@ export function KnowledgeBaseLandingSection() {
                                                 key={idx}
                                                 className="px-2.5 py-1 rounded-lg text-xs font-mono bg-white/[0.04] text-zinc-400 border border-white/5"
                                             >
-                                                #{tag}
+                                                #{tag.title}
                                             </span>
                                         ))}
                                     </div>

@@ -1,7 +1,9 @@
 
 import { useSearchParams, Link } from 'react-router-dom';
 import { KBArticleList } from '../components/knowledge-base/KBArticleList';
-import { kbService } from '../components/knowledge-base/kbService';
+import { useKb } from '../components/knowledge-base/kbService';
+import { buildSeo } from '@/shared/seo';
+import { useSeo } from '@/lib/useSeo';
 import { ChevronRight, Home, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,7 +20,10 @@ export function KBSearchPage() {
         setSearchTerm(query);
     }, [query]);
 
+    const kbService = useKb();
     const articles = kbService.searchArticles(query);
+    // Search results are not a page worth indexing.
+    useSeo(buildSeo({ path: '/kb/search', title: query ? `Search: ${query}` : 'Search', titleSuffix: 'BCH Intents Knowledge Base', noindex: true }, kbService.site));
 
     const handleSearch = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === 'Enter' && searchTerm.trim()) {

@@ -1,13 +1,20 @@
 
 import { useParams, Link } from 'react-router-dom';
 import { KBArticleList } from '../components/knowledge-base/KBArticleList';
-import { kbService } from '../components/knowledge-base/kbService';
+import { useKb } from '../components/knowledge-base/kbService';
+import { KBStatus } from '../components/knowledge-base/KBStatus';
+import { kbCategorySeo } from '@/shared/seo';
+import { useSeo } from '@/lib/useSeo';
 import { ChevronRight, Home, LayoutGrid, List } from 'lucide-react';
 import { Footer } from '@/components/common/Footer';
 
 export function KBCategoryPage() {
     const { categoryId } = useParams();
+    const kbService = useKb();
     const category = categoryId ? kbService.getCategory(categoryId) : undefined;
+    useSeo(category ? kbCategorySeo(category, kbService.site) : null);
+
+    if (kbService.loading || kbService.failed) return <KBStatus kb={kbService} />;
 
     if (!category) {
         return <div className="p-20 text-center">Category not found</div>;

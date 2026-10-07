@@ -1,7 +1,10 @@
 import { KBHeader } from '../components/knowledge-base/KBHeader';
 import { KBCategoryList } from '../components/knowledge-base/KBCategoryList';
 import { KBArticleList } from '../components/knowledge-base/KBArticleList';
-import { kbService } from '../components/knowledge-base/kbService';
+import { useKb, KB_FALLBACK_COVER } from '../components/knowledge-base/kbService';
+import { imageUrl } from '@/shared/sanity';
+import { kbIndexSeo } from '@/shared/seo';
+import { useSeo } from '@/lib/useSeo';
 import { Footer } from '@/components/common/Footer';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -63,8 +66,10 @@ const toneIcon: Record<string, string> = {
 };
 
 export function KnowledgeBasePage() {
+    const kbService = useKb();
     const allArticles = kbService.getAllArticles();
-    const featured = allArticles[0];
+    const featured = allArticles.find(a => a.featured) ?? allArticles[0];
+    useSeo(kbIndexSeo(kbService.site));
 
     return (
         <main className="flex-1 relative overflow-x-hidden bg-background">
@@ -118,11 +123,11 @@ export function KnowledgeBasePage() {
                                             </div>
                                             {featured.tags?.slice(0, 2).map((t) => (
                                                 <Badge
-                                                    key={t}
+                                                    key={t.slug}
                                                     variant="secondary"
                                                     className="text-[10px] uppercase tracking-wider font-medium bg-zinc-100 dark:bg-zinc-800 text-muted-foreground border-0"
                                                 >
-                                                    {t}
+                                                    {t.title}
                                                 </Badge>
                                             ))}
                                         </div>
@@ -145,8 +150,8 @@ export function KnowledgeBasePage() {
                                     {/* Image */}
                                     <div className="relative aspect-[16/11] lg:aspect-auto lg:min-h-[420px] overflow-hidden border-t lg:border-t-0 lg:border-l border-border/50">
                                         <img
-                                            src="/images/kb/sample_article.png"
-                                            alt={featured.title}
+                                            src={imageUrl(featured.cover, { w: 1200, h: 750 }) ?? KB_FALLBACK_COVER}
+                                            alt={featured.coverAlt || featured.title}
                                             className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                                         />
                                         <div className="absolute inset-0 bg-gradient-to-tr from-background/80 via-background/10 to-transparent lg:bg-gradient-to-r" />

@@ -4,7 +4,7 @@ import { Search, Sparkles, BookOpen, Layers, Zap } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
-import { kbService } from './kbService';
+import { useKb } from './kbService';
 
 const POPULAR_SEARCHES = [
     'Cross-chain swaps',
@@ -19,6 +19,7 @@ export function KBHeader() {
     const [isFocused, setIsFocused] = useState(false);
     const navigate = useNavigate();
 
+    const kbService = useKb();
     const totalArticles = kbService.getAllArticles().length;
     const totalCategories = kbService.getCategories().length;
 

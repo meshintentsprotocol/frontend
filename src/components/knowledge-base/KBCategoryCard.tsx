@@ -9,7 +9,7 @@
  */
 
 import { cn } from '@/lib/utils';
-import { BookOpen, FileText, GitCommit, AlertCircle, Lightbulb, Newspaper, ArrowRight } from 'lucide-react';
+import { BookOpen, FileText, GitCommit, AlertCircle, Lightbulb, Newspaper, ArrowRight, Layers, Code, Globe, Zap } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 
@@ -20,6 +20,10 @@ const iconMap: Record<string, any> = {
     'alert-circle': AlertCircle,
     'lightbulb': Lightbulb,
     'newspaper': Newspaper,
+    'layers': Layers,
+    'code': Code,
+    'globe': Globe,
+    'zap': Zap,
 };
 
 const gradientMap: Record<string, string> = {

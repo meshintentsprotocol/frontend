@@ -9,6 +9,8 @@
  * - Read time and author metadata
  */
 
+import { imageUrl } from '@/shared/sanity';
+import { KB_FALLBACK_COVER, type KBTag } from './kbService';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Clock, User, ArrowUpRight } from 'lucide-react';
@@ -23,7 +25,9 @@ interface KBArticleCardProps {
     date: string;
     author: string;
     readTime: string;
-    tags: string[];
+    tags: KBTag[];
+    cover?: string;
+    coverAlt?: string;
     index?: number;
 }
 
@@ -35,6 +39,8 @@ export function KBArticleCard({
     author,
     readTime,
     tags,
+    cover,
+    coverAlt,
     index = 0
 }: KBArticleCardProps) {
     return (
@@ -52,8 +58,9 @@ export function KBArticleCard({
                     {/* Image Container */}
                     <div className="relative aspect-[16/10] overflow-hidden">
                         <img
-                            src="/images/kb/sample_article.png"
-                            alt={title}
+                            src={imageUrl(cover, { w: 800, h: 500 }) ?? KB_FALLBACK_COVER}
+                            alt={coverAlt || title}
+                            loading="lazy"
                             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                         />
                         {/* Gradient Overlay */}
@@ -77,7 +84,7 @@ export function KBArticleCard({
                         <div className="flex flex-wrap gap-2 mb-4">
                             {tags.slice(0, 3).map(tag => (
                                 <Badge
-                                    key={tag}
+                                    key={tag.slug}
                                     variant="secondary"
                                     className={cn(
                                         "text-[10px] uppercase tracking-wider font-medium",
@@ -85,7 +92,7 @@ export function KBArticleCard({
                                         "border-0"
                                     )}
                                 >
-                                    {tag}
+                                    {tag.title}
                                 </Badge>
                             ))}
                         </div>

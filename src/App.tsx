@@ -25,6 +25,7 @@ import { ScrollToTop } from "@/components/common/ScrollToTop"
 import TermsOfService from '@/pages/TermsOfService';
 import PrivacyPolicy from '@/pages/PrivacyPolicy';
 import { KnowledgeBasePage } from "./pages/KnowledgeBasePage"
+import { KBTagPage } from "./pages/KBTagPage"
 import { KBCategoryPage } from "./pages/KBCategoryPage"
 import { KBArticlePage } from "./pages/KBArticlePage"
 import { KBSearchPage } from "./pages/KBSearchPage"
@@ -228,6 +229,12 @@ function App() {
                                                         <div className="flex flex-col min-h-screen">
                                                             <Header />
                                                             <KBSearchPage />
+                                                        </div>
+                                                    } />
+                                                    <Route path="/kb/tag/:tagSlug" element={
+                                                        <div className="flex flex-col min-h-screen">
+                                                            <Header />
+                                                            <KBTagPage />
                                                         </div>
                                                     } />
                                                     <Route path="/kb/:categoryId" element={

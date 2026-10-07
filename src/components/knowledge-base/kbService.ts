@@ -1,17 +1,43 @@
+// ============================================================================
+// Knowledge base data
+// ============================================================================
+// Articles, categories and tags are authored in Sanity Studio (studio/) and
+// loaded with one query. Without a configured Sanity project the bundled
+// markdown in data/ is used instead (kbLocal.ts).
 
-import categories from './data/categories.json';
+import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { CMS_STALE_TIME, cmsQuery, sanityConfig, siteOf } from '@/lib/sanity';
+import { KB_QUERY } from '@/shared/sanity';
+import type { SeoFields, Site, SiteSettings } from '@/shared/seo';
 
-// Type definitions
+export interface KBTag {
+    slug: string;
+    title: string;
+    description?: string;
+    seo?: SeoFields;
+}
+
 export interface KBArticle {
     id: string;
     categoryId: string;
     title: string;
     summary: string;
     content: string; // Markdown content
+    /** Display date, e.g. "Feb 25, 2026". */
     date: string;
+    /** ISO publication date and last edit, when known. */
+    published?: string;
+    modified?: string;
     author: string;
+    authorLinks?: string[];
     readTime: string;
-    tags: string[];
+    tags: KBTag[];
+    /** Cover image URL; cards fall back to the stock image. */
+    cover?: string;
+    coverAlt?: string;
+    featured?: boolean;
+    seo?: SeoFields;
 }
 
 export interface KBCategory {
@@ -20,84 +46,154 @@ export interface KBCategory {
     description: string;
     articleCount: number;
     icon: string;
+    seo?: SeoFields;
 }
 
-// Helper to parse simple Frontmatter
-const parseFrontmatter = (fileContent: string): KBArticle => {
-    // Normalize line endings (Windows CRLF -> LF)
-    const normalizedContent = fileContent.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+/** What a source (Sanity or the bundled files) hands over. */
+export interface KBData {
+    categories: Omit<KBCategory, 'articleCount'>[];
+    articles: KBArticle[];
+    tags: KBTag[];
+    settings: SiteSettings | null;
+}
 
-    const frontmatterRegex = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/;
-    const match = normalizedContent.match(frontmatterRegex);
+export const KB_FALLBACK_COVER = '/images/kb/sample_article.png';
 
-    if (!match) {
-        throw new Error('Invalid Markdown file format: Missing Frontmatter');
-    }
+export function formatDate(iso: string): string {
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime())
+        ? iso
+        : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+}
 
-    const [, frontmatterBlock, content] = match;
-    const metadata: any = {};
+export const estimateReadTime = (markdown: string) =>
+    `${Math.max(1, Math.round(markdown.split(/\s+/).filter(Boolean).length / 220))} min read`;
 
-    frontmatterBlock.split('\n').forEach(line => {
-        const [key, ...valueParts] = line.split(':');
-        if (key && valueParts.length) {
-            const value = valueParts.join(':').trim();
-            // Handle array for tags
-            if (key.trim() === 'tags') {
-                metadata[key.trim()] = value.replace(/[\[\]]/g, '').split(',').map(t => t.trim().replace(/^"|"$/g, ''));
-            } else {
-                // Remove quotes if present
-                metadata[key.trim()] = value.replace(/^"|"$/g, '');
-            }
-        }
-    });
+// ── Sanity ───────────────────────────────────────────────────────────────────
+
+interface CmsArticle {
+    id: string;
+    categoryId: string;
+    title: string;
+    summary?: string;
+    content?: string;
+    publishedAt?: string;
+    readTime?: string;
+    featured?: boolean;
+    tags: KBTag[];
+    seo?: SeoFields;
+    author?: { name: string; links?: string[] } | null;
+    cover?: string;
+    coverAlt?: string;
+    modified?: string;
+}
+
+interface CmsKb {
+    categories: { id: string; title: string; description?: string; icon?: string; seo?: SeoFields }[];
+    articles: CmsArticle[];
+    tags: KBTag[];
+    settings: SiteSettings | null;
+}
+
+function fromCms(data: CmsKb): KBData {
+    return {
+        categories: data.categories.map(c => ({ id: c.id, title: c.title, description: c.description ?? '', icon: c.icon ?? 'book-open', seo: c.seo })),
+        articles: data.articles.map(a => ({
+            id: a.id,
+            categoryId: a.categoryId,
+            title: a.title,
+            summary: a.summary ?? '',
+            content: a.content ?? '',
+            date: a.publishedAt ? formatDate(a.publishedAt) : '',
+            published: a.publishedAt,
+            modified: a.modified,
+            author: a.author?.name ?? 'BCH Intents',
+            authorLinks: a.author?.links,
+            readTime: a.readTime || estimateReadTime(a.content ?? ''),
+            tags: a.tags,
+            cover: a.cover,
+            coverAlt: a.coverAlt,
+            featured: a.featured,
+            seo: a.seo,
+        })),
+        tags: data.tags,
+        settings: data.settings,
+    };
+}
+
+async function loadKb(): Promise<KBData> {
+    if (!sanityConfig) return (await import('./kbLocal')).loadLocalKb();
+    return fromCms(await cmsQuery<CmsKb>(KB_QUERY));
+}
+
+// ── Service ──────────────────────────────────────────────────────────────────
+
+export function buildKb(data: KBData) {
+    const { articles } = data;
+    const categories: KBCategory[] = data.categories.map(c => ({
+        ...c,
+        articleCount: articles.filter(a => a.categoryId === c.id).length,
+    }));
+    // Tags in use, plus tags defined in the CMS that no article carries yet.
+    const tags = new Map<string, KBTag>(data.tags.map(t => [t.slug, t]));
+    for (const a of articles) for (const t of a.tags) if (!tags.has(t.slug)) tags.set(t.slug, t);
 
     return {
-        ...metadata,
-        content: content.trim()
-    } as KBArticle;
-};
+        getCategories: (): KBCategory[] => categories,
 
-// Load all articles eagerly using Vite's glob import as raw strings
-const articleModules = import.meta.glob('./data/articles/*.md', { query: '?raw', import: 'default', eager: true });
+        getCategory: (id: string): KBCategory | undefined => categories.find(c => c.id === id),
 
-// Parse and convert modules to KBArticle array
-const articles: KBArticle[] = Object.values(articleModules).map((content: any) => {
-    try {
-        return parseFrontmatter(content);
-    } catch (e) {
-        console.error("Failed to parse article:", e);
-        return null;
-    }
-}).filter(Boolean) as KBArticle[];
+        getAllArticles: (): KBArticle[] => articles,
 
-export const kbService = {
-    getCategories: (): KBCategory[] => {
-        return categories;
-    },
+        getArticlesByCategory: (categoryId: string): KBArticle[] => articles.filter(a => a.categoryId === categoryId),
 
-    getCategory: (id: string): KBCategory | undefined => {
-        return categories.find(c => c.id === id);
-    },
+        getArticleById: (id: string): KBArticle | undefined => articles.find(a => a.id === id),
 
-    getAllArticles: (): KBArticle[] => {
-        return articles;
-    },
+        getTags: (): KBTag[] => [...tags.values()],
 
-    getArticlesByCategory: (categoryId: string): KBArticle[] => {
-        return articles.filter(a => a.categoryId === categoryId);
-    },
+        getTag: (slug: string): KBTag | undefined => tags.get(slug),
 
-    getArticleById: (id: string): KBArticle | undefined => {
-        return articles.find(a => a.id === id);
-    },
+        getArticlesByTag: (slug: string): KBArticle[] => articles.filter(a => a.tags.some(t => t.slug === slug)),
 
-    searchArticles: (query: string): KBArticle[] => {
-        const lowerQuery = query.toLowerCase();
-        return articles.filter(a =>
-            a.title.toLowerCase().includes(lowerQuery) ||
-            a.summary.toLowerCase().includes(lowerQuery) ||
-            a.tags.some(t => t.toLowerCase().includes(lowerQuery)) ||
-            a.content.toLowerCase().includes(lowerQuery)
-        );
-    }
-};
+        /** Other articles ranked by shared tags, then by sharing the category. */
+        getRelated: (article: KBArticle, limit = 3): KBArticle[] => {
+            const own = new Set(article.tags.map(t => t.slug));
+            return articles
+                .filter(a => a.id !== article.id)
+                .map(a => ({ a, score: a.tags.filter(t => own.has(t.slug)).length * 2 + (a.categoryId === article.categoryId ? 1 : 0) }))
+                .filter(x => x.score > 0)
+                .sort((x, y) => y.score - x.score)
+                .slice(0, limit)
+                .map(x => x.a);
+        },
+
+        searchArticles: (query: string): KBArticle[] => {
+            const lowerQuery = query.toLowerCase();
+            return articles.filter(a =>
+                a.title.toLowerCase().includes(lowerQuery) ||
+                a.summary.toLowerCase().includes(lowerQuery) ||
+                a.tags.some(t => t.title.toLowerCase().includes(lowerQuery)) ||
+                a.content.toLowerCase().includes(lowerQuery)
+            );
+        },
+    };
+}
+
+const EMPTY: KBData = { categories: [], articles: [], tags: [], settings: null };
+
+export interface KbService extends ReturnType<typeof buildKb> {
+    /** True until the first load finishes; every getter returns nothing meanwhile. */
+    loading: boolean;
+    /** True when the content could not be loaded. */
+    failed: boolean;
+    retry: () => void;
+    site: Site;
+}
+
+export function useKb(): KbService {
+    const { data, isPending, isError, refetch } = useQuery({ queryKey: ['cms', 'kb'], queryFn: loadKb, staleTime: CMS_STALE_TIME });
+    return useMemo(
+        () => ({ ...buildKb(data ?? EMPTY), loading: isPending, failed: isError, retry: () => { void refetch(); }, site: siteOf(data?.settings) }),
+        [data, isPending, isError, refetch],
+    );
+}

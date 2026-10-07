@@ -1,6 +1,11 @@
 
 import { useParams, Link } from 'react-router-dom';
-import { kbService } from '../components/knowledge-base/kbService';
+import { useKb, KB_FALLBACK_COVER } from '../components/knowledge-base/kbService';
+import { KBStatus } from '../components/knowledge-base/KBStatus';
+import { KBArticleList } from '../components/knowledge-base/KBArticleList';
+import { imageUrl } from '@/shared/sanity';
+import { kbArticleSeo } from '@/shared/seo';
+import { useSeo } from '@/lib/useSeo';
 import { ChevronRight, Home, Calendar, User, Clock, Share2, MessageSquare } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -14,9 +19,27 @@ import { Footer } from '@/components/common/Footer';
 
 export function KBArticlePage() {
     const { articleId, categoryId } = useParams();
+    const kbService = useKb();
     const article = articleId ? kbService.getArticleById(articleId) : undefined;
     // Find category from ID or from article data
-    const category = categoryId ? kbService.getCategory(categoryId) : undefined;
+    const category = kbService.getCategory(article?.categoryId ?? categoryId ?? '');
+    const related = article ? kbService.getRelated(article) : [];
+
+    useSeo(article ? kbArticleSeo({
+        id: article.id,
+        categoryId: article.categoryId,
+        title: article.title,
+        summary: article.summary,
+        published: article.published,
+        modified: article.modified,
+        cover: article.cover,
+        coverAlt: article.coverAlt,
+        tags: article.tags,
+        author: { name: article.author, links: article.authorLinks },
+        seo: article.seo,
+    }, category?.title, kbService.site) : null);
+
+    if (kbService.loading || kbService.failed) return <KBStatus kb={kbService} />;
 
     if (!article) {
         return <div className="p-20 text-center">Article not found</div>;
@@ -87,8 +110,8 @@ export function KBArticlePage() {
                         {/* Featured Image */}
                         <div className="w-full aspect-[21/9] rounded-3xl overflow-hidden border border-border/40 shadow-2xl relative group">
                             <img
-                                src="/images/kb/sample_article.png"
-                                alt={article.title}
+                                src={imageUrl(article.cover, { w: 1600, h: 686 }) ?? KB_FALLBACK_COVER}
+                                alt={article.coverAlt || article.title}
                                 className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                             />
                             <div className="absolute inset-0 bg-gradient-to-t from-background/40 to-transparent" />
@@ -197,9 +220,11 @@ export function KBArticlePage() {
                                 <CardContent>
                                     <div className="flex flex-wrap gap-2">
                                         {article.tags.map(tag => (
-                                            <Badge key={tag} variant="secondary" className="px-3 py-1 bg-secondary/50 hover:bg-primary/20 hover:text-primary cursor-pointer transition-colors text-xs font-normal capitalize">
-                                                #{tag}
-                                            </Badge>
+                                            <Link key={tag.slug} to={`/kb/tag/${tag.slug}`}>
+                                                <Badge variant="secondary" className="px-3 py-1 bg-secondary/50 hover:bg-primary/20 hover:text-primary cursor-pointer transition-colors text-xs font-normal capitalize">
+                                                    #{tag.title}
+                                                </Badge>
+                                            </Link>
                                         ))}
                                     </div>
                                 </CardContent>
@@ -220,6 +245,14 @@ export function KBArticlePage() {
                                 </CardContent>
                             </Card>
                         </div>
+
+                        {/* Related articles */}
+                        {related.length > 0 && (
+                            <div className="pt-20">
+                                <h3 className="text-2xl font-bold mb-6">Related articles</h3>
+                                <KBArticleList articles={related} />
+                            </div>
+                        )}
 
                         {/* Comments */}
                         <div className="pt-20">

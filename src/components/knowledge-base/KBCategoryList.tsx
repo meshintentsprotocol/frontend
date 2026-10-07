@@ -8,11 +8,11 @@
  */
 
 import { KBCategoryCard } from './KBCategoryCard';
-import { kbService } from './kbService';
+import { useKb } from './kbService';
 import { motion } from 'framer-motion';
 
 export function KBCategoryList() {
-    const categories = kbService.getCategories();
+    const categories = useKb().getCategories();
 
     return (
         <motion.div

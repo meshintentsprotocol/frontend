@@ -8,17 +8,18 @@
  */
 
 import { KBArticleCard } from './KBArticleCard';
-import { kbService } from './kbService';
+import { useKb, type KBArticle } from './kbService';
 import { motion } from 'framer-motion';
 import { FileText } from 'lucide-react';
 
 interface KBArticleListProps {
     categoryId?: string;
     limit?: number;
-    articles?: any[];
+    articles?: KBArticle[];
 }
 
 export function KBArticleList({ categoryId, limit, articles: propArticles }: KBArticleListProps) {
+    const kbService = useKb();
     let articles = propArticles || (categoryId
         ? kbService.getArticlesByCategory(categoryId)
         : kbService.getAllArticles());
