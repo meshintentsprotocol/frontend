@@ -16,8 +16,8 @@ import { formatPct, formatSatsCompact, formatUsd, satsToUsd, shortHex, timeAgo }
 import { poolLevels } from '@/lib/mesh/v3/v3Display';
 import { v3ContractFor } from '@/lib/mesh/v3/v3Pool';
 import { buildWithdrawV3, type ClosePool } from '@/lib/mesh/v3/v3Tx';
-import { sendPoolTx, type BuiltTx } from '@/lib/mesh/poolTx';
-import { Panel, PanelTabs, poolUrl } from '@/components/mesh/pools/shared';
+import { sendPoolTxWithRetry, type BuiltTx } from '@/lib/mesh/poolTx';
+import { Panel, PanelTabs, ThroughMarketNote, poolUrl } from '@/components/mesh/pools/shared';
 import { DefiCard, IdlePill, InventoryBar, MarketStrip, MetricCell, RecyclePill, StatusPill, TemplateIcon, VsMid, poolVsMidBps, templateName, tokensPerBch } from '@/components/mesh/ui/defi';
 import { ManageDock, useSmallScreen } from '@/components/mesh/ui/ManageDock';
 import { RecycleDialog } from '@/components/mesh/strategies/RecycleDialog';
@@ -90,6 +90,7 @@ export function MeshStrategyPage() {
 
   return (
     <div className="container mx-auto pt-4 sm:pt-6 pb-28 lg:pb-6 px-4 md:px-8 max-w-[1200px] space-y-6">
+      <ThroughMarketNote pools={pools} />
       <Link to="/mesh?tab=positions" className="inline-flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300"><ArrowLeft className="w-3.5 h-3.5" />My positions</Link>
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
@@ -205,7 +206,7 @@ function StrategyActions({ strategy, pools, ownerPkh }: { strategy: NonNullable<
   const balances = useSignerBalances(wallet.signer);
   const [mode, setMode] = useState<'rebalance' | 'withdraw'>('rebalance');
   const [template, setTemplate] = useState(strategy.template);
-  const [pending, setPending] = useState<{ label: string; built: BuiltTx; after: (txid: string) => Promise<void> } | null>(null);
+  const [pending, setPending] = useState<{ label: string; built: BuiltTx; rebuild: () => Promise<BuiltTx>; after: (txid: string) => Promise<void> } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const isOwner = !!wallet.pkh && wallet.pkh === ownerPkh;
@@ -228,13 +229,15 @@ function StrategyActions({ strategy, pools, ownerPkh }: { strategy: NonNullable<
 
   async function prepare(label: string, build: () => Promise<BuiltTx>, after: (txid: string) => Promise<void>) {
     setError(null); setBusy('Building transaction…');
-    try { setPending({ label, built: await build(), after }); } catch (e: any) { setError(e?.message ?? String(e)); } finally { setBusy(null); }
+    try { setPending({ label, built: await build(), rebuild: build, after }); } catch (e: any) { setError(e?.message ?? String(e)); } finally { setBusy(null); }
   }
   async function confirm() {
     if (!pending) return;
     setBusy(wallet.kind === 'external' ? 'Approve in your wallet…' : 'Signing and broadcasting…');
     try {
-      const txid = await sendPoolTx(signer, pending.built, pending.label);
+      const approve = wallet.kind === 'external' ? 'Approve again in your wallet…' : 'Signing and broadcasting again…';
+      const txid = await sendPoolTxWithRetry(signer, pending.built, pending.label, pending.rebuild,
+        () => setBusy(`A trade just filled one of these pools. Building again on what they hold now. ${approve}`));
       setBusy('Updating the Mesh server…');
       await pending.after(txid);
       toast.success(pending.label, { description: `tx ${shortHex(txid)}` });

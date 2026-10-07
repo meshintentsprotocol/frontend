@@ -241,6 +241,7 @@ export function SystemPage() {
                     ['Last cycle', <TimeAgo at={s.solverLoop.lastCycleAt} />],
                     ['Last fill', <TimeAgo at={s.solverLoop.lastFillAt} />],
                     ['Chain tip read', <TimeAgo at={s.chain.lastReadAt} />],
+                    s.electrum?.using ? ['Chain server', <span className="font-mono">{s.electrum.using}{s.electrum.onBackup && <Pill tone="amber" className="ml-2">backup</Pill>}{(s.electrum.servers?.length ?? 1) > 1 && !s.electrum.onBackup && <span className="text-zinc-500 font-sans"> · {s.electrum.servers!.length - 1} in reserve</span>}</span>] : null,
                     s.electrum ? ['Connection reopened', `${s.electrum.reconnects} times (${s.electrum.reconnectsLast10Min} in 10 min)`] : null,
                     s.alerts ? ['Alert webhook', s.alerts.webhookConfigured ? 'configured' : <span className="text-zinc-500">not set: alerts show in this console only</span>] : null,
                     s.orders ? ['Unfunded orders', `${s.orders.unfunded} of ${s.orders.limitTotal} · ${s.orders.archiveWatched} archived and watched`] : null,

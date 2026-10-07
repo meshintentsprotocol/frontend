@@ -203,7 +203,7 @@ export interface SystemInfo {
   /** The loops that must keep running, and what watches them (absent on a server from before the stall alerts). */
   scanner?: { running: boolean; sweeping: boolean; intervalMs: number; sweeps: number; lastSweepAt: number | null; lastSweepMs: number; readsInLastSweep: number; errorsInLastSweep: number; unreadableSweeps: number; stalled: boolean };
   solverLoop?: { running: boolean; startedAt: number | null; cycles: number; lastCycleAt: number | null; lastCycleMs: number; lastFillAt: number | null; stalled: boolean };
-  electrum?: { reconnects: number; reconnectsLast10Min: number };
+  electrum?: { reconnects: number; reconnectsLast10Min: number; servers?: string[]; using?: string; onBackup?: boolean; failovers?: number; movedAt?: number | null };
   alerts?: { webhookConfigured: boolean; raised: Array<{ code: string; title: string; detail: string; since: number }> };
   orders?: { unfunded: number; clients: number; limitPerClient: number; limitTotal: number; archiveWatched: number; restoredFromArchive: number };
   security: { adminKeyConfigured: boolean; oracleSigning: boolean; oraclePubkey: string | null; treasuryPkh: string | null; trustProxy?: number | string | false };
@@ -226,7 +226,8 @@ export interface SolverCycleReport { planned: number; filled: Array<{ intentId: 
 
 export type BalancerKind = 'cauldron-buy' | 'cauldron-sell' | 'mesh-cross';
 export type BalancerState = 'running' | 'paused' | 'dry-run' | 'idle-no-funds' | 'error' | 'stopped';
-export type BalancerTradeResult = 'mempool' | 'confirmed' | 'rejected' | 'dry-run';
+/** mempool: the node accepted it. indexed: the server has read it from the chain. confirmed: it is in a block. */
+export type BalancerTradeResult = 'mempool' | 'indexed' | 'confirmed' | 'rejected' | 'dry-run';
 
 export interface BalancerConfig {
   enabled: boolean; dryRun: boolean;
@@ -244,7 +245,7 @@ export interface BalancerTxPart { index: number; role: 'mesh-pool' | 'cauldron-p
 export interface BalancerTrade {
   id: string; at: number; kind: BalancerKind; token: string; pools: BalancerPoolRef[]; tokenAmount: string; bchReceived: string; bchPaid: string;
   txid: string; sizeBytes: number; feeSats: string; carrierSats: string; plannedNetSats: string; realisedNetSats: string; latencyMs: number;
-  result: BalancerTradeResult; error?: string; confirmedAt?: number; inputs: BalancerTxPart[]; outputs: BalancerTxPart[];
+  result: BalancerTradeResult; error?: string; indexedAt?: number; confirmedAt?: number; height?: number; inputs: BalancerTxPart[]; outputs: BalancerTxPart[];
 }
 export interface BalancerWallet { address: string | null; balanceSats: string | null; utxoCount: number; tokens: Record<string, string>; utxos?: Array<{ txid: string; vout: number; sats: string; token?: { category: string; amount: string } }> }
 export interface BalancerHeartbeat {

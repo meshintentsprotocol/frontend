@@ -39,8 +39,12 @@ const STATE: Record<BalancerState, { label: string; tone: Tone }> = {
   running: { label: 'Trading', tone: 'emerald' }, 'dry-run': { label: 'Dry run', tone: 'sky' }, paused: { label: 'Paused', tone: 'amber' },
   'idle-no-funds': { label: 'Out of funds', tone: 'amber' }, error: { label: 'Error', tone: 'rose' }, stopped: { label: 'Stopped', tone: 'zinc' },
 };
-const RESULT: Record<BalancerTradeResult, { label: string; tone: Tone }> = {
-  confirmed: { label: 'Confirmed', tone: 'emerald' }, mempool: { label: 'Broadcast', tone: 'sky' }, rejected: { label: 'Rejected', tone: 'rose' }, 'dry-run': { label: 'Dry run', tone: 'zinc' },
+const RESULT: Record<BalancerTradeResult, { label: string; tone: Tone; detail: string }> = {
+  confirmed: { label: 'Confirmed', tone: 'emerald', detail: 'In a block' },
+  indexed: { label: 'Indexed', tone: 'cyan', detail: 'The server has read it from the chain; it is not in a block yet' },
+  mempool: { label: 'Broadcast', tone: 'sky', detail: 'The node accepted the transaction' },
+  rejected: { label: 'Rejected', tone: 'rose', detail: 'The node refused the transaction' },
+  'dry-run': { label: 'Dry run', tone: 'zinc', detail: 'Built and not sent' },
 };
 const REASON: Record<string, string> = {
   'below-minimum': 'Below minimum profit', 'dust-rule': 'Too small for the covenant', paused: 'Bot paused', 'dry-run': 'Dry run', 'no-utxo': 'No wallet UTXO',
@@ -48,7 +52,7 @@ const REASON: Record<string, string> = {
 };
 
 const KindBadge = ({ kind }: { kind: BalancerKind }) => <Pill tone={KIND[kind]?.tone ?? 'zinc'} title={KIND[kind]?.detail}>{KIND[kind]?.label ?? kind}</Pill>;
-const ResultBadge = ({ result }: { result: BalancerTradeResult }) => <Pill tone={RESULT[result]?.tone ?? 'zinc'} dot>{RESULT[result]?.label ?? result}</Pill>;
+const ResultBadge = ({ result }: { result: BalancerTradeResult }) => <Pill tone={RESULT[result]?.tone ?? 'zinc'} title={RESULT[result]?.detail} dot>{RESULT[result]?.label ?? result}</Pill>;
 
 function Sats({ value, signed, className }: { value: string | null | undefined; signed?: boolean; className?: string }) {
   if (value === null || value === undefined) return <span className="text-zinc-600">—</span>;
@@ -372,7 +376,9 @@ export function BalancerTradeDetailPage() {
                     ['Actual profit', <Sats value={t.realisedNetSats} signed />],
                     ['Estimate error', <span className={cn('font-mono text-xs', diff < 0n ? 'text-amber-300' : 'text-zinc-400')}>{diff >= 0n ? '+' : ''}{diff.toString()} sats</span>],
                     ['Transaction', <TxLink txid={t.txid || null} />],
-                    t.confirmedAt ? ['Seen on chain', <TimeAgo at={t.confirmedAt} unit="ms" />] : null,
+                    t.indexedAt ? ['Read from the chain', <TimeAgo at={t.indexedAt} unit="ms" />] : null,
+                    // trades recorded before the three states have a time and no block height: the server had read them, no more is known
+                    t.confirmedAt ? [t.height ? 'In a block' : 'Seen on chain', <span><TimeAgo at={t.confirmedAt} unit="ms" />{t.height ? ` · height ${t.height}` : ''}</span>] : null,
                   ]} />
                 </Section>
                 <Section title="Mesh pools" className="lg:col-span-2" description="Each pool was filled at its own posted price and fee.">

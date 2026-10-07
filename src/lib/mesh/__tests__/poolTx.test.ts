@@ -8,7 +8,7 @@ import { binToHex, encodePrivateKeyWif, sha256, utf8ToBin } from '@bitauth/libau
 import { buildPoolContract, sideParams, type PoolParams } from '../pool';
 import { LocalWifSigner, ExternalWcSigner } from '../signer';
 import {
-  PoolTxError, buildCreatePools, buildFundPools, buildReprice, buildWithdraw, lockingBytecodeOf, voutOf, type Out,
+  PoolTxError, buildCreatePools, buildFundPools, buildReprice, buildWithdraw, lockingBytecodeOf, sendPoolTxWithRetry, voutOf, type Out,
 } from '../poolTx';
 
 const PUSD = 'dfe50223c8d5cba8dcef8dff6d92b61deb88a8ba44947367f2b746487b56039b';
@@ -182,6 +182,46 @@ describe('reprice', () => {
   it('refuses to change side or token', async () => {
     const oldPool = buildPoolContract(sellBch, provider);
     await expect(buildReprice(lp, { contract: oldPool, params: sellBch }, [{ txid: txid(9), vout: 1, satoshis: 180_060n }], sellTok)).rejects.toThrow(/side and token/);
+  });
+});
+
+describe('a withdrawal that collides with a fill', () => {
+  /** A signer whose broadcasts fail with the given node answers, in order, then succeed. */
+  const signerThat = (...failures: string[]) => {
+    const sent: unknown[] = [];
+    return { sent, signer: { send: async (builder: unknown) => { sent.push(builder); const f = failures.shift(); if (f) throw new Error(f); return 'ab'.repeat(32); } } as any };
+  };
+  const built = (name: string) => ({ builder: name as any });
+
+  it('is built again on what the pool holds and sent again', async () => {
+    const { signer, sent } = signerThat('the transaction was rejected by network rules. txn-mempool-conflict (code 18)');
+    const retries: number[] = [];
+    let rebuilt = 0;
+    const txidOut = await sendPoolTxWithRetry(signer, built('first'), 'Withdraw all', async () => built(`again-${++rebuilt}`), n => retries.push(n), 0);
+    expect(txidOut).toBe('ab'.repeat(32));
+    expect(sent).toEqual(['first', 'again-1']);
+    expect(retries).toEqual([1]);
+  });
+
+  it('gives up after three attempts with the reason', async () => {
+    const { signer, sent } = signerThat('missing inputs', 'bad-txns-inputs-missingorspent', 'txn-mempool-conflict');
+    let rebuilt = 0;
+    const e = await sendPoolTxWithRetry(signer, built('first'), 'Withdraw all', async () => built(`again-${++rebuilt}`), undefined, 0).catch(x => x);
+    expect(e).toBeInstanceOf(PoolTxError);
+    expect(e.code).toBe('POOL_CHANGED');
+    expect(sent).toHaveLength(3);
+  });
+
+  it('does not retry another failure, or without a way to build again', async () => {
+    const other = signerThat('dust (code 64)');
+    let rebuilt = 0;
+    const e1 = await sendPoolTxWithRetry(other.signer, built('first'), 'Withdraw all', async () => built(`again-${++rebuilt}`), undefined, 0).catch(x => x);
+    expect(e1.code).toBe('BROADCAST');
+    expect(rebuilt).toBe(0);
+    const single = signerThat('txn-mempool-conflict');
+    const e2 = await sendPoolTxWithRetry(single.signer, built('first'), 'Top up pool').catch(x => x);
+    expect(e2.code).toBe('POOL_CHANGED');
+    expect(single.sent).toHaveLength(1);
   });
 });
 

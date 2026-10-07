@@ -3,6 +3,7 @@
  */
 import React, { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { AlertTriangle } from 'lucide-react';
 import { useWDK } from '@/context/WDKProvider';
 import { useTokenMetadataMany } from '@/hooks/useTokenMetadata';
 import { resolveTokenIconUri } from '@/lib/tokenIcons';
@@ -13,6 +14,32 @@ import { formatUnits, formatSatsCompact, formatUsd, satsToUsd, shortHex } from '
 import { PUSD_CHIPNET, PUSD_MAINNET, pusdToken } from '@/lib/pusd';
 
 export const BCH_ICON = '/logos/bitcoin-cash-bch-logo.svg';
+
+/**
+ * Says so when a pool is priced on the wrong side of the market: it pays more
+ * for a token than the market does, or sells its token for less. Anyone can
+ * take the difference, so the reserve drains at that price. Renders nothing
+ * when no active pool is flagged.
+ */
+export function ThroughMarketNote({ pools, owner = false, className }: { pools: Pool[]; owner?: boolean; className?: string }) {
+  const hit = pools.filter(p => p.status === 'active' && p.throughMarket?.length);
+  if (!hit.length) return null;
+  const worst = hit.flatMap(p => p.throughMarket!).reduce((a, b) => (b.bps > a.bps ? b : a));
+  const pct = `${(worst.bps / 100).toFixed(worst.bps < 1000 ? 1 : 0)}%`;
+  const what = worst.side === 'buys-above-market' ? 'pays more for a token than the market does' : 'sells its token for less than the market pays';
+  return (
+    <div role="alert" className={cn('flex items-start gap-3 rounded-xl border border-amber-400/25 bg-amber-500/[0.06] px-4 py-3', className)}>
+      <AlertTriangle className="w-4 h-4 text-amber-300 mt-0.5 shrink-0" aria-hidden />
+      <div className="text-xs leading-relaxed">
+        <p className="font-semibold text-amber-200">{pools.length > 1 ? `${hit.length} of ${pools.length} pools are priced through the market` : 'This pool is priced through the market'}</p>
+        <p className="mt-0.5 text-amber-100/70">
+          {hit.length > 1 ? 'The furthest' : 'It'} {what}: {pct} past the Cauldron price, after its fee. Anyone can take that difference until the reserve is gone.
+          {owner && ' Reprice or withdraw it.'}
+        </p>
+      </div>
+    </div>
+  );
+}
 
 export interface TokenInfo { category: string; symbol: string; name: string; decimals: number; icon: string | null; known: boolean }
 

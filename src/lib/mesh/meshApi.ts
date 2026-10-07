@@ -63,6 +63,8 @@ export interface Pool {
   satsPerToken: string;
   traderSatsPerToken: string;
   status: PoolStatus;
+  /** Accepted assets this pool prices through the market (it pays more than Cauldron, or sells for less), in basis points past it. */
+  throughMarket?: Array<{ asset: string; side: 'buys-above-market' | 'sells-below-market'; bps: number }>;
   pairName?: string;
   bundleId?: string;
   pairRole?: 'FORWARD' | 'REVERSE' | 'STANDALONE';

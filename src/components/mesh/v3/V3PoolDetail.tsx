@@ -17,9 +17,9 @@ import { v3ContractFor } from '@/lib/mesh/v3/v3Pool';
 import { poolLevels, tokenRate } from '@/lib/mesh/v3/v3Display';
 import { buildDeployV3, buildWithdrawV3 } from '@/lib/mesh/v3/v3Tx';
 import { toBaseUnits } from '@/lib/mesh/v3/strategyForms';
-import { sendPoolTx, type BuiltTx } from '@/lib/mesh/poolTx';
+import { sendPoolTxWithRetry, type BuiltTx } from '@/lib/mesh/poolTx';
 import { explorerAddress, explorerTx, formatNumber, formatPct, formatSatsCompact, formatUnits, formatUsd, satsToUsd, shortHex, timeAgo } from '@/lib/mesh/format';
-import { EmptyState, Panel, PanelTabs, PoolStatusBadge, StatTile, TokenAvatar, lpUrl, poolUrl, useTokenInfo, type TokenInfo } from '@/components/mesh/pools/shared';
+import { EmptyState, Panel, PanelTabs, PoolStatusBadge, StatTile, ThroughMarketNote, TokenAvatar, lpUrl, poolUrl, useTokenInfo, type TokenInfo } from '@/components/mesh/pools/shared';
 import { ManageDock, useSmallScreen } from '@/components/mesh/ui/ManageDock';
 import { PoolValueChart } from '@/components/mesh/pools/PoolActivity';
 import { strategyUrl } from '@/components/mesh/strategies/StrategyBuilder';
@@ -129,6 +129,7 @@ export function V3PoolDetail({ pool: p, bundle, onSync, syncing }: { pool: Pool;
 
   return (
     <div className="container mx-auto pt-4 sm:pt-6 pb-28 lg:pb-6 px-4 md:px-8 max-w-[1200px] space-y-6">
+      <ThroughMarketNote pools={[p]} owner={!!wallet.pkh && wallet.pkh === p.ownerPkh} />
       <Link to={strategyId ? strategyUrl(strategyId) : '/mesh?tab=pools'} className="inline-flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300"><ArrowLeft className="w-3.5 h-3.5" />{strategyId ? 'Strategy' : 'Pools'}</Link>
 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -239,7 +240,7 @@ function V3ManagePanel({ pool, reserve }: { pool: Pool; reserve: TokenInfo }) {
   const [tab, setTab] = useState<'topup' | 'withdraw'>(pool.status === 'active' ? 'topup' : 'withdraw');
   const [amount, setAmount] = useState('');
   const [percent, setPercent] = useState(100);
-  const [pending, setPending] = useState<{ label: string; built: BuiltTx } | null>(null);
+  const [pending, setPending] = useState<{ label: string; built: BuiltTx; rebuild: () => Promise<BuiltTx> } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const isOwner = !!wallet.pkh && wallet.pkh === pool.ownerPkh;
@@ -260,13 +261,15 @@ function V3ManagePanel({ pool, reserve }: { pool: Pool; reserve: TokenInfo }) {
 
   async function prepare(label: string, build: () => Promise<BuiltTx>) {
     setError(null); setBusy('Building transaction…');
-    try { setPending({ label, built: await build() }); } catch (e: any) { setError(e?.message ?? String(e)); } finally { setBusy(null); }
+    try { setPending({ label, built: await build(), rebuild: build }); } catch (e: any) { setError(e?.message ?? String(e)); } finally { setBusy(null); }
   }
   async function confirm() {
     if (!pending) return;
     setBusy(wallet.kind === 'external' ? 'Approve in your wallet…' : 'Signing and broadcasting…');
     try {
-      const txid = await sendPoolTx(signer, pending.built, pending.label);
+      const approve = wallet.kind === 'external' ? 'Approve again in your wallet…' : 'Signing and broadcasting again…';
+      const txid = await sendPoolTxWithRetry(signer, pending.built, pending.label, pending.rebuild,
+        () => setBusy(`A trade just filled this pool. Building again on what it holds now. ${approve}`));
       setBusy('Waiting for the server to index it…');
       for (let i = 0; i < 8; i++) {
         await meshApi.sync(pool.address).catch(() => undefined);

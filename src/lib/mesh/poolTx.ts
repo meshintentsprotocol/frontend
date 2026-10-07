@@ -272,6 +272,26 @@ export async function sendPoolTx(signer: MeshSigner, built: { builder: Transacti
   }
 }
 
+/**
+ * Sign and broadcast. If a trade filled the pool between the build and the broadcast, `rebuild`
+ * builds the transaction again on what the pool holds now and it is sent again: twice at most.
+ * The owner asked for a share of the pool, so the share of what is left is still what they asked
+ * for. Without `rebuild`, or for any other failure, there is one attempt.
+ */
+export async function sendPoolTxWithRetry(
+  signer: MeshSigner, built: { builder: TransactionBuilder }, prompt: string,
+  rebuild?: () => Promise<{ builder: TransactionBuilder }>, onRetry?: (attempt: number) => void, waitMs = 1500,
+): Promise<string> {
+  for (let attempt = 1; ; attempt++) {
+    try { return await sendPoolTx(signer, built, prompt); } catch (e) {
+      if (!(e instanceof PoolTxError) || e.code !== 'POOL_CHANGED' || !rebuild || attempt >= 3) throw e;
+      onRetry?.(attempt);
+      await new Promise(r => setTimeout(r, waitMs));
+      built = await rebuild();
+    }
+  }
+}
+
 /** Locate the vout of `address` in a built output list (safety check before registering). */
 export function voutOf(outputs: Out[], address: string): number {
   const lock = lockingBytecodeOf(address);
