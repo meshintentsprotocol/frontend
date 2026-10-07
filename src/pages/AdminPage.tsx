@@ -44,6 +44,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { BCH_MESH_SERVER_URL } from '@/lib/config';
 import { shortenAddr } from '@/lib/utils';
 import axios from 'axios';
+import { savedAdminKey } from '@/admin/AdminContext';
 
 export interface RouteFlags {
     meshEnabled: boolean;
@@ -255,20 +256,20 @@ export function AdminPage() {
     const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
     const baseUrl = BCH_MESH_SERVER_URL.replace(/\/$/, '');
-    // meshserver requires x-admin-key on admin writes. VITE_ vars are bundled into the
-    // browser, so set VITE_MESH_ADMIN_KEY only for local/internal builds.
-    const adminHeaders = { 'x-admin-key': import.meta.env.VITE_MESH_ADMIN_KEY ?? '' };
+    // meshserver needs x-admin-key on every admin route. The key is the one entered in the
+    // console's key dialog (kept in this browser); it is never read from a build variable.
+    const adminHeaders = { 'x-admin-key': savedAdminKey() };
 
     const fetchData = useCallback(async (showRefreshing = false) => {
         if (showRefreshing) setIsRefreshing(true);
         try {
             const [statsRes, swapsRes, solverRes, poolsRes, routesRes, cauldronRes] = await Promise.allSettled([
-                axios.get(`${baseUrl}/api/v1/admin/stats`),
-                axios.get(`${baseUrl}/api/v1/admin/swaps?limit=100`),
-                axios.get(`${baseUrl}/api/v1/admin/solver`),
-                axios.get(`${baseUrl}/api/v1/admin/mesh-pools`),
-                axios.get(`${baseUrl}/api/v1/admin/routes/status`),
-                axios.get(`${baseUrl}/api/v1/admin/cauldron`),
+                axios.get(`${baseUrl}/api/v1/admin/stats`, { headers: adminHeaders }),
+                axios.get(`${baseUrl}/api/v1/admin/swaps?limit=100`, { headers: adminHeaders }),
+                axios.get(`${baseUrl}/api/v1/admin/solver`, { headers: adminHeaders }),
+                axios.get(`${baseUrl}/api/v1/admin/mesh-pools`, { headers: adminHeaders }),
+                axios.get(`${baseUrl}/api/v1/admin/routes/status`, { headers: adminHeaders }),
+                axios.get(`${baseUrl}/api/v1/admin/cauldron`, { headers: adminHeaders }),
             ]);
 
             if (statsRes.status === 'fulfilled' && statsRes.value.data?.data) {

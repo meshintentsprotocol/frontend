@@ -156,7 +156,7 @@ function KeyDialog() {
         <DialogHeader>
           <DialogTitle className="text-white font-heading flex items-center gap-2"><KeyRound className="w-4 h-4 text-emerald-300" />Admin key</DialogTitle>
           <DialogDescription className="text-zinc-400 text-sm">
-            Actions (pausing routes, retries, refunds, resyncs) send this key as <code className="text-zinc-300">x-admin-key</code>. It is checked against the server and kept only in this browser.
+            The console sends this key as <code className="text-zinc-300">x-admin-key</code> with every request, to read as well as to act. It is checked against the server and kept only in this browser.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={e => { e.preventDefault(); void save(); }} className="space-y-2">
@@ -164,7 +164,7 @@ function KeyDialog() {
           <input id="admin-key" type="password" autoComplete="off" value={value} onChange={e => setValue(e.target.value)}
             className="w-full h-9 px-3 rounded-lg bg-white/[0.03] border border-white/10 text-sm text-white font-mono focus:outline-none focus:border-emerald-400/50" />
           {state.error && <p role="alert" className="text-xs text-rose-300">{state.error}</p>}
-          {keySource !== 'none' && <p className="text-[11px] text-zinc-500">A key is set ({keySource === 'env' ? 'from VITE_MESH_ADMIN_KEY' : 'saved in this browser'}).</p>}
+          {keySource !== 'none' && <p className="text-[11px] text-zinc-500">A key is saved in this browser.</p>}
         </form>
         <DialogFooter className="gap-2">
           {keySource === 'stored' && (
@@ -192,7 +192,7 @@ function TopBar({ onMenu }: { onMenu: () => void }) {
         <span className={cn('inline-flex items-center gap-1.5 px-2 py-1 rounded-md border text-[11px] font-semibold uppercase tracking-wide',
           error ? 'border-rose-400/30 bg-rose-500/10 text-rose-300' : data?.network === 'mainnet' ? 'border-emerald-400/30 bg-emerald-500/10 text-emerald-300' : 'border-sky-400/30 bg-sky-500/10 text-sky-300')}>
           <span className={cn('w-1.5 h-1.5 rounded-full', error ? 'bg-rose-400' : 'bg-current animate-pulse')} aria-hidden />
-          {error ? (error instanceof AdminApiError && error.status === 404 ? 'Server needs restart' : 'Server unreachable') : data?.network ?? '…'}
+          {error ? (error instanceof AdminApiError && error.status === 404 ? 'Server needs restart' : error instanceof AdminApiError && error.status === 401 ? 'Key rejected' : 'Server unreachable') : data?.network ?? (keySource === 'none' ? 'locked' : '…')}
         </span>
         <span className="hidden md:inline text-[11px] text-zinc-500 font-mono truncate" title={serverUrl}>{serverUrl.replace(/^https?:\/\//, '')}</span>
       </div>
@@ -210,17 +210,35 @@ function TopBar({ onMenu }: { onMenu: () => void }) {
           className={cn('inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg border text-xs font-semibold',
             keySource === 'none' ? 'border-amber-400/30 bg-amber-500/10 text-amber-200' : 'border-emerald-400/25 bg-emerald-500/10 text-emerald-200')}>
           {keySource === 'none' ? <ShieldAlert className="w-3.5 h-3.5" /> : <ShieldCheck className="w-3.5 h-3.5" />}
-          <span className="hidden sm:inline">{keySource === 'none' ? 'Read-only' : 'Admin'}</span>
+          <span className="hidden sm:inline">{keySource === 'none' ? 'Enter key' : 'Admin'}</span>
         </button>
       </div>
     </header>
   );
 }
 
+function Locked({ rejected }: { rejected: boolean }) {
+  const { openKeyDialog } = useAdmin();
+  return (
+    <div className="mx-auto max-w-md rounded-2xl border border-white/[0.08] bg-white/[0.02] p-6 sm:p-8 text-center space-y-4 mt-10">
+      <div className="mx-auto w-11 h-11 rounded-xl bg-amber-500/10 border border-amber-400/25 flex items-center justify-center"><KeyRound className="w-5 h-5 text-amber-300" aria-hidden /></div>
+      <h1 className="text-lg font-heading font-bold text-white">{rejected ? 'The server rejected this key' : 'Admin key needed'}</h1>
+      <p className="text-sm text-zinc-400 leading-relaxed">
+        {rejected ? 'The key saved in this browser no longer matches the server. Enter the current one.' : 'The admin console reads wallets, orders, LPs and settings, so the server answers only with the admin key.'} It stays in this browser.
+      </p>
+      <button type="button" onClick={() => openKeyDialog()} className="h-9 px-4 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white">Enter admin key</button>
+    </div>
+  );
+}
+
 function Frame({ children }: { children: ReactNode }) {
   const [menu, setMenu] = useState(false);
   const loc = useLocation();
-  const { data } = useOverview();
+  const { data, error } = useOverview();
+  const { adminKey } = useAdmin();
+  // the server shows nothing without a valid key: ask for it in place of the pages
+  const rejected = error instanceof AdminApiError && error.status === 401;
+  const locked = !adminKey || rejected;
   useEffect(() => setMenu(false), [loc.pathname]);
   return (
     <AssetProvider network={data?.network ?? 'chipnet'}>
@@ -239,7 +257,7 @@ function Frame({ children }: { children: ReactNode }) {
         )}
         <div className="lg:pl-60 min-w-0">
           <TopBar onMenu={() => setMenu(true)} />
-          <main className="px-3 sm:px-5 lg:px-8 py-5 sm:py-6 max-w-[1500px] mx-auto space-y-5">{children}</main>
+          <main className="px-3 sm:px-5 lg:px-8 py-5 sm:py-6 max-w-[1500px] mx-auto space-y-5">{locked ? <Locked rejected={rejected} /> : children}</main>
         </div>
         <KeyDialog />
       </div>

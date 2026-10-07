@@ -3,8 +3,9 @@
  * meshserver src/api/routes/adminOps.ts) plus the legacy admin routes still
  * used for route control, refunds and the solver cycle.
  *
- * Amounts are base-unit strings; asset '0x' is BCH (sats). Reads are open;
- * writes send x-admin-key and throw AdminApiError with the server's message.
+ * Amounts are base-unit strings; asset '0x' is BCH (sats). Every request,
+ * reads included, sends x-admin-key; errors throw AdminApiError with the
+ * server's message.
  */
 import type { Pool, PoolEvent, PoolStatus, StrategySummary, IdleItem, LpSummary } from '@/lib/mesh/meshApi';
 
@@ -273,10 +274,10 @@ export function createAdminApi(baseUrl: string, getKey: () => string) {
     const p = Object.entries(q).filter(([, v]) => v !== undefined && v !== null && v !== '');
     return p.length ? '?' + new URLSearchParams(p.map(([k, v]) => [k, String(v)])).toString() : '';
   };
-  async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown, auth = method !== 'GET'): Promise<T> {
+  async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
     const headers: Record<string, string> = {};
     if (body !== undefined) headers['content-type'] = 'application/json';
-    if (auth) headers['x-admin-key'] = getKey();
+    headers['x-admin-key'] = getKey();
     const res = await fetch(base + path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
     const text = await res.text();
     let json: any = null;

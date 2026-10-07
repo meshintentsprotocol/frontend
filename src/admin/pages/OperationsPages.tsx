@@ -201,7 +201,7 @@ export function SystemPage() {
               <Section title="Security" icon={<ShieldCheck className="w-4 h-4 text-emerald-300" />}>
                 <KeyValue rows={[
                   ['Admin API key', <Pill tone={s.security.adminKeyConfigured ? 'emerald' : 'amber'} dot>{s.security.adminKeyConfigured ? 'Configured' : 'Not set: actions disabled'}</Pill>],
-                  ['This browser', keySource === 'none' ? 'read-only' : keySource === 'env' ? 'key from build env' : 'key saved locally'],
+                  ['This browser', keySource === 'none' ? 'no key' : 'key saved locally'],
                   ['Oracle signing', <Pill tone={s.security.oracleSigning ? 'emerald' : 'zinc'} dot>{s.security.oracleSigning ? 'Enabled' : 'No key'}</Pill>],
                   s.security.oraclePubkey ? ['Oracle pubkey', <Hash value={s.security.oraclePubkey} />] : null,
                   ['Treasury PKH', s.security.treasuryPkh ? <Hash value={s.security.treasuryPkh} /> : <span className="text-amber-300">not set (solver keeps protocol share)</span>],

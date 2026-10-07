@@ -11,8 +11,9 @@ import { AdminApiError, type Query } from './api';
 const k = (...parts: unknown[]) => ['admin', ...parts];
 
 function usePolled<T>(key: unknown[], fn: () => Promise<T>, factor = 1, enabled = true) {
-  const { interval } = useAdmin();
-  return useQuery({ queryKey: key, queryFn: fn, refetchInterval: interval(factor), placeholderData: keepPreviousData, enabled, retry: 1 });
+  const { interval, adminKey } = useAdmin();
+  // the server answers nothing without the key: do not ask until there is one
+  return useQuery({ queryKey: key, queryFn: fn, refetchInterval: interval(factor), placeholderData: keepPreviousData, enabled: enabled && !!adminKey, retry: 1 });
 }
 
 export function useOverview() { const { api } = useAdmin(); return usePolled(k('overview'), api.overview); }

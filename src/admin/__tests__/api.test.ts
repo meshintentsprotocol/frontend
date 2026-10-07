@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { createAdminApi, AdminApiError, sellAsset, buyAsset } from '../api';
 
-/** Admin console client: reads are open, writes carry x-admin-key, errors keep the server's message. */
+/** Admin console client: every request carries x-admin-key, errors keep the server's message. */
 function mockFetch(status: number, body: unknown) {
   const fn = vi.fn(async (_url: string, _init?: RequestInit) => new Response(JSON.stringify(body), { status }));
   vi.stubGlobal('fetch', fn);
@@ -11,12 +11,12 @@ function mockFetch(status: number, body: unknown) {
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe('createAdminApi', () => {
-  it('reads without the key and drops empty query params', async () => {
+  it('reads send the key too, and drop empty query params', async () => {
     const f = mockFetch(200, { total: 0, intents: [], counts: {} });
     await createAdminApi('http://mesh:3001/', () => 'secret').intents({ status: 'open', kind: '', owner: undefined, limit: 50 });
     const [url, init] = f.mock.calls[0]!;
     expect(url).toBe('http://mesh:3001/api/v1/admin/intents?status=open&limit=50');
-    expect((init?.headers as Record<string, string>)['x-admin-key']).toBeUndefined();
+    expect((init?.headers as Record<string, string>)['x-admin-key']).toBe('secret');
   });
 
   it('writes send the current key and a JSON body', async () => {
@@ -54,14 +54,14 @@ describe('intent assets', () => {
 });
 
 describe('Mesh Balancer calls', () => {
-  it('reads the bot status and filtered trades without the key', async () => {
+  it('reads the bot status and filtered trades', async () => {
     const f = mockFetch(200, { total: 0, trades: [] });
     const api = createAdminApi('http://mesh:3001', () => 'secret');
     await api.balancerTrades({ kind: 'mesh-cross', result: '', limit: 50, offset: 0 });
     await api.balancerTrade('trd-1/x');
     expect(f.mock.calls[0]![0]).toBe('http://mesh:3001/api/v1/admin/balancer/trades?kind=mesh-cross&limit=50&offset=0');
     expect(f.mock.calls[1]![0]).toBe('http://mesh:3001/api/v1/admin/balancer/trades/trd-1%2Fx');
-    expect((f.mock.calls[0]![1]?.headers as Record<string, string>)['x-admin-key']).toBeUndefined();
+    expect((f.mock.calls[0]![1]?.headers as Record<string, string>)['x-admin-key']).toBe('secret');
   });
 
   it('settings, pause and commands are writes with the admin key', async () => {
