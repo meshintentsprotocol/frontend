@@ -12,6 +12,7 @@ import { TwapListPage, TwapDetailPage, TradersPage } from './pages/TwapPages';
 import { PoolsPage, PoolDetailPage } from './pages/PoolPages';
 import { StrategiesPage, StrategyDetailPage, LpsPage, LpDetailPage, IdlePage } from './pages/LiquidityPages';
 import { OperationsPage, RefundsPage, SystemPage } from './pages/OperationsPages';
+import { BalancerOverviewPage, BalancerTradesPage, BalancerTradeDetailPage, BalancerOpportunitiesPage, BalancerWalletPage, BalancerSettingsPage } from './pages/BalancerPages';
 import { AdminPage } from '@/pages/AdminPage';
 
 export const adminRoutes = (
@@ -34,6 +35,12 @@ export const adminRoutes = (
     <Route path="operations" element={<OperationsPage />} />
     <Route path="refunds" element={<RefundsPage />} />
     <Route path="system" element={<SystemPage />} />
+    <Route path="balancer" element={<BalancerOverviewPage />} />
+    <Route path="balancer/trades" element={<BalancerTradesPage />} />
+    <Route path="balancer/trades/:id" element={<BalancerTradeDetailPage />} />
+    <Route path="balancer/opportunities" element={<BalancerOpportunitiesPage />} />
+    <Route path="balancer/wallet" element={<BalancerWalletPage />} />
+    <Route path="balancer/settings" element={<BalancerSettingsPage />} />
     <Route path="legacy" element={<AdminPage />} />
   </Route>
 );

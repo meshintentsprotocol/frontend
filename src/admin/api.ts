@@ -15,7 +15,7 @@ export class AdminApiError extends Error {
 // ── Shared ───────────────────────────────────────────────────────────────────
 
 export type Severity = 'info' | 'success' | 'warn' | 'error';
-export type EventCategory = 'intent' | 'fill' | 'refund' | 'pool' | 'strategy' | 'recycle' | 'twap' | 'route' | 'system';
+export type EventCategory = 'intent' | 'fill' | 'refund' | 'pool' | 'strategy' | 'recycle' | 'twap' | 'route' | 'balancer' | 'system';
 export type FillMethod = 'MESH_POOL' | 'CAULDRON' | 'SOLVER_INVENTORY' | 'SPLIT';
 export type IntentKind = 'limit' | 'dutch' | 'twap';
 export type IntentStatus =
@@ -97,6 +97,8 @@ export interface Overview {
     hourly: Array<{ t: number; created: number; filled: number; refunded: number }>;
     daily: Array<{ t: number; created: number; filled: number; refunded: number; bchVolumeSats: string } & Record<FillMethod, number>>;
   };
+  /** the Mesh Balancer bot, as last reported (2026-10-06+) */
+  balancer?: { seen: boolean; online: boolean; state: BalancerState | null; enabled: boolean; dryRun: boolean; profit24hSats: string; trades24h: number; balanceSats: string | null };
   alerts: Alert[];
   ws: { clients: number };
 }
@@ -212,6 +214,55 @@ export interface RefundsReport {
 
 export interface SolverCycleReport { planned: number; filled: Array<{ intentId: string; method: string; txid: string }>; failed: Array<{ intentId: string; method: string; error: string }>; unfillable: Array<{ intentId: string; reason: string }> }
 
+// ── Mesh Balancer bot (meshserver src/balancer/types.ts) ──────────────────────
+
+export type BalancerKind = 'cauldron-buy' | 'cauldron-sell' | 'mesh-cross';
+export type BalancerState = 'running' | 'paused' | 'dry-run' | 'idle-no-funds' | 'error' | 'stopped';
+export type BalancerTradeResult = 'mempool' | 'confirmed' | 'rejected' | 'dry-run';
+
+export interface BalancerConfig {
+  enabled: boolean; dryRun: boolean;
+  modes: { cauldron: boolean; meshCross: boolean; sameOwner: boolean };
+  minProfitSats: string; dailyCapSats: string | null;
+  denyTokens: string[]; denyPools: string[]; cycleMs: number; version: number; updatedAt: number; note?: string;
+}
+export interface BalancerPoolRef { address: string; ownerPkh: string; strategy?: string; role: 'buys-token' | 'sells-token'; satsPerToken: number; outpoint: string }
+export interface BalancerOpportunity {
+  id: string; key: string; at: number; kind: BalancerKind; token: string; pools: BalancerPoolRef[]; counterSatsPerToken: number;
+  tokenAmount: string; bchReceived: string; bchPaid: string; grossSats: string; costSats: string; netSats: string;
+  decision: 'taken' | 'skipped'; reason?: string; detail?: string; tradeId?: string;
+}
+export interface BalancerTxPart { index: number; role: 'mesh-pool' | 'cauldron-pool' | 'wallet' | 'proceeds' | 'change' | 'pad'; address?: string; sats: string; token?: { category: string; amount: string } }
+export interface BalancerTrade {
+  id: string; at: number; kind: BalancerKind; token: string; pools: BalancerPoolRef[]; tokenAmount: string; bchReceived: string; bchPaid: string;
+  txid: string; sizeBytes: number; feeSats: string; carrierSats: string; plannedNetSats: string; realisedNetSats: string; latencyMs: number;
+  result: BalancerTradeResult; error?: string; confirmedAt?: number; inputs: BalancerTxPart[]; outputs: BalancerTxPart[];
+}
+export interface BalancerWallet { address: string | null; balanceSats: string | null; utxoCount: number; tokens: Record<string, string>; utxos?: Array<{ txid: string; vout: number; sats: string; token?: { category: string; amount: string } }> }
+export interface BalancerHeartbeat {
+  at: number; state: BalancerState; error?: string; build: string; network: string; startedAt: number; cycles: number; lastCycleMs: number;
+  poolsWatched: number; tokensWatched: number; electrumOk: boolean; cauldronOk: boolean; wallet: BalancerWallet; configVersion: number;
+}
+export interface BalancerWindow { trades: number; rejected: number; profitSats: string; feeSats: string; volumeSats: string }
+export interface BalancerGroup { key: string; trades: number; profitSats: string; volumeSats: string }
+export interface BalancerSummary {
+  h24: BalancerWindow; d7: BalancerWindow; all: BalancerWindow; dryRunTrades: number;
+  byKind: Record<BalancerKind, { trades: number; profitSats: string; volumeSats: string }>;
+  byToken: BalancerGroup[]; byPool: BalancerGroup[]; byLp: BalancerGroup[];
+  daily: Array<{ day: number; trades: number; rejected: number; profitSats: string; volumeSats: string }>;
+  opportunities: { seen24h: number; taken24h: number; skipReasons: Record<string, number>; lostToExternal24h: number };
+  latencyMs: { median: number | null; max: number | null };
+  negativeTrades: number; requotesCaused: number;
+}
+export interface BalancerCommand { id: string; type: 'scan-now' | 'split-utxos'; at: number; args?: Record<string, unknown>; status: 'pending' | 'sent' | 'done' | 'failed'; message?: string }
+export interface BalancerStatus {
+  online: boolean; ingestEnabled: boolean; lastHeartbeatAt: number | null; heartbeat: BalancerHeartbeat | null; config: BalancerConfig; openCount: number;
+  summary: BalancerSummary; recentTrades: BalancerTrade[]; commands: BalancerCommand[];
+}
+export interface BalancerOpportunityList { total: number; opportunities: BalancerOpportunity[]; open: BalancerOpportunity[]; lost: Array<{ at: number; address: string; txid: string; key: string }> }
+export interface BalancerWalletView { online: boolean; wallet: BalancerWallet | null; lowBalanceSats: string; history: Array<{ at: number; sats: string; utxos: number }>; commands: BalancerCommand[] }
+export type BalancerConfigPatch = Partial<Omit<BalancerConfig, 'modes' | 'version' | 'updatedAt'>> & { modes?: Partial<BalancerConfig['modes']> };
+
 export type Query = Record<string, string | number | undefined | null>;
 
 // ── Client ───────────────────────────────────────────────────────────────────
@@ -269,6 +320,17 @@ export function createAdminApi(baseUrl: string, getKey: () => string) {
     note: (text: string, subject?: string) => post<{ event: OpsEvent }>('/events/note', { text, subject }),
     setRoutes: (flags: Partial<Pick<RouteFlags, 'meshEnabled' | 'solverEnabled' | 'cauldronEnabled'>> & { reason?: string }) => post<{ routes: RouteFlags }>('/routes/control', flags),
     runSolverCycle: () => post<SolverCycleReport & { success: boolean }>('/trigger-match'),
+    // Mesh Balancer bot
+    balancer: () => get<BalancerStatus>('/balancer'),
+    balancerTrades: (q?: Query) => get<{ total: number; trades: BalancerTrade[] }>('/balancer/trades', q),
+    balancerTrade: (id: string) => get<{ trade: BalancerTrade; events: OpsEvent[] }>(`/balancer/trades/${encodeURIComponent(id)}`),
+    balancerOpportunities: (q?: Query) => get<BalancerOpportunityList>('/balancer/opportunities', q),
+    balancerWallet: () => get<BalancerWalletView>('/balancer/wallet'),
+    balancerConfig: () => get<{ config: BalancerConfig; appliedVersion: number | null; history: OpsEvent[] }>('/balancer/config'),
+    setBalancerConfig: (patch: BalancerConfigPatch & { note?: string }) => post<{ config: BalancerConfig }>('/balancer/config', patch),
+    pauseBalancer: (reason?: string) => post<{ config: BalancerConfig }>('/balancer/pause', { reason }),
+    resumeBalancer: () => post<{ config: BalancerConfig }>('/balancer/resume'),
+    balancerCommand: (type: BalancerCommand['type'], args: Record<string, unknown> = {}) => post<{ command: BalancerCommand }>('/balancer/command', { type, ...args }),
     sweepRefunds: () => post<{ message: string; results: Array<{ intentId: string; refundTxid: string | null; status: string; error: string | null }> }>('/refunds/sweep'),
   };
 }

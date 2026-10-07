@@ -9,7 +9,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   AlertTriangle, CheckCircle2, Info, XCircle, Copy, Check, ExternalLink, Loader2, Search, ChevronLeft, ChevronRight,
-  Inbox, ArrowDownUp, Zap, Waves, Boxes, Recycle, Clock, Route, Server, Layers, Repeat, Undo2,
+  Inbox, ArrowDownUp, Zap, Waves, Boxes, Recycle, Clock, Route, Server, Layers, Repeat, Undo2, Scale,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { explorerAddress, explorerTx, shortHex } from '@/lib/mesh/format';
@@ -116,6 +116,7 @@ export const CATEGORY: Record<EventCategory, { label: string; icon: typeof Info;
   recycle: { label: 'Recycle', icon: Recycle, tone: 'violet', color: '#a78bfa' },
   twap: { label: 'TWAP', icon: Repeat, tone: 'violet', color: '#c084fc' },
   route: { label: 'Routing', icon: Route, tone: 'amber', color: '#f59e0b' },
+  balancer: { label: 'Balancer', icon: Scale, tone: 'cyan', color: '#2dd4bf' },
   system: { label: 'System', icon: Server, tone: 'zinc', color: '#a1a1aa' },
 };
 export function CategoryIcon({ category, className }: { category: EventCategory; className?: string }) {
@@ -264,6 +265,7 @@ export const adminUrl = {
   lp: (pkh: string) => `/admin/lps/${encodeURIComponent(pkh)}`,
   twap: (id: string) => `/admin/twap/${encodeURIComponent(id)}`,
   trader: (owner: string) => `/admin/intents?owner=${encodeURIComponent(owner)}`,
+  balancerTrade: (id: string) => `/admin/balancer/trades/${encodeURIComponent(id)}`,
 };
 
 /** Link for an event subject / related ref. */

@@ -8,7 +8,7 @@ import { NavLink, Outlet, Link, useLocation } from 'react-router-dom';
 import { useIsFetching } from '@tanstack/react-query';
 import {
   LayoutDashboard, Activity, ArrowDownUp, Zap, Repeat, Users, Waves, Layers, UserCircle, Recycle, SlidersHorizontal,
-  Undo2, Server, KeyRound, Pause, Play, Menu, X, ShieldCheck, ShieldAlert, History, ArrowLeft, RefreshCw,
+  Undo2, Server, KeyRound, Pause, Play, Menu, X, ShieldCheck, ShieldAlert, History, ArrowLeft, RefreshCw, Scale, ArrowLeftRight, Radar, Wallet, Settings2,
 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
@@ -50,6 +50,15 @@ const NAV: Array<{ group: string; items: NavItem[] }> = [
       { to: '/admin/refunds', label: 'Refunds', icon: Undo2, badge: o => (o.intents.refundableNow ? { n: o.intents.refundableNow, tone: 'amber' } : null) },
       { to: '/admin/system', label: 'System', icon: Server },
       { to: '/admin/legacy', label: 'Legacy admin', icon: History },
+    ],
+  },
+  {
+    group: 'Balancer bot', items: [
+      { to: '/admin/balancer', label: 'Bot overview', icon: Scale, end: true, badge: o => (!o.balancer?.seen ? null : !o.balancer.online && o.balancer.enabled ? { n: 1, tone: 'rose' } : o.balancer.state === 'error' ? { n: 1, tone: 'rose' } : !o.balancer.enabled ? { n: 1, tone: 'amber' } : null) },
+      { to: '/admin/balancer/trades', label: 'Trades', icon: ArrowLeftRight, badge: o => (o.balancer?.trades24h ? { n: o.balancer.trades24h, tone: 'zinc' } : null) },
+      { to: '/admin/balancer/opportunities', label: 'Opportunities', icon: Radar },
+      { to: '/admin/balancer/wallet', label: 'Wallet', icon: Wallet },
+      { to: '/admin/balancer/settings', label: 'Settings', icon: Settings2 },
     ],
   },
 ];

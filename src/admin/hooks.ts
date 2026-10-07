@@ -30,6 +30,12 @@ export function useIdle() { const { api } = useAdmin(); return usePolled(k('idle
 export function useTwaps(q: Query) { const { api } = useAdmin(); return usePolled(k('twaps', q), () => api.twaps(q)); }
 export function useTwap(id: string) { const { api } = useAdmin(); return usePolled(k('twap', id), () => api.twap(id), 1, !!id); }
 export function useSystem() { const { api } = useAdmin(); return usePolled(k('system'), api.system, 3); }
+export function useBalancer() { const { api } = useAdmin(); return usePolled(k('balancer'), api.balancer); }
+export function useBalancerTrades(q: Query) { const { api } = useAdmin(); return usePolled(k('balancer-trades', q), () => api.balancerTrades(q)); }
+export function useBalancerTrade(id: string) { const { api } = useAdmin(); return usePolled(k('balancer-trade', id), () => api.balancerTrade(id), 1, !!id); }
+export function useBalancerOpportunities(q: Query) { const { api } = useAdmin(); return usePolled(k('balancer-opps', q), () => api.balancerOpportunities(q)); }
+export function useBalancerWallet() { const { api } = useAdmin(); return usePolled(k('balancer-wallet'), api.balancerWallet); }
+export function useBalancerConfig() { const { api } = useAdmin(); return usePolled(k('balancer-config'), api.balancerConfig, 2); }
 export function useRefunds() { const { api } = useAdmin(); return usePolled(k('refunds'), api.refunds); }
 
 /**
