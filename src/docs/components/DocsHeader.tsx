@@ -3,11 +3,13 @@ import { Link } from 'react-router-dom';
 import { ArrowUpRight, Github, Menu, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
-import { NAV, firstPageOf, type NavSection } from '../nav';
+import type { NavSection } from '../nav';
+import { useDocs } from '../lib/store';
 import { DocsSidebar } from './DocsSidebar';
 
 export function DocsHeader({ activeSection, activeSlug, onSearch }: { activeSection?: NavSection; activeSlug?: string; onSearch: () => void }) {
     const [mobileOpen, setMobileOpen] = useState(false);
+    const { nav, firstPageOf } = useDocs();
 
     return (
         <header className="sticky top-0 z-40 border-b border-white/[0.06] bg-[#050505]/80 backdrop-blur-xl supports-[backdrop-filter]:bg-[#050505]/65">
@@ -30,7 +32,7 @@ export function DocsHeader({ activeSection, activeSlug, onSearch }: { activeSect
                 </Link>
 
                 <nav className="ml-4 hidden h-16 items-stretch gap-1 lg:flex" aria-label="Docs sections">
-                    {NAV.map(s => {
+                    {nav.map(s => {
                         const active = activeSection?.id === s.id;
                         return (
                             <Link
@@ -82,7 +84,7 @@ export function DocsHeader({ activeSection, activeSlug, onSearch }: { activeSect
                     <SheetTitle className="sr-only">Docs navigation</SheetTitle>
                     <div className="border-b border-white/[0.06] p-3">
                         <div className="grid grid-cols-2 gap-1">
-                            {NAV.map(s => (
+                            {nav.map(s => (
                                 <Link
                                     key={s.id}
                                     to={`/docs/${firstPageOf(s).slug}`}

@@ -1,9 +1,9 @@
-import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { NAV, firstPageOf } from '../nav';
-import { sectionStats } from '../lib/content';
+import { docsHomeSeo } from '@/shared/seo';
+import { useSeo } from '@/lib/useSeo';
+import { useDocs, useDocsSite } from '../lib/store';
 import { ProtocolStack } from '../diagrams/ProtocolStack';
 import { Cards } from '../components/Cards';
 import { Screenshot } from '../components/Screenshot';
@@ -42,7 +42,8 @@ const SHOTS = [
 ];
 
 export function DocsHome({ onSearch }: { onSearch: () => void }) {
-    useEffect(() => { document.title = 'BCH Intents Developer Docs'; }, []);
+    const { nav, firstPageOf, sectionStats } = useDocs();
+    useSeo(docsHomeSeo(useDocsSite()));
 
     return (
         <div className="pb-24">
@@ -78,7 +79,7 @@ export function DocsHome({ onSearch }: { onSearch: () => void }) {
                 <section className="pt-14">
                     <h2 className="text-[13px] font-semibold uppercase tracking-[0.12em] text-zinc-500">Explore the protocol</h2>
                     <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                        {NAV.map(s => {
+                        {nav.map(s => {
                             const st = sectionStats(s.id);
                             return (
                                 <Link key={s.id} to={`/docs/${firstPageOf(s).slug}`} className="group flex flex-col rounded-xl border border-white/[0.06] bg-white/[0.015] p-5 transition-all hover:border-emerald-500/25 hover:bg-emerald-500/[0.03]">

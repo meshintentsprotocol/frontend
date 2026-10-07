@@ -1,16 +1,31 @@
 // ============================================================================
 // Developer docs — information architecture
 // ============================================================================
-// This file is the single source of truth for the docs site structure:
-// header tabs (sections) → sidebar groups (nestable subtrees) → pages.
+// The docs structure is header tabs (sections) → sidebar groups (nestable
+// subtrees) → pages. It is edited in Sanity Studio ("Developer Docs →
+// Sections & sidebar") and loaded by lib/source.ts.
 //
-// To add a page:
-//   1. Add a leaf here: { slug: 'section/.../page', title: 'Sidebar label' }
-//   2. Create src/docs/content/<slug>.md with frontmatter (see docs README).
-// A leaf without a markdown file renders as a "planned" page automatically.
+// LOCAL_NAV below is the bundled copy used when no Sanity project is
+// configured, and the input of studio/scripts/import.ts.
 
 import type { LucideIcon } from 'lucide-react';
-import { Rocket, Zap, Network, FileCode2, Package, Server, Bot } from 'lucide-react';
+import { BookOpen, Bot, FileCode2, Layers, Network, Package, Rocket, Server, Shield, Terminal, Wallet, Zap } from 'lucide-react';
+
+/** Section icons by the name stored in Sanity (studio/schemaTypes/docs.ts). */
+export const ICONS: Record<string, LucideIcon> = {
+    rocket: Rocket,
+    zap: Zap,
+    network: Network,
+    'file-code': FileCode2,
+    package: Package,
+    server: Server,
+    bot: Bot,
+    'book-open': BookOpen,
+    shield: Shield,
+    layers: Layers,
+    wallet: Wallet,
+    terminal: Terminal,
+};
 
 export type NavBadge = 'new' | 'beta' | 'soon';
 export type HttpMethod = 'GET' | 'POST' | 'WS';
@@ -42,7 +57,7 @@ export interface NavSection {
 
 export const isGroup = (n: NavNode): n is NavGroup => (n as NavGroup).items !== undefined;
 
-export const NAV: NavSection[] = [
+export const LOCAL_NAV: NavSection[] = [
     {
         id: 'get-started',
         title: 'Get Started',
@@ -357,7 +372,8 @@ export interface FlatPage extends NavLeaf {
     trail: string[];
 }
 
-function flatten(): FlatPage[] {
+/** Every page in reading order — drives prev/next and search. */
+export function flatten(nav: NavSection[]): FlatPage[] {
     const out: FlatPage[] = [];
     const walk = (nodes: NavNode[], section: NavSection, trail: string[]) => {
         for (const n of nodes) {
@@ -365,15 +381,6 @@ function flatten(): FlatPage[] {
             else out.push({ ...n, section, trail });
         }
     };
-    for (const s of NAV) walk(s.groups, s, []);
+    for (const s of nav) walk(s.groups, s, []);
     return out;
 }
-
-/** Every page in reading order — drives prev/next and search. */
-export const FLAT_PAGES: FlatPage[] = flatten();
-
-export const findPage = (slug: string) => FLAT_PAGES.find(p => p.slug === slug);
-
-export const findSection = (id: string) => NAV.find(s => s.id === id);
-
-export const firstPageOf = (section: NavSection) => FLAT_PAGES.find(p => p.section.id === section.id)!;

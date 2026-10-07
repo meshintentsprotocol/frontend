@@ -2,13 +2,13 @@
 // Developer docs (/docs/*)
 // ============================================================================
 // Self-contained subtree: header tabs + sidebar + article + TOC.
-// Structure lives in nav.ts, content in content/**/*.md, embeds in embeds.tsx.
+// Structure and content are authored in Sanity Studio and loaded by
+// lib/source.ts; embeds live in embeds.tsx.
 // Authoring guide: src/docs/README.md
 
 import { useEffect, useState } from 'react';
 import { Navigate, useParams } from 'react-router-dom';
-import { findSection, firstPageOf } from './nav';
-import { getPage } from './lib/content';
+import { DocsProvider, useDocs } from './lib/store';
 import { DocsHeader } from './components/DocsHeader';
 import { DocsSidebar } from './components/DocsSidebar';
 import { DocsSearch } from './components/DocsSearch';
@@ -16,6 +16,15 @@ import { DocsPage } from './pages/DocsPage';
 import { DocsHome } from './pages/DocsHome';
 
 export default function DocsApp() {
+    return (
+        <DocsProvider>
+            <DocsShell />
+        </DocsProvider>
+    );
+}
+
+function DocsShell() {
+    const { getPage, findSection, firstPageOf } = useDocs();
     const params = useParams();
     const slug = (params['*'] ?? '').replace(/\/+$/, '');
     const [searchOpen, setSearchOpen] = useState(false);

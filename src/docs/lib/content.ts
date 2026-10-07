@@ -1,10 +1,14 @@
 // ============================================================================
-// Docs content loader
+// Docs content model
 // ============================================================================
-// Every src/docs/content/**/*.md file is bundled as raw text. The file path
-// (minus extension) is the page slug and must match a leaf in nav.ts.
+// buildDocs() turns a nav tree plus page sources into everything the docs UI
+// reads: pages in reading order, lookups, TOC headings and the search index.
+// Where the nav and sources come from (Sanity or the bundled markdown) is
+// decided in source.ts.
 
-import { FLAT_PAGES, type FlatPage } from '../nav';
+import { flatten, type FlatPage, type NavSection } from '../nav';
+// Relative, not "@/": studio/scripts/import.ts loads this file outside the app's path aliases.
+import type { SeoFields } from '../../shared/seo';
 
 export type DocStatus = 'ready' | 'draft' | 'planned';
 
@@ -14,43 +18,41 @@ export interface DocHeading {
     id: string;
 }
 
+export interface DocTag {
+    slug: string;
+    title: string;
+}
+
+/** One page as authored: every field but the body is optional. */
+export interface PageSource {
+    title?: string;
+    description?: string;
+    status?: string;
+    updated?: string;
+    sources?: string[];
+    tags?: DocTag[];
+    seo?: SeoFields;
+    /** ISO timestamp of the last edit, when the source knows it. */
+    modified?: string;
+    body: string;
+}
+
 export interface DocPage {
     slug: string;
     nav: FlatPage;
     title: string;
     description: string;
     status: DocStatus;
-    /** devrel-agent-context documents this page is written from. */
+    /** Code files and spec documents this page is written from. */
     sources: string[];
+    tags: DocTag[];
+    seo?: SeoFields;
     updated?: string;
+    modified?: string;
     body: string;
     headings: DocHeading[];
-    /** True when the page has no markdown file yet (auto "planned" page). */
+    /** True when the page has no body yet (auto "planned" page). */
     missing: boolean;
-}
-
-const RAW = import.meta.glob('../content/**/*.md', {
-    query: '?raw',
-    import: 'default',
-    eager: true,
-}) as Record<string, string>;
-
-const FILES: Record<string, string> = Object.fromEntries(
-    Object.entries(RAW).map(([path, text]) => [path.replace('../content/', '').replace(/\.md$/, ''), text]),
-);
-
-// ── Frontmatter ──────────────────────────────────────────────────────────────
-
-function parseFrontmatter(raw: string): { meta: Record<string, string>; body: string } {
-    const text = raw.replace(/\r\n/g, '\n');
-    const m = /^---\n([\s\S]*?)\n---\n?/.exec(text);
-    if (!m) return { meta: {}, body: text };
-    const meta: Record<string, string> = {};
-    for (const line of m[1].split('\n')) {
-        const i = line.indexOf(':');
-        if (i > 0) meta[line.slice(0, i).trim()] = line.slice(i + 1).trim();
-    }
-    return { meta, body: text.slice(m[0].length) };
 }
 
 // ── Headings & slugs ─────────────────────────────────────────────────────────
@@ -112,56 +114,30 @@ function extractHeadings(body: string): DocHeading[] {
 
 // ── Pages ────────────────────────────────────────────────────────────────────
 
-function buildPage(nav: FlatPage): DocPage {
-    const raw = FILES[nav.slug];
-    if (raw === undefined) {
+function buildPage(nav: FlatPage, src: PageSource | undefined): DocPage {
+    if (!src || !src.body.trim()) {
         return {
-            slug: nav.slug, nav, title: nav.title, description: '', status: 'planned',
-            sources: [], body: '', headings: [], missing: true,
+            slug: nav.slug, nav, title: src?.title || nav.title, description: src?.description ?? '', status: 'planned',
+            sources: src?.sources ?? [], tags: src?.tags ?? [], seo: src?.seo, modified: src?.modified,
+            body: '', headings: [], missing: true,
         };
     }
-    const { meta, body } = parseFrontmatter(raw);
-    const status = (['ready', 'draft', 'planned'].includes(meta.status) ? meta.status : 'draft') as DocStatus;
+    const status = (['ready', 'draft', 'planned'].includes(src.status ?? '') ? src.status : 'draft') as DocStatus;
     return {
         slug: nav.slug,
         nav,
-        title: meta.title || nav.title,
-        description: meta.description || '',
+        title: src.title || nav.title,
+        description: src.description || '',
         status,
-        sources: meta.sources ? meta.sources.split(',').map(s => s.trim()).filter(Boolean) : [],
-        updated: meta.updated,
-        body,
-        headings: extractHeadings(body),
+        sources: src.sources ?? [],
+        tags: src.tags ?? [],
+        seo: src.seo,
+        updated: src.updated,
+        modified: src.modified,
+        body: src.body,
+        headings: extractHeadings(src.body),
         missing: false,
     };
-}
-
-export const PAGES: DocPage[] = FLAT_PAGES.map(buildPage);
-
-const BY_SLUG = new Map(PAGES.map(p => [p.slug, p]));
-
-export const getPage = (slug: string) => BY_SLUG.get(slug);
-
-export function neighbours(slug: string): { prev?: DocPage; next?: DocPage } {
-    const i = PAGES.findIndex(p => p.slug === slug);
-    if (i < 0) return {};
-    return { prev: PAGES[i - 1], next: PAGES[i + 1] };
-}
-
-export function sectionStats(sectionId: string) {
-    const pages = PAGES.filter(p => p.nav.section.id === sectionId);
-    return {
-        total: pages.length,
-        ready: pages.filter(p => p.status === 'ready').length,
-        draft: pages.filter(p => p.status === 'draft').length,
-        planned: pages.filter(p => p.status === 'planned').length,
-    };
-}
-
-if (import.meta.env.DEV) {
-    const known = new Set(FLAT_PAGES.map(p => p.slug));
-    const orphans = Object.keys(FILES).filter(s => !known.has(s));
-    if (orphans.length) console.warn('[docs] markdown files missing from nav.ts:', orphans);
 }
 
 // ── Search ───────────────────────────────────────────────────────────────────
@@ -180,34 +156,80 @@ function plain(body: string): string {
         .toLowerCase();
 }
 
-const INDEX = PAGES.map(p => ({
-    page: p,
-    title: p.title.toLowerCase(),
-    description: p.description.toLowerCase(),
-    section: p.nav.section.title.toLowerCase(),
-    text: plain(p.body),
-}));
+// ── Docs ─────────────────────────────────────────────────────────────────────
 
-export function search(query: string, limit = 12): SearchHit[] {
-    const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
-    if (!terms.length) return [];
-    const hits: SearchHit[] = [];
+export interface Docs {
+    nav: NavSection[];
+    /** Every page in reading order. */
+    pages: DocPage[];
+    getPage(slug: string): DocPage | undefined;
+    neighbours(slug: string): { prev?: DocPage; next?: DocPage };
+    sectionStats(sectionId: string): { total: number; ready: number; draft: number; planned: number };
+    findSection(id: string): NavSection | undefined;
+    firstPageOf(section: NavSection): FlatPage;
+    search(query: string, limit?: number): SearchHit[];
+}
 
-    for (const e of INDEX) {
-        let score = 0;
-        for (const t of terms) {
-            if (e.title.includes(t)) score += 10;
-            else if (e.description.includes(t)) score += 4;
-            else if (e.section.includes(t)) score += 2;
-            else if (e.text.includes(t)) score += 1;
-            else { score = 0; break; } // every term must match somewhere
+/** `files` maps a page slug to its source. Sections without pages are dropped. */
+export function buildDocs(sections: NavSection[], files: Record<string, PageSource>): Docs {
+    const flat = flatten(sections);
+    const nav = sections.filter(s => flat.some(p => p.section.id === s.id));
+    const pages = flat.map(p => buildPage(p, files[p.slug]));
+    const bySlug = new Map(pages.map(p => [p.slug, p]));
+
+    const index = pages.map(p => ({
+        page: p,
+        title: p.title.toLowerCase(),
+        description: p.description.toLowerCase(),
+        section: p.nav.section.title.toLowerCase(),
+        tags: p.tags.map(t => t.title.toLowerCase()).join(' '),
+        text: plain(p.body),
+    }));
+
+    function search(query: string, limit = 12): SearchHit[] {
+        const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+        if (!terms.length) return [];
+        const hits: SearchHit[] = [];
+
+        for (const e of index) {
+            let score = 0;
+            for (const t of terms) {
+                if (e.title.includes(t)) score += 10;
+                else if (e.tags.includes(t)) score += 6;
+                else if (e.description.includes(t)) score += 4;
+                else if (e.section.includes(t)) score += 2;
+                else if (e.text.includes(t)) score += 1;
+                else { score = 0; break; } // every term must match somewhere
+            }
+            if (score > 0) hits.push({ page: e.page, score: score + (e.page.status === 'ready' ? 1 : 0) });
+
+            for (const h of e.page.headings) {
+                const ht = h.text.toLowerCase();
+                if (terms.every(t => ht.includes(t))) hits.push({ page: e.page, heading: h, score: 6 + terms.length });
+            }
         }
-        if (score > 0) hits.push({ page: e.page, score: score + (e.page.status === 'ready' ? 1 : 0) });
-
-        for (const h of e.page.headings) {
-            const ht = h.text.toLowerCase();
-            if (terms.every(t => ht.includes(t))) hits.push({ page: e.page, heading: h, score: 6 + terms.length });
-        }
+        return hits.sort((a, b) => b.score - a.score).slice(0, limit);
     }
-    return hits.sort((a, b) => b.score - a.score).slice(0, limit);
+
+    return {
+        nav,
+        pages,
+        getPage: slug => bySlug.get(slug),
+        neighbours: slug => {
+            const i = pages.findIndex(p => p.slug === slug);
+            return i < 0 ? {} : { prev: pages[i - 1], next: pages[i + 1] };
+        },
+        sectionStats: sectionId => {
+            const own = pages.filter(p => p.nav.section.id === sectionId);
+            return {
+                total: own.length,
+                ready: own.filter(p => p.status === 'ready').length,
+                draft: own.filter(p => p.status === 'draft').length,
+                planned: own.filter(p => p.status === 'planned').length,
+            };
+        },
+        findSection: id => nav.find(s => s.id === id),
+        firstPageOf: section => flat.find(p => p.section.id === section.id)!,
+        search,
+    };
 }

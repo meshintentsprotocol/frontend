@@ -3,14 +3,14 @@ import { Link } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { isGroup, type NavGroup, type NavLeaf, type NavNode, type NavSection } from '../nav';
-import { getPage } from '../lib/content';
+import { useDocs } from '../lib/store';
 import { MethodPill } from './ApiEndpoint';
 
 const containsSlug = (nodes: NavNode[], slug: string): boolean =>
     nodes.some(n => (isGroup(n) ? containsSlug(n.items, slug) : n.slug === slug));
 
 function Leaf({ leaf, active, onNavigate }: { leaf: NavLeaf; active: boolean; onNavigate?: () => void }) {
-    const status = getPage(leaf.slug)?.status ?? 'planned';
+    const status = useDocs().getPage(leaf.slug)?.status ?? 'planned';
     const muted = status === 'planned';
     return (
         <Link

@@ -2,7 +2,10 @@ import { useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, ChevronRight, Clock, Construction, PencilLine } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { neighbours, type DocPage as Page } from '../lib/content';
+import { docsPageSeo } from '@/shared/seo';
+import { useSeo } from '@/lib/useSeo';
+import type { DocPage as Page } from '../lib/content';
+import { useDocs, useDocsSite } from '../lib/store';
 import { DocsMarkdown } from '../components/DocsMarkdown';
 import { DocsToc } from '../components/DocsToc';
 
@@ -40,7 +43,7 @@ function StatusBanner({ page }: { page: Page }) {
 }
 
 function Pager({ page }: { page: Page }) {
-    const { prev, next } = neighbours(page.slug);
+    const { prev, next } = useDocs().neighbours(page.slug);
     const cls = 'group flex flex-1 flex-col rounded-xl border border-white/[0.06] px-4 py-3.5 transition-colors hover:border-emerald-500/30';
     return (
         <div className="mt-16 flex flex-col gap-3 sm:flex-row">
@@ -70,9 +73,18 @@ export function DocsPage({ page }: { page: Page }) {
         return () => clearTimeout(t);
     }, [page.slug, hash]);
 
-    useEffect(() => {
-        document.title = `${page.title} · BCH Intents Docs`;
-    }, [page.title]);
+    useSeo(docsPageSeo({
+        slug: page.slug,
+        title: page.title,
+        description: page.description,
+        status: page.status,
+        sectionTitle: page.nav.section.title,
+        trail: page.nav.trail,
+        updated: page.updated,
+        modified: page.modified,
+        tags: page.tags,
+        seo: page.seo,
+    }, useDocsSite()));
 
     return (
         <div className="flex gap-12">
@@ -82,12 +94,16 @@ export function DocsPage({ page }: { page: Page }) {
                 {page.description && <p className="mt-3 text-[17px] leading-7 text-zinc-400">{page.description}</p>}
                 <div className="mb-8 mt-5 flex flex-wrap items-center gap-3 border-b border-white/[0.06] pb-6 text-[12px] text-zinc-500">
                     {page.updated && <span className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" /> Updated {page.updated}</span>}
-                    <span className="font-mono text-[11px] text-zinc-600">src/docs/content/{page.slug}.md</span>
+                    {page.tags.map(t => (
+                        <Link key={t.slug} to={`/kb/tag/${t.slug}`} className="rounded-full border border-white/[0.08] px-2 py-0.5 text-[11px] text-zinc-400 transition-colors hover:border-emerald-500/30 hover:text-emerald-300">
+                            {t.title}
+                        </Link>
+                    ))}
                 </div>
                 <StatusBanner page={page} />
                 {page.missing ? (
                     <p className="text-[15px] leading-7 text-zinc-500">
-                        No content yet. Create <code className="rounded bg-white/[0.04] px-1.5 py-0.5 font-mono text-[13px] text-zinc-300">src/docs/content/{page.slug}.md</code> to publish this page.
+                        No content yet. This page is on the roadmap and will be published here.
                     </p>
                 ) : (
                     <DocsMarkdown source={page.body} />

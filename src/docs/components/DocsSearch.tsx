@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { Command } from 'cmdk';
 import { CornerDownLeft, Hash, Search } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
-import { getPage, search, type DocPage } from '../lib/content';
+import type { DocPage } from '../lib/content';
+import { useDocs } from '../lib/store';
 
 const POPULAR = [
     'get-started/quickstart',
@@ -38,7 +39,8 @@ function Row({ page, heading }: { page: DocPage; heading?: string }) {
 export function DocsSearch({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
     const [query, setQuery] = useState('');
     const navigate = useNavigate();
-    const hits = useMemo(() => search(query), [query]);
+    const { getPage, search } = useDocs();
+    const hits = useMemo(() => search(query), [search, query]);
 
     useEffect(() => { if (!open) setQuery(''); }, [open]);
 
