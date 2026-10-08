@@ -325,3 +325,16 @@ export function docsHomeSeo(site: Site): SeoHead {
         breadcrumbs: [{ name: 'Docs', path: '/docs' }],
     }, site);
 }
+
+// ── MCP ──────────────────────────────────────────────────────────────────────
+
+export function mcpSeo(site: Site): SeoHead {
+    return buildSeo({
+        path: '/mcp',
+        title: 'MCP Server for AI Agents',
+        titleSuffix: 'BCH Intents',
+        description: 'Connect Claude, Cursor, ChatGPT or any MCP client to BCH Intents and BCHMesh: quote swaps, prepare orders, read pools and strategies. Non-custodial: your wallet signs.',
+        breadcrumbs: [{ name: 'MCP', path: '/mcp' }],
+        jsonLd: [websiteLd(site)],
+    }, site);
+}

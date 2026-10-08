@@ -6,7 +6,7 @@ import { escapeHtml } from '../src/shared/seo.js';
 import { originOf, sanityFromEnv, send, type Req, type Res } from './_content.js';
 
 /** Public app pages worth indexing. Wallet, portfolio and admin screens are left out. */
-const STATIC_ROUTES = ['/', '/trade', '/twap', '/mesh', '/orderbook', '/integrate', '/ecosystem', '/kb', '/docs'];
+const STATIC_ROUTES = ['/', '/trade', '/twap', '/mesh', '/orderbook', '/integrate', '/mcp', '/ecosystem', '/kb', '/docs'];
 
 interface Entry {
     path: string;
