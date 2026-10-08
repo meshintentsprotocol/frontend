@@ -8,6 +8,7 @@ import { SwapArea } from '../SwapArea';
 import { SwapOverviewPage, SwapEventsPage, SwapSettingsPage } from '../SwapOverviewPages';
 import { CctpTransfersPage, CctpTransferDetailPage, CctpChainsPage } from '../CctpPages';
 import { SolanaSwapsPage, SolanaSwapDetailPage, SolanaTokensPage } from '../SolanaPages';
+import { ProfitsPage } from '../ProfitPages';
 import { createSwapAdminApi, SwapApiError, type SolanaSwap } from '../swapApi';
 import fixtures from './fixtures.json';
 
@@ -23,6 +24,7 @@ const SWAP: SolanaSwap = {
   inputMint: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', outputMint: 'So11111111111111111111111111111111111111112',
   inAmount: '10000000', quotedOutAmount: '85903389', minOutAmount: '85700000', slippageBps: 22, feeBps: 2, router: 'metis', gasless: true,
   requestId: '01a1194c-f9c1-77da-aa2e-c6e6358281f0', inUsdValue: 9.99, inSymbol: 'USDC', outSymbol: 'SOL',
+  referralFeeBps: 50, referralAccount: 'RefAcct1111111111111111111111111111111111111', feeCollected: { mint: 'So11111111111111111111111111111111111111112', total: '5000', ours: '4000' },
   status: 'COMPLETED', signature: '5pGgLTrGEgZSjHGuUih5667bSUpYpK914rU92xEojhPbNQx25T7DfamNGAtrs66WxczxVv6vLYfjNyfhcrzcko2G', outAmount: '85850000',
   createdAt: 1_791_428_000_000, updatedAt: 1_791_428_006_000, submittedAt: 1_791_428_002_000, completedAt: 1_791_428_006_000, terminal: true,
   display: { inAmount: '10.0', quotedOutAmount: '0.085903389', minOutAmount: '0.0857', outAmount: '0.08585', inSymbol: 'USDC', outSymbol: 'SOL' },
@@ -35,6 +37,7 @@ function client(): QueryClient {
   qc.setQueryData(k('overview'), fx.overview);
   qc.setQueryData(k('settings'), fx.settings);
   qc.setQueryData(k('system'), fx.system);
+  qc.setQueryData(k('profits'), fx.profits);
   qc.setQueryData(k('events', { section: '', severity: '', type: '', limit: 100, offset: '0' }), fx.events);
   qc.setQueryData(k('transfers', { status: '', src: '', dst: '', q: '', limit: 50, offset: '0' }), fx.transfers);
   qc.setQueryData(k('transfer', fx.transfer.transfer.id), fx.transfer);
@@ -59,6 +62,7 @@ function render(path: string, qc = client()): string {
               createElement(Route, { index: true, element: createElement(SwapOverviewPage) }),
               page('events', createElement(SwapEventsPage)),
               page('settings', createElement(SwapSettingsPage)),
+              page('profits', createElement(ProfitsPage)),
               page('cctp', createElement(CctpTransfersPage)),
               page('cctp/chains', createElement(CctpChainsPage)),
               page('cctp/:id', createElement(CctpTransferDetailPage)),
@@ -133,6 +137,43 @@ describe('swap-server admin pages render with real server data', () => {
     const events = render('/admin/swap/events');
     expect(events).toContain('Add note');
     expect(events).toContain(fx.events.events[0].type);
+  });
+
+  it('profits: fees received, whether each fee is collecting, wallets and the referral account', () => {
+    const html = render('/admin/swap/profits');
+    expect(html).toContain('Cross-chain fees received');
+    expect(html).toContain('Is each fee being collected?');
+    expect(html).toContain('Treasury wallets');
+    expect(html).toContain('Jupiter referral account');
+    for (const w of fx.profits.treasury) expect(html).toContain(w.label);
+    // no key material can reach the page: the API never sends it
+    expect(JSON.stringify(fx.profits)).not.toMatch(/"secret"|privateKey/i);
+  });
+
+  it('a transfer that paid our fee shows the fee, its status and where it went', () => {
+    const t = fx.transfer.transfer;
+    if (!t.protocolFee || t.protocolFee === '0') return;
+    const html = render(`/admin/swap/cctp/${t.id}`);
+    expect(html).toContain('Our fee');
+    expect(html).toContain(`${t.display.protocolFee} USDC`);
+    expect(html).toContain('received by the treasury');
+    expect(html).toContain('Fee paid to');
+    const list = render('/admin/swap/cctp');
+    expect(list).toContain('>paid<');
+  });
+
+  it('settings: margins for both products', () => {
+    const html = render('/admin/swap/settings');
+    expect(html).toContain('Gas charge by destination');
+    expect(html).toContain('Hold the delivery until the fee is paid');
+    expect(html).toContain('Stablecoin pairs');
+    expect(html).toContain('Referral account');
+  });
+
+  it('a swap that carried our fee shows the rate and what was collected', () => {
+    const html = render(`/admin/swap/solana/${SWAP.id}`);
+    expect(html).toContain('ours 50 bps');
+    expect(html).toContain('Fee collected');
   });
 
   it('without a key the pages are replaced by the key form', () => {
