@@ -169,6 +169,24 @@ function NumberField({ label, hint, value, onChange, min, max, step = 1, suffix 
   );
 }
 
+/** A rate that may be left empty: empty means "same as the default rate". */
+function OptionalNumberField({ label, hint, value, onChange, suffix, placeholder }: {
+  label: string; hint?: string; value: number | null; onChange: (v: number | null) => void; suffix?: string; placeholder?: string;
+}) {
+  return (
+    <label className="block py-2.5">
+      <span className="text-xs font-medium text-zinc-200">{label}</span>
+      {hint && <span className="block mt-0.5 text-[11px] text-zinc-500 leading-relaxed">{hint}</span>}
+      <span className="mt-1.5 flex items-center gap-2">
+        <input type="number" value={value === null || !Number.isFinite(value) ? '' : value} min={0} max={255} placeholder={placeholder}
+          onChange={e => onChange(e.target.value === '' ? null : Number(e.target.value))}
+          className="w-28 h-8 px-2.5 rounded-lg bg-white/[0.03] border border-white/10 text-xs text-white font-mono tabular-nums placeholder:text-zinc-600 focus:outline-none focus:border-emerald-400/50" />
+        {suffix && <span className="text-[11px] text-zinc-500">{suffix}</span>}
+      </span>
+    </label>
+  );
+}
+
 /** Edits a copy of one product's settings and saves only the fields that changed. */
 function useDraft<T extends object>(saved: T) {
   const [draft, setDraft] = useState<T>(saved);
@@ -211,6 +229,29 @@ function CctpSettingsCard({ saved, chains }: { saved: CctpSettings; chains: Arra
           <NumberField label="Fee buffer" value={d.draft.feeBufferPct} onChange={v => d.set({ feeBufferPct: v })} min={0} max={500} suffix="% over Circle's fee" />
         </div>
         <div className="py-2.5">
+          <div className="text-xs font-semibold text-emerald-200">Our fee</div>
+          <div className="mt-0.5 text-[11px] text-zinc-500 leading-relaxed">Taken from the amount the user sends and paid to the treasury wallet on the source chain. Nothing is charged on a chain type with no active <Link to={swapUrl.profits} className="text-zinc-300 hover:text-emerald-300">treasury wallet</Link>.</div>
+          <div className="grid sm:grid-cols-3 gap-x-4">
+            <NumberField label="Rate" value={d.draft.feeBps} onChange={v => d.set({ feeBps: v })} min={0} max={1000} step={0.5} suffix="bps (100 = 1%)" />
+            <NumberField label="Minimum" hint="Floor on the rate part. 0 = none." value={d.draft.feeMinUsdc} onChange={v => d.set({ feeMinUsdc: v })} min={0} step={0.01} suffix="USDC" />
+            <NumberField label="Maximum" hint="Cap on the rate part. 0 = none." value={d.draft.feeMaxUsdc} onChange={v => d.set({ feeMaxUsdc: v })} min={0} step={1} suffix="USDC" />
+          </div>
+          <div className="mt-1 text-xs font-medium text-zinc-200">Gas charge by destination</div>
+          <div className="mt-0.5 text-[11px] text-zinc-500">A flat amount added when the transfer lands on that chain, to cover what the relayer pays to mint there.</div>
+          <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {chains.map(c => (
+              <label key={c.key} className="flex items-center justify-between gap-2 rounded-lg border border-white/[0.07] bg-white/[0.015] px-2.5 py-1.5">
+                <span className="text-[11px] text-zinc-300 truncate">{c.name}</span>
+                <input type="number" min={0} step={0.01} aria-label={`Gas charge to ${c.name}`} value={d.draft.gasFeeUsdc[c.key] ?? 0}
+                  onChange={e => { const v = Number(e.target.value); const next = { ...d.draft.gasFeeUsdc }; if (v > 0) next[c.key] = v; else delete next[c.key]; d.set({ gasFeeUsdc: next }); }}
+                  className="w-20 h-7 px-2 rounded-md bg-white/[0.03] border border-white/10 text-xs text-white font-mono tabular-nums text-right focus:outline-none focus:border-emerald-400/50" />
+              </label>
+            ))}
+          </div>
+        </div>
+        <SwitchRow label="Hold the delivery until the fee is paid" checked={d.draft.feeEnforced} onChange={v => d.set({ feeEnforced: v })}
+          description="On: a transfer whose fee has not arrived waits; the user can still mint it with their own gas. Off: it is delivered anyway and the fee is recorded as unpaid." />
+        <div className="py-2.5">
           <div className="text-xs font-medium text-zinc-200">Open chains</div>
           <div className="mt-0.5 text-[11px] text-zinc-500">A closed chain is refused as source and as destination. Single routes are closed on the chains page.</div>
           <div className="mt-2 flex flex-wrap gap-1.5">
@@ -249,8 +290,24 @@ function SolanaSettingsCard({ saved, referralAccount }: { saved: SolanaSettings;
           <NumberField label="Default slippage" hint="Used when the client sends none. 0 lets Jupiter estimate it per trade." value={d.draft.defaultSlippageBps} onChange={v => d.set({ defaultSlippageBps: v })} min={0} max={10000} suffix="bps" />
           <NumberField label="Maximum swap size" hint="0 means no limit." value={d.draft.maxSwapUsd} onChange={v => d.set({ maxSwapUsd: v })} min={0} step={100} suffix="USD" />
           <NumberField label="Stock liquidity floor" hint="Stocks with less liquidity are hidden from the stocks list." value={d.draft.minStockLiquidityUsd} onChange={v => d.set({ minStockLiquidityUsd: v })} min={0} step={10000} suffix="USD" />
-          <NumberField label="Our fee" hint={referralAccount ? 'Taken through Jupiter’s referral program: 0 is off, otherwise 50 to 255. Jupiter keeps 20% and gasless swaps stop.' : 'Needs JUPITER_REFERRAL_ACCOUNT in the server env before it can be turned on.'}
-            value={d.draft.referralFeeBps} onChange={v => d.set({ referralFeeBps: v })} min={0} max={255} suffix="bps" />
+        </div>
+        <div className="py-2.5">
+          <div className="text-xs font-semibold text-emerald-200">Our fee</div>
+          <div className="mt-0.5 text-[11px] text-zinc-500 leading-relaxed">
+            Jupiter's referral fee, taken inside the swap: 0 is off, otherwise 50 to 255 bps. Jupiter keeps 20% of it, and swaps that carry a fee are not gasless.
+            {!(d.draft.referralAccount || referralAccount) && <> It needs a referral account: create one on the <Link to={swapUrl.profits} className="text-zinc-300 hover:text-emerald-300">profits page</Link> or paste one below.</>}
+          </div>
+          <div className="grid sm:grid-cols-3 gap-x-4">
+            <NumberField label="Default rate" value={d.draft.referralFeeBps} onChange={v => d.set({ referralFeeBps: v })} min={0} max={255} suffix="bps" />
+            <OptionalNumberField label="Stocks" hint="When either side is a tokenized stock." value={d.draft.stocksFeeBps} onChange={v => d.set({ stocksFeeBps: v })} suffix="bps" placeholder="default" />
+            <OptionalNumberField label="Stablecoin pairs" hint="Both sides are stablecoins." value={d.draft.stablesFeeBps} onChange={v => d.set({ stablesFeeBps: v })} suffix="bps" placeholder="default" />
+          </div>
+          <label className="block pt-1">
+            <span className="text-xs font-medium text-zinc-200">Referral account</span>
+            <span className="block mt-0.5 text-[11px] text-zinc-500">The Jupiter referral account fees are paid into. Empty uses the server env{referralAccount ? ` (${referralAccount.slice(0, 6)}…)` : ' (not set)'}.</span>
+            <input value={d.draft.referralAccount} onChange={e => d.set({ referralAccount: e.target.value.trim() })} placeholder="Solana address" aria-label="Referral account"
+              className="mt-1.5 w-full h-8 px-2.5 rounded-lg bg-white/[0.03] border border-white/10 text-xs text-white font-mono placeholder:text-zinc-600 focus:outline-none focus:border-emerald-400/50" />
+          </label>
         </div>
         <div className="py-2.5 text-[11px] text-zinc-500">
           {saved.blockedMints.length} token(s) blocked. <Link to={swapUrl.tokens} className="text-zinc-300 hover:text-emerald-300">Manage blocked tokens →</Link>
