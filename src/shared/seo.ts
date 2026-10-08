@@ -338,3 +338,8 @@ export function mcpSeo(site: Site): SeoHead {
         jsonLd: [websiteLd(site)],
     }, site);
 }
+
+/** A funding link is one order's page: nothing to index. */
+export function fundSeo(site: Site): SeoHead {
+    return buildSeo({ path: '/fund', title: 'Fund your order', titleSuffix: 'BCH Intents', noindex: true }, site);
+}

@@ -53,8 +53,9 @@ import { PWAUpdatePrompt } from "./components/common/PWAUpdatePrompt"
 
 // Developer docs are a self-contained subtree, loaded on demand.
 const DocsApp = lazy(() => import("./docs/DocsApp"))
-// The MCP page, loaded on demand with its tool catalog.
+// The MCP page (with its tool catalog) and the funding page its orders link to.
 const McpPage = lazy(() => import("./pages/McpPage"))
+const FundOrderPage = lazy(() => import("./pages/FundOrderPage"))
 
 function App() {
     useLanguage();
@@ -98,6 +99,11 @@ function App() {
                                                     <Route path="/mcp" element={
                                                         <Suspense fallback={<div className="min-h-screen bg-[#050505]" />}>
                                                             <McpPage />
+                                                        </Suspense>
+                                                    } />
+                                                    <Route path="/fund" element={
+                                                        <Suspense fallback={<div className="min-h-screen bg-[#050505]" />}>
+                                                            <FundOrderPage />
                                                         </Suspense>
                                                     } />
                                                      <Route path="/overview" element={<Navigate to="/portfolio" replace />} />
