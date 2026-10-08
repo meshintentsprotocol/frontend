@@ -22,6 +22,14 @@ function useChainNames(): Record<string, string> {
 
 const TERMINAL = new Set(['COMPLETED', 'COMPLETED_EXTERNAL', 'FAILED', 'EXPIRED']);
 
+function FeeStatusPill({ status }: { status?: string }) {
+  if (status === 'paid') return <Pill tone="emerald">paid</Pill>;
+  if (status === 'awaiting') return <Pill tone="amber" title="The fee has not been seen; delivery is on hold">waiting</Pill>;
+  if (status === 'unpaid') return <Pill tone="rose" title="Delivered without the fee">unpaid</Pill>;
+  if (status === 'pending') return <Pill tone="zinc">expected</Pill>;
+  return null;
+}
+
 export function CctpTransfersPage() {
   const [f, setF] = useUrlState({ status: '', src: '', dst: '', q: '', offset: '0' });
   const limit = 50;
@@ -43,6 +51,12 @@ export function CctpTransfersPage() {
       </span>
     ) },
     { key: 'speed', header: 'Speed', hideBelow: 'md', cell: t => <span className="text-xs text-zinc-400">{t.speed}{t.origin === 'track' ? ' · tracked' : ''}</span> },
+    { key: 'fee', header: 'Our fee', align: 'right', hideBelow: 'md', cell: t => (!t.protocolFee || t.protocolFee === '0' ? <span className="text-xs text-zinc-600">—</span> : (
+      <span className="inline-flex items-center gap-1.5 font-mono text-xs tabular-nums">
+        {usdc(t.protocolFee, 4)}
+        <FeeStatusPill status={t.feeStatus} />
+      </span>
+    )) },
     { key: 'took', header: 'Burn to mint', align: 'right', hideBelow: 'md', cell: t => <span className="font-mono text-xs tabular-nums text-zinc-400">{t.completedAt && t.burnSubmittedAt ? secs((t.completedAt - t.burnSubmittedAt) / 1000) : '—'}</span> },
     { key: 'sender', header: 'Sender', hideBelow: 'lg', cell: t => <Hash value={t.sender || undefined} head={6} tail={4} /> },
     { key: 'id', header: 'Id', hideBelow: 'xl', cell: t => <Hash value={t.id} head={8} tail={4} to={swapUrl.transfer(t.id)} copy={false} /> },
@@ -138,8 +152,11 @@ export function CctpTransferDetailPage() {
           crumbs={[{ label: 'Swap server', to: swapUrl.home }, { label: 'Cross-chain USDC', to: swapUrl.transfers }, { label: t.id.slice(0, 8) }]}
           description={t.failReason ? `Failed: ${t.failReason}` : t.lastError && !TERMINAL.has(t.status) ? `Last error: ${t.lastError}` : undefined}
           actions={<TransferActions t={t} />} />
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
-          <KpiTile label="Amount" value={t.amount === '0' ? '—' : `${t.display.amount} USDC`} sub={`${t.speed} · fee ${t.feeBps} bps`} />
+        <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5">
+          <KpiTile label="Sent" value={t.amount === '0' ? '—' : `${t.display.grossAmount} USDC`} sub={`${t.speed} · ${t.display.amount} burned · Circle ${t.feeBps} bps`} />
+          <KpiTile label="Our fee" value={t.protocolFee && t.protocolFee !== '0' ? `${t.display.protocolFee} USDC` : 'none'}
+            tone={t.feeStatus === 'paid' ? 'emerald' : t.feeStatus === 'awaiting' || t.feeStatus === 'unpaid' ? 'amber' : undefined}
+            sub={t.feeStatus === 'paid' ? 'received by the treasury' : t.feeStatus === 'awaiting' ? 'not seen yet: delivery on hold' : t.feeStatus === 'unpaid' ? 'never paid' : t.feeStatus === 'pending' ? 'expected with the burn' : 'no fee on this transfer'} />
           <KpiTile label="Received" value={t.display.received ? `${t.display.received} USDC` : '—'} sub={`expected ${t.display.expectedReceive}`} tone={t.display.received ? 'emerald' : undefined} />
           <KpiTile label="Burn to mint" value={t.completedAt && t.burnSubmittedAt ? secs((t.completedAt - t.burnSubmittedAt) / 1000) : '—'} sub={t.mintTxHashes && t.mintTxHashes.length > 1 ? `${t.mintTxHashes.length} mint broadcasts` : undefined} />
           <KpiTile label="Retries" value={t.failCount} tone={t.failCount ? 'amber' : undefined} sub={t.retryAfter && t.retryAfter > Date.now() ? `next try in ${Math.ceil((t.retryAfter - Date.now()) / 1000)}s` : undefined} />
@@ -166,6 +183,9 @@ export function CctpTransferDetailPage() {
               ['Mint tx', <Hash key="m" value={t.mintTxHash} href={t.links.mint} head={10} tail={8} />],
               ['Domains', `${t.srcDomain} → ${t.dstDomain}`],
               ['Max fee', `${usdc(t.maxFee, 6)} USDC`],
+              t.feeRecipient ? ['Fee paid to', <Hash key="fr" value={t.feeRecipient} head={10} tail={8} />] : null,
+              t.feeTxHash ? ['Fee tx', <Hash key="ft" value={t.feeTxHash} head={10} tail={8} />] : null,
+              t.relayCost ? ['Relayer gas', `${Number(t.relayCost.amount).toLocaleString(undefined, { maximumSignificantDigits: 4 })} ${t.relayCost.symbol}`] : null,
               t.feeExecuted ? ['Fee charged', `${usdc(t.feeExecuted, 6)} USDC`] : null,
               t.nonce ? ['Nonce', <Hash key="n" value={t.nonce} head={10} tail={8} />] : null,
             ]} />

@@ -153,7 +153,7 @@ export function SolanaSwapDetailPage() {
           <KpiTile label={s.outAmount ? 'Received' : 'Quoted'} tone={s.outAmount ? 'emerald' : undefined}
             value={`${s.display.outAmount ? trimAmount(s.display.outAmount, 8) : s.display.quotedOutAmount ? trimAmount(s.display.quotedOutAmount, 8) : s.quotedOutAmount} ${s.display.outSymbol ?? ''}`}
             sub={`minimum ${s.display.minOutAmount ? trimAmount(s.display.minOutAmount, 8) : s.minOutAmount}`} />
-          <KpiTile label="Fee and slippage" value={`${s.feeBps} bps`} sub={`slippage ${s.slippageBps} bps`} />
+          <KpiTile label="Fee and slippage" value={`${s.feeBps} bps`} tone={s.referralFeeBps ? 'emerald' : undefined} sub={`${s.referralFeeBps ? `ours ${s.referralFeeBps} bps (80% kept)` : 'Jupiter only, none for us'} · slippage ${s.slippageBps} bps`} />
           <KpiTile label="Landed in" value={s.completedAt && s.submittedAt ? secs((s.completedAt - s.submittedAt) / 1000) : '—'} sub={`${s.router}${s.gasless ? ' · gasless' : ''}`} />
         </div>
         <div className="grid gap-5 lg:grid-cols-2 items-start">
@@ -174,6 +174,8 @@ export function SolanaSwapDetailPage() {
               ['Jupiter request', <Hash key="req" value={s.requestId} head={36} tail={0} />],
               s.feeMint ? ['Fee taken in', <Hash key="fm" value={s.feeMint} href={solscanToken(s.feeMint)} head={8} tail={6} />] : null,
               s.inAmountSpent ? ['Total spent', `${s.inAmountSpent} base units`] : null,
+              s.feeCollected ? ['Fee collected', `${s.feeCollected.ours} base units for us of ${s.feeCollected.total} taken`] : null,
+              s.referralAccount ? ['Referral account', <Hash key="ra" value={s.referralAccount} href={solscanAccount(s.referralAccount)} head={8} tail={6} />] : null,
             ]} />
           </Section>
         </div>
