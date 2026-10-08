@@ -28,12 +28,14 @@ export type TransferStatus = 'CREATED' | 'BURN_SUBMITTED' | 'BURN_CONFIRMED' | '
 export interface Transfer {
   id: string; origin: 'api' | 'track'; src: string; dst: string; srcDomain: number; dstDomain: number;
   sender: string; recipient: string; recipientTokenAccount?: string;
-  amount: string; speed: 'fast' | 'standard'; maxFee: string; feeBps: number; expectedFee: string; expectedReceive: string;
+  amount: string; grossAmount?: string; protocolFee?: string; feeRecipient?: string; feeTxHash?: string;
+  feeStatus?: 'none' | 'pending' | 'paid' | 'unpaid' | 'awaiting'; feePaidAt?: number; relayCost?: { amount: string; symbol: string };
+  speed: 'fast' | 'standard'; maxFee: string; feeBps: number; expectedFee: string; expectedReceive: string;
   status: TransferStatus; burnTxHash?: string; nonce?: string; message?: string; attestation?: string;
   mintTxHash?: string; mintTxHashes?: string[]; feeExecuted?: string; received?: string;
   failCount: number; retryAfter?: number; lastError?: string; failReason?: string;
   createdAt: number; updatedAt: number; burnSubmittedAt?: number; burnConfirmedAt?: number; attestedAt?: number; mintSubmittedAt?: number; completedAt?: number;
-  display: { amount: string; expectedFee: string; expectedReceive: string; received?: string };
+  display: { amount: string; grossAmount: string; protocolFee: string; expectedFee: string; expectedReceive: string; received?: string };
   links: { burn?: string; mint?: string };
   selfMint?: { chain: string; contract: string; method: string; message: string; attestation: string };
 }
@@ -41,6 +43,7 @@ export interface Transfer {
 export interface CctpSettings {
   paused: boolean; pauseReason?: string; relayEnabled: boolean; fastEnabled: boolean;
   minTransferUsdc: number; maxTransferUsdc: number; feeBufferPct: number; disabledChains: string[]; disabledRoutes: string[];
+  feeBps: number; feeMinUsdc: number; feeMaxUsdc: number; gasFeeUsdc: Record<string, number>; feeEnforced: boolean;
 }
 
 export interface RelayerBalance { chain: string; name: string; kind: string; relayer?: string; amount?: string; symbol?: string; usdc?: string; low?: boolean; error?: string; at: number }
@@ -67,6 +70,7 @@ export interface SolanaSwap {
   id: string; taker: string; receiver?: string; inputMint: string; outputMint: string;
   inAmount: string; quotedOutAmount: string; minOutAmount: string; slippageBps: number; feeBps: number; feeMint?: string;
   router: string; gasless: boolean; requestId: string; inUsdValue?: number; inSymbol?: string; outSymbol?: string;
+  referralFeeBps?: number; referralAccount?: string; feeCollected?: { mint: string; total: string; ours: string };
   status: SwapStatus; signature?: string; inAmountSpent?: string; outAmount?: string; jupiterCode?: number; failReason?: string;
   createdAt: number; updatedAt: number; submittedAt?: number; completedAt?: number; terminal: boolean;
   display: { inAmount?: string; quotedOutAmount?: string; minOutAmount?: string; outAmount?: string; inSymbol?: string; outSymbol?: string };
@@ -75,7 +79,8 @@ export interface SolanaSwap {
 
 export interface SolanaSettings {
   paused: boolean; pauseReason?: string; stocksEnabled: boolean; allowUnverified: boolean;
-  maxSlippageBps: number; defaultSlippageBps: number; maxSwapUsd: number; minStockLiquidityUsd: number; referralFeeBps: number; blockedMints: string[];
+  maxSlippageBps: number; defaultSlippageBps: number; maxSwapUsd: number; minStockLiquidityUsd: number; referralFeeBps: number;
+  stocksFeeBps: number | null; stablesFeeBps: number | null; referralAccount: string; blockedMints: string[];
 }
 
 export interface SolanaStats {
@@ -120,6 +125,36 @@ export interface SystemInfo {
   uptimeSec: number; node: string; memoryMb: number; port: number; dataDir: string; secrets: string[];
   cctp: { network: string; irisBaseUrl: string; worker: Record<string, number>; limits: Record<string, number>; watchdog: Record<string, number> };
   solana: { enabled: boolean; jupiter: JupiterStatus; catalog: CatalogStatus; rpcHost: string; orderTtlSec: number; landTimeoutSec: number; tokenRefreshMin: number };
+}
+
+// ── profits and treasury ─────────────────────────────────────────────────────
+
+export interface WalletBalance { chain: string; name: string; usdc?: string; native?: string; symbol?: string; error?: string }
+export interface TreasuryWallet {
+  id: string; kind: 'evm' | 'solana'; address: string; label: string; origin: 'generated' | 'external';
+  active: boolean; archived: boolean; createdAt: number; hasKey: boolean; balances: WalletBalance[];
+}
+export interface ReferralTokenAccount { mint: string; symbol?: string; decimals?: number; address: string; exists: boolean; balance: string }
+export interface ReferralStatus { account?: string; exists: boolean; partner?: string; name?: string; tokenAccounts: ReferralTokenAccount[]; error?: string }
+export interface ProfitStats {
+  cctp: {
+    paid: string; paidCount: number; unpaid: string; unpaidCount: number; awaiting: string; awaitingCount: number;
+    last24h: { paid: string; count: number }; byChain: Array<{ chain: string; count: number; fees: string }>;
+    relayCost: Record<string, number>; relayed: number;
+  };
+  solana: { swapsWithFee: number; estimatedUsd: number; last24h: { estimatedUsd: number; count: number }; byMint: Array<{ mint: string; count: number; total: string; ours: string }> };
+  daily: Array<{ day: number; cctpFees: string; cctpCount: number; solanaUsd: number; solanaCount: number }>;
+}
+export interface ProfitsView {
+  stats: ProfitStats;
+  margins: {
+    cctp: Pick<CctpSettings, 'feeBps' | 'feeMinUsdc' | 'feeMaxUsdc' | 'gasFeeUsdc' | 'feeEnforced'>;
+    solana: { referralFeeBps: number; stocksFeeBps: number | null; stablesFeeBps: number | null; referralAccount: string | null };
+  };
+  collecting: { evm: boolean; solanaCctp: boolean; jupiter: boolean };
+  treasury: TreasuryWallet[];
+  referral: ReferralStatus;
+  history: SwapEvent[];
 }
 
 export type Query = Record<string, string | number | undefined | null>;
@@ -177,6 +212,14 @@ export function createSwapAdminApi(baseUrl: string, getKey: () => string) {
     refreshTokens: () => post<CatalogStatus>('/admin/solana/tokens/refresh'),
     blockToken: (mint: string, blocked: boolean) => post<{ blockedMints: Array<{ mint: string; symbol?: string; name?: string }> }>('/admin/solana/tokens/block', { mint, blocked }),
     blockedTokens: () => get<{ blockedMints: Array<{ mint: string; symbol?: string; name?: string }> }>('/admin/solana/tokens/blocked'),
+    // profits, treasury wallets, Jupiter referral account
+    profits: (fresh = false) => get<ProfitsView>('/admin/profits', { fresh: fresh ? 1 : undefined }),
+    createWallet: (w: { kind: 'evm' | 'solana'; label?: string; address?: string }) => post<{ wallet: TreasuryWallet }>('/admin/treasury/wallets', w),
+    activateWallet: (wid: string) => post<{ wallet: TreasuryWallet }>(`/admin/treasury/wallets/${id(wid)}/activate`),
+    archiveWallet: (wid: string) => post<{ wallet: TreasuryWallet }>(`/admin/treasury/wallets/${id(wid)}/archive`),
+    createReferral: (name: string) => post<{ account: string; signature: string }>('/admin/solana/referral/create', { name }),
+    addReferralAccounts: (mint?: string) => post<{ status: ReferralStatus }>('/admin/solana/referral/token-accounts', { mint }),
+    claimReferral: () => post<{ signatures: string[] }>('/admin/solana/referral/claim'),
     // public catalog routes (no key needed), used by the token browser
     tokens: (q?: Query) => get<{ total: number; offset: number; limit: number; tokens: TokenView[] }>('/solana/tokens', q),
     stocks: (q?: Query) => get<{ total: number; offset: number; limit: number; issuers: Record<string, number>; tokens: TokenView[] }>('/solana/stocks', q),

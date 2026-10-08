@@ -43,6 +43,7 @@ export function useTransfers(q: Query) { const { api } = useSwapAdmin(); return 
 export function useTransfer(id: string) { const { api } = useSwapAdmin(); return usePolled(k('transfer', id), () => api.transfer(id), 1, !!id); }
 export function useSolanaSwaps(q: Query) { const { api } = useSwapAdmin(); return usePolled(k('swaps', q), () => api.swaps(q)); }
 export function useSolanaSwap(id: string) { const { api } = useSwapAdmin(); return usePolled(k('swapd', id), () => api.swap(id), 1, !!id); }
+export function useProfits() { const { api } = useSwapAdmin(); return usePolled(k('profits'), () => api.profits(), 2); }
 export function useBlockedTokens() { const { api } = useSwapAdmin(); return usePolled(k('blocked'), api.blockedTokens, 3); }
 export function useTokenBrowser(mode: 'tokens' | 'stocks', q: Query) {
   const { api } = useSwapAdmin();

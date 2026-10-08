@@ -15,6 +15,7 @@ export const swapUrl = {
   swaps: '/admin/swap/solana',
   swap: (id: string) => `/admin/swap/solana/${encodeURIComponent(id)}`,
   tokens: '/admin/swap/solana/tokens',
+  profits: '/admin/swap/profits',
 };
 
 // ── money ────────────────────────────────────────────────────────────────────

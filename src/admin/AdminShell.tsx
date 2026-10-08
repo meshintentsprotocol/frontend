@@ -9,7 +9,7 @@ import { useIsFetching } from '@tanstack/react-query';
 import {
   LayoutDashboard, Activity, ArrowDownUp, Zap, Repeat, Users, Waves, Layers, UserCircle, Recycle, SlidersHorizontal,
   Undo2, Server, KeyRound, Pause, Play, Menu, X, ShieldCheck, ShieldAlert, History, ArrowLeft, RefreshCw, Scale, ArrowLeftRight, Radar, Wallet, Settings2,
-  Globe, Fuel, Coins, LineChart, ScrollText,
+  Globe, Fuel, Coins, LineChart, ScrollText, PiggyBank,
 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
@@ -66,6 +66,7 @@ const NAV: Array<{ group: string; items: NavItem[] }> = [
   {
     group: 'Swap server', items: [
       { to: '/admin/swap', label: 'Overview', icon: Globe, end: true },
+      { to: '/admin/swap/profits', label: 'Profits & treasury', icon: PiggyBank },
       { to: '/admin/swap/events', label: 'Events', icon: ScrollText },
       { to: '/admin/swap/settings', label: 'Settings', icon: Settings2 },
     ],
