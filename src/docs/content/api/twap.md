@@ -64,7 +64,7 @@ sources: BCHMesh/meshserver/src/api/routes/twap.ts, MeshDocs/BetaLaunch/03-v2-im
 | Endpoint | Purpose |
 | --- | --- |
 | `POST /api/v1/twap/quote` | `{ tokenIn, tokenOut, totalAmountIn, numSlices?, intervalSec?, maxPricePerUnit? }` → per-slice estimate |
-| `GET /api/v1/twap/:orderId` | Order summary with per-slice status |
+| `GET /api/v1/twap/:orderId` | Order summary with per-slice status. While slices wait for their funds it repeats their `funding` list |
 | `GET /api/v1/twap/address/:address` | Orders for a maker |
 | `GET /api/v1/twap/active` | All running orders |
 | `POST /api/v1/twap/:orderId/cancel` | Returns the automatic refund schedule (no early exit) |

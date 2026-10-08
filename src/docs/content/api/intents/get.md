@@ -42,3 +42,17 @@ sources: BCHMesh/meshserver/src/api/routes/intent.ts, BCHMesh/meshserver/src/int
 ```
 
 The `status` field is derived on every request for open intents. See the [Status reference](intents/status) for every value and the fields that accompany it.
+
+## While the intent waits for funds
+
+An intent in `awaiting_funding` also carries `funding`, the same object [create](api/intents/create) returned. A client that did not create the intent can fund it from this: the app's `/fund?intent=<id>` page does, for orders prepared through the [MCP server](api/mcp/funding).
+
+```json
+{
+  "id": "intent_1791381284264_5s3bcvy",
+  "status": "awaiting_funding",
+  "funding": { "to": "bchtest:p0073l…qvp0yda", "satoshis": "100000" }
+}
+```
+
+A token order's `funding` has the covenant's token address in `to`, `"satoshis": "1000"` and a `token` object with `category` and `amount`. The field is gone once the intent is funded, underfunded, closed or past its deadline. List routes never carry it.

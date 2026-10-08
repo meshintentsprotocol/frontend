@@ -5,11 +5,12 @@ status: ready
 updated: 2026-09-28
 ---
 
-There are four ways to build on BCH Intents. They share the same covenants, so an order created by one integration can be filled by any solver.
+There are five ways to build on BCH Intents. They share the same covenants, so an order created by one integration can be filled by any solver.
 
 | You are building | Start with | You'll use |
 | --- | --- | --- |
 | A swap screen, wallet or bot that **creates orders** | [Quickstart](get-started/quickstart) | Mesh Server REST API or `@bch-intents/sdk` |
+| An **AI agent** that quotes and prepares orders | [MCP server](api/mcp/overview) | The MCP endpoint, from Claude, Cursor, ChatGPT or your own agent |
 | A **liquidity strategy** that earns fees | [Strategy pools](mesh/pools/strategy-pools) | `StrategyCovenantV2`, `POST /positions` |
 | A **solver** that fills orders for surplus | [Why solvers](solvers/overview) | Matcher, Cauldron, your own inventory |
 | A **cross-chain** flow (SOL, BSC) | [Cross-chain overview](intents/cross-chain/overview) | ZK relayer APIs |
@@ -21,7 +22,8 @@ There are four ways to build on BCH Intents. They share the same covenants, so a
   { "title": "REST API", "description": "Language-agnostic. Quote, create, fund, track. Best for backends and non-TypeScript stacks.", "href": "api/overview", "icon": "server" },
   { "title": "Intents SDK", "description": "Typed builders, covenant artifacts and wallet adapters for TypeScript apps.", "href": "sdk/intents/overview", "icon": "package" },
   { "title": "Frontend fees", "description": "Set frontendPkh and a surplus mode to earn on every fill you originate.", "href": "sdk/guides/frontend-fees", "icon": "key" },
-  { "title": "WebSocket stream", "description": "Live intent lifecycle events and pool fills for real-time UIs.", "href": "api/websocket", "icon": "zap" }
+  { "title": "WebSocket stream", "description": "Live intent lifecycle events and pool fills for real-time UIs.", "href": "api/websocket", "icon": "zap" },
+  { "title": "MCP server", "description": "Typed tools for AI agents: quote, prepare orders, read pools. The user's wallet signs.", "href": "api/mcp/overview", "icon": "bot" }
 ]
 ```
 
