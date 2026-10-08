@@ -259,7 +259,7 @@ interface BCHTokenSelectorProps {
     isMainnet?: boolean;
 }
 
-type ChainFilter = 'all' | 'bch' | 'ethereum' | 'bsc' | 'base' | 'arbitrum' | 'optimism' | 'solana' | 'movement' | 'xmr';
+type ChainFilter = 'all' | 'bch' | 'ethereum' | 'bsc' | 'base' | 'arbitrum' | 'optimism' | 'arc' | 'solana' | 'movement' | 'xmr';
 
 const CHAIN_FILTERS: { key: ChainFilter; label: string; logo: string | null }[] = [
     { key: 'all',       label: 'All',      logo: null },
@@ -269,6 +269,7 @@ const CHAIN_FILTERS: { key: ChainFilter; label: string; logo: string | null }[] 
     { key: 'base',      label: 'Base',     logo: '/logos/Base_square_blue.svg' },
     { key: 'arbitrum',  label: 'Arbitrum', logo: '/logos/arbitrum-arb-logo.svg' },
     { key: 'optimism',  label: 'Optimism', logo: '/logos/optimism.svg' },
+    { key: 'arc',       label: 'Arc',      logo: '/logos/arc.svg' },
     { key: 'solana',    label: 'Solana',   logo: '/logos/solana.svg' },
     { key: 'movement',  label: 'Movement', logo: '/logos/movement.svg' },
     { key: 'xmr',       label: 'Monero',   logo: '/logos/monero.svg' },
@@ -286,6 +287,7 @@ const SECTIONS: {
     { chain: 'base',      label: 'Base',             dotColor: 'bg-blue-500' },
     { chain: 'arbitrum',  label: 'Arbitrum',         dotColor: 'bg-sky-400' },
     { chain: 'optimism',  label: 'Optimism',         dotColor: 'bg-red-400' },
+    { chain: 'arc',       label: 'Arc',              dotColor: 'bg-sky-300' },
     { chain: 'solana',    label: 'Solana',           dotColor: 'bg-purple-400' },
     { chain: 'movement',  label: 'Movement',         dotColor: 'bg-yellow-300' },
     { chain: 'xmr',       label: 'Monero',           dotColor: 'bg-orange-400' },
@@ -298,6 +300,7 @@ const CHAIN_BADGE_STYLE: Record<string, string> = {
     base:     'bg-blue-600/15 text-blue-300',
     arbitrum: 'bg-sky-500/15 text-sky-400',
     optimism: 'bg-red-500/15 text-red-400',
+    arc:      'bg-sky-500/15 text-sky-300',
     solana:   'bg-purple-500/15 text-purple-400',
     movement: 'bg-yellow-500/15 text-yellow-400',
     xmr:      'bg-orange-500/15 text-orange-400',
@@ -305,7 +308,7 @@ const CHAIN_BADGE_STYLE: Record<string, string> = {
 
 const CHAIN_BADGE_LABEL: Record<string, string> = {
     bch: 'BCH', ethereum: 'ETH', bsc: 'BNB', base: 'BASE',
-    arbitrum: 'ARB', optimism: 'OP', solana: 'SOL', movement: 'MOVE', xmr: 'XMR',
+    arbitrum: 'ARB', optimism: 'OP', arc: 'ARC', solana: 'SOL', movement: 'MOVE', xmr: 'XMR',
 };
 
 export function BCHTokenSelector({
@@ -371,9 +374,13 @@ export function BCHTokenSelector({
         }
     };
 
+    // By category for CashTokens, by address where both rows have one (several tokens can share a symbol),
+    // otherwise by symbol and chain.
     const isSelected = (token: Token) => value?.categoryId
         ? value.categoryId === token.categoryId
-        : value?.symbol === token.symbol && value?.chain === token.chain;
+        : value?.address && token.address
+            ? value.address === token.address && value.chain === token.chain
+            : value?.symbol === token.symbol && value?.chain === token.chain;
 
     const TokenRow = ({ token }: { token: Token }) => (
         <Button
@@ -471,7 +478,8 @@ export function BCHTokenSelector({
                 {/* Chain filter chips */}
                 <div className="px-4 pb-2">
                     <div className="flex flex-wrap items-center gap-1.5">
-                        {CHAIN_FILTERS.map(f => {
+                        {/* Arc has tokens only while the swap server offers it (testnet mode): no empty chip otherwise. */}
+                        {CHAIN_FILTERS.filter(f => f.key !== 'arc' || displayTokens.some(t => t.chain === 'arc')).map(f => {
                             const active = chainFilter === f.key;
                             return (
                                 <button

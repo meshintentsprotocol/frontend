@@ -37,6 +37,7 @@ import IntegratePage from "./pages/IntegratePage"
 import { SolanaWalletProvider } from "./context/SolanaWalletProvider"
 import { BCHWalletProvider, CashonizeProvider } from "./context/BCHWalletProvider"
 import { BCHSwapProvider } from "./context/BCHSwapContext"
+import { SwapServerRoot } from "./swap-server/SwapServerRoot"
 import BchSwapPage from "./pages/BchSwapPage"
 import WalletPage from "./pages/WalletPage"
 import OverviewPage from "./pages/OverviewPage"
@@ -74,6 +75,8 @@ function App() {
                                     <CashonizeProvider>
                                         <BCHWalletProvider>
                                             <BCHSwapProvider>
+                                                {/* Cross-chain USDC and Solana swaps through cctp-swap-server: a module of its own, next to BCHSwapProvider. */}
+                                                <SwapServerRoot>
                                                 <Routes>
                                                     <Route path="/" element={<LandingPage />} />
                                                     <Route path="/home" element={<LandingPage />} />
@@ -263,6 +266,7 @@ function App() {
                                                         </div>
                                                     } />
                                                 </Routes>
+                                                </SwapServerRoot>
                                             </BCHSwapProvider>
                                         </BCHWalletProvider>
                                     </CashonizeProvider>

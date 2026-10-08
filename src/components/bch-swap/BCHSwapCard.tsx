@@ -31,6 +31,8 @@ import { useExternalBCHWallet } from '@/context/ExternalBCHWalletProvider';
 import { TWAPOrderForm } from './TWAPOrderForm';
 import { cashAddressToLockingBytecode, binToHex } from '@bitauth/libauth';
 import { pusdToken, PUSD_MAINNET, PUSD_CHIPNET } from '@/lib/pusd';
+import { useSwapServerCard } from '@/swap-server/useSwapServerCard';
+import { SwapServerButton, SwapServerDetails } from '@/swap-server/SwapServerCardParts';
 
 // ============================================================================
 // BCH Swap Card — Uniswap-style unified swap card
@@ -170,7 +172,15 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
         wdk.setBchNetwork(isMainnet ? 'chipnet' : 'mainnet');
     };
 
-    const availableTokens = isMainnet ? MAINNET_SWAP_TOKENS : ALL_BCH_SWAP_TOKENS;
+    // Pairs the swap server handles (cross-chain USDC through Circle CCTP, Solana swaps through Jupiter) are
+    // routed before any flow below; see src/swap-server/routing.ts. `ssHandled` is false for every other pair,
+    // and then nothing in this card changes.
+    const ss = useSwapServerCard({ sellToken, buyToken, sellAmount, isMainnet });
+    const ssHandled = ss.active || !!ss.blocked;
+
+    const staticTokens = isMainnet ? MAINNET_SWAP_TOKENS : ALL_BCH_SWAP_TOKENS;
+    const ssTokens = ss.tokens;
+    const availableTokens = useMemo(() => ssTokens(staticTokens), [ssTokens, staticTokens]);
 
     // Resolve a human-readable EVM chain label from the active sell/buy token
     const activeEvmChain = isEvmChain(sellToken.chain) ? sellToken.chain
@@ -300,9 +310,10 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
     }, []);
 
     useEffect(() => {
-        if (!sellAmount || Number(sellAmount) <= 0) {
+        if (ssHandled || !sellAmount || Number(sellAmount) <= 0) {
             setFillableRatio(0);
             setQuoteUnavailable(false);
+            if (ssHandled) setSettlementBlocked(null);
             return;
         }
         let cancelled = false;
@@ -369,7 +380,7 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
         }
 
         return () => { cancelled = true; };
-    }, [swapType, sellAmount, sellToken, buyToken, wdk.bchNetwork, getRelayerTokenSymbol]);
+    }, [swapType, sellAmount, sellToken, buyToken, wdk.bchNetwork, getRelayerTokenSymbol, ssHandled]);
 
     /** What the limit-price input and its presets are anchored to. */
     const referenceRatio = fillableRatio > 0 ? fillableRatio : currentMarketRatio;
@@ -408,6 +419,7 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
     // Skipped when any limit order has an explicit limitPrice — the dedicated
     // limit-price effect below drives buyAmount in that case.
     useEffect(() => {
+        if (ssHandled) return;
         if (!sellAmount || Number(sellAmount) <= 0) { setBuyAmount(''); return; }
         if (orderType === 'limit' && limitPrice && Number(limitPrice) > 0) return;
         
@@ -511,7 +523,14 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
             estimated = estimated * (1 - SOLVER_EDGE);
             setBuyAmount(estimated.toFixed(6));
         }
-    }, [sellAmount, sellToken, buyToken, getTokenPrice, orderType, limitPrice, swapType, wdk.bchNetwork]);
+    }, [sellAmount, sellToken, buyToken, getTokenPrice, orderType, limitPrice, swapType, wdk.bchNetwork, ssHandled]);
+
+    // A routed pair shows what the swap server quotes ('' until it has).
+    const ssBuyAmount = ss.buyAmount;
+    useEffect(() => { if (ssHandled) setBuyAmount(ssBuyAmount); }, [ssHandled, ssBuyAmount]);
+
+    // The swap server's pairs are immediate: there is no limit or TWAP form of them.
+    useEffect(() => { if (ssHandled && orderType !== 'market') onOrderTypeChange('market'); }, [ssHandled, orderType, onOrderTypeChange]);
 
     // Limit order: explicit limitPrice drives buyAmount across same-chain and cross-chain pairs.
     // limitPrice means "1 sellToken = N buyToken" (matches the on-screen mkt-ratio display).
@@ -534,12 +553,22 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
         setTimeout(() => setFlipping(false), 300);
     };
 
+    // A bridge-only USDC row needs USDC on another chain opposite it, and nothing else pairs with one
+    // (src/swap-server/tokens.ts). Not applied on a token page, where one side is pinned.
+    const pairAcross = (picked: Token, other: Token, setOther: (t: Token) => void) => {
+        if (anchorToken) return;
+        const fix = ss.pair(picked, other, availableTokens);
+        if (fix.other) setOther(fix.other);
+        else if (fix.reset) setOther(picked.chain === 'bch' && picked.type === 'native' ? pusdToken(isMainnet) : BCH_TOKENS[0]);
+    };
+
     // Wrapped token selectors that fire onAnchorTokenChange when the anchor side is changed
     const handleSellTokenSelect = (token: Token) => {
         if (anchorToken && anchorSide === 'sell' && onAnchorTokenChange) {
             onAnchorTokenChange(token);
         } else {
             setSellToken(token);
+            pairAcross(token, buyToken, setBuyToken);
         }
     };
 
@@ -548,6 +577,7 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
             onAnchorTokenChange(token);
         } else {
             setBuyToken(token);
+            pairAcross(token, sellToken, setSellToken);
         }
     };
 
@@ -564,6 +594,7 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
     const movementConnected = !!wdk.movementAddress;
 
     const canSubmit = useMemo(() => {
+        if (ssHandled) return ss.canSubmit;
         if (!sellAmount || Number(sellAmount) <= 0) return false;
         if (!buyAmount || Number(buyAmount) <= 0) return false;
         if (swapType === 'same-chain' && settlementBlocked) return false;
@@ -574,7 +605,7 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
         if (swapType === 'bch-to-xmr' && (!xmrAddress || !xmrViewKey || !xmrSpendKey)) return false;
         if (swapType === 'xmr-to-bch' && !bchConnected) return false;
         return true;
-    }, [sellAmount, buyAmount, settlementBlocked, needsBCHWallet, bchConnected, needsSolanaWallet, solanaConnected, needsEthWallet, ethConnected, needsMovementWallet, movementConnected, swapType, xmrAddress, xmrViewKey, xmrSpendKey]);
+    }, [sellAmount, buyAmount, settlementBlocked, needsBCHWallet, bchConnected, needsSolanaWallet, solanaConnected, needsEthWallet, ethConnected, needsMovementWallet, movementConnected, swapType, xmrAddress, xmrViewKey, xmrSpendKey, ssHandled, ss.canSubmit]);
 
     const parseCustomExpiry = (val: string): number => {
         const str = val.trim().toLowerCase();
@@ -591,6 +622,11 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
 
     const handleSwap = async () => {
         if (!canSubmit) return;
+        if (ssHandled) {
+            // The swap server's flow: its own executor, dialog and history (src/swap-server).
+            if (await ss.execute()) { setSellAmount(''); setBuyAmount(''); }
+            return;
+        }
         const params: BCHSwapParams = {
             sellToken, buyToken,
             sellAmount: Number(sellAmount), buyAmount: Number(buyAmount),
@@ -648,6 +684,7 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
 
     // Wallet balance helpers
     const sellBalance: number | null = useMemo(() => {
+        if (ss.active) return ss.sellBalance;
         if (sellToken.chain === 'bch' && bchConnected && sellToken.type === 'native') {
             return bchWallet.balance / 1e8;
         }
@@ -677,7 +714,7 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
             return entry?.balance ?? null;
         }
         return null;
-    }, [sellToken, bchConnected, bchWallet.balance, bchWallet.tokenBalances, PORTFOLIO_CHAIN, portfolio.tokens, wdk.movementAddress, wdk.movementTokenBalances]);
+    }, [sellToken, bchConnected, bchWallet.balance, bchWallet.tokenBalances, PORTFOLIO_CHAIN, portfolio.tokens, wdk.movementAddress, wdk.movementTokenBalances, ss.active, ss.sellBalance]);
 
     const setPercent = (pct: number) => {
         if (sellBalance === null) return;
@@ -697,6 +734,8 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
         if (needsWallet) {
             return <ConnectWalletButton className="w-full h-14 rounded-2xl" />;
         }
+        // A pair with no flow at all says so before an amount is asked for.
+        if (ss.blocked) return <SwapServerButton state={ss} onClick={handleSwap} />;
         if (!sellAmount || Number(sellAmount) <= 0) {
             return <Button className="w-full h-14 text-base font-semibold rounded-2xl bg-white/[0.04] text-white/40 hover:bg-white/[0.04]" disabled>Enter an amount</Button>;
         }
@@ -714,6 +753,7 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
         if (sellBalance !== null && Number(sellAmount) > sellBalance) {
             return <Button className="w-full h-14 text-base font-semibold rounded-2xl bg-red-500/15 text-red-300 hover:bg-red-500/15" disabled>Insufficient {sellToken.symbol} balance</Button>;
         }
+        if (ss.active) return <SwapServerButton state={ss} onClick={handleSwap} />;
         return (
             <Button
                 className="w-full h-14 text-base font-semibold bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 rounded-2xl shadow-lg shadow-emerald-500/20 disabled:from-white/[0.04] disabled:to-white/[0.04] disabled:text-white/40 disabled:shadow-none transition-all"
@@ -759,8 +799,10 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                     </button>
                     <button
                         onClick={() => onOrderTypeChange('limit')}
+                        disabled={ssHandled}
+                        title={ssHandled ? 'Not available for this pair' : undefined}
                         className={cn(
-                            'px-4 py-1.5 text-xs font-semibold rounded-full transition-all',
+                            'px-4 py-1.5 text-xs font-semibold rounded-full transition-all disabled:opacity-40 disabled:cursor-not-allowed',
                             orderType === 'limit'
                                 ? 'bg-white/[0.08] text-white shadow-sm'
                                 : 'text-white/50 hover:text-white/80'
@@ -770,8 +812,10 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                     </button>
                     <button
                         onClick={() => onOrderTypeChange('twap')}
+                        disabled={ssHandled}
+                        title={ssHandled ? 'Not available for this pair' : undefined}
                         className={cn(
-                            'px-4 py-1.5 text-xs font-semibold rounded-full transition-all',
+                            'px-4 py-1.5 text-xs font-semibold rounded-full transition-all disabled:opacity-40 disabled:cursor-not-allowed',
                             orderType === 'twap'
                                 ? 'bg-white/[0.08] text-white shadow-sm'
                                 : 'text-white/50 hover:text-white/80'
@@ -1131,7 +1175,8 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                         <span className="text-white/40 font-mono">
                             ≈ ${buyUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
-                        {priceImpact !== 0 && Math.abs(priceImpact) > 0.01 && (
+                        {/* Not for a bridge: what is taken off there is fees, listed line by line below. */}
+                        {!ss.active && priceImpact !== 0 && Math.abs(priceImpact) > 0.01 && (
                             <span className={cn(
                                 "font-mono",
                                 priceImpact < -2 ? "text-red-400" : priceImpact < -0.5 ? "text-yellow-400" : "text-white/40"
@@ -1206,7 +1251,8 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
             ) : (
                 <>
                     {/* ─── Route summary ─── */}
-                    {sellAmount && Number(sellAmount) > 0 && (
+                    {ss.active && <SwapServerDetails state={ss} />}
+                    {!ssHandled && sellAmount && Number(sellAmount) > 0 && (
                         <div className="mx-4 mt-3 rounded-2xl bg-white/[0.02] border border-white/[0.05] overflow-hidden">
                             <button
                                 onClick={() => setRouteExpanded(v => !v)}

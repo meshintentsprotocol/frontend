@@ -7,6 +7,8 @@ import { useBCHSwapOptional } from '@/context/BCHSwapContext';
 import { useLocation } from 'react-router-dom';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription } from '@/components/ui/drawer';
+import { useSwapServerOptional } from '@/swap-server/context';
+import { TradeHistorySlot } from '@/swap-server/SwapServerHistory';
 
 // ============================================================================
 // BCH Swap Page — /bchswap, /trade, /twap
@@ -60,6 +62,14 @@ export default function BchSwapPage() {
         prevPendingCount.current = currentCount;
     }, [swapCtx?.pendingOrders?.length, swapCtx?.completedOrders?.length]);
 
+    // A transfer through the swap server opens the panel the way a new order does. Not on mobile, where the
+    // panel is a sheet and the transfer's own dialog is already on screen.
+    const swapServer = useSwapServerOptional();
+    const signing = !!swapServer?.operation?.busy;
+    // Also when the page loads while one is on its way, so a reload does not hide it.
+    const moving = (swapServer?.activeCount ?? 0) > 0;
+    useEffect(() => { if ((signing || moving) && !isMobile) setShowOrders(true); }, [signing, moving, isMobile]);
+
     // Sync swap card height to CSS variable for orders panel
     useEffect(() => {
         const el = swapCardRef.current;
@@ -99,7 +109,7 @@ export default function BchSwapPage() {
                     {/* Orders Panel — desktop only: slides + scales in */}
                     {panelVisible && !isMobile && (
                         <div className="w-full lg:flex-1 animate-in fade-in slide-in-from-right-10 zoom-in-95 duration-500 ease-out fill-mode-both delay-100">
-                            {orderType === 'twap' ? <TWAPOrderHistory /> : <LimitOrderHistory />}
+                            <TradeHistorySlot>{orderType === 'twap' ? <TWAPOrderHistory /> : <LimitOrderHistory />}</TradeHistorySlot>
                         </div>
                     )}
                 </div>
@@ -118,7 +128,7 @@ export default function BchSwapPage() {
                             </DrawerDescription>
                         </DrawerHeader>
                         <div className="overflow-y-auto px-4 pb-6">
-                            {orderType === 'twap' ? <TWAPOrderHistory /> : <LimitOrderHistory />}
+                            <TradeHistorySlot>{orderType === 'twap' ? <TWAPOrderHistory /> : <LimitOrderHistory />}</TradeHistorySlot>
                         </div>
                     </DrawerContent>
                 </Drawer>
