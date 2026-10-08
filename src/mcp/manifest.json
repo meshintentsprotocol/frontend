@@ -1,0 +1,1081 @@
+{
+  "name": "bch-intents",
+  "title": "BCH Intents & Mesh",
+  "version": "0.1.0",
+  "groups": [
+    {
+      "id": "System",
+      "blurb": "Which networks are up and how this server is set."
+    },
+    {
+      "id": "Market data",
+      "blurb": "Tokens, prices, quotes and depth."
+    },
+    {
+      "id": "Orders",
+      "blurb": "Market, limit, Dutch and TWAP orders: prepare, follow, refund."
+    },
+    {
+      "id": "Mesh pools",
+      "blurb": "Liquidity pools and the LPs behind them."
+    },
+    {
+      "id": "Strategies",
+      "blurb": "Templates of pools an LP deploys and manages together."
+    }
+  ],
+  "tools": [
+    {
+      "name": "get_protocol_status",
+      "group": "System",
+      "title": "Get protocol status",
+      "description": "Which networks this server can reach, whether each Mesh Server is up, protocol totals (TVL, 24h volume, pools, fills) and this server's settings (default network, whether order creation is enabled). Call it first when unsure which network to use.",
+      "kind": "read",
+      "params": []
+    },
+    {
+      "name": "search_tokens",
+      "group": "Market data",
+      "title": "Search tokens",
+      "description": "Find CashTokens by symbol, name or category id prefix, ordered by liquidity. Returns each token's category id (the identifier every other tool takes), decimals and price. Call this first when the user names a token by symbol.",
+      "kind": "read",
+      "params": [
+        {
+          "name": "query",
+          "type": "string",
+          "required": false,
+          "description": "Symbol, name or start of a category id. Omit to list the most liquid tokens."
+        },
+        {
+          "name": "limit",
+          "type": "integer",
+          "required": false,
+          "description": "How many to return (default 10)."
+        },
+        {
+          "name": "network",
+          "type": "enum",
+          "required": false,
+          "description": "BCH network. chipnet is the test network. Defaults to the server default (see get_protocol_status).",
+          "options": [
+            "chipnet",
+            "mainnet"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "get_prices",
+      "group": "Market data",
+      "title": "Get USD prices",
+      "description": "Spot USD price and 24-hour change of BCH and the other majors the protocol tracks (BTC, ETH, SOL…). For a CashToken's price use search_tokens or get_quote.",
+      "kind": "read",
+      "params": [
+        {
+          "name": "network",
+          "type": "enum",
+          "required": false,
+          "description": "BCH network. chipnet is the test network. Defaults to the server default (see get_protocol_status).",
+          "options": [
+            "chipnet",
+            "mainnet"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "get_token_price_history",
+      "group": "Market data",
+      "title": "Get token price history",
+      "description": "Price history of one CashToken, per whole token, in sats and USD. Only periods with trades have points.",
+      "kind": "read",
+      "params": [
+        {
+          "name": "token",
+          "type": "string",
+          "required": true,
+          "description": "The token: 'BCH', a token symbol, or a CashToken category id (64 hex characters). A symbol shared by several tokens is refused; pass the category id then."
+        },
+        {
+          "name": "range",
+          "type": "enum",
+          "required": false,
+          "description": "Time span (default 1D).",
+          "options": [
+            "1H",
+            "1D",
+            "1W",
+            "1M",
+            "1Y",
+            "ALL"
+          ]
+        },
+        {
+          "name": "network",
+          "type": "enum",
+          "required": false,
+          "description": "BCH network. chipnet is the test network. Defaults to the server default (see get_protocol_status).",
+          "options": [
+            "chipnet",
+            "mainnet"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "get_quote",
+      "group": "Market data",
+      "title": "Get a swap quote",
+      "description": "What a swap would return right now and the route the solver would take (Mesh pools, Cauldron, solver inventory or a split). Nothing is created. Quote before creating an order.",
+      "kind": "read",
+      "params": [
+        {
+          "name": "sellToken",
+          "type": "string",
+          "required": true,
+          "description": "Token to sell: 'BCH', a token symbol, or a CashToken category id (64 hex characters). A symbol shared by several tokens is refused; pass the category id then."
+        },
+        {
+          "name": "buyToken",
+          "type": "string",
+          "required": true,
+          "description": "Token to buy: 'BCH', a token symbol, or a CashToken category id (64 hex characters). A symbol shared by several tokens is refused; pass the category id then."
+        },
+        {
+          "name": "sellAmount",
+          "type": "string",
+          "required": true,
+          "description": "Amount to sell, as an integer string in base units: satoshis for BCH (1 BCH = 100000000), the smallest unit for tokens (see the token's decimals). Never a decimal number."
+        },
+        {
+          "name": "network",
+          "type": "enum",
+          "required": false,
+          "description": "BCH network. chipnet is the test network. Defaults to the server default (see get_protocol_status).",
+          "options": [
+            "chipnet",
+            "mainnet"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "get_orderbook",
+      "group": "Market data",
+      "title": "Get the orderbook",
+      "description": "Aggregated depth of Mesh pool liquidity for a pair: price levels with the amount available at each, and the spread.",
+      "kind": "read",
+      "params": [
+        {
+          "name": "baseToken",
+          "type": "string",
+          "required": true,
+          "description": "First token of the pair: 'BCH', a token symbol, or a CashToken category id (64 hex characters). A symbol shared by several tokens is refused; pass the category id then."
+        },
+        {
+          "name": "quoteToken",
+          "type": "string",
+          "required": true,
+          "description": "Second token of the pair: 'BCH', a token symbol, or a CashToken category id (64 hex characters). A symbol shared by several tokens is refused; pass the category id then."
+        },
+        {
+          "name": "depth",
+          "type": "integer",
+          "required": false,
+          "description": "Price levels per side (default 10)."
+        },
+        {
+          "name": "network",
+          "type": "enum",
+          "required": false,
+          "description": "BCH network. chipnet is the test network. Defaults to the server default (see get_protocol_status).",
+          "options": [
+            "chipnet",
+            "mainnet"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "list_pairs",
+      "group": "Market data",
+      "title": "List traded pairs",
+      "description": "Every pair with Mesh liquidity: pool count, TVL, volume, fees, best bid and ask, and depth. Prices are sats per token base unit.",
+      "kind": "read",
+      "params": [
+        {
+          "name": "network",
+          "type": "enum",
+          "required": false,
+          "description": "BCH network. chipnet is the test network. Defaults to the server default (see get_protocol_status).",
+          "options": [
+            "chipnet",
+            "mainnet"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "create_swap_order",
+      "group": "Orders",
+      "title": "Create a swap order",
+      "description": "Prepare a swap order: market (fill now at the quote, within slippage), limit (fill at or above a price you set) or dutch (price falls from a start to a minimum over the duration). Returns a covenant address and how to fund it. NOTHING MOVES until the maker funds the covenant from their own wallet; this server holds no key. Once funded, a solver fills the order and the maker address receives the bought asset; if it does not fill in time the funds return to the maker. Confirm the tokens, amounts and maker address with the user before calling.",
+      "kind": "prepare",
+      "params": [
+        {
+          "name": "makerAddress",
+          "type": "string",
+          "required": true,
+          "description": "The user's own P2PKH cashaddr (bitcoincash:q… on mainnet, bchtest:q… on chipnet). The fill and any refund are paid to it. Ask the user; never invent one."
+        },
+        {
+          "name": "sellToken",
+          "type": "string",
+          "required": true,
+          "description": "Token to sell: 'BCH', a token symbol, or a CashToken category id (64 hex characters). A symbol shared by several tokens is refused; pass the category id then."
+        },
+        {
+          "name": "buyToken",
+          "type": "string",
+          "required": true,
+          "description": "Token to buy: 'BCH', a token symbol, or a CashToken category id (64 hex characters). A symbol shared by several tokens is refused; pass the category id then."
+        },
+        {
+          "name": "sellAmount",
+          "type": "string",
+          "required": true,
+          "description": "Amount to sell, as an integer string in base units: satoshis for BCH (1 BCH = 100000000), the smallest unit for tokens (see the token's decimals). Never a decimal number."
+        },
+        {
+          "name": "orderType",
+          "type": "enum",
+          "required": false,
+          "description": "market (default), limit or dutch.",
+          "options": [
+            "market",
+            "limit",
+            "dutch"
+          ]
+        },
+        {
+          "name": "minBuyAmount",
+          "type": "string",
+          "required": false,
+          "description": "Least the maker accepts for the whole order, in base units of the buy token. Required for limit and dutch; for market it replaces the slippage calculation."
+        },
+        {
+          "name": "startBuyAmount",
+          "type": "string",
+          "required": false,
+          "description": "Dutch only: the amount asked at the start, in base units of the buy token (default: the live quote)."
+        },
+        {
+          "name": "slippageBps",
+          "type": "integer",
+          "required": false,
+          "description": "Market only: how far below the quote the order may fill, in basis points (default 100 = 1%)."
+        },
+        {
+          "name": "durationSec",
+          "type": "integer",
+          "required": false,
+          "description": "How long the order stays open, in seconds (60 to 604800; default 3600). Unfilled funds return to the maker after it."
+        },
+        {
+          "name": "acceptPriceDeviation",
+          "type": "boolean",
+          "required": false,
+          "description": "Set true to create the order even though its minimum is far below the live quote. Only after the user has confirmed the price."
+        },
+        {
+          "name": "network",
+          "type": "enum",
+          "required": false,
+          "description": "BCH network. chipnet is the test network. Defaults to the server default (see get_protocol_status).",
+          "options": [
+            "chipnet",
+            "mainnet"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "get_order",
+      "group": "Orders",
+      "title": "Get an order",
+      "description": "Status of one swap order: whether it is funded, filled or refunded, with the transaction id and explorer link.",
+      "kind": "read",
+      "params": [
+        {
+          "name": "orderId",
+          "type": "string",
+          "required": true,
+          "description": "The order id returned by create_swap_order (intent_…)."
+        },
+        {
+          "name": "network",
+          "type": "enum",
+          "required": false,
+          "description": "BCH network. chipnet is the test network. Defaults to the server default (see get_protocol_status).",
+          "options": [
+            "chipnet",
+            "mainnet"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "list_orders",
+      "group": "Orders",
+      "title": "List orders",
+      "description": "Swap orders of one maker, newest first, optionally filtered by status or type. TWAP slices appear as orders with a twapOrderId.",
+      "kind": "read",
+      "params": [
+        {
+          "name": "makerAddress",
+          "type": "string",
+          "required": true,
+          "description": "The maker's P2PKH cashaddr or 40-hex public key hash."
+        },
+        {
+          "name": "status",
+          "type": "enum",
+          "required": false,
+          "description": "Only orders in this status.",
+          "options": [
+            "awaiting_funding",
+            "underfunded",
+            "active",
+            "scheduled",
+            "expired",
+            "expired_unfunded",
+            "refund_pending",
+            "filled",
+            "refunded",
+            "cancelled",
+            "closed_external"
+          ]
+        },
+        {
+          "name": "type",
+          "type": "enum",
+          "required": false,
+          "description": "limit, or dutch (market orders and TWAP slices are dutch).",
+          "options": [
+            "limit",
+            "dutch"
+          ]
+        },
+        {
+          "name": "limit",
+          "type": "integer",
+          "required": false,
+          "description": "How many to return (default 20)."
+        },
+        {
+          "name": "network",
+          "type": "enum",
+          "required": false,
+          "description": "BCH network. chipnet is the test network. Defaults to the server default (see get_protocol_status).",
+          "options": [
+            "chipnet",
+            "mainnet"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "request_refund",
+      "group": "Orders",
+      "title": "Request a refund",
+      "description": "Ask the server to return a funded, unfilled order to its maker now. Works only after the order's deadline; before it, the answer says when it becomes eligible. The refund can only pay the maker. Refunds also happen automatically.",
+      "kind": "write",
+      "params": [
+        {
+          "name": "orderId",
+          "type": "string",
+          "required": true,
+          "description": "The order id (intent_…)."
+        },
+        {
+          "name": "network",
+          "type": "enum",
+          "required": false,
+          "description": "BCH network. chipnet is the test network. Defaults to the server default (see get_protocol_status).",
+          "options": [
+            "chipnet",
+            "mainnet"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "quote_twap",
+      "group": "Orders",
+      "title": "Quote a TWAP order",
+      "description": "Estimate a TWAP: one sale split into equal slices over time, each filled separately to reduce price impact. Returns the estimated output per slice and in total. Nothing is created.",
+      "kind": "read",
+      "params": [
+        {
+          "name": "sellToken",
+          "type": "string",
+          "required": true,
+          "description": "Token to sell: 'BCH', a token symbol, or a CashToken category id (64 hex characters). A symbol shared by several tokens is refused; pass the category id then."
+        },
+        {
+          "name": "buyToken",
+          "type": "string",
+          "required": true,
+          "description": "Token to buy: 'BCH', a token symbol, or a CashToken category id (64 hex characters). A symbol shared by several tokens is refused; pass the category id then."
+        },
+        {
+          "name": "totalSellAmount",
+          "type": "string",
+          "required": true,
+          "description": "Total amount to sell across all slices, as an integer string in base units: satoshis for BCH (1 BCH = 100000000), the smallest unit for tokens (see the token's decimals). Never a decimal number."
+        },
+        {
+          "name": "numSlices",
+          "type": "integer",
+          "required": false,
+          "description": "Number of slices (default 4, max 48)."
+        },
+        {
+          "name": "intervalSec",
+          "type": "integer",
+          "required": false,
+          "description": "Seconds between slice starts (default 600)."
+        },
+        {
+          "name": "network",
+          "type": "enum",
+          "required": false,
+          "description": "BCH network. chipnet is the test network. Defaults to the server default (see get_protocol_status).",
+          "options": [
+            "chipnet",
+            "mainnet"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "create_twap_order",
+      "group": "Orders",
+      "title": "Create a TWAP order",
+      "description": "Prepare a TWAP: the sale is split into equal slices, each its own price-protected covenant that opens at its start time. Returns one funding output per slice; the maker funds them all in ONE transaction from their own wallet. NOTHING MOVES until then; this server holds no key. Slices cannot be cancelled early: a slice that does not fill in its window is refunded to the maker. Confirm the details with the user before calling.",
+      "kind": "prepare",
+      "params": [
+        {
+          "name": "makerAddress",
+          "type": "string",
+          "required": true,
+          "description": "The user's own P2PKH cashaddr. Fills and refunds are paid to it. Ask the user; never invent one."
+        },
+        {
+          "name": "sellToken",
+          "type": "string",
+          "required": true,
+          "description": "Token to sell: 'BCH', a token symbol, or a CashToken category id (64 hex characters). A symbol shared by several tokens is refused; pass the category id then."
+        },
+        {
+          "name": "buyToken",
+          "type": "string",
+          "required": true,
+          "description": "Token to buy: 'BCH', a token symbol, or a CashToken category id (64 hex characters). A symbol shared by several tokens is refused; pass the category id then."
+        },
+        {
+          "name": "totalSellAmount",
+          "type": "string",
+          "required": true,
+          "description": "Total amount to sell across all slices, as an integer string in base units: satoshis for BCH (1 BCH = 100000000), the smallest unit for tokens (see the token's decimals). Never a decimal number."
+        },
+        {
+          "name": "numSlices",
+          "type": "integer",
+          "required": false,
+          "description": "Number of slices (default 4, max 48)."
+        },
+        {
+          "name": "intervalSec",
+          "type": "integer",
+          "required": false,
+          "description": "Seconds between slice starts (default 600)."
+        },
+        {
+          "name": "minBuyAmountPerSlice",
+          "type": "string",
+          "required": false,
+          "description": "Least the maker accepts for ONE slice, in base units of the buy token (default: the live quote for one slice less slippageBps)."
+        },
+        {
+          "name": "slippageBps",
+          "type": "integer",
+          "required": false,
+          "description": "How far below the per-slice quote a slice may fill, in basis points (default 200 = 2%). Ignored when minBuyAmountPerSlice is given."
+        },
+        {
+          "name": "sliceWindowSec",
+          "type": "integer",
+          "required": false,
+          "description": "How long each slice stays fillable (default: the larger of intervalSec and 3600; minimum 1800 because chain time moves a block at a time)."
+        },
+        {
+          "name": "acceptPriceDeviation",
+          "type": "boolean",
+          "required": false,
+          "description": "Set true to create the order even though its minimum is far below the live quote. Only after the user has confirmed the price."
+        },
+        {
+          "name": "network",
+          "type": "enum",
+          "required": false,
+          "description": "BCH network. chipnet is the test network. Defaults to the server default (see get_protocol_status).",
+          "options": [
+            "chipnet",
+            "mainnet"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "get_twap_order",
+      "group": "Orders",
+      "title": "Get a TWAP order",
+      "description": "Progress of a TWAP order: overall status and every slice (when it starts, whether it filled or was refunded).",
+      "kind": "read",
+      "params": [
+        {
+          "name": "orderId",
+          "type": "string",
+          "required": true,
+          "description": "The TWAP order id returned by create_twap_order."
+        },
+        {
+          "name": "network",
+          "type": "enum",
+          "required": false,
+          "description": "BCH network. chipnet is the test network. Defaults to the server default (see get_protocol_status).",
+          "options": [
+            "chipnet",
+            "mainnet"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "list_pools",
+      "group": "Mesh pools",
+      "title": "List Mesh pools",
+      "description": "Mesh liquidity pools: each is one LP's covenant quoting a fixed price with a fee. Filter by token or owner. Prices are sats per token base unit.",
+      "kind": "read",
+      "params": [
+        {
+          "name": "token",
+          "type": "string",
+          "required": false,
+          "description": "Only pools trading this token: 'BCH', a token symbol, or a CashToken category id (64 hex characters). A symbol shared by several tokens is refused; pass the category id then."
+        },
+        {
+          "name": "owner",
+          "type": "string",
+          "required": false,
+          "description": "Only pools of this LP: a P2PKH cashaddr (bitcoincash:q… / bchtest:q…) or its 40-hex public key hash."
+        },
+        {
+          "name": "status",
+          "type": "enum",
+          "required": false,
+          "description": "active (default): has liquidity; exhausted: empty but open; closed: withdrawn; all.",
+          "options": [
+            "active",
+            "exhausted",
+            "closed",
+            "all"
+          ]
+        },
+        {
+          "name": "sort",
+          "type": "enum",
+          "required": false,
+          "description": "Order, highest first (default value; volume and fees are 7-day).",
+          "options": [
+            "value",
+            "volume",
+            "fees",
+            "recent",
+            "created"
+          ]
+        },
+        {
+          "name": "limit",
+          "type": "integer",
+          "required": false,
+          "description": "How many to return (default 15)."
+        },
+        {
+          "name": "offset",
+          "type": "integer",
+          "required": false,
+          "description": "How many to skip, for paging (default 0)."
+        },
+        {
+          "name": "network",
+          "type": "enum",
+          "required": false,
+          "description": "BCH network. chipnet is the test network. Defaults to the server default (see get_protocol_status).",
+          "options": [
+            "chipnet",
+            "mainnet"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "get_pool",
+      "group": "Mesh pools",
+      "title": "Get a Mesh pool",
+      "description": "One pool in detail: price, fee, reserves, its UTXOs, lifetime stats, and the other pools of the same strategy.",
+      "kind": "read",
+      "params": [
+        {
+          "name": "address",
+          "type": "string",
+          "required": true,
+          "description": "The pool's covenant address (bitcoincash:p… / bchtest:p…)."
+        },
+        {
+          "name": "network",
+          "type": "enum",
+          "required": false,
+          "description": "BCH network. chipnet is the test network. Defaults to the server default (see get_protocol_status).",
+          "options": [
+            "chipnet",
+            "mainnet"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "get_pool_activity",
+      "group": "Mesh pools",
+      "title": "Get pool activity",
+      "description": "Ledger events of one pool, or the latest across all pools when no address is given: fills, deposits and withdrawals, newest first.",
+      "kind": "read",
+      "params": [
+        {
+          "name": "address",
+          "type": "string",
+          "required": false,
+          "description": "A pool address. Omit for activity across all pools."
+        },
+        {
+          "name": "type",
+          "type": "enum",
+          "required": false,
+          "description": "Only this event type (all-pools view only).",
+          "options": [
+            "FILL",
+            "DEPOSIT",
+            "WITHDRAW"
+          ]
+        },
+        {
+          "name": "limit",
+          "type": "integer",
+          "required": false,
+          "description": "How many to return (default 20)."
+        },
+        {
+          "name": "network",
+          "type": "enum",
+          "required": false,
+          "description": "BCH network. chipnet is the test network. Defaults to the server default (see get_protocol_status).",
+          "options": [
+            "chipnet",
+            "mainnet"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "list_liquidity_providers",
+      "group": "Mesh pools",
+      "title": "List liquidity providers",
+      "description": "The LP leaderboard: owners of Mesh pools ranked by TVL, volume, fees or profit.",
+      "kind": "read",
+      "params": [
+        {
+          "name": "sort",
+          "type": "enum",
+          "required": false,
+          "description": "Ranking (default tvl).",
+          "options": [
+            "tvl",
+            "volume",
+            "fees",
+            "pnl"
+          ]
+        },
+        {
+          "name": "limit",
+          "type": "integer",
+          "required": false,
+          "description": "How many to return (default 10)."
+        },
+        {
+          "name": "network",
+          "type": "enum",
+          "required": false,
+          "description": "BCH network. chipnet is the test network. Defaults to the server default (see get_protocol_status).",
+          "options": [
+            "chipnet",
+            "mainnet"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "get_liquidity_provider",
+      "group": "Mesh pools",
+      "title": "Get a liquidity provider",
+      "description": "One LP's totals (TVL, volume, fees, profit) and their pools.",
+      "kind": "read",
+      "params": [
+        {
+          "name": "owner",
+          "type": "string",
+          "required": true,
+          "description": "The LP: a P2PKH cashaddr (bitcoincash:q… / bchtest:q…) or its 40-hex public key hash."
+        },
+        {
+          "name": "network",
+          "type": "enum",
+          "required": false,
+          "description": "BCH network. chipnet is the test network. Defaults to the server default (see get_protocol_status).",
+          "options": [
+            "chipnet",
+            "mainnet"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "list_strategy_templates",
+      "group": "Strategies",
+      "title": "List strategy templates",
+      "description": "The liquidity strategies an LP can deploy (fixed price, spread, grid, ladders, stable pair…): what each does, what it earns, its risk, and the exact parameters it takes. Read this before previewing a strategy.",
+      "kind": "read",
+      "params": [
+        {
+          "name": "network",
+          "type": "enum",
+          "required": false,
+          "description": "BCH network. chipnet is the test network. Defaults to the server default (see get_protocol_status).",
+          "options": [
+            "chipnet",
+            "mainnet"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "suggest_strategy_params",
+      "group": "Strategies",
+      "title": "Suggest strategy parameters",
+      "description": "Market context for a template's tokens (Cauldron reference, best Mesh bid and ask, mid price) and parameters suggested around the mid. Deposits are left for the LP to choose.",
+      "kind": "read",
+      "params": [
+        {
+          "name": "template",
+          "type": "string",
+          "required": true,
+          "description": "Template id from list_strategy_templates (e.g. grid)."
+        },
+        {
+          "name": "token",
+          "type": "string",
+          "required": false,
+          "description": "The token, for single-token templates: 'BCH', a token symbol, or a CashToken category id (64 hex characters). A symbol shared by several tokens is refused; pass the category id then."
+        },
+        {
+          "name": "tokenA",
+          "type": "string",
+          "required": false,
+          "description": "First token (stable-pair): 'BCH', a token symbol, or a CashToken category id (64 hex characters). A symbol shared by several tokens is refused; pass the category id then."
+        },
+        {
+          "name": "tokenB",
+          "type": "string",
+          "required": false,
+          "description": "Second token (stable-pair): 'BCH', a token symbol, or a CashToken category id (64 hex characters). A symbol shared by several tokens is refused; pass the category id then."
+        },
+        {
+          "name": "tokens",
+          "type": "string[]",
+          "required": false,
+          "description": "Tokens of a multi-pair template (1 to 3)."
+        },
+        {
+          "name": "network",
+          "type": "enum",
+          "required": false,
+          "description": "BCH network. chipnet is the test network. Defaults to the server default (see get_protocol_status).",
+          "options": [
+            "chipnet",
+            "mainnet"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "preview_strategy",
+      "group": "Strategies",
+      "title": "Preview a strategy",
+      "description": "Compute the pools a template would create for these parameters: each pool's address, the deposit it needs, and its price against the market. Nothing is created and nothing moves. To deploy, the LP funds every pool in ONE transaction from their own wallet (in the web app, or with their own tooling) and then registers it.",
+      "kind": "prepare",
+      "params": [
+        {
+          "name": "template",
+          "type": "string",
+          "required": true,
+          "description": "Template id from list_strategy_templates."
+        },
+        {
+          "name": "owner",
+          "type": "string",
+          "required": true,
+          "description": "The LP who will own the pools: a P2PKH cashaddr (bitcoincash:q… / bchtest:q…) or its 40-hex public key hash."
+        },
+        {
+          "name": "params",
+          "type": "object",
+          "required": true,
+          "description": "Template parameters, keyed as list_strategy_templates describes them (e.g. { token, lowSatsPerToken, highSatsPerToken, rungs, feeBps, depositSats }). Token fields take category ids. Prices are sats per token base unit; amounts are integer strings in base units."
+        },
+        {
+          "name": "network",
+          "type": "enum",
+          "required": false,
+          "description": "BCH network. chipnet is the test network. Defaults to the server default (see get_protocol_status).",
+          "options": [
+            "chipnet",
+            "mainnet"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "register_strategy",
+      "group": "Strategies",
+      "title": "Register a deployed strategy",
+      "description": "Ask the server to index a strategy the LP has ALREADY deployed on chain. The server recomputes the pool addresses from the template and parameters, finds them in the deploy transaction and verifies each on chain. The app does this itself; use it for deployments made with other tooling.",
+      "kind": "write",
+      "params": [
+        {
+          "name": "template",
+          "type": "string",
+          "required": true,
+          "description": "Template id used for the deployment."
+        },
+        {
+          "name": "owner",
+          "type": "string",
+          "required": true,
+          "description": "The LP who owns the pools: a P2PKH cashaddr (bitcoincash:q… / bchtest:q…) or its 40-hex public key hash."
+        },
+        {
+          "name": "params",
+          "type": "object",
+          "required": true,
+          "description": "Template parameters, keyed as list_strategy_templates describes them (e.g. { token, lowSatsPerToken, highSatsPerToken, rungs, feeBps, depositSats }). Token fields take category ids. Prices are sats per token base unit; amounts are integer strings in base units."
+        },
+        {
+          "name": "txid",
+          "type": "string",
+          "required": true,
+          "description": "The deploy transaction id."
+        },
+        {
+          "name": "replaces",
+          "type": "string",
+          "required": false,
+          "description": "Id of the strategy this one rebalanced, if any."
+        },
+        {
+          "name": "network",
+          "type": "enum",
+          "required": false,
+          "description": "BCH network. chipnet is the test network. Defaults to the server default (see get_protocol_status).",
+          "options": [
+            "chipnet",
+            "mainnet"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "list_strategies",
+      "group": "Strategies",
+      "title": "List an LP's strategies",
+      "description": "One LP's strategies with their value, inventory, volume, fees, profit and whether any of it sits idle.",
+      "kind": "read",
+      "params": [
+        {
+          "name": "owner",
+          "type": "string",
+          "required": true,
+          "description": "The LP: a P2PKH cashaddr (bitcoincash:q… / bchtest:q…) or its 40-hex public key hash."
+        },
+        {
+          "name": "status",
+          "type": "enum",
+          "required": false,
+          "description": "Only strategies in this state.",
+          "options": [
+            "active",
+            "exhausted",
+            "closed"
+          ]
+        },
+        {
+          "name": "limit",
+          "type": "integer",
+          "required": false,
+          "description": "How many to return (default 20)."
+        },
+        {
+          "name": "network",
+          "type": "enum",
+          "required": false,
+          "description": "BCH network. chipnet is the test network. Defaults to the server default (see get_protocol_status).",
+          "options": [
+            "chipnet",
+            "mainnet"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "get_strategy",
+      "group": "Strategies",
+      "title": "Get a strategy",
+      "description": "One strategy in detail: totals and every member pool.",
+      "kind": "read",
+      "params": [
+        {
+          "name": "id",
+          "type": "string",
+          "required": true,
+          "description": "Strategy id (stg-…)."
+        },
+        {
+          "name": "network",
+          "type": "enum",
+          "required": false,
+          "description": "BCH network. chipnet is the test network. Defaults to the server default (see get_protocol_status).",
+          "options": [
+            "chipnet",
+            "mainnet"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "find_idle_liquidity",
+      "group": "Strategies",
+      "title": "Find idle liquidity",
+      "description": "What an LP holds that is not working: pools left one-sided after the price moved, pools priced far from the market, exhausted pools, and loose coins in the wallet. Each item has a reason and a value.",
+      "kind": "read",
+      "params": [
+        {
+          "name": "owner",
+          "type": "string",
+          "required": true,
+          "description": "The LP: a P2PKH cashaddr (bitcoincash:q… / bchtest:q…) or its 40-hex public key hash."
+        },
+        {
+          "name": "network",
+          "type": "enum",
+          "required": false,
+          "description": "BCH network. chipnet is the test network. Defaults to the server default (see get_protocol_status).",
+          "options": [
+            "chipnet",
+            "mainnet"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "plan_recycle",
+      "group": "Strategies",
+      "title": "Plan a recycle",
+      "description": "Plan one transaction that closes idle pools and reopens their liquidity around the current price. Returns what to close, what to open, and what the wallet adds or gets back. Nothing moves: the LP signs it in the web app.",
+      "kind": "prepare",
+      "params": [
+        {
+          "name": "owner",
+          "type": "string",
+          "required": true,
+          "description": "The LP: a P2PKH cashaddr (bitcoincash:q… / bchtest:q…) or its 40-hex public key hash."
+        },
+        {
+          "name": "items",
+          "type": "string[]",
+          "required": false,
+          "description": "Ids from find_idle_liquidity to recycle (default: all)."
+        },
+        {
+          "name": "spreadBps",
+          "type": "integer",
+          "required": false,
+          "description": "Distance of the new buy and sell prices from the mid, in basis points."
+        },
+        {
+          "name": "feeBps",
+          "type": "integer",
+          "required": false,
+          "description": "Fee of the new pools, in basis points."
+        },
+        {
+          "name": "network",
+          "type": "enum",
+          "required": false,
+          "description": "BCH network. chipnet is the test network. Defaults to the server default (see get_protocol_status).",
+          "options": [
+            "chipnet",
+            "mainnet"
+          ]
+        }
+      ]
+    }
+  ],
+  "prompts": [
+    {
+      "name": "swap_tokens",
+      "title": "Swap tokens",
+      "description": "Quote a swap, confirm it, and prepare an order for the user to fund."
+    },
+    {
+      "name": "provide_liquidity",
+      "title": "Provide liquidity",
+      "description": "Pick a Mesh strategy for a token and preview its pools."
+    },
+    {
+      "name": "check_my_orders",
+      "title": "Check my orders",
+      "description": "Review an address's orders and explain what each needs."
+    }
+  ],
+  "resources": [
+    {
+      "uri": "bchintents://guide/conventions",
+      "title": "Amounts, tokens and networks",
+      "description": "How amounts, token ids, prices and networks are written in every tool."
+    },
+    {
+      "uri": "bchintents://guide/order-lifecycle",
+      "title": "Order lifecycle and statuses",
+      "description": "What happens to an order from creation to fill or refund, and what each status means."
+    }
+  ]
+}
