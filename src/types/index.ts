@@ -5,13 +5,21 @@ export interface Token {
     icon: string;
     decimals: number;
     type: string;
-    chain?: 'bch' | 'solana' | 'ethereum' | 'bsc' | 'base' | 'arbitrum' | 'optimism' | 'movement' | 'xmr';
+    chain?: 'bch' | 'solana' | 'ethereum' | 'bsc' | 'base' | 'arbitrum' | 'optimism' | 'arc' | 'movement' | 'xmr';
     categoryId?: string;  // BCH CashToken category ID (hex)
     address?: string;     // Token mint or smart contract address
     priceUsd?: number;    // Cauldron price in USD (for CashTokens)
     priceSats?: number;   // Cauldron price in sats (for CashTokens)
     disabled?: boolean;   // true = not selectable (chain not yet deployed)
     comingSoon?: boolean; // shows "Soon" badge
+    /** Set on tokens that come from the swap server (src/swap-server): they trade only through that server. */
+    swapServer?: {
+        product: 'cctp' | 'jupiter';
+        chainKey?: string;     // cctp: the server's chain key, e.g. 'base-sepolia'
+        verified?: boolean;    // jupiter: on Jupiter's verified list
+        suspicious?: boolean;  // jupiter: flagged by Jupiter
+        isStock?: boolean;     // jupiter: a tokenized stock
+    };
 }
 
 // Oracle Types
