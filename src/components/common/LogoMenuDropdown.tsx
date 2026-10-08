@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown, Zap, Globe, Puzzle, Sparkles, FileText, ExternalLink, Wallet, ShieldCheck } from 'lucide-react';
+import { Bot, ChevronDown, Zap, Globe, Puzzle, Sparkles, FileText, ExternalLink, Wallet, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // ── Social Icons ──────────────────────────────────────────────────────────────
@@ -29,6 +29,7 @@ const EXPLORE_ITEMS: ExploreItem[] = [
     { name: 'Features', path: '/features', description: 'Core protocol capabilities', icon: Zap },
     { name: 'Ecosystem', path: '/ecosystem', description: 'Partners & integrations', icon: Globe },
     { name: 'Integrate', path: '/integrate', description: 'Add BCH Intents to your app', icon: Puzzle },
+    { name: 'MCP for AI Agents', path: '/mcp', description: 'Connect Claude, Cursor, ChatGPT', icon: Bot },
     { name: 'Pool Overview', path: '/mesh-landing', description: 'Curves & liquidity intro', icon: Sparkles },
 ];
 

@@ -28,6 +28,7 @@ const footerLinks = {
         { label: 'Features', href: '/features' },
         { label: 'Ecosystem', href: '/ecosystem' },
         { label: 'Integrate', href: '/integrate' },
+        { label: 'MCP for AI Agents', href: '/mcp' },
         { label: 'Pool Overview', href: '/mesh-landing' },
         { label: 'Explore Markets', href: '/explore' },
     ],

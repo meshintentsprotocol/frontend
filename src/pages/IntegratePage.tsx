@@ -580,6 +580,23 @@ export default function IntegratePage() {
                 </div>
               </div>
             </div>
+
+            {/* AI agents integrate through the MCP server, not through code */}
+            <Link
+              to="/mcp"
+              className="group mt-8 flex max-w-5xl mx-auto items-center gap-4 rounded-3xl border border-emerald-500/20 bg-emerald-500/[0.04] p-6 transition-all hover:border-emerald-500/40 hover:bg-emerald-500/[0.07]"
+            >
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10">
+                <Bot className="h-6 w-6 text-emerald-400" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-lg font-bold text-white">Building with an AI agent?</h3>
+                <p className="text-sm leading-relaxed text-zinc-400">
+                  Connect Claude, Cursor or ChatGPT through the MCP server: quotes, orders and pools as tools, with no key on the server.
+                </p>
+              </div>
+              <ArrowRight className="h-5 w-5 shrink-0 text-emerald-400 transition-transform group-hover:translate-x-1" />
+            </Link>
           </div>
         </section>
 

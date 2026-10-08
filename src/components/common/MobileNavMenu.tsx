@@ -53,6 +53,7 @@ const LINK_GROUPS: { title: string; links: SubLink[] }[] = [
             { name: 'Features', path: '/features' },
             { name: 'Ecosystem', path: '/ecosystem' },
             { name: 'Integrate', path: '/integrate' },
+            { name: 'MCP for AI Agents', path: '/mcp' },
             { name: 'Pool Overview', path: '/mesh-landing' },
         ],
     },
