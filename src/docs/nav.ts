@@ -324,6 +324,16 @@ export const LOCAL_NAV: NavSection[] = [
                 items: [{ slug: 'api/websocket', title: 'WebSocket stream', method: 'WS' }],
             },
             {
+                title: 'MCP (AI agents)',
+                items: [
+                    { slug: 'api/mcp/overview', title: 'MCP server', badge: 'beta' },
+                    { slug: 'api/mcp/connect', title: 'Connect a client' },
+                    { slug: 'api/mcp/tools', title: 'Tool reference' },
+                    { slug: 'api/mcp/funding', title: 'Funding prepared orders' },
+                    { slug: 'api/mcp/self-host', title: 'Self-hosting' },
+                ],
+            },
+            {
                 title: 'Operators',
                 items: [{ slug: 'api/admin', title: 'Admin & route controls', method: 'POST' }],
             },
