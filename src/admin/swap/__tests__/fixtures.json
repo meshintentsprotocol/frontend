@@ -1,0 +1,2120 @@
+{
+ "overview": {
+  "network": {
+   "cctp": "testnet",
+   "solana": "mainnet"
+  },
+  "uptimeSec": 2191,
+  "alerts": [
+   {
+    "severity": "error",
+    "section": "cctp",
+    "text": "1 transfer(s) have not moved for 20 min"
+   },
+   {
+    "severity": "error",
+    "section": "cctp",
+    "text": "OP Sepolia: relayer gas is low (0.0 ETH)"
+   },
+   {
+    "severity": "error",
+    "section": "cctp",
+    "text": "Arbitrum Sepolia: relayer gas is low (0.0 ETH)"
+   },
+   {
+    "severity": "error",
+    "section": "cctp",
+    "text": "Base Sepolia: relayer gas is low (0.0 ETH)"
+   },
+   {
+    "severity": "warn",
+    "section": "solana",
+    "text": "No Jupiter API key: limited to one request every 2 s"
+   }
+  ],
+  "cctp": {
+   "settings": {
+    "paused": false,
+    "relayEnabled": true,
+    "fastEnabled": true,
+    "minTransferUsdc": 1,
+    "maxTransferUsdc": 100,
+    "feeBufferPct": 20,
+    "disabledChains": [],
+    "disabledRoutes": []
+   },
+   "stats": {
+    "total": 15,
+    "byStatus": {
+     "FAILED": 2,
+     "EXPIRED": 6,
+     "COMPLETED": 3,
+     "BURN_SUBMITTED": 1,
+     "CREATED": 3
+    },
+    "active": 4,
+    "awaitingBurn": 3,
+    "completed": 3,
+    "failed": 2,
+    "expired": 6,
+    "successRate": 0.6,
+    "volume": "3000000",
+    "received": "2999800",
+    "fees": "200",
+    "last24h": {
+     "created": 15,
+     "completed": 3,
+     "failed": 2,
+     "volume": "3000000"
+    },
+    "timingSec": {
+     "burnToConfirmed": 0.319,
+     "confirmedToAttested": 5.575,
+     "attestedToMinted": 14.153,
+     "total": 20.047
+    },
+    "byRoute": [
+     {
+      "route": "base-sepolia>arc-testnet",
+      "src": "base-sepolia",
+      "dst": "arc-testnet",
+      "count": 8,
+      "completed": 0,
+      "failed": 2,
+      "volume": "0",
+      "medianSec": null
+     },
+     {
+      "route": "base-sepolia>solana-devnet",
+      "src": "base-sepolia",
+      "dst": "solana-devnet",
+      "count": 4,
+      "completed": 0,
+      "failed": 0,
+      "volume": "0",
+      "medianSec": null
+     },
+     {
+      "route": "eth-sepolia>solana-devnet",
+      "src": "eth-sepolia",
+      "dst": "solana-devnet",
+      "count": 2,
+      "completed": 2,
+      "failed": 0,
+      "volume": "2000000",
+      "medianSec": 294.9065
+     },
+     {
+      "route": "solana-devnet>eth-sepolia",
+      "src": "solana-devnet",
+      "dst": "eth-sepolia",
+      "count": 1,
+      "completed": 1,
+      "failed": 0,
+      "volume": "1000000",
+      "medianSec": 20.047
+     }
+    ],
+    "stuck": [
+     "dc54a392-ae15-4acb-aad2-02d8afaa8b2b"
+    ],
+    "retrying": 0,
+    "hourly": [
+     {
+      "t": 1791345600000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791349200000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791352800000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791356400000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791360000000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791363600000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791367200000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791370800000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791374400000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791378000000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791381600000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791385200000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791388800000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791392400000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791396000000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791399600000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791403200000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791406800000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791410400000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791414000000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791417600000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791421200000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791424800000,
+      "created": 8,
+      "completed": 0,
+      "failed": 2
+     },
+     {
+      "t": 1791428400000,
+      "created": 7,
+      "completed": 3,
+      "failed": 0
+     }
+    ]
+   },
+   "chains": [
+    {
+     "key": "eth-sepolia",
+     "name": "Ethereum Sepolia",
+     "kind": "evm",
+     "domain": 0,
+     "chainId": 11155111,
+     "usdc": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
+     "fastSource": true,
+     "standardEtaSec": 1020,
+     "fastEtaSec": 20,
+     "open": true,
+     "rpcHost": "ethereum-sepolia-rpc.publicnode.com",
+     "relayer": {
+      "chain": "eth-sepolia",
+      "name": "Ethereum Sepolia",
+      "kind": "evm",
+      "relayer": "0x9F238e41b06B1bea3f6A225D083AaA89AacE8B66",
+      "at": 1791431058873,
+      "amount": "0.046043263473987749",
+      "symbol": "ETH",
+      "usdc": "20.016",
+      "low": false
+     }
+    },
+    {
+     "key": "op-sepolia",
+     "name": "OP Sepolia",
+     "kind": "evm",
+     "domain": 2,
+     "chainId": 11155420,
+     "usdc": "0x5fd84259d66Cd46123540766Be93DFE6D43130D7",
+     "fastSource": true,
+     "standardEtaSec": 1020,
+     "fastEtaSec": 8,
+     "open": true,
+     "rpcHost": "sepolia.optimism.io",
+     "relayer": {
+      "chain": "op-sepolia",
+      "name": "OP Sepolia",
+      "kind": "evm",
+      "relayer": "0x9F238e41b06B1bea3f6A225D083AaA89AacE8B66",
+      "at": 1791431058873,
+      "amount": "0.0",
+      "symbol": "ETH",
+      "usdc": "0",
+      "low": true
+     }
+    },
+    {
+     "key": "arb-sepolia",
+     "name": "Arbitrum Sepolia",
+     "kind": "evm",
+     "domain": 3,
+     "chainId": 421614,
+     "usdc": "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
+     "fastSource": true,
+     "standardEtaSec": 1020,
+     "fastEtaSec": 8,
+     "open": true,
+     "rpcHost": "sepolia-rollup.arbitrum.io",
+     "relayer": {
+      "chain": "arb-sepolia",
+      "name": "Arbitrum Sepolia",
+      "kind": "evm",
+      "relayer": "0x9F238e41b06B1bea3f6A225D083AaA89AacE8B66",
+      "at": 1791431058874,
+      "amount": "0.0",
+      "symbol": "ETH",
+      "usdc": "20",
+      "low": true
+     }
+    },
+    {
+     "key": "base-sepolia",
+     "name": "Base Sepolia",
+     "kind": "evm",
+     "domain": 6,
+     "chainId": 84532,
+     "usdc": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+     "fastSource": true,
+     "standardEtaSec": 1020,
+     "fastEtaSec": 8,
+     "open": true,
+     "rpcHost": "sepolia.base.org",
+     "relayer": {
+      "chain": "base-sepolia",
+      "name": "Base Sepolia",
+      "kind": "evm",
+      "relayer": "0x9F238e41b06B1bea3f6A225D083AaA89AacE8B66",
+      "at": 1791431058874,
+      "amount": "0.0",
+      "symbol": "ETH",
+      "usdc": "20",
+      "low": true
+     }
+    },
+    {
+     "key": "arc-testnet",
+     "name": "Arc Testnet",
+     "kind": "evm",
+     "domain": 26,
+     "chainId": 5042002,
+     "usdc": "0x3600000000000000000000000000000000000000",
+     "fastSource": false,
+     "standardEtaSec": 1,
+     "open": true,
+     "rpcHost": "rpc.testnet.arc.io",
+     "relayer": {
+      "chain": "arc-testnet",
+      "name": "Arc Testnet",
+      "kind": "evm",
+      "relayer": "0x9F238e41b06B1bea3f6A225D083AaA89AacE8B66",
+      "at": 1791431058874,
+      "amount": "20.0",
+      "symbol": "USDC (native gas)",
+      "usdc": "20",
+      "low": false
+     }
+    },
+    {
+     "key": "solana-devnet",
+     "name": "Solana Devnet",
+     "kind": "solana",
+     "domain": 5,
+     "usdc": "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
+     "fastSource": true,
+     "standardEtaSec": 25,
+     "fastEtaSec": 8,
+     "open": true,
+     "rpcHost": "api.devnet.solana.com",
+     "relayer": {
+      "chain": "solana-devnet",
+      "name": "Solana Devnet",
+      "kind": "solana",
+      "relayer": "VBmpGVzabx8AsptQXrA2okEwqFVjbuosHvR2NkuBoaS",
+      "at": 1791431058874,
+      "amount": "15.3928",
+      "symbol": "SOL",
+      "usdc": "35.985537",
+      "low": false
+     }
+    }
+   ],
+   "balancesAgeSec": 30
+  },
+  "solana": {
+   "settings": {
+    "paused": false,
+    "stocksEnabled": true,
+    "allowUnverified": true,
+    "maxSlippageBps": 1000,
+    "defaultSlippageBps": 0,
+    "maxSwapUsd": 0,
+    "minStockLiquidityUsd": 0,
+    "referralFeeBps": 0,
+    "blockedMints": []
+   },
+   "stats": {
+    "total": 0,
+    "byStatus": {},
+    "active": 0,
+    "submitted": 0,
+    "completed": 0,
+    "failed": 0,
+    "expired": 0,
+    "successRate": null,
+    "volumeUsd": 0,
+    "gasless": 0,
+    "last24h": {
+     "created": 0,
+     "completed": 0,
+     "failed": 0,
+     "volumeUsd": 0
+    },
+    "medianLandSec": null,
+    "byPair": [],
+    "byRouter": {},
+    "failReasons": [],
+    "hourly": [
+     {
+      "t": 1791345600000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791349200000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791352800000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791356400000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791360000000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791363600000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791367200000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791370800000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791374400000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791378000000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791381600000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791385200000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791388800000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791392400000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791396000000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791399600000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791403200000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791406800000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791410400000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791414000000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791417600000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791421200000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791424800000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     },
+     {
+      "t": 1791428400000,
+      "created": 0,
+      "completed": 0,
+      "failed": 0
+     }
+    ]
+   },
+   "enabled": true,
+   "network": "mainnet",
+   "jupiter": {
+    "requests": 18,
+    "errors": 0,
+    "rateLimited": 0,
+    "lastOkAt": 1791430700726,
+    "lastLatencyMs": 2054,
+    "rps": 0.5,
+    "apiKey": false,
+    "queueMs": 0,
+    "baseUrl": "https://api.jup.ag",
+    "referralAccount": null
+   },
+   "catalog": {
+    "ready": true,
+    "tokens": 3881,
+    "ageSec": 389,
+    "stocks": 1817,
+    "issuers": {
+     "backpack": 74,
+     "xstocks": 1274,
+     "tessera": 3,
+     "prestocks": 8,
+     "ondo": 449,
+     "shift": 8,
+     "other": 1
+    }
+   },
+   "rpcHost": "api.mainnet-beta.solana.com"
+  },
+  "events": {
+   "h24": {
+    "info": 31,
+    "success": 9,
+    "warn": 25,
+    "error": 2
+   },
+   "recent": [
+    {
+     "seq": 67,
+     "at": 1791430818839,
+     "section": "cctp",
+     "type": "watchdog.stuck",
+     "severity": "warn",
+     "summary": "Transfer dc54a392 has been BURN_SUBMITTED for 20 min",
+     "subject": {
+      "kind": "transfer",
+      "id": "dc54a392-ae15-4acb-aad2-02d8afaa8b2b"
+     }
+    },
+    {
+     "seq": 66,
+     "at": 1791430759485,
+     "section": "cctp",
+     "type": "watchdog.low_balance",
+     "severity": "warn",
+     "summary": "Base Sepolia: relayer gas is low (0.0 ETH)",
+     "subject": {
+      "kind": "chain",
+      "id": "base-sepolia"
+     }
+    },
+    {
+     "seq": 65,
+     "at": 1791430759484,
+     "section": "cctp",
+     "type": "watchdog.low_balance",
+     "severity": "warn",
+     "summary": "Arbitrum Sepolia: relayer gas is low (0.0 ETH)",
+     "subject": {
+      "kind": "chain",
+      "id": "arb-sepolia"
+     }
+    },
+    {
+     "seq": 64,
+     "at": 1791430759483,
+     "section": "cctp",
+     "type": "watchdog.low_balance",
+     "severity": "warn",
+     "summary": "OP Sepolia: relayer gas is low (0.0 ETH)",
+     "subject": {
+      "kind": "chain",
+      "id": "op-sepolia"
+     }
+    },
+    {
+     "seq": 63,
+     "at": 1791430197628,
+     "section": "cctp",
+     "type": "transfer.expired",
+     "severity": "warn",
+     "summary": "1 USDC base-sepolia → solana-devnet: CREATED → EXPIRED",
+     "subject": {
+      "kind": "transfer",
+      "id": "6b8cbc5c-6e5a-41fb-89e7-2192e3358cbc"
+     },
+     "data": {
+      "src": "base-sepolia",
+      "dst": "solana-devnet",
+      "amount": "1000000"
+     }
+    },
+    {
+     "seq": 62,
+     "at": 1791430026111,
+     "section": "cctp",
+     "type": "transfer.expired",
+     "severity": "warn",
+     "summary": "1 USDC base-sepolia → solana-devnet: CREATED → EXPIRED",
+     "subject": {
+      "kind": "transfer",
+      "id": "746a6a5a-b28f-4734-9c00-4bcef143dd91"
+     },
+     "data": {
+      "src": "base-sepolia",
+      "dst": "solana-devnet",
+      "amount": "1000000"
+     }
+    },
+    {
+     "seq": 61,
+     "at": 1791430026107,
+     "section": "cctp",
+     "type": "transfer.expired",
+     "severity": "warn",
+     "summary": "1 USDC base-sepolia → arc-testnet: CREATED → EXPIRED",
+     "subject": {
+      "kind": "transfer",
+      "id": "4cc3c57c-523a-4f90-b3b3-1298c8d2b39f"
+     },
+     "data": {
+      "src": "base-sepolia",
+      "dst": "arc-testnet",
+      "amount": "1000000"
+     }
+    },
+    {
+     "seq": 60,
+     "at": 1791429929885,
+     "section": "cctp",
+     "type": "transfer.expired",
+     "severity": "warn",
+     "summary": "1 USDC base-sepolia → solana-devnet: CREATED → EXPIRED",
+     "subject": {
+      "kind": "transfer",
+      "id": "fbe81fe3-8f52-4176-815b-40e651249358"
+     },
+     "data": {
+      "src": "base-sepolia",
+      "dst": "solana-devnet",
+      "amount": "1000000"
+     }
+    }
+   ]
+  }
+ },
+ "settings": {
+  "settings": {
+   "cctp": {
+    "paused": false,
+    "relayEnabled": true,
+    "fastEnabled": true,
+    "minTransferUsdc": 1,
+    "maxTransferUsdc": 100,
+    "feeBufferPct": 20,
+    "disabledChains": [],
+    "disabledRoutes": []
+   },
+   "solana": {
+    "paused": false,
+    "stocksEnabled": true,
+    "allowUnverified": true,
+    "maxSlippageBps": 1000,
+    "defaultSlippageBps": 0,
+    "maxSwapUsd": 0,
+    "minStockLiquidityUsd": 0,
+    "referralFeeBps": 0,
+    "blockedMints": []
+   },
+   "updatedAt": 1791429629338
+  },
+  "env": {
+   "referralAccount": null,
+   "chains": [
+    {
+     "key": "eth-sepolia",
+     "name": "Ethereum Sepolia"
+    },
+    {
+     "key": "op-sepolia",
+     "name": "OP Sepolia"
+    },
+    {
+     "key": "arb-sepolia",
+     "name": "Arbitrum Sepolia"
+    },
+    {
+     "key": "base-sepolia",
+     "name": "Base Sepolia"
+    },
+    {
+     "key": "arc-testnet",
+     "name": "Arc Testnet"
+    },
+    {
+     "key": "solana-devnet",
+     "name": "Solana Devnet"
+    }
+   ],
+   "defaults": {
+    "minTransferUsdc": 1,
+    "maxTransferUsdc": 100,
+    "feeBufferPct": 20,
+    "maxSlippageBps": 1000
+   }
+  },
+  "history": [
+   {
+    "seq": 55,
+    "at": 1791429629321,
+    "section": "solana",
+    "type": "admin.settings",
+    "severity": "info",
+    "summary": "Settings changed: solana.stocksEnabled",
+    "subject": {
+     "kind": "settings",
+     "id": "settings"
+    },
+    "data": {
+     "changed": [
+      "solana.stocksEnabled"
+     ],
+     "solana": {
+      "stocksEnabled": true
+     }
+    }
+   },
+   {
+    "seq": 54,
+    "at": 1791429629307,
+    "section": "solana",
+    "type": "admin.settings",
+    "severity": "info",
+    "summary": "Settings changed: solana.stocksEnabled",
+    "subject": {
+     "kind": "settings",
+     "id": "settings"
+    },
+    "data": {
+     "changed": [
+      "solana.stocksEnabled"
+     ],
+     "solana": {
+      "stocksEnabled": false
+     }
+    }
+   },
+   {
+    "seq": 48,
+    "at": 1791429628650,
+    "section": "cctp",
+    "type": "admin.settings",
+    "severity": "info",
+    "summary": "Settings changed: cctp.fastEnabled",
+    "subject": {
+     "kind": "settings",
+     "id": "settings"
+    },
+    "data": {
+     "changed": [
+      "cctp.fastEnabled"
+     ],
+     "cctp": {
+      "fastEnabled": true
+     }
+    }
+   },
+   {
+    "seq": 47,
+    "at": 1791429628308,
+    "section": "cctp",
+    "type": "admin.settings",
+    "severity": "info",
+    "summary": "Settings changed: cctp.maxTransferUsdc, cctp.fastEnabled",
+    "subject": {
+     "kind": "settings",
+     "id": "settings"
+    },
+    "data": {
+     "changed": [
+      "cctp.maxTransferUsdc",
+      "cctp.fastEnabled"
+     ],
+     "cctp": {
+      "maxTransferUsdc": 100,
+      "fastEnabled": false
+     }
+    }
+   },
+   {
+    "seq": 46,
+    "at": 1791429627802,
+    "section": "cctp",
+    "type": "admin.settings",
+    "severity": "info",
+    "summary": "Settings changed: cctp.maxTransferUsdc",
+    "subject": {
+     "kind": "settings",
+     "id": "settings"
+    },
+    "data": {
+     "changed": [
+      "cctp.maxTransferUsdc"
+     ],
+     "cctp": {
+      "maxTransferUsdc": 2
+     }
+    }
+   }
+  ]
+ },
+ "system": {
+  "uptimeSec": 2191,
+  "node": "v24.11.1",
+  "memoryMb": 101,
+  "port": 3012,
+  "dataDir": "./data",
+  "secrets": [
+   "CCTP_RELAYER_EVM_KEY",
+   "CCTP_RELAYER_SOLANA_KEY",
+   "ADMIN_API_KEY"
+  ],
+  "cctp": {
+   "network": "testnet",
+   "irisBaseUrl": "https://iris-api-sandbox.circle.com",
+   "worker": {
+    "pollIntervalMs": 3000,
+    "slowAttestationPollMs": 15000,
+    "concurrency": 8,
+    "maxBackoffMs": 600000
+   },
+   "limits": {
+    "minTransferUsdc": 1,
+    "maxTransferUsdc": 100,
+    "createdTtlMin": 60,
+    "burnNotFoundMin": 30
+   },
+   "watchdog": {
+    "intervalMs": 60000,
+    "stuckMin": 20
+   }
+  },
+  "solana": {
+   "enabled": true,
+   "network": "mainnet",
+   "jupiter": {
+    "requests": 18,
+    "errors": 0,
+    "rateLimited": 0,
+    "lastOkAt": 1791430700726,
+    "lastLatencyMs": 2054,
+    "rps": 0.5,
+    "apiKey": false,
+    "queueMs": 0,
+    "baseUrl": "https://api.jup.ag",
+    "referralAccount": null
+   },
+   "catalog": {
+    "ready": true,
+    "tokens": 3881,
+    "ageSec": 389,
+    "stocks": 1817,
+    "issuers": {
+     "backpack": 74,
+     "xstocks": 1274,
+     "tessera": 3,
+     "prestocks": 8,
+     "ondo": 449,
+     "shift": 8,
+     "other": 1
+    }
+   },
+   "rpcHost": "api.mainnet-beta.solana.com",
+   "orderTtlSec": 120,
+   "landTimeoutSec": 180,
+   "tokenRefreshMin": 10
+  }
+ },
+ "events": {
+  "total": 67,
+  "latestSeq": 67,
+  "events": [
+   {
+    "seq": 67,
+    "at": 1791430818839,
+    "section": "cctp",
+    "type": "watchdog.stuck",
+    "severity": "warn",
+    "summary": "Transfer dc54a392 has been BURN_SUBMITTED for 20 min",
+    "subject": {
+     "kind": "transfer",
+     "id": "dc54a392-ae15-4acb-aad2-02d8afaa8b2b"
+    }
+   },
+   {
+    "seq": 66,
+    "at": 1791430759485,
+    "section": "cctp",
+    "type": "watchdog.low_balance",
+    "severity": "warn",
+    "summary": "Base Sepolia: relayer gas is low (0.0 ETH)",
+    "subject": {
+     "kind": "chain",
+     "id": "base-sepolia"
+    }
+   },
+   {
+    "seq": 65,
+    "at": 1791430759484,
+    "section": "cctp",
+    "type": "watchdog.low_balance",
+    "severity": "warn",
+    "summary": "Arbitrum Sepolia: relayer gas is low (0.0 ETH)",
+    "subject": {
+     "kind": "chain",
+     "id": "arb-sepolia"
+    }
+   },
+   {
+    "seq": 64,
+    "at": 1791430759483,
+    "section": "cctp",
+    "type": "watchdog.low_balance",
+    "severity": "warn",
+    "summary": "OP Sepolia: relayer gas is low (0.0 ETH)",
+    "subject": {
+     "kind": "chain",
+     "id": "op-sepolia"
+    }
+   },
+   {
+    "seq": 63,
+    "at": 1791430197628,
+    "section": "cctp",
+    "type": "transfer.expired",
+    "severity": "warn",
+    "summary": "1 USDC base-sepolia → solana-devnet: CREATED → EXPIRED",
+    "subject": {
+     "kind": "transfer",
+     "id": "6b8cbc5c-6e5a-41fb-89e7-2192e3358cbc"
+    },
+    "data": {
+     "src": "base-sepolia",
+     "dst": "solana-devnet",
+     "amount": "1000000"
+    }
+   },
+   {
+    "seq": 62,
+    "at": 1791430026111,
+    "section": "cctp",
+    "type": "transfer.expired",
+    "severity": "warn",
+    "summary": "1 USDC base-sepolia → solana-devnet: CREATED → EXPIRED",
+    "subject": {
+     "kind": "transfer",
+     "id": "746a6a5a-b28f-4734-9c00-4bcef143dd91"
+    },
+    "data": {
+     "src": "base-sepolia",
+     "dst": "solana-devnet",
+     "amount": "1000000"
+    }
+   },
+   {
+    "seq": 61,
+    "at": 1791430026107,
+    "section": "cctp",
+    "type": "transfer.expired",
+    "severity": "warn",
+    "summary": "1 USDC base-sepolia → arc-testnet: CREATED → EXPIRED",
+    "subject": {
+     "kind": "transfer",
+     "id": "4cc3c57c-523a-4f90-b3b3-1298c8d2b39f"
+    },
+    "data": {
+     "src": "base-sepolia",
+     "dst": "arc-testnet",
+     "amount": "1000000"
+    }
+   },
+   {
+    "seq": 60,
+    "at": 1791429929885,
+    "section": "cctp",
+    "type": "transfer.expired",
+    "severity": "warn",
+    "summary": "1 USDC base-sepolia → solana-devnet: CREATED → EXPIRED",
+    "subject": {
+     "kind": "transfer",
+     "id": "fbe81fe3-8f52-4176-815b-40e651249358"
+    },
+    "data": {
+     "src": "base-sepolia",
+     "dst": "solana-devnet",
+     "amount": "1000000"
+    }
+   },
+   {
+    "seq": 59,
+    "at": 1791429929882,
+    "section": "cctp",
+    "type": "transfer.expired",
+    "severity": "warn",
+    "summary": "1 USDC base-sepolia → arc-testnet: CREATED → EXPIRED",
+    "subject": {
+     "kind": "transfer",
+     "id": "e3a04ca0-c283-4d19-b66f-bff09427af0a"
+    },
+    "data": {
+     "src": "base-sepolia",
+     "dst": "arc-testnet",
+     "amount": "1000000"
+    }
+   },
+   {
+    "seq": 58,
+    "at": 1791429629373,
+    "section": "cctp",
+    "type": "admin.note",
+    "severity": "info",
+    "summary": "admin_api test note"
+   },
+   {
+    "seq": 57,
+    "at": 1791429629339,
+    "section": "solana",
+    "type": "admin.token.unblock",
+    "severity": "success",
+    "summary": "TSLAx unblocked",
+    "subject": {
+     "kind": "token",
+     "id": "XsDoVfqeBukxuZHWhdvWHBhgEHjGNst4MLodqsJHzoB"
+    }
+   },
+   {
+    "seq": 56,
+    "at": 1791429629331,
+    "section": "solana",
+    "type": "admin.token.block",
+    "severity": "warn",
+    "summary": "TSLAx blocked",
+    "subject": {
+     "kind": "token",
+     "id": "XsDoVfqeBukxuZHWhdvWHBhgEHjGNst4MLodqsJHzoB"
+    }
+   },
+   {
+    "seq": 55,
+    "at": 1791429629321,
+    "section": "solana",
+    "type": "admin.settings",
+    "severity": "info",
+    "summary": "Settings changed: solana.stocksEnabled",
+    "subject": {
+     "kind": "settings",
+     "id": "settings"
+    },
+    "data": {
+     "changed": [
+      "solana.stocksEnabled"
+     ],
+     "solana": {
+      "stocksEnabled": true
+     }
+    }
+   },
+   {
+    "seq": 54,
+    "at": 1791429629307,
+    "section": "solana",
+    "type": "admin.settings",
+    "severity": "info",
+    "summary": "Settings changed: solana.stocksEnabled",
+    "subject": {
+     "kind": "settings",
+     "id": "settings"
+    },
+    "data": {
+     "changed": [
+      "solana.stocksEnabled"
+     ],
+     "solana": {
+      "stocksEnabled": false
+     }
+    }
+   },
+   {
+    "seq": 53,
+    "at": 1791429629301,
+    "section": "solana",
+    "type": "admin.resume",
+    "severity": "success",
+    "summary": "New Solana swaps resumed"
+   },
+   {
+    "seq": 52,
+    "at": 1791429629186,
+    "section": "solana",
+    "type": "admin.pause",
+    "severity": "warn",
+    "summary": "New Solana swaps paused: admin_api test"
+   },
+   {
+    "seq": 51,
+    "at": 1791429629168,
+    "section": "cctp",
+    "type": "admin.transfer.fail",
+    "severity": "warn",
+    "summary": "Transfer 53191b8d stopped: admin_api test",
+    "subject": {
+     "kind": "transfer",
+     "id": "53191b8d-913d-4f39-ae83-48d6bfe43eb2"
+    }
+   },
+   {
+    "seq": 50,
+    "at": 1791429629167,
+    "section": "cctp",
+    "type": "transfer.expired",
+    "severity": "warn",
+    "summary": "1 USDC base-sepolia → arc-testnet: CREATED → EXPIRED",
+    "subject": {
+     "kind": "transfer",
+     "id": "53191b8d-913d-4f39-ae83-48d6bfe43eb2"
+    },
+    "data": {
+     "src": "base-sepolia",
+     "dst": "arc-testnet",
+     "amount": "1000000",
+     "failReason": "admin_api test"
+    }
+   },
+   {
+    "seq": 49,
+    "at": 1791429629144,
+    "section": "cctp",
+    "type": "transfer.created",
+    "severity": "info",
+    "summary": "Transfer created: 1 USDC base-sepolia → arc-testnet",
+    "subject": {
+     "kind": "transfer",
+     "id": "53191b8d-913d-4f39-ae83-48d6bfe43eb2"
+    },
+    "data": {
+     "src": "base-sepolia",
+     "dst": "arc-testnet",
+     "amount": "1000000"
+    }
+   },
+   {
+    "seq": 48,
+    "at": 1791429628650,
+    "section": "cctp",
+    "type": "admin.settings",
+    "severity": "info",
+    "summary": "Settings changed: cctp.fastEnabled",
+    "subject": {
+     "kind": "settings",
+     "id": "settings"
+    },
+    "data": {
+     "changed": [
+      "cctp.fastEnabled"
+     ],
+     "cctp": {
+      "fastEnabled": true
+     }
+    }
+   },
+   {
+    "seq": 47,
+    "at": 1791429628308,
+    "section": "cctp",
+    "type": "admin.settings",
+    "severity": "info",
+    "summary": "Settings changed: cctp.maxTransferUsdc, cctp.fastEnabled",
+    "subject": {
+     "kind": "settings",
+     "id": "settings"
+    },
+    "data": {
+     "changed": [
+      "cctp.maxTransferUsdc",
+      "cctp.fastEnabled"
+     ],
+     "cctp": {
+      "maxTransferUsdc": 100,
+      "fastEnabled": false
+     }
+    }
+   },
+   {
+    "seq": 46,
+    "at": 1791429627802,
+    "section": "cctp",
+    "type": "admin.settings",
+    "severity": "info",
+    "summary": "Settings changed: cctp.maxTransferUsdc",
+    "subject": {
+     "kind": "settings",
+     "id": "settings"
+    },
+    "data": {
+     "changed": [
+      "cctp.maxTransferUsdc"
+     ],
+     "cctp": {
+      "maxTransferUsdc": 2
+     }
+    }
+   },
+   {
+    "seq": 45,
+    "at": 1791429627796,
+    "section": "cctp",
+    "type": "admin.route.open",
+    "severity": "success",
+    "summary": "Base Sepolia → Arbitrum Sepolia opened"
+   },
+   {
+    "seq": 44,
+    "at": 1791429626350,
+    "section": "cctp",
+    "type": "admin.route.close",
+    "severity": "warn",
+    "summary": "Base Sepolia → Arbitrum Sepolia closed"
+   },
+   {
+    "seq": 43,
+    "at": 1791429625862,
+    "section": "cctp",
+    "type": "admin.chain.open",
+    "severity": "success",
+    "summary": "OP Sepolia opened for new transfers",
+    "subject": {
+     "kind": "chain",
+     "id": "op-sepolia"
+    }
+   }
+  ]
+ },
+ "transfers": {
+  "total": 15,
+  "offset": 0,
+  "limit": 50,
+  "byStatus": {
+   "FAILED": 2,
+   "EXPIRED": 6,
+   "COMPLETED": 3,
+   "BURN_SUBMITTED": 1,
+   "CREATED": 3
+  },
+  "transfers": [
+   {
+    "id": "53191b8d-913d-4f39-ae83-48d6bfe43eb2",
+    "origin": "api",
+    "src": "base-sepolia",
+    "dst": "arc-testnet",
+    "srcDomain": 6,
+    "dstDomain": 26,
+    "sender": "0x000000000000000000000000000000000000dEaD",
+    "recipient": "0x2222222222222222222222222222222222222222",
+    "mintRecipient": "0x0000000000000000000000002222222222222222222222222222222222222222",
+    "amount": "1000000",
+    "speed": "fast",
+    "minFinalityThreshold": 1000,
+    "maxFee": "156",
+    "feeBps": 1.3,
+    "expectedFee": "130",
+    "expectedReceive": "999870",
+    "status": "EXPIRED",
+    "failCount": 0,
+    "createdAt": 1791429629143,
+    "updatedAt": 1791429629162,
+    "failReason": "admin_api test",
+    "display": {
+     "amount": "1",
+     "expectedFee": "0.00013",
+     "expectedReceive": "0.99987"
+    },
+    "links": {}
+   },
+   {
+    "id": "65ae44fa-62f5-4cb3-b03c-71162dc7efa2",
+    "origin": "api",
+    "src": "base-sepolia",
+    "dst": "arc-testnet",
+    "srcDomain": 6,
+    "dstDomain": 26,
+    "sender": "0x000000000000000000000000000000000000dEaD",
+    "recipient": "0x2222222222222222222222222222222222222222",
+    "mintRecipient": "0x0000000000000000000000002222222222222222222222222222222222222222",
+    "amount": "1000000",
+    "speed": "fast",
+    "minFinalityThreshold": 1000,
+    "maxFee": "156",
+    "feeBps": 1.3,
+    "expectedFee": "130",
+    "expectedReceive": "999870",
+    "status": "CREATED",
+    "failCount": 0,
+    "createdAt": 1791429625594,
+    "updatedAt": 1791429625594,
+    "display": {
+     "amount": "1",
+     "expectedFee": "0.00013",
+     "expectedReceive": "0.99987"
+    },
+    "links": {}
+   },
+   {
+    "id": "dab5fb9e-04d3-4c7d-9b68-71ac9a035755",
+    "origin": "api",
+    "src": "base-sepolia",
+    "dst": "solana-devnet",
+    "srcDomain": 6,
+    "dstDomain": 5,
+    "sender": "0x000000000000000000000000000000000000dEaD",
+    "recipient": "7dZ8hfbyo1WyyhpbrhrXLU7wpS3eqf7PodqyvkTpcvGi",
+    "mintRecipient": "0x109578cdf2e588c97ced5a30fc1caec4dc6e2b2aa3a22fb74dbb8c2e4d67745d",
+    "recipientTokenAccount": "27jiaXhmsREoJJ3mxWJKsAbQnWRAqCKsMJYoPyDiurda",
+    "amount": "1000000",
+    "speed": "fast",
+    "minFinalityThreshold": 1000,
+    "maxFee": "156",
+    "feeBps": 1.3,
+    "expectedFee": "130",
+    "expectedReceive": "999870",
+    "status": "CREATED",
+    "failCount": 0,
+    "createdAt": 1791429607583,
+    "updatedAt": 1791429607583,
+    "display": {
+     "amount": "1",
+     "expectedFee": "0.00013",
+     "expectedReceive": "0.99987"
+    },
+    "links": {}
+   },
+   {
+    "id": "aaeead5b-90a9-4959-a6a0-c1e1c26c8773",
+    "origin": "api",
+    "src": "base-sepolia",
+    "dst": "arc-testnet",
+    "srcDomain": 6,
+    "dstDomain": 26,
+    "sender": "0x000000000000000000000000000000000000dEaD",
+    "recipient": "0x2222222222222222222222222222222222222222",
+    "mintRecipient": "0x0000000000000000000000002222222222222222222222222222222222222222",
+    "amount": "1000000",
+    "speed": "fast",
+    "minFinalityThreshold": 1000,
+    "maxFee": "156",
+    "feeBps": 1.3,
+    "expectedFee": "130",
+    "expectedReceive": "999870",
+    "status": "CREATED",
+    "failCount": 0,
+    "createdAt": 1791429606946,
+    "updatedAt": 1791429606946,
+    "display": {
+     "amount": "1",
+     "expectedFee": "0.00013",
+     "expectedReceive": "0.99987"
+    },
+    "links": {}
+   },
+   {
+    "id": "dc54a392-ae15-4acb-aad2-02d8afaa8b2b",
+    "origin": "api",
+    "src": "base-sepolia",
+    "dst": "arc-testnet",
+    "srcDomain": 6,
+    "dstDomain": 26,
+    "sender": "0x000000000000000000000000000000000000dEaD",
+    "recipient": "0x2222222222222222222222222222222222222222",
+    "mintRecipient": "0x0000000000000000000000002222222222222222222222222222222222222222",
+    "amount": "1000000",
+    "speed": "fast",
+    "minFinalityThreshold": 1000,
+    "maxFee": "156",
+    "feeBps": 1.3,
+    "expectedFee": "130",
+    "expectedReceive": "999870",
+    "status": "BURN_SUBMITTED",
+    "failCount": 0,
+    "createdAt": 1791429605734,
+    "updatedAt": 1791429605798,
+    "burnTxHash": "0x7fcc53dc82e06d371419bb71e4219ec60eca782f5672bf11d449dc591df1b136",
+    "burnSubmittedAt": 1791429605798,
+    "display": {
+     "amount": "1",
+     "expectedFee": "0.00013",
+     "expectedReceive": "0.99987"
+    },
+    "links": {
+     "burn": "https://sepolia.basescan.org/tx/0x7fcc53dc82e06d371419bb71e4219ec60eca782f5672bf11d449dc591df1b136"
+    }
+   },
+   {
+    "id": "f332cb90-89a9-438c-92b3-5e1613051d70",
+    "origin": "api",
+    "src": "solana-devnet",
+    "dst": "eth-sepolia",
+    "srcDomain": 5,
+    "dstDomain": 0,
+    "sender": "VBmpGVzabx8AsptQXrA2okEwqFVjbuosHvR2NkuBoaS",
+    "recipient": "0x318a63dEd371020d25670edeeCeD1E193E8D947E",
+    "mintRecipient": "0x000000000000000000000000318a63ded371020d25670edeeced1e193e8d947e",
+    "amount": "1000000",
+    "speed": "standard",
+    "minFinalityThreshold": 2000,
+    "maxFee": "0",
+    "feeBps": 0,
+    "expectedFee": "0",
+    "expectedReceive": "1000000",
+    "status": "COMPLETED",
+    "eventAccount": "HRYbD9K796GUa4JCLeGf5u55cfbkxk3RmRXqqze3o7Ew",
+    "failCount": 0,
+    "createdAt": 1791428946224,
+    "updatedAt": 1791428967234,
+    "burnTxHash": "67H4QWr5aoN18DPVTEWXKPjj2fViE7M54xDVveYFzmqZVb4broTxhQHDQ7LvE7QU1ovS1iGDZpSjwX7Ux7JwMy9y",
+    "burnSubmittedAt": 1791428947187,
+    "burnConfirmedAt": 1791428947506,
+    "message": "0x000000010000000500000000a93b6d848bab76c8511973044b809b4f3cec682cbb457de9ddbd0685bf684e2ba65fc81d0fefa8860cb3b83f089b0224be8a6687b7ae49f594c0b9b4d7e938930000000000000000000000008fe6b999dc680ccfdd5bf7eb0974218be2542daa0000000000000000000000000000000000000000000000000000000000000000000007d0000007d0000000013b442cb3912157f13a933d0134282d032b5ffecd01a2dbf1b7790608df002ea7000000000000000000000000318a63ded371020d25670edeeced1e193e8d947e00000000000000000000000000000000000000000000000000000000000f42400738717f90150b67e04906c156538d8728336151f63f5fabf8ace550720a6a7b000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+    "attestation": "0x3d4b46bd9345195d4c68e422dd7a687c7add03db02ca8409fa14d703df69dfe9799c2a82425b062518d95d893da164d57a2d23d14f883a55157b442a6a4882941b29cdba8b56a187aed62f7caa9feeb1dba15bbc95a4455974007541bfc43f33241b4e35238590313bc3b085ca7618a17344cfa5145027870b08eda7bed481f2601c",
+    "nonce": "0xa93b6d848bab76c8511973044b809b4f3cec682cbb457de9ddbd0685bf684e2b",
+    "feeExecuted": "0",
+    "attestedAt": 1791428953081,
+    "mintTxHash": "0x4684820f4fcaf713b80e794564ec38d3de6b6c681a3219d661ac4a889f59119b",
+    "mintTxHashes": [
+     "0x4684820f4fcaf713b80e794564ec38d3de6b6c681a3219d661ac4a889f59119b"
+    ],
+    "mintSubmittedAt": 1791428958175,
+    "completedAt": 1791428967234,
+    "received": "1000000",
+    "display": {
+     "amount": "1",
+     "expectedFee": "0",
+     "expectedReceive": "1",
+     "received": "1"
+    },
+    "links": {
+     "burn": "https://explorer.solana.com/tx/67H4QWr5aoN18DPVTEWXKPjj2fViE7M54xDVveYFzmqZVb4broTxhQHDQ7LvE7QU1ovS1iGDZpSjwX7Ux7JwMy9y?cluster=devnet",
+     "mint": "https://sepolia.etherscan.io/tx/0x4684820f4fcaf713b80e794564ec38d3de6b6c681a3219d661ac4a889f59119b"
+    }
+   },
+   {
+    "id": "49ad70e8-0959-4f9b-bc97-dfc6b5b2e516",
+    "origin": "api",
+    "src": "eth-sepolia",
+    "dst": "solana-devnet",
+    "srcDomain": 0,
+    "dstDomain": 5,
+    "sender": "0x318a63dEd371020d25670edeeCeD1E193E8D947E",
+    "recipient": "VBmpGVzabx8AsptQXrA2okEwqFVjbuosHvR2NkuBoaS",
+    "mintRecipient": "0x3016bd5fa6b951e28b71c7f7832b8bafa322a74e5d7c25f3cbf1b478a777f4bc",
+    "recipientTokenAccount": "4EigUeyE2RaNB9KszQuDahDP6ULJdDzAfAJpJnJnGaVy",
+    "amount": "1000000",
+    "speed": "fast",
+    "minFinalityThreshold": 1000,
+    "maxFee": "120",
+    "feeBps": 1,
+    "expectedFee": "100",
+    "expectedReceive": "999900",
+    "status": "COMPLETED",
+    "failCount": 0,
+    "createdAt": 1791428907087,
+    "updatedAt": 1791428943304,
+    "burnTxHash": "0x6b4eef6b77a485c49db6bf2c8559c03462b00971b5b56b88ef4d32650fa75a29",
+    "burnSubmittedAt": 1791428932595,
+    "burnConfirmedAt": 1791428932887,
+    "message": "0x000000010000000000000005fb644887ce05350e638d01b1288246e4a2cdfb20f63b075830c433f9c12158ea0000000000000000000000008fe6b999dc680ccfdd5bf7eb0974218be2542daaa65fc81d0fefa8860cb3b83f089b0224be8a6687b7ae49f594c0b9b4d7e938930000000000000000000000000000000000000000000000000000000000000000000003e8000003e8000000010000000000000000000000001c7d4b196cb0c7b01d743fbc6116a902379c72383016bd5fa6b951e28b71c7f7832b8bafa322a74e5d7c25f3cbf1b478a777f4bc00000000000000000000000000000000000000000000000000000000000f4240000000000000000000000000318a63ded371020d25670edeeced1e193e8d947e00000000000000000000000000000000000000000000000000000000000000780000000000000000000000000000000000000000000000000000000000000064000000000000000000000000000000000000000000000000000000001e585f3b",
+    "attestation": "0x183270bebd03958eed028c6545e443631c2954f4deba732c6614679666b7f65679467d211a538299898c7b5e2d60285c27e6b57dfbaec0bb628a846d68b6dc941cc101a0ce5499ba3d02c2df21f180e1c3e4a865a67136d667ec86b1141e122f39384701d54322284ae586846ffd076fe4f3765a459d0133416adf3c0e6cba48ff1c",
+    "nonce": "0xfb644887ce05350e638d01b1288246e4a2cdfb20f63b075830c433f9c12158ea",
+    "feeExecuted": "100",
+    "attestedAt": 1791428938003,
+    "mintTxHash": "37A2xQmCnddewpmwYomKTHX2wNpcMq6dTSjNfSoFCoKWN2pd6HWZ1UxdzdnNKfSfiShxR9jQm1gpJbFSBU3FYpjq",
+    "mintTxHashes": [
+     "37A2xQmCnddewpmwYomKTHX2wNpcMq6dTSjNfSoFCoKWN2pd6HWZ1UxdzdnNKfSfiShxR9jQm1gpJbFSBU3FYpjq"
+    ],
+    "mintSubmittedAt": 1791428942070,
+    "completedAt": 1791428943304,
+    "received": "999900",
+    "display": {
+     "amount": "1",
+     "expectedFee": "0.0001",
+     "expectedReceive": "0.9999",
+     "received": "0.9999"
+    },
+    "links": {
+     "burn": "https://sepolia.etherscan.io/tx/0x6b4eef6b77a485c49db6bf2c8559c03462b00971b5b56b88ef4d32650fa75a29",
+     "mint": "https://explorer.solana.com/tx/37A2xQmCnddewpmwYomKTHX2wNpcMq6dTSjNfSoFCoKWN2pd6HWZ1UxdzdnNKfSfiShxR9jQm1gpJbFSBU3FYpjq?cluster=devnet"
+    }
+   },
+   {
+    "id": "ff646807-53b8-4c76-b72a-ff6724aec8b4",
+    "origin": "api",
+    "src": "eth-sepolia",
+    "dst": "solana-devnet",
+    "srcDomain": 0,
+    "dstDomain": 5,
+    "sender": "0x318a63dEd371020d25670edeeCeD1E193E8D947E",
+    "recipient": "VBmpGVzabx8AsptQXrA2okEwqFVjbuosHvR2NkuBoaS",
+    "mintRecipient": "0x3016bd5fa6b951e28b71c7f7832b8bafa322a74e5d7c25f3cbf1b478a777f4bc",
+    "recipientTokenAccount": "4EigUeyE2RaNB9KszQuDahDP6ULJdDzAfAJpJnJnGaVy",
+    "amount": "1000000",
+    "speed": "fast",
+    "minFinalityThreshold": 1000,
+    "maxFee": "120",
+    "feeBps": 1,
+    "expectedFee": "100",
+    "expectedReceive": "999900",
+    "status": "COMPLETED",
+    "failCount": 1,
+    "createdAt": 1791428268919,
+    "updatedAt": 1791428873048,
+    "burnTxHash": "0x682a93354fda2d29a1262300a7f6f95b2741a6090523188566e8c07fce5978cf",
+    "burnSubmittedAt": 1791428293944,
+    "burnConfirmedAt": 1791428294336,
+    "message": "0x000000010000000000000005669afa9c01ebee78b463d33862a22114478a6a8b238dadf4c0c23a8fc1e3b3b70000000000000000000000008fe6b999dc680ccfdd5bf7eb0974218be2542daaa65fc81d0fefa8860cb3b83f089b0224be8a6687b7ae49f594c0b9b4d7e938930000000000000000000000000000000000000000000000000000000000000000000003e8000003e8000000010000000000000000000000001c7d4b196cb0c7b01d743fbc6116a902379c72383016bd5fa6b951e28b71c7f7832b8bafa322a74e5d7c25f3cbf1b478a777f4bc00000000000000000000000000000000000000000000000000000000000f4240000000000000000000000000318a63ded371020d25670edeeced1e193e8d947e00000000000000000000000000000000000000000000000000000000000000780000000000000000000000000000000000000000000000000000000000000064000000000000000000000000000000000000000000000000000000001e5854eb",
+    "attestation": "0xfac459c749d33f9e896633cd5139c941094acafbf93982190baa6d7c09080dec4079c90dd923bb1960e555b7e30d1d74cff80d2c347adb624e5a6f4e9a3147391c6740aac44089d5f0da988aae91ffc81172550a485e3a1d1c0441f438e213e7921f167c2848b6bae2e8fab9f44ac63d3bb8fb32e6bf30ab4e0eca8895c87ad6811c",
+    "nonce": "0x669afa9c01ebee78b463d33862a22114478a6a8b238dadf4c0c23a8fc1e3b3b7",
+    "feeExecuted": "100",
+    "attestedAt": 1791428305935,
+    "mintTxHash": "ZWPNr4JtqmCsU5TWyJBdwKj3i74FSD2tkDYaojmKrRKuHJZVAMcw4gtRZsDToAZHc7Eq4KMaHQNiPuDE1jpkcjq",
+    "mintTxHashes": [
+     "ZWPNr4JtqmCsU5TWyJBdwKj3i74FSD2tkDYaojmKrRKuHJZVAMcw4gtRZsDToAZHc7Eq4KMaHQNiPuDE1jpkcjq"
+    ],
+    "mintSubmittedAt": 1791428857745,
+    "completedAt": 1791428873048,
+    "received": "999900",
+    "display": {
+     "amount": "1",
+     "expectedFee": "0.0001",
+     "expectedReceive": "0.9999",
+     "received": "0.9999"
+    },
+    "links": {
+     "burn": "https://sepolia.etherscan.io/tx/0x682a93354fda2d29a1262300a7f6f95b2741a6090523188566e8c07fce5978cf",
+     "mint": "https://explorer.solana.com/tx/ZWPNr4JtqmCsU5TWyJBdwKj3i74FSD2tkDYaojmKrRKuHJZVAMcw4gtRZsDToAZHc7Eq4KMaHQNiPuDE1jpkcjq?cluster=devnet"
+    }
+   }
+  ]
+ },
+ "transfer": {
+  "transfer": {
+   "id": "f332cb90-89a9-438c-92b3-5e1613051d70",
+   "origin": "api",
+   "src": "solana-devnet",
+   "dst": "eth-sepolia",
+   "srcDomain": 5,
+   "dstDomain": 0,
+   "sender": "VBmpGVzabx8AsptQXrA2okEwqFVjbuosHvR2NkuBoaS",
+   "recipient": "0x318a63dEd371020d25670edeeCeD1E193E8D947E",
+   "mintRecipient": "0x000000000000000000000000318a63ded371020d25670edeeced1e193e8d947e",
+   "amount": "1000000",
+   "speed": "standard",
+   "minFinalityThreshold": 2000,
+   "maxFee": "0",
+   "feeBps": 0,
+   "expectedFee": "0",
+   "expectedReceive": "1000000",
+   "status": "COMPLETED",
+   "eventAccount": "HRYbD9K796GUa4JCLeGf5u55cfbkxk3RmRXqqze3o7Ew",
+   "failCount": 0,
+   "createdAt": 1791428946224,
+   "updatedAt": 1791428967234,
+   "burnTxHash": "67H4QWr5aoN18DPVTEWXKPjj2fViE7M54xDVveYFzmqZVb4broTxhQHDQ7LvE7QU1ovS1iGDZpSjwX7Ux7JwMy9y",
+   "burnSubmittedAt": 1791428947187,
+   "burnConfirmedAt": 1791428947506,
+   "message": "0x000000010000000500000000a93b6d848bab76c8511973044b809b4f3cec682cbb457de9ddbd0685bf684e2ba65fc81d0fefa8860cb3b83f089b0224be8a6687b7ae49f594c0b9b4d7e938930000000000000000000000008fe6b999dc680ccfdd5bf7eb0974218be2542daa0000000000000000000000000000000000000000000000000000000000000000000007d0000007d0000000013b442cb3912157f13a933d0134282d032b5ffecd01a2dbf1b7790608df002ea7000000000000000000000000318a63ded371020d25670edeeced1e193e8d947e00000000000000000000000000000000000000000000000000000000000f42400738717f90150b67e04906c156538d8728336151f63f5fabf8ace550720a6a7b000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+   "attestation": "0x3d4b46bd9345195d4c68e422dd7a687c7add03db02ca8409fa14d703df69dfe9799c2a82425b062518d95d893da164d57a2d23d14f883a55157b442a6a4882941b29cdba8b56a187aed62f7caa9feeb1dba15bbc95a4455974007541bfc43f33241b4e35238590313bc3b085ca7618a17344cfa5145027870b08eda7bed481f2601c",
+   "nonce": "0xa93b6d848bab76c8511973044b809b4f3cec682cbb457de9ddbd0685bf684e2b",
+   "feeExecuted": "0",
+   "attestedAt": 1791428953081,
+   "mintTxHash": "0x4684820f4fcaf713b80e794564ec38d3de6b6c681a3219d661ac4a889f59119b",
+   "mintTxHashes": [
+    "0x4684820f4fcaf713b80e794564ec38d3de6b6c681a3219d661ac4a889f59119b"
+   ],
+   "mintSubmittedAt": 1791428958175,
+   "completedAt": 1791428967234,
+   "received": "1000000",
+   "display": {
+    "amount": "1",
+    "expectedFee": "0",
+    "expectedReceive": "1",
+    "received": "1"
+   },
+   "links": {
+    "burn": "https://explorer.solana.com/tx/67H4QWr5aoN18DPVTEWXKPjj2fViE7M54xDVveYFzmqZVb4broTxhQHDQ7LvE7QU1ovS1iGDZpSjwX7Ux7JwMy9y?cluster=devnet",
+    "mint": "https://sepolia.etherscan.io/tx/0x4684820f4fcaf713b80e794564ec38d3de6b6c681a3219d661ac4a889f59119b"
+   }
+  },
+  "events": [
+   {
+    "seq": 32,
+    "at": 1791428967235,
+    "section": "cctp",
+    "type": "transfer.completed",
+    "severity": "success",
+    "summary": "1 USDC solana-devnet → eth-sepolia: MINT_SUBMITTED → COMPLETED",
+    "subject": {
+     "kind": "transfer",
+     "id": "f332cb90-89a9-438c-92b3-5e1613051d70"
+    },
+    "data": {
+     "src": "solana-devnet",
+     "dst": "eth-sepolia",
+     "amount": "1000000",
+     "burnTxHash": "67H4QWr5aoN18DPVTEWXKPjj2fViE7M54xDVveYFzmqZVb4broTxhQHDQ7LvE7QU1ovS1iGDZpSjwX7Ux7JwMy9y",
+     "mintTxHash": "0x4684820f4fcaf713b80e794564ec38d3de6b6c681a3219d661ac4a889f59119b"
+    }
+   },
+   {
+    "seq": 27,
+    "at": 1791428958179,
+    "section": "cctp",
+    "type": "transfer.mint_submitted",
+    "severity": "info",
+    "summary": "1 USDC solana-devnet → eth-sepolia: ATTESTED → MINT_SUBMITTED",
+    "subject": {
+     "kind": "transfer",
+     "id": "f332cb90-89a9-438c-92b3-5e1613051d70"
+    },
+    "data": {
+     "src": "solana-devnet",
+     "dst": "eth-sepolia",
+     "amount": "1000000",
+     "burnTxHash": "67H4QWr5aoN18DPVTEWXKPjj2fViE7M54xDVveYFzmqZVb4broTxhQHDQ7LvE7QU1ovS1iGDZpSjwX7Ux7JwMy9y",
+     "mintTxHash": "0x4684820f4fcaf713b80e794564ec38d3de6b6c681a3219d661ac4a889f59119b"
+    }
+   },
+   {
+    "seq": 26,
+    "at": 1791428953083,
+    "section": "cctp",
+    "type": "transfer.attested",
+    "severity": "info",
+    "summary": "1 USDC solana-devnet → eth-sepolia: BURN_CONFIRMED → ATTESTED",
+    "subject": {
+     "kind": "transfer",
+     "id": "f332cb90-89a9-438c-92b3-5e1613051d70"
+    },
+    "data": {
+     "src": "solana-devnet",
+     "dst": "eth-sepolia",
+     "amount": "1000000",
+     "burnTxHash": "67H4QWr5aoN18DPVTEWXKPjj2fViE7M54xDVveYFzmqZVb4broTxhQHDQ7LvE7QU1ovS1iGDZpSjwX7Ux7JwMy9y"
+    }
+   },
+   {
+    "seq": 25,
+    "at": 1791428947509,
+    "section": "cctp",
+    "type": "transfer.burn_confirmed",
+    "severity": "info",
+    "summary": "1 USDC solana-devnet → eth-sepolia: BURN_SUBMITTED → BURN_CONFIRMED",
+    "subject": {
+     "kind": "transfer",
+     "id": "f332cb90-89a9-438c-92b3-5e1613051d70"
+    },
+    "data": {
+     "src": "solana-devnet",
+     "dst": "eth-sepolia",
+     "amount": "1000000",
+     "burnTxHash": "67H4QWr5aoN18DPVTEWXKPjj2fViE7M54xDVveYFzmqZVb4broTxhQHDQ7LvE7QU1ovS1iGDZpSjwX7Ux7JwMy9y"
+    }
+   },
+   {
+    "seq": 24,
+    "at": 1791428947191,
+    "section": "cctp",
+    "type": "transfer.burn_submitted",
+    "severity": "info",
+    "summary": "1 USDC solana-devnet → eth-sepolia: CREATED → BURN_SUBMITTED",
+    "subject": {
+     "kind": "transfer",
+     "id": "f332cb90-89a9-438c-92b3-5e1613051d70"
+    },
+    "data": {
+     "src": "solana-devnet",
+     "dst": "eth-sepolia",
+     "amount": "1000000",
+     "burnTxHash": "67H4QWr5aoN18DPVTEWXKPjj2fViE7M54xDVveYFzmqZVb4broTxhQHDQ7LvE7QU1ovS1iGDZpSjwX7Ux7JwMy9y"
+    }
+   },
+   {
+    "seq": 23,
+    "at": 1791428946226,
+    "section": "cctp",
+    "type": "transfer.created",
+    "severity": "info",
+    "summary": "Transfer created: 1 USDC solana-devnet → eth-sepolia",
+    "subject": {
+     "kind": "transfer",
+     "id": "f332cb90-89a9-438c-92b3-5e1613051d70"
+    },
+    "data": {
+     "src": "solana-devnet",
+     "dst": "eth-sepolia",
+     "amount": "1000000"
+    }
+   }
+  ]
+ },
+ "failedTransfer": {
+  "transfer": {
+   "id": "96407b42-de0c-45c8-8195-4d939ff4e6ea",
+   "origin": "api",
+   "src": "base-sepolia",
+   "dst": "arc-testnet",
+   "srcDomain": 6,
+   "dstDomain": 26,
+   "sender": "0x000000000000000000000000000000000000dEaD",
+   "recipient": "0x2222222222222222222222222222222222222222",
+   "mintRecipient": "0x0000000000000000000000002222222222222222222222222222222222222222",
+   "amount": "1000000",
+   "speed": "fast",
+   "minFinalityThreshold": 1000,
+   "maxFee": "156",
+   "feeBps": 1.3,
+   "expectedFee": "130",
+   "expectedReceive": "999870",
+   "status": "FAILED",
+   "failCount": 0,
+   "createdAt": 1791426423576,
+   "updatedAt": 1791428248878,
+   "burnTxHash": "0x8ef69744637131b263d37dd16163f541a5dc0cb94952b4f4479b35b02892e588",
+   "burnSubmittedAt": 1791426423605,
+   "failReason": "burn transaction not found / not confirmed in time",
+   "display": {
+    "amount": "1",
+    "expectedFee": "0.00013",
+    "expectedReceive": "0.99987"
+   },
+   "links": {
+    "burn": "https://sepolia.basescan.org/tx/0x8ef69744637131b263d37dd16163f541a5dc0cb94952b4f4479b35b02892e588"
+   }
+  },
+  "events": [
+   {
+    "seq": 3,
+    "at": 1791428248880,
+    "section": "cctp",
+    "type": "transfer.failed",
+    "severity": "error",
+    "summary": "Transfer failed: 1 USDC base-sepolia → arc-testnet: burn transaction not found / not confirmed in time",
+    "subject": {
+     "kind": "transfer",
+     "id": "96407b42-de0c-45c8-8195-4d939ff4e6ea"
+    },
+    "data": {
+     "src": "base-sepolia",
+     "dst": "arc-testnet",
+     "amount": "1000000",
+     "burnTxHash": "0x8ef69744637131b263d37dd16163f541a5dc0cb94952b4f4479b35b02892e588",
+     "failReason": "burn transaction not found / not confirmed in time"
+    }
+   }
+  ]
+ },
+ "swaps": {
+  "total": 0,
+  "offset": 0,
+  "limit": 50,
+  "byStatus": {},
+  "swaps": []
+ },
+ "blocked": {
+  "blockedMints": []
+ },
+ "tokens": {
+  "total": 3881,
+  "offset": 0,
+  "limit": 4,
+  "tokens": [
+   {
+    "mint": "J1toso1uCk3RLmjorhTtrVwY9HJ7X8V9yYac6Y7kGCPn",
+    "symbol": "JitoSOL",
+    "name": "Jito Staked SOL",
+    "icon": "https://storage.googleapis.com/token-metadata/JitoSOL-256.png",
+    "decimals": 9,
+    "tokenProgram": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "verified": true,
+    "suspicious": false,
+    "tags": [
+     "verified",
+     "yield",
+     "community",
+     "lst",
+     "original-lst",
+     "strict"
+    ],
+    "isStock": false,
+    "hasFreezeAuthority": false,
+    "usdPrice": 151.10449072716642,
+    "priceChange24h": -2.0379479370291924,
+    "volume24h": 7957605.881073293,
+    "liquidity": 1208652355.7560322,
+    "mcap": 1208652355.7560322,
+    "holderCount": 185242,
+    "organicScore": 94.08267813255725
+   },
+   {
+    "mint": "BNso1VUJnh4zcfpZa6986Ea66P6TCp59hvtNJ8b1X85",
+    "symbol": "BNSOL",
+    "name": "Binance Staked SOL",
+    "icon": "https://arweave.net/LepI-hea-JrbLMb4L_HpMzaq9k0aHY2-lVSGiBtwvFM?ext=png",
+    "decimals": 9,
+    "tokenProgram": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "verified": true,
+    "suspicious": false,
+    "tags": [
+     "lst",
+     "original-lst",
+     "verified",
+     "yield"
+    ],
+    "isStock": false,
+    "hasFreezeAuthority": false,
+    "usdPrice": 131.60465700402602,
+    "priceChange24h": -1.770496637984134,
+    "volume24h": 1858.6065965515659,
+    "liquidity": 1192186072.2426572,
+    "mcap": 1192186072.2426572,
+    "holderCount": 14565,
+    "organicScore": 0
+   },
+   {
+    "mint": "So11111111111111111111111111111111111111112",
+    "symbol": "SOL",
+    "name": "Wrapped SOL",
+    "icon": "https://raw.githubusercontent.com/solana-labs/token-list/main/assets/mainnet/So11111111111111111111111111111111111111112/logo.png",
+    "decimals": 9,
+    "tokenProgram": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "verified": true,
+    "suspicious": false,
+    "tags": [
+     "community",
+     "moonshot-verified",
+     "strict",
+     "verified",
+     "major"
+    ],
+    "isStock": false,
+    "hasFreezeAuthority": false,
+    "usdPrice": 115.82833539511573,
+    "priceChange24h": -2.1147949413982157,
+    "volume24h": 3509297520.6113944,
+    "liquidity": 973386435.8595843,
+    "mcap": 68233782158.27932,
+    "holderCount": 3820662,
+    "organicScore": 99.27074117806546
+   },
+   {
+    "mint": "jupSoLaHXQiZZTSfEWMTRRgpnyFm8f6sZdosWBjx93v",
+    "symbol": "JupSOL",
+    "name": "Jupiter Staked SOL",
+    "icon": "https://static.jup.ag/jupSOL/icon.png",
+    "decimals": 9,
+    "tokenProgram": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "verified": true,
+    "suspicious": false,
+    "tags": [
+     "community",
+     "lst",
+     "original-lst",
+     "strict",
+     "verified",
+     "yield"
+    ],
+    "isStock": false,
+    "hasFreezeAuthority": false,
+    "usdPrice": 140.45873679774098,
+    "priceChange24h": -2.0399859399049625,
+    "volume24h": 4155421.7733931695,
+    "liquidity": 600160043.7825465,
+    "mcap": 600160043.7825465,
+    "holderCount": 33254,
+    "organicScore": 89.0388558664477
+   }
+  ]
+ },
+ "stocks": {
+  "issuers": {
+   "backpack": 74,
+   "xstocks": 1274,
+   "tessera": 3,
+   "prestocks": 8,
+   "ondo": 449,
+   "shift": 8,
+   "other": 1
+  },
+  "total": 1817,
+  "offset": 0,
+  "limit": 4,
+  "tokens": [
+   {
+    "mint": "XsoCS1TfEyfFhfvj8EtZ528L3CaKBDBRqRapnBbDF2W",
+    "symbol": "SPYx",
+    "name": "SP500 xStock",
+    "icon": "https://xstocks-metadata.backed.fi/logos/tokens/SPYx.png",
+    "decimals": 8,
+    "tokenProgram": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+    "verified": true,
+    "suspicious": false,
+    "tags": [
+     "rwa",
+     "moonshot-verified",
+     "token-2022",
+     "verified",
+     "xstocks",
+     "stocks"
+    ],
+    "isStock": true,
+    "stockIssuer": "xstocks",
+    "hasFreezeAuthority": true,
+    "usdPrice": 776.6945852199724,
+    "priceChange24h": -0.10461657372374503,
+    "volume24h": 7944305.343558311,
+    "liquidity": 4843719.505037773,
+    "mcap": 74387923.1946927,
+    "holderCount": 78341,
+    "organicScore": 82.58917042399754
+   },
+   {
+    "mint": "Xsc9qvGR1efVDFGLrVsmkzv3qi45LTBjeUKSPmx9qEh",
+    "symbol": "NVDAx",
+    "name": "NVIDIA xStock",
+    "icon": "https://xstocks-metadata.backed.fi/logos/tokens/NVDAx.png",
+    "decimals": 8,
+    "tokenProgram": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+    "verified": true,
+    "suspicious": false,
+    "tags": [
+     "xstocks",
+     "stocks",
+     "rwa",
+     "equities",
+     "moonshot-verified",
+     "token-2022",
+     "verified"
+    ],
+    "isStock": true,
+    "stockIssuer": "xstocks",
+    "hasFreezeAuthority": true,
+    "usdPrice": 237.3521468109099,
+    "priceChange24h": -1.1915874881800261,
+    "volume24h": 12949033.213037599,
+    "liquidity": 4674132.518965939,
+    "mcap": 76382595.26402852,
+    "holderCount": 173155,
+    "organicScore": 89.16913184128228
+   },
+   {
+    "mint": "MUxEsUKSMACyw5fZf68wxf5FLnZVhtU9CwH8uNNGay1",
+    "symbol": "MU",
+    "name": "Micron Technology - Backpack Securities",
+    "icon": "https://backpack.exchange/api/stock-logo/MU?cacheburst=1",
+    "decimals": 6,
+    "tokenProgram": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+    "verified": true,
+    "suspicious": false,
+    "tags": [
+     "verified",
+     "rwa",
+     "backpack",
+     "stocks",
+     "token-2022"
+    ],
+    "isStock": true,
+    "stockIssuer": "backpack",
+    "hasFreezeAuthority": true,
+    "usdPrice": 1082.9233464796769,
+    "priceChange24h": 3.6424757176165072,
+    "volume24h": 5291532.881273514,
+    "liquidity": 3928821.395213935,
+    "mcap": 5188902.263056712,
+    "holderCount": 5776,
+    "organicScore": 60.19287549581331
+   },
+   {
+    "mint": "Xs3oZwbHvqis4NYcf4YKWmEia2eC84wSiVrcYcTqpH8",
+    "symbol": "SPCXx",
+    "name": "SpaceX xStock",
+    "icon": "https://xstocks-metadata.backed.fi/logos/tokens/SPCXx.png",
+    "decimals": 8,
+    "tokenProgram": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+    "verified": true,
+    "suspicious": false,
+    "tags": [
+     "rwa",
+     "xstocks",
+     "moonshot-verified",
+     "token-2022",
+     "verified",
+     "stocks"
+    ],
+    "isStock": true,
+    "stockIssuer": "xstocks",
+    "hasFreezeAuthority": true,
+    "usdPrice": 167.85991423626174,
+    "priceChange24h": -0.8053583137919337,
+    "volume24h": 15575903.141703323,
+    "liquidity": 3921512.206327307,
+    "mcap": 93997350.84553224,
+    "holderCount": 74250,
+    "organicScore": 86.71398988503972
+   }
+  ]
+ }
+}
