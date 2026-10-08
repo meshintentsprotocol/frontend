@@ -14,6 +14,10 @@ import { StrategiesPage, StrategyDetailPage, LpsPage, LpDetailPage, IdlePage } f
 import { OperationsPage, RefundsPage, SystemPage } from './pages/OperationsPages';
 import { BalancerOverviewPage, BalancerTradesPage, BalancerTradeDetailPage, BalancerOpportunitiesPage, BalancerWalletPage, BalancerSettingsPage } from './pages/BalancerPages';
 import { AdminPage } from '@/pages/AdminPage';
+import { SwapArea } from './swap/SwapArea';
+import { SwapOverviewPage, SwapEventsPage, SwapSettingsPage } from './swap/SwapOverviewPages';
+import { CctpTransfersPage, CctpTransferDetailPage, CctpChainsPage } from './swap/CctpPages';
+import { SolanaSwapsPage, SolanaSwapDetailPage, SolanaTokensPage } from './swap/SolanaPages';
 
 export const adminRoutes = (
   <Route path="/admin" element={<AdminShell />}>
@@ -42,5 +46,17 @@ export const adminRoutes = (
     <Route path="balancer/wallet" element={<BalancerWalletPage />} />
     <Route path="balancer/settings" element={<BalancerSettingsPage />} />
     <Route path="legacy" element={<AdminPage />} />
+    {/* cctp-swap-server: its own server and key, so it is not gated by the mesh key */}
+    <Route path="swap" element={<SwapArea />}>
+      <Route index element={<SwapOverviewPage />} />
+      <Route path="events" element={<SwapEventsPage />} />
+      <Route path="settings" element={<SwapSettingsPage />} />
+      <Route path="cctp" element={<CctpTransfersPage />} />
+      <Route path="cctp/chains" element={<CctpChainsPage />} />
+      <Route path="cctp/:id" element={<CctpTransferDetailPage />} />
+      <Route path="solana" element={<SolanaSwapsPage />} />
+      <Route path="solana/tokens" element={<SolanaTokensPage />} />
+      <Route path="solana/:id" element={<SolanaSwapDetailPage />} />
+    </Route>
   </Route>
 );

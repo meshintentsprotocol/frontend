@@ -9,6 +9,7 @@ import { useIsFetching } from '@tanstack/react-query';
 import {
   LayoutDashboard, Activity, ArrowDownUp, Zap, Repeat, Users, Waves, Layers, UserCircle, Recycle, SlidersHorizontal,
   Undo2, Server, KeyRound, Pause, Play, Menu, X, ShieldCheck, ShieldAlert, History, ArrowLeft, RefreshCw, Scale, ArrowLeftRight, Radar, Wallet, Settings2,
+  Globe, Fuel, Coins, LineChart, ScrollText,
 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
@@ -59,6 +60,26 @@ const NAV: Array<{ group: string; items: NavItem[] }> = [
       { to: '/admin/balancer/opportunities', label: 'Opportunities', icon: Radar },
       { to: '/admin/balancer/wallet', label: 'Wallet', icon: Wallet },
       { to: '/admin/balancer/settings', label: 'Settings', icon: Settings2 },
+    ],
+  },
+  // cctp-swap-server: a separate server with its own admin key (see ./swap)
+  {
+    group: 'Swap server', items: [
+      { to: '/admin/swap', label: 'Overview', icon: Globe, end: true },
+      { to: '/admin/swap/events', label: 'Events', icon: ScrollText },
+      { to: '/admin/swap/settings', label: 'Settings', icon: Settings2 },
+    ],
+  },
+  {
+    group: 'Cross-chain USDC', items: [
+      { to: '/admin/swap/cctp', label: 'Transfers', icon: ArrowLeftRight, end: true },
+      { to: '/admin/swap/cctp/chains', label: 'Chains & relayer', icon: Fuel },
+    ],
+  },
+  {
+    group: 'Solana swaps', items: [
+      { to: '/admin/swap/solana', label: 'Swaps', icon: Coins, end: true },
+      { to: '/admin/swap/solana/tokens', label: 'Tokens & stocks', icon: LineChart },
     ],
   },
 ];
@@ -238,7 +259,9 @@ function Frame({ children }: { children: ReactNode }) {
   const { adminKey } = useAdmin();
   // the server shows nothing without a valid key: ask for it in place of the pages
   const rejected = error instanceof AdminApiError && error.status === 401;
-  const locked = !adminKey || rejected;
+  // the swap-server pages talk to another server with its own key; they carry their own gate
+  const swapArea = loc.pathname.startsWith('/admin/swap');
+  const locked = !swapArea && (!adminKey || rejected);
   useEffect(() => setMenu(false), [loc.pathname]);
   return (
     <AssetProvider network={data?.network ?? 'chipnet'}>
