@@ -5,13 +5,13 @@
  */
 import { useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
-import { ElectrumNetworkProvider } from 'cashscript';
 import { BCH_MESH_SERVER_URL } from '@/lib/config';
 import { createMeshApi, meshWsUrl, type PoolListQuery } from '@/lib/mesh/meshApi';
 import { LocalWifSigner, ExternalWcSigner, type MeshSigner, type BchNetwork } from '@/lib/mesh/signer';
 import { useWDK } from '@/context/WDKProvider';
 import { useExternalBCHWallet } from '@/context/ExternalBCHWalletProvider';
 import { useActiveWallet } from '@/hooks/useActiveWallet';
+import { electrumProviderFor } from '@/lib/bchElectrum';
 
 export const meshApi = createMeshApi(BCH_MESH_SERVER_URL);
 
@@ -203,13 +203,6 @@ export interface MeshSignerState {
   unavailable?: string;
 }
 
-const providers = new Map<BchNetwork, ElectrumNetworkProvider>();
-function providerFor(network: BchNetwork): ElectrumNetworkProvider {
-  let p = providers.get(network);
-  if (!p) { p = new ElectrumNetworkProvider(network); providers.set(network, p); }
-  return p;
-}
-
 /** The active BCH wallet (built-in or external) as a MeshSigner. */
 export function useMeshSigner(): MeshSignerState {
   const wdk = useWDK();
@@ -219,7 +212,7 @@ export function useMeshSigner(): MeshSignerState {
   const wif: string | undefined = (wdk.bchWallet as any)?.privateKeyWif;
 
   return useMemo<MeshSignerState>(() => {
-    const provider = providerFor(network);
+    const provider = electrumProviderFor(network);
     try {
       if (isMainActive) {
         if (!wif) return { signer: null, pkh: null, address: null, network, kind: null, label: 'Built-in wallet', unavailable: 'Unlock or create the built-in wallet' };

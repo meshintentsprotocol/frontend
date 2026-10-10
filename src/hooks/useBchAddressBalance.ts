@@ -2,18 +2,21 @@
  * useBchAddressBalance — fetch BCH + CashToken balances for any address.
  *
  * Unlike useBchBalances (which requires a mainnet-js wallet with private key),
- * this hook works with a raw address string. It uses the Fulcrum/Electrum REST
- * API (chipnet) or the BCMR-aware chaingraph endpoint (mainnet) to fetch the
- * balance and CashToken UTXOs.
+ * this hook works with a raw address string, so it serves external wallets
+ * (WalletConnect / WizardConnect / the browser extension) and the wallet list
+ * in the header alike.
  *
- * Used for external wallet balance display (WalletConnect / WizardConnect).
+ * It reads the address's UTXOs over Electrum (lib/bchElectrum.ts) — the same
+ * source transactions are built from. The REST endpoints this used before
+ * stopped answering browsers (redirects and gateway errors without CORS
+ * headers), which left every external wallet showing a zero balance.
  */
 
 import { useCallback, useMemo } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 
 export interface AddressBalance {
-    /** Spendable BCH in satoshis. */
+    /** Spendable BCH in satoshis: the UTXOs that carry no token. */
     sats: number;
     /** CashToken category → aggregated fungible amount (base unit, string). */
     tokens: Record<string, string>;
@@ -21,21 +24,10 @@ export interface AddressBalance {
 
 const EMPTY: AddressBalance = { sats: 0, tokens: {} };
 
-// ── Electrum REST endpoints ─────────────────────────────────────────────────
-// chipnet.imaginary.cash blocks localhost (no CORS headers).
-// chipnet.bch.ninja returns Access-Control-Allow-Origin: * and is the
-// recommended public Chipnet Fulcrum REST for dApp development.
-const CHIPNET_ENDPOINTS = [
-    'https://chipnet.bch.ninja',
-    'https://chipnet.imaginary.cash',    // fallback — may fail on localhost
-];
-const MAINNET_REST = 'https://rest1.biggestfan.net';
-
 /**
  * Ensure the address carries the cashaddr prefix matching the network being
  * queried. A bare payload (no prefix) must not be hardcoded to `bitcoincash:` —
- * on chipnet that produces a mainnet-prefixed address sent to a chipnet host,
- * which the REST endpoint can't resolve.
+ * on chipnet that produces a mainnet-prefixed address the server can't resolve.
  */
 function withNetworkPrefix(address: string, isMainnet: boolean): string {
     if (address.includes(':')) return address;
@@ -43,85 +35,28 @@ function withNetworkPrefix(address: string, isMainnet: boolean): string {
 }
 
 /**
- * Fetch the confirmed balance (in sats) for an address via Electrum REST.
- */
-async function fetchBchBalance(address: string, isMainnet: boolean): Promise<number> {
-    const endpoints = isMainnet ? [MAINNET_REST] : CHIPNET_ENDPOINTS;
-    const addr = withNetworkPrefix(address, isMainnet);
-
-    for (const base of endpoints) {
-        try {
-            const res = await fetch(`${base}/electrs/address/${addr}`);
-            if (!res.ok) throw new Error(`REST ${res.status}`);
-            const data = await res.json();
-            // confirmed + unconfirmed
-            const funded = data?.chain_stats?.funded_txo_sum ?? 0;
-            const spent = data?.chain_stats?.spent_txo_sum ?? 0;
-            const mempoolFunded = data?.mempool_stats?.funded_txo_sum ?? 0;
-            const mempoolSpent = data?.mempool_stats?.spent_txo_sum ?? 0;
-            return (funded - spent) + (mempoolFunded - mempoolSpent);
-        } catch {
-            // try next endpoint
-        }
-    }
-
-    // Final fallback: try UTXO sum from first endpoint
-    for (const base of endpoints) {
-        try {
-            const res = await fetch(`${base}/electrs/address/${addr}/utxo`);
-            if (!res.ok) continue;
-            const utxos: any[] = await res.json();
-            return utxos.reduce((sum: number, u: any) => sum + (u.value ?? 0), 0);
-        } catch {
-            // try next
-        }
-    }
-
-    return 0;
-}
-
-/**
- * Fetch CashToken UTXOs for an address and aggregate fungible amounts by category.
- * Uses the chaingraph/BCMR-aware approach if available, otherwise falls back
- * to scanning regular UTXOs for token data.
- */
-async function fetchTokenBalances(address: string, isMainnet: boolean): Promise<Record<string, string>> {
-    const endpoints = isMainnet ? [MAINNET_REST] : CHIPNET_ENDPOINTS;
-    const addr = withNetworkPrefix(address, isMainnet);
-    const tokens: Record<string, string> = {};
-
-    for (const base of endpoints) {
-        try {
-            const res = await fetch(`${base}/electrs/address/${addr}/utxo`);
-            if (!res.ok) continue;
-            const utxos: any[] = await res.json();
-
-            for (const u of utxos) {
-                if (!u.token) continue;
-                const category = u.token.category;
-                if (!category) continue;
-                const amount = BigInt(u.token.amount ?? 0);
-                const prev = BigInt(tokens[category] ?? '0');
-                tokens[category] = (prev + amount).toString();
-            }
-            return tokens; // success, stop iterating
-        } catch {
-            // try next endpoint
-        }
-    }
-
-    return tokens;
-}
-
-/**
  * Fetch full balance data for any BCH address (no private key needed).
+ * Throws when the server cannot be reached, so the previous balance is kept
+ * instead of flashing zero.
  */
-async function fetchAddressBalance(address: string, isMainnet: boolean): Promise<AddressBalance> {
-    const [sats, tokens] = await Promise.all([
-        fetchBchBalance(address, isMainnet),
-        fetchTokenBalances(address, isMainnet),
-    ]);
-    return { sats, tokens };
+export async function fetchAddressBalance(address: string, isMainnet: boolean): Promise<AddressBalance> {
+    // Loaded on demand: cashscript and its Electrum client are heavy.
+    const { getAddressUtxos } = await import('@/lib/bchElectrum');
+    const utxos = await getAddressUtxos(withNetworkPrefix(address, isMainnet), isMainnet ? 'mainnet' : 'chipnet');
+
+    let sats = 0n;
+    const tokens: Record<string, bigint> = {};
+    for (const u of utxos) {
+        if (!u.token) { sats += u.satoshis; continue; }
+        if (u.token.amount > 0n) {
+            const category = u.token.category.toLowerCase();
+            tokens[category] = (tokens[category] ?? 0n) + u.token.amount;
+        }
+    }
+    return {
+        sats: Number(sats),
+        tokens: Object.fromEntries(Object.entries(tokens).map(([category, amount]) => [category, amount.toString()])),
+    };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -143,6 +78,7 @@ export function useBchAddressBalance({ address, isMainnet, refetchMs }: UseBchAd
         staleTime: 8_000,
         refetchInterval: refetchMs && refetchMs > 0 ? refetchMs : false,
         placeholderData: keepPreviousData,
+        retry: 1,
         queryFn: () => fetchAddressBalance(address!, isMainnet),
     });
 

@@ -27,6 +27,7 @@ import {
     Popover, PopoverContent, PopoverTrigger,
 } from '@/components/ui/popover';
 import { useActiveWallet } from '@/hooks/useActiveWallet';
+import { useBchAddressBalance } from '@/hooks/useBchAddressBalance';
 import { useExternalBCHWallet } from '@/context/ExternalBCHWalletProvider';
 import { TWAPOrderForm } from './TWAPOrderForm';
 import { cashAddressToLockingBytecode, binToHex } from '@bitauth/libauth';
@@ -144,6 +145,13 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
     const bchWallet = useBCHWallet();
     const { detectSwapType, executeSwap, isLoading, swapStep } = useBCHSwap();
     const wdk = useWDK();
+
+    // An external wallet's holdings are read from chain by address; the built-in wallet's come from bchWallet.
+    const extBalance = useBchAddressBalance({
+        address: isMainActive ? null : (activeExtWallet?.address ?? null),
+        isMainnet: wdk.bchNetwork === 'mainnet',
+        refetchMs: 15_000,
+    });
 
     const userAddress = isMainActive
         ? (bchWallet.address || wdk.bchAddress || '')
@@ -685,18 +693,17 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
     // Wallet balance helpers
     const sellBalance: number | null = useMemo(() => {
         if (ss.active) return ss.sellBalance;
+        // External wallet in charge: its own BCH and CashTokens, never the built-in wallet's.
+        if (sellToken.chain === 'bch' && !isMainActive && activeExtWallet) {
+            if (sellToken.type === 'native') return extBalance.data.sats / 1e8;
+            const raw = sellToken.type ? extBalance.data.tokens[sellToken.type.toLowerCase()] : undefined;
+            return raw ? Number(raw) / Math.pow(10, sellToken.decimals || 0) : 0;
+        }
         if (sellToken.chain === 'bch' && bchConnected && sellToken.type === 'native') {
             return bchWallet.balance / 1e8;
         }
         if (sellToken.chain === 'bch' && bchConnected && isMainActive && sellToken.type && bchWallet.tokenBalances[sellToken.type]) {
             return Number(bchWallet.tokenBalances[sellToken.type]) / Math.pow(10, sellToken.decimals || 0);
-        }
-        // If an external wallet is active, we don't have token balances immediately available in the provider yet
-        if (sellToken.chain === 'bch' && activeExtWallet) {
-            // Note: In the future, we should fetch token balances for external wallets.
-            // For now, allow swap but don't show max balance accurately if it's a token
-            if (sellToken.type === 'native') return 0; // we don't track native balance in external provider currently either, fallback
-            return null;
         }
         // Movement (MOVE/USDC/USDT) — look up directly in WDK Movement token balances
         if (sellToken.chain === 'movement' && wdk.movementAddress) {
@@ -714,7 +721,7 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
             return entry?.balance ?? null;
         }
         return null;
-    }, [sellToken, bchConnected, bchWallet.balance, bchWallet.tokenBalances, PORTFOLIO_CHAIN, portfolio.tokens, wdk.movementAddress, wdk.movementTokenBalances, ss.active, ss.sellBalance]);
+    }, [sellToken, bchConnected, isMainActive, activeExtWallet, extBalance.data, bchWallet.balance, bchWallet.tokenBalances, PORTFOLIO_CHAIN, portfolio.tokens, wdk.movementAddress, wdk.movementTokenBalances, ss.active, ss.sellBalance]);
 
     const setPercent = (pct: number) => {
         if (sellBalance === null) return;
