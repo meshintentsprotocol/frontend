@@ -1,0 +1,16 @@
+/* The LTV slider's thumb. The track is drawn by the component; the native track is made invisible. */
+.lend-range::-webkit-slider-runnable-track { background: transparent; height: 24px; }
+.lend-range::-moz-range-track { background: transparent; height: 24px; }
+.lend-range::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 20px; height: 20px; margin-top: 2px; border-radius: 9999px;
+    background: #fff; border: 2px solid #18181b; box-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
+}
+.lend-range::-moz-range-thumb {
+    width: 16px; height: 16px; border-radius: 9999px;
+    background: #fff; border: 2px solid #18181b; box-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
+}
+.lend-range:focus-visible::-webkit-slider-thumb { outline: 2px solid #34d399; outline-offset: 2px; }
+.lend-range:focus-visible::-moz-range-thumb { outline: 2px solid #34d399; outline-offset: 2px; }
+.lend-range:disabled::-webkit-slider-thumb { background: #71717a; }
+.lend-range:disabled::-moz-range-thumb { background: #71717a; }

@@ -57,6 +57,8 @@ const DocsApp = lazy(() => import("./docs/DocsApp"))
 // The MCP page (with its tool catalog) and the funding page its orders link to.
 const McpPage = lazy(() => import("./pages/McpPage"))
 const FundOrderPage = lazy(() => import("./pages/FundOrderPage"))
+// Borrow & supply: its own chunk, with its own nested routes (see lend/LendRoot.tsx).
+const LendRoot = lazy(() => import("./lend/LendRoot"))
 
 function App() {
     useLanguage();
@@ -103,6 +105,16 @@ function App() {
                                                         <Suspense fallback={<div className="min-h-screen bg-[#050505]" />}>
                                                             <McpPage />
                                                         </Suspense>
+                                                    } />
+                                                    <Route path="/borrow/*" element={
+                                                        <div className="flex flex-col min-h-screen bg-[#050505]">
+                                                            <Header />
+                                                            <main className="flex-1 pt-24">
+                                                                <Suspense fallback={<div className="min-h-[60vh]" />}>
+                                                                    <LendRoot />
+                                                                </Suspense>
+                                                            </main>
+                                                        </div>
                                                     } />
                                                     <Route path="/fund" element={
                                                         <Suspense fallback={<div className="min-h-screen bg-[#050505]" />}>

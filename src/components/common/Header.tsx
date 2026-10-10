@@ -57,6 +57,23 @@ export function Header() {
                         {/* 1. Trade Dropdown */}
                         <TradeNavDropdown />
 
+                        {/* Borrow */}
+                        <Link
+                            to="/borrow"
+                            className={cn(
+                                "text-[15px] font-semibold transition-all duration-300 hover:text-white hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.5)] relative group py-2",
+                                location.pathname.startsWith('/borrow')
+                                    ? "text-white drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]"
+                                    : "text-zinc-300"
+                            )}
+                        >
+                            Borrow
+                            <span className={cn(
+                                "absolute bottom-0 left-0 w-full h-[2px] bg-emerald-400 scale-x-0 transition-transform duration-300 group-hover:scale-x-100 origin-left",
+                                location.pathname.startsWith('/borrow') && "scale-x-100"
+                            )} />
+                        </Link>
+
                         {/* 2. Explore */}
                         <Link
                             to="/explore"

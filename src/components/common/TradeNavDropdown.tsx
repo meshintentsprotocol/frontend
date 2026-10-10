@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeftRight, TrendingUp, Clock, Zap } from 'lucide-react';
+import { ArrowLeftRight, TrendingUp, Clock, Zap, Landmark } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface TradePageItem {
@@ -32,6 +32,12 @@ export const TRADE_PAGES: TradePageItem[] = [
     description: 'Time-weighted average price execution',
     icon: Clock,
     badge: 'Soon',
+  },
+  {
+    name: 'Borrow',
+    path: '/borrow',
+    description: 'Borrow against your BTC, or try it in demo',
+    icon: Landmark,
   },
 ];
 
