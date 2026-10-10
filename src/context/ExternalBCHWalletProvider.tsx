@@ -22,6 +22,7 @@ import {
     type ReactNode,
 } from 'react';
 import { useWDK, type BchNetwork } from '@/context/WDKProvider';
+import { setActiveWalletId } from '@/lib/walletStore';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -351,9 +352,7 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
                 connected: true,
             };
 
-            try {
-                localStorage.setItem('active_bch_wallet_id', newWallet.id);
-            } catch {}
+            setActiveWalletId(newWallet.id);
 
             setWallets(prev => [...prev.filter(w => w.source !== 'extension' && w.address !== address), newWallet]);
         } finally {
@@ -439,9 +438,7 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
             sessionTopic: session.topic,
         };
 
-        try {
-            localStorage.setItem('active_bch_wallet_id', newWallet.id);
-        } catch {}
+        setActiveWalletId(newWallet.id);
 
         setWallets(prev => [...prev.filter(w => w.address !== address), newWallet]);
         setConnecting({ active: false, label: null, source: null, uri: null });
@@ -522,9 +519,7 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
             connected: true,
         };
 
-        try {
-            localStorage.setItem('active_bch_wallet_id', newWallet.id);
-        } catch {}
+        setActiveWalletId(newWallet.id);
 
         setWallets(prev => [...prev.filter(w => w.address !== address), newWallet]);
         setConnecting({ active: false, label: null, source: null, uri: null });
