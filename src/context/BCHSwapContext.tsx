@@ -748,8 +748,8 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                     if (change >= 546n) builder.addOutput({ to: makerAddress, amount: change });
                 }
 
-                setSwapStep('Waiting for wallet approval in Cashonize...');
-                toast.info('Check your Cashonize wallet to approve the transaction.', { duration: 8000 });
+                setSwapStep(`Waiting for wallet approval in ${activeExtWallet.label}...`);
+                toast.info(`Check your ${activeExtWallet.label} wallet to approve the transaction.`, { duration: 8000 });
 
                 // Build sourceOutputs in WC2 libauth-stringify format
                 const utxoIndices = selectedUtxos.map((_: any, i: number) => i);
@@ -766,8 +766,8 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
 
                 const result = await extBCHCtx.signTransaction(activeWalletId, payload);
                 fundTxId = result.signedTransactionHash;
-                console.log('[Same-chain External] Signed & broadcast via Cashonize:', fundTxId);
-                toast.success('Transaction signed and broadcast by Cashonize!');
+                console.log(`[Same-chain External] Signed & broadcast via ${activeExtWallet.label}:`, fundTxId);
+                toast.success(`Transaction signed and broadcast by ${activeExtWallet.label}!`);
             }
 
             // Fallback explorer URL if relayer doesn't provide one
