@@ -26,13 +26,13 @@ function encodeBigInt(value: bigint | number): string {
 }
 
 /**
- * Convert a hex outpoint txid (big-endian display) to the byte array format
- * that libauth uses internally (little-endian).
+ * Encode an outpoint txid. libauth keeps transaction hashes (and token
+ * categories) in the order they are displayed, and reverses them itself when
+ * it serializes — so the hex goes in as it is. A wallet that checks the source
+ * outputs against the transaction's inputs refuses a reversed hash.
  */
 function txidToHash(txid: string): string {
-    // Reverse the byte order (hex txid is big-endian display, libauth is little-endian)
-    const bytes = txid.match(/.{2}/g)!.reverse().join('');
-    return `<Uint8Array: 0x${bytes}>`;
+    return `<Uint8Array: 0x${txid.toLowerCase()}>`;
 }
 
 /**
@@ -100,10 +100,8 @@ export async function buildWC2SourceOutputs(
         if (utxo.token) {
             sourceOutput.token = {
                 amount: encodeBigInt(BigInt(utxo.token.amount ?? 0)),
-                // Token category comes in as hex, reverse to internal byte order
-                category: encodeBytes(
-                    (utxo.token.category as string).match(/.{2}/g)!.reverse().join('')
-                ),
+                // Display order, as libauth holds it: the wallet signs over this value
+                category: encodeBytes(utxo.token.category as string),
             };
             if (utxo.token.nft) {
                 sourceOutput.token.nft = {
