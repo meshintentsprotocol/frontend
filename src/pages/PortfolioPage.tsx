@@ -1,5 +1,6 @@
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useWDK } from '@/context/WDKProvider';
+import { useWallets } from '@/hooks/useWallets';
 import { PortfolioChart } from '@/components/portfolio/PortfolioChart';
 import { PortfolioTokens } from '@/components/portfolio/PortfolioTokens';
 import { PortfolioActivity } from '@/components/portfolio/PortfolioActivity';
@@ -19,7 +20,7 @@ import { useMeshLp, useMeshSigner, useMeshStats } from '@/hooks/useMesh';
 // It aggregates balances across Movement, Solana, and BCH.
 
 export default function PortfolioPage() {
-    const { tokens, totalValue, chartData, loading, isRefetching, isConnected } = usePortfolio({ pollingMs: 30000 });
+    const { tokens, totalValue, chartData, loading, isRefetching, isConnected } = usePortfolio({ pollingMs: 30000, scope: 'active' });
     const wdk = useWDK();
     const [copied, setCopied] = useState(false);
     const [showMore, setShowMore] = useState(false);
@@ -33,7 +34,10 @@ export default function PortfolioPage() {
     const liveBchPrice = meshStats.data?.bchUsd ?? null;
 
     // Prefer WDK EVM address as the primary handle; fall back across chains
-    const primaryAddress = wdk.evmAddress || wdk.solanaAddress || wdk.bchAddress || null;
+    // An external BCH wallet in charge: the page is about that wallet, which holds BCH only.
+    const { active: activeWallet } = useWallets();
+    const externalActive = activeWallet && activeWallet.kind !== 'main' ? activeWallet : null;
+    const primaryAddress = externalActive ? externalActive.address : (wdk.evmAddress || wdk.solanaAddress || wdk.bchAddress || null);
     const activeAddress = primaryAddress
         ? `${primaryAddress.slice(0, 6)}...${primaryAddress.slice(-4)}`
         : 'Not connected';
@@ -47,7 +51,9 @@ export default function PortfolioPage() {
     };
 
     // Count connected chains for the network chip
-    const connectedChains = [
+    const connectedChains = externalActive ? [
+        { color: 'bg-emerald-500', icon: '/logos/bitcoin-cash-bch-logo.svg', label: 'BCH' },
+    ] : [
         wdk.evmAddress && { color: 'bg-blue-500', icon: '/logos/ethereum-eth-logo.svg', label: 'ETH' },
         wdk.bchAddress && { color: 'bg-emerald-500', icon: '/logos/bitcoin-cash-bch-logo.svg', label: 'BCH' },
         wdk.solanaAddress && { color: 'bg-purple-500', icon: '/assets/solanaLogo.png', label: 'SOL' },

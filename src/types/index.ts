@@ -171,6 +171,8 @@ export interface TxLink {
 
 export interface BCHOrder {
     id: string;
+    /** BCH address of the wallet that placed the order. Missing on orders saved before wallets could be switched. */
+    wallet?: string;
     swapType: BCHSwapType;
     orderType: BCHOrderType;
     sellToken: Token;

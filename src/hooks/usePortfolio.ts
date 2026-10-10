@@ -7,6 +7,11 @@
  * exact same data, so the header total is always the strict aggregate of the
  * displayed token rows.
  *
+ * Scope: 'main' (the default) is the built-in wallet on every chain — what
+ * sending and cross-chain swaps spend from. 'active' follows the wallet chosen
+ * in the header: the built-in wallet as above, or an external BCH wallet's
+ * BCH and CashTokens only (it has no other chains).
+ *
  * All queries share the app-wide QueryClient: the wallet popup, portfolio page
  * and send modal de-duplicate onto one set of requests and one cache.
  */
@@ -23,6 +28,8 @@ import { CauldronService } from '@/lib/cauldron';
 import { resolveTokenIconUri } from '@/lib/tokenIcons';
 import { useTokenMetadataMany } from '@/hooks/useTokenMetadata';
 import { readPersisted } from '@/lib/persist';
+import { useActiveWallet } from '@/hooks/useActiveWallet';
+import { useBchAddressBalance } from '@/hooks/useBchAddressBalance';
 
 // Portfolio token structure
 export interface PortfolioToken {
@@ -89,13 +96,19 @@ const generateChartData = (currentTotal: number, anchorMs: number) => {
     return out;
 };
 
-export function usePortfolio(options?: { pollingMs?: number }) {
+export function usePortfolio(options?: { pollingMs?: number; scope?: 'main' | 'active' }) {
     const pollingMs = options?.pollingMs ?? 0;
     const refetchInterval = pollingMs > 0 ? pollingMs : (false as const);
 
     const { connection: solanaConnection } = useConnection();
     const { evmAddress, solanaAddress, movementAddress, bchNetwork, isInitialized: wdkConnected, bchAddress, btcAddress, btcAccount } = useWDK();
     const isMainnet = bchNetwork === 'mainnet';
+
+    // An external wallet in charge: its BCH holdings replace the built-in wallet's rows.
+    const { activeExtWallet } = useActiveWallet();
+    const extActive = options?.scope === 'active' ? activeExtWallet : undefined;
+    const extQuery = useBchAddressBalance({ address: extActive?.address ?? null, isMainnet, refetchMs: pollingMs });
+    const bchOwner = extActive ? extActive.address : bchAddress;
 
     const chartAnchorRef = useRef<number>(Date.now());
 
@@ -226,11 +239,12 @@ export function usePortfolio(options?: { pollingMs?: number }) {
 
     // ── BCH (shared query) ────────────────────────────────────────────────────
     const bchQuery = useBchBalances(pollingMs > 0 ? pollingMs : undefined);
+    const bchHeld = extActive ? extQuery.data : bchQuery.data;
 
     // ── Cauldron CashToken metadata + USD prices (for held CashTokens) ────────
     const cauldronQuery = useQuery({
         queryKey: ['cauldron-tokens', isMainnet] as const,
-        enabled: !!bchAddress,
+        enabled: !!bchOwner,
         staleTime: 60_000,
         refetchInterval: refetchInterval ? Math.max(Number(refetchInterval), 60_000) : (false as const),
         placeholderData: keepPreviousData,
@@ -242,8 +256,8 @@ export function usePortfolio(options?: { pollingMs?: number }) {
     // shown in raw base units (e.g. 10^8× too large for an 8-decimal token).
     const unlistedHeldCategories = useMemo(() => {
         const listed = new Set((cauldronQuery.data ?? []).map(t => t.token_id.toLowerCase()));
-        return Object.keys(bchQuery.data.tokens ?? {}).filter(c => !listed.has(c.toLowerCase()));
-    }, [cauldronQuery.data, bchQuery.data.tokens]);
+        return Object.keys(bchHeld.tokens ?? {}).filter(c => !listed.has(c.toLowerCase()));
+    }, [cauldronQuery.data, bchHeld.tokens]);
     const bcmrQuery = useTokenMetadataMany(unlistedHeldCategories, isMainnet);
 
     // ── Compose tokens ────────────────────────────────────────────────────────
@@ -252,7 +266,7 @@ export function usePortfolio(options?: { pollingMs?: number }) {
         const networkLabel = isMainnet ? 'BSC Mainnet' : 'Sepolia';
 
         // EVM
-        if (evmAddress && evmQuery.data) {
+        if (!extActive && evmAddress && evmQuery.data) {
             const nativeSymbol = isMainnet ? 'BNB' : 'ETH';
             const nativePrice = prices[nativeSymbol]?.price ?? 0;
             list.push({
@@ -296,7 +310,7 @@ export function usePortfolio(options?: { pollingMs?: number }) {
         }
 
         // Solana
-        if (solanaAddress && solQuery.data) {
+        if (!extActive && solanaAddress && solQuery.data) {
             const solPrice = prices['SOL']?.price ?? 0;
             list.push({
                 symbol: 'SOL',
@@ -339,7 +353,7 @@ export function usePortfolio(options?: { pollingMs?: number }) {
         }
 
         // Movement
-        if (movementAddress && movementQuery.data) {
+        if (!extActive && movementAddress && movementQuery.data) {
             const movePrice = prices['MOVE']?.price || prices['APT']?.price || 0.5;
             list.push({
                 symbol: 'MOVE',
@@ -396,9 +410,9 @@ export function usePortfolio(options?: { pollingMs?: number }) {
         }
 
         // Bitcoin Cash
-        if (bchAddress) {
+        if (bchOwner) {
             const bchPrice = prices['BCH']?.price ?? 0;
-            const bchBalance = bchQuery.data.sats / 1e8;
+            const bchBalance = bchHeld.sats / 1e8;
             list.push({
                 symbol: 'BCH',
                 name: 'Bitcoin Cash',
@@ -415,7 +429,7 @@ export function usePortfolio(options?: { pollingMs?: number }) {
             const metaByCategory = new Map(cauldronMapped.map(m => [m.categoryId, m]));
             const rawByCategory = new Map(cauldronRaw.map(t => [t.token_id, t]));
             const bcmrByCategory = bcmrQuery.data ?? {};
-            for (const [category, amountStr] of Object.entries(bchQuery.data.tokens)) {
+            for (const [category, amountStr] of Object.entries(bchHeld.tokens)) {
                 const bcmr = bcmrByCategory[category.toLowerCase()];
                 const meta = metaByCategory.get(category) ?? (bcmr ? {
                     symbol: bcmr.symbol,
@@ -449,7 +463,7 @@ export function usePortfolio(options?: { pollingMs?: number }) {
         }
 
         // Bitcoin
-        if (btcAddress) {
+        if (!extActive && btcAddress) {
             const btcPrice = prices['BTC']?.price ?? 0;
             const btcBalance = (btcQuery.data ?? 0) / 1e8;
             list.push({
@@ -466,7 +480,7 @@ export function usePortfolio(options?: { pollingMs?: number }) {
 
         list.sort((a, b) => b.valueUsd - a.valueUsd);
         return list;
-    }, [evmAddress, solanaAddress, movementAddress, bchAddress, btcAddress, isMainnet, evmQuery.data, solQuery.data, movementQuery.data, bchQuery.data, btcQuery.data, cauldronQuery.data, bcmrQuery.data, prices]);
+    }, [evmAddress, solanaAddress, movementAddress, bchOwner, extActive, bchHeld, btcAddress, isMainnet, evmQuery.data, solQuery.data, movementQuery.data, btcQuery.data, cauldronQuery.data, bcmrQuery.data, prices]);
 
     // Total is the strict aggregate of the rendered token rows.
     const totalValue = useMemo(
@@ -484,11 +498,12 @@ export function usePortfolio(options?: { pollingMs?: number }) {
         solQuery.refetch();
         movementQuery.refetch();
         bchQuery.refetch();
+        extQuery.refetch();
         btcQuery.refetch();
         cauldronQuery.refetch();
-    }, [evmQuery.refetch, solQuery.refetch, movementQuery.refetch, bchQuery.refetch, btcQuery.refetch, cauldronQuery.refetch]);
+    }, [evmQuery.refetch, solQuery.refetch, movementQuery.refetch, bchQuery.refetch, extQuery.refetch, btcQuery.refetch, cauldronQuery.refetch]);
 
-    const anyChainLoading =
+    const anyChainLoading = extActive ? (extQuery.isLoading || pricesLoading) :
         (!!evmAddress && evmQuery.isLoading) ||
         (!!solanaAddress && solQuery.isLoading) ||
         (!!movementAddress && movementQuery.isLoading) ||
@@ -498,6 +513,7 @@ export function usePortfolio(options?: { pollingMs?: number }) {
     const loading = tokens.length === 0 && anyChainLoading;
 
     const isRefetching =
+        extActive ? (extQuery.isFetching || pricesFetching) :
         evmQuery.isFetching || solQuery.isFetching || movementQuery.isFetching || bchQuery.isFetching || btcQuery.isFetching || pricesFetching;
 
     return {
@@ -507,6 +523,6 @@ export function usePortfolio(options?: { pollingMs?: number }) {
         loading,
         isRefetching,
         refetch,
-        isConnected: wdkConnected,
+        isConnected: wdkConnected || !!extActive,
     };
 }

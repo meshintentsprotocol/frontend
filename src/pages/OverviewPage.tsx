@@ -1,5 +1,6 @@
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useWDK } from '@/context/WDKProvider';
+import { useWallets } from '@/hooks/useWallets';
 import { PortfolioChart } from '@/components/portfolio/PortfolioChart';
 import { PortfolioTokens } from '@/components/portfolio/PortfolioTokens';
 import { PortfolioActivity } from '@/components/portfolio/PortfolioActivity';
@@ -19,12 +20,15 @@ import { notifyToast as toast } from '@/lib/notify-toast';
 // multi-chain wallet status, token holdings, activity feed, and quick actions.
 
 export function OverviewPage() {
-    const { tokens, totalValue, chartData, loading, isRefetching, isConnected } = usePortfolio({ pollingMs: 30000 });
+    const { tokens, totalValue, chartData, loading, isRefetching, isConnected } = usePortfolio({ pollingMs: 30000, scope: 'active' });
     const wdk = useWDK();
     const [copied, setCopied] = useState(false);
     const [showMore, setShowMore] = useState(false);
 
-    const primaryAddress = wdk.evmAddress || wdk.solanaAddress || wdk.bchAddress || null;
+    // An external BCH wallet in charge: the page is about that wallet, which holds BCH only.
+    const { active: activeWallet } = useWallets();
+    const externalActive = activeWallet && activeWallet.kind !== 'main' ? activeWallet : null;
+    const primaryAddress = externalActive ? externalActive.address : (wdk.evmAddress || wdk.solanaAddress || wdk.bchAddress || null);
     const activeAddress = primaryAddress
         ? `${primaryAddress.slice(0, 6)}...${primaryAddress.slice(-4)}`
         : 'Not connected';
@@ -37,7 +41,9 @@ export function OverviewPage() {
         setTimeout(() => setCopied(false), 1500);
     };
 
-    const connectedChains = [
+    const connectedChains = externalActive ? [
+        { color: 'bg-emerald-500', icon: '/logos/bitcoin-cash-bch-logo.svg', label: 'BCH' },
+    ] : [
         wdk.evmAddress && { color: 'bg-blue-500', icon: '/logos/ethereum-eth-logo.svg', label: 'ETH' },
         wdk.bchAddress && { color: 'bg-emerald-500', icon: '/logos/bitcoin-cash-bch-logo.svg', label: 'BCH' },
         wdk.solanaAddress && { color: 'bg-purple-500', icon: '/assets/solanaLogo.png', label: 'SOL' },

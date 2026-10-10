@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useEffect, useRef, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { notifyToast as toast } from '@/lib/notify-toast';
 import { useBCHWallet } from './BCHWalletProvider';
@@ -162,6 +162,9 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
             const key = getOrdersKey(wdkRef.current.bchNetwork);
             const saved = localStorage.getItem(key);
             const all: BCHOrder[] = saved ? JSON.parse(saved) : [];
+            // Remember which wallet placed it, so each wallet lists its own orders.
+            const by = activeWalletRef.current;
+            order.wallet ??= (by.isMainActive ? bchWalletRef.current.address : by.activeExtWallet?.address) ?? undefined;
             all.unshift(order);
             if (all.length > 50) all.pop();
             localStorage.setItem(key, JSON.stringify(all));
@@ -3421,13 +3424,22 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
         }
     }, []);
 
+    // What the app lists: the active wallet's orders. Orders saved before wallets
+    // could be switched carry no wallet and stay visible under every wallet.
+    const activeOrderAddress = isMainActive ? bchWallet.address : activeExtWallet?.address;
+    const { visiblePending, visibleCompleted } = useMemo(() => {
+        const bare = (a?: string | null) => (a ? a.slice(a.indexOf(':') + 1) : '');
+        const mine = (o: BCHOrder) => !o.wallet || !activeOrderAddress || bare(o.wallet) === bare(activeOrderAddress);
+        return { visiblePending: pendingOrders.filter(mine), visibleCompleted: completedOrders.filter(mine) };
+    }, [pendingOrders, completedOrders, activeOrderAddress]);
+
     return (
         <BCHSwapContext.Provider
             value={{
                 isLoading,
                 swapStep,
-                pendingOrders,
-                completedOrders,
+                pendingOrders: visiblePending,
+                completedOrders: visibleCompleted,
                 executeSwap,
                 claimOrder,
                 requestRefund,
