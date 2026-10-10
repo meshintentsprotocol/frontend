@@ -3,13 +3,29 @@ import { Wallet, Bell, History } from 'lucide-react';
 import { useWDK } from '@/context/WDKProvider';
 import { WalletOnboardingModal } from '@/components/wallet/WalletOnboardingModal';
 import { WalletPopup, hasUnseenNotifications } from '@/components/wallet/WalletPopup';
+import { ConnectExternalWalletModal } from '@/components/wallet/ConnectExternalWalletModal';
+import { WalletSwitcher } from '@/components/wallet/WalletSwitcher';
+import { useWallets } from '@/hooks/useWallets';
 import { OrdersPopup } from '@/components/bch-swap/OrdersPopup';
 import { cn } from '@/lib/utils';
 
 type PopupTab = 'wallet' | 'notifications';
 
-export function ConnectWalletButton({ className }: { className?: string }) {
+/**
+ * The way into a wallet.
+ *
+ *   variant="header"  the header control: Connect, or once a wallet is there, the
+ *                     search / notifications / orders actions and the wallet profile
+ *   variant="cta"     (default) a button for a page that cannot go on without a wallet.
+ *                     With no wallet it connects one. With only an external BCH wallet
+ *                     it sets up the built-in one, which is what the other chains need.
+ */
+export function ConnectWalletButton({ className, variant = 'cta' }: { className?: string; variant?: 'header' | 'cta' }) {
     const wdk = useWDK();
+    const { hasWallet } = useWallets();
+    const inline = variant === 'cta';
+    const needsMain = inline && hasWallet && !wdk.isInitialized;
+    const [showConnect, setShowConnect] = useState(false);
     const [showOnboarding, setShowOnboarding] = useState(false);
     const [showPopup, setShowPopup] = useState(false);
     const [showOrders, setShowOrders] = useState(false);
@@ -24,29 +40,31 @@ export function ConnectWalletButton({ className }: { className?: string }) {
         return () => clearInterval(id);
     }, [wdk.bchNetwork]);
 
-    const connectedChains = [
-        wdk.evmAddress && { icon: '/logos/ethereum-eth-logo.svg', label: 'EVM' },
-        wdk.bchAddress && { icon: '/logos/bitcoin-cash-bch-logo.svg', label: 'BCH' },
-        wdk.btcAddress && { icon: '/logos/bitcoin-btc-logo.svg', label: 'BTC' },
-        wdk.solanaAddress && { icon: '/logos/solana.svg', label: 'SOL' },
-    ].filter(Boolean) as { icon: string; label: string }[];
-
-    const openWallet = () => { setPopupTab('wallet'); setShowPopup(v => !v); };
+    const openWallet = () => { setPopupTab('wallet'); setShowPopup(true); };
     const openNotifications = () => { setPopupTab('notifications'); setShowPopup(true); };
 
     return (
         <div className={cn("flex items-center gap-2", className)}>
+            {/* Built-in wallet or an external one: either is enough to get in. */}
+            <ConnectExternalWalletModal open={showConnect} onClose={() => setShowConnect(false)} onUseBuiltIn={() => setShowOnboarding(true)} />
             <WalletOnboardingModal open={showOnboarding} onClose={() => setShowOnboarding(false)} />
             <WalletPopup open={showPopup} onClose={() => setShowPopup(false)} initialTab={popupTab} />
             <OrdersPopup open={showOrders} onClose={() => setShowOrders(false)} />
 
-            {connectedChains.length === 0 ? (
+            {!hasWallet || inline ? (
                 <button
-                    onClick={() => setShowOnboarding(true)}
-                    className="group relative inline-flex shrink-0 h-10 items-center gap-2 overflow-hidden rounded-xl px-5 text-sm font-bold text-[#050505] tracking-wide bg-emerald-500 hover:bg-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all duration-300 hover:-translate-y-[1px] hover:shadow-[0_0_25px_rgba(16,185,129,0.5)] border border-emerald-400/50"
+                    onClick={() => (needsMain ? setShowOnboarding(true) : setShowConnect(true))}
+                    className={cn(
+                        "group relative inline-flex shrink-0 items-center gap-2 overflow-hidden rounded-xl px-5 text-sm font-bold text-[#050505] tracking-wide bg-emerald-500 hover:bg-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all duration-300 hover:-translate-y-[1px] hover:shadow-[0_0_25px_rgba(16,185,129,0.5)] border border-emerald-400/50",
+                        inline ? "w-full h-full min-h-10 justify-center rounded-[inherit]" : "h-10",
+                    )}
                 >
                     <Wallet className="relative h-4 w-4" />
-                    <span className="relative tracking-tight">Connect</span>
+                    <span className="relative tracking-tight">
+                        {needsMain
+                            ? (wdk.hasStoredWallet ? 'Unlock main wallet' : 'Set up main wallet')
+                            : hasWallet ? 'Add a wallet' : 'Connect'}
+                    </span>
                 </button>
             ) : (
                 <div className="flex items-center gap-2">
@@ -91,14 +109,8 @@ export function ConnectWalletButton({ className }: { className?: string }) {
                         </button>
                     </div>
 
-                    {/* Wallet Button */}
-                    <button
-                        onClick={openWallet}
-                        title="Open wallet"
-                        className="group relative inline-flex shrink-0 h-10 w-10 items-center justify-center rounded-xl bg-[#111111] border border-white/15 shadow-[0_0_0_1px_rgba(255,255,255,0.05)_inset,0_4px_16px_-6px_rgba(0,0,0,0.8)] hover:bg-[#181818] hover:border-white/25 transition-all duration-300"
-                    >
-                        <Wallet className="h-4 w-4 text-emerald-400 transition-transform duration-200 group-hover:scale-110" />
-                    </button>
+                    {/* Wallet profile: the active wallet, and the switch between wallets */}
+                    <WalletSwitcher onAddWallet={() => setShowConnect(true)} onOpenWallet={openWallet} />
                 </div>
             )}
         </div>

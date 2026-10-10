@@ -19,6 +19,8 @@ import {
 } from '@/lib/notifications';
 import type { StoredNotification } from '@/lib/notifications';
 import { usePortfolio } from '@/hooks/usePortfolio';
+import { useWallets, shortAddress } from '@/hooks/useWallets';
+import { WalletIcon } from './WalletIcon';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { Drawer, DrawerContent, DrawerTitle, DrawerDescription } from '@/components/ui/drawer';
 
@@ -150,6 +152,7 @@ export function WalletPopup({ open, onClose, initialTab }: WalletPopupProps) {
 
     const wdk = useWDK();
     const extBCH = useExternalBCHWallet();
+    const { active: activeWallet } = useWallets();
 
     // Keep module-level _activeNetwork in sync so pushNotification() writes to the right key
     useEffect(() => { setNotifNetwork(wdk.bchNetwork); }, [wdk.bchNetwork]);
@@ -198,7 +201,7 @@ export function WalletPopup({ open, onClose, initialTab }: WalletPopupProps) {
     // Calculate total portfolio value using shared hook to ensure UI consistency.
     // While open, balances poll every 5s in the background (stale-while-revalidate);
     // while closed, polling stops but the cache keeps the last-known values warm.
-    const { tokens: activeTokens, totalValue: portfolioValue, loading: portfolioLoading, isRefetching: portfolioRefetching, refetch: refetchPortfolio } = usePortfolio({ pollingMs: open ? 5000 : 0 });
+    const { tokens: activeTokens, totalValue: portfolioValue, loading: portfolioLoading, isRefetching: portfolioRefetching, refetch: refetchPortfolio } = usePortfolio({ pollingMs: open ? 5000 : 0, scope: 'active' });
 
     // Refresh immediately when popup opens
     useEffect(() => {
@@ -215,17 +218,17 @@ export function WalletPopup({ open, onClose, initialTab }: WalletPopupProps) {
     };
 
     const handleLogout = () => {
-        if (wdk.isInitialized) wdk.disconnect();
-        toast.success('Main wallet disconnected');
+        if (wdk.isInitialized) {
+            wdk.disconnect();
+            toast.success('Main wallet disconnected');
+        } else {
+            // No built-in wallet in use: this button ends the external connections.
+            extBCH.disconnectAll();
+            toast.success('Wallets disconnected');
+        }
         onClose();
     };
 
-    // Get shortened address for display — WDK EVM is the canonical primary handle
-    const getDisplayAddress = (): string => {
-        const addr = wdk.evmAddress || wdk.solanaAddress || wdk.bchAddress;
-        if (!addr) return '';
-        return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
-    };
 
     if (!open) return null;
 
@@ -260,16 +263,14 @@ export function WalletPopup({ open, onClose, initialTab }: WalletPopupProps) {
                     </button>
                 </div>
                 <div className="flex items-center gap-1 pr-2">
-                    {wdk.isInitialized && (
-                        <Button
-                            variant="ghost" size="icon"
-                            className="h-7 w-7 text-muted-foreground hover:text-emerald-400 hover:bg-emerald-500/10"
-                            onClick={() => setShowConnectExt(true)}
-                            title="Connect external BCH wallet"
-                        >
-                            <Plus className="h-3.5 w-3.5" />
-                        </Button>
-                    )}
+                    <Button
+                        variant="ghost" size="icon"
+                        className="h-7 w-7 text-muted-foreground hover:text-emerald-400 hover:bg-emerald-500/10"
+                        onClick={() => setShowConnectExt(true)}
+                        title="Add a wallet"
+                    >
+                        <Plus className="h-3.5 w-3.5" />
+                    </Button>
                     <Button
                         variant="ghost" size="icon"
                         className="h-7 w-7 text-muted-foreground hover:text-emerald-400 hover:bg-emerald-500/10"
@@ -282,7 +283,7 @@ export function WalletPopup({ open, onClose, initialTab }: WalletPopupProps) {
                         variant="ghost" size="icon"
                         className="h-7 w-7 text-muted-foreground hover:text-red-400 hover:bg-red-500/10"
                         onClick={handleLogout}
-                        title="Disconnect all wallets"
+                        title={wdk.isInitialized ? 'Lock main wallet' : 'Disconnect wallets'}
                     >
                         <LogOut className="h-3.5 w-3.5" />
                     </Button>
@@ -305,7 +306,7 @@ export function WalletPopup({ open, onClose, initialTab }: WalletPopupProps) {
                         <div className="flex items-center justify-between mb-1">
                             <div className="flex items-center gap-2">
                                 <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                                    Total Portfolio Value
+                                    {activeWallet && activeWallet.kind !== 'main' ? 'Wallet Value' : 'Total Portfolio Value'}
                                 </span>
                                 <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground hover:text-foreground"
                                     onClick={handleGlobalRefresh} disabled={portfolioLoading || portfolioRefetching}>
@@ -316,9 +317,11 @@ export function WalletPopup({ open, onClose, initialTab }: WalletPopupProps) {
                                     {balanceVisible ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
                                 </Button>
                             </div>
-                            {getDisplayAddress() && (
-                                <span className="text-[9px] font-mono text-muted-foreground/60 bg-white/[0.03] px-2 py-0.5 rounded-md">
-                                    {getDisplayAddress()}
+                            {activeWallet && (
+                                <span className="flex items-center gap-1.5 min-w-0 text-[9px] text-muted-foreground/80 bg-white/[0.03] pl-1 pr-2 py-0.5 rounded-md" title={activeWallet.address}>
+                                    <WalletIcon id={activeWallet.iconId} color={activeWallet.color} size={16} />
+                                    <span className="truncate max-w-[70px] font-semibold" style={{ color: activeWallet.color }}>{activeWallet.name}</span>
+                                    <span className="font-mono text-muted-foreground/60">{shortAddress(activeWallet.address, 4, 4)}</span>
                                 </span>
                             )}
                         </div>

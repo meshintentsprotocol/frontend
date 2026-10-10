@@ -175,12 +175,12 @@ export function Header() {
                         </button>
                     </div>
 
-                    <ConnectWalletButton />
+                    <ConnectWalletButton variant="header" />
                 </div>
 
                 {/* ── Mobile: right side (Connect Wallet only) ── */}
                 <div className="flex lg:hidden items-center gap-2 ml-auto shrink-0">
-                    <ConnectWalletButton />
+                    <ConnectWalletButton variant="header" />
                 </div>
             </div>
         </header>
