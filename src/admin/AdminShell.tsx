@@ -9,7 +9,7 @@ import { useIsFetching } from '@tanstack/react-query';
 import {
   LayoutDashboard, Activity, ArrowDownUp, Zap, Repeat, Users, Waves, Layers, UserCircle, Recycle, SlidersHorizontal,
   Undo2, Server, KeyRound, Pause, Play, Menu, X, ShieldCheck, ShieldAlert, History, ArrowLeft, RefreshCw, Scale, ArrowLeftRight, Radar, Wallet, Settings2,
-  Globe, Fuel, Coins, LineChart, ScrollText, PiggyBank,
+  Globe, Fuel, Coins, LineChart, ScrollText, PiggyBank, Landmark,
 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
@@ -81,6 +81,12 @@ const NAV: Array<{ group: string; items: NavItem[] }> = [
     group: 'Solana swaps', items: [
       { to: '/admin/swap/solana', label: 'Swaps', icon: Coins, end: true },
       { to: '/admin/swap/solana/tokens', label: 'Tokens & stocks', icon: LineChart },
+    ],
+  },
+  {
+    group: 'Lending', items: [
+      { to: '/admin/swap/lend', label: 'Overview', icon: Landmark, end: true },
+      { to: '/admin/swap/lend/loans', label: 'Loans', icon: Coins },
     ],
   },
 ];

@@ -15,6 +15,9 @@ export const swapUrl = {
   swaps: '/admin/swap/solana',
   swap: (id: string) => `/admin/swap/solana/${encodeURIComponent(id)}`,
   tokens: '/admin/swap/solana/tokens',
+  lend: '/admin/swap/lend',
+  lendLoans: '/admin/swap/lend/loans',
+  lendLoan: (ref: string) => `/admin/swap/lend/loans/${encodeURIComponent(ref)}`,
   profits: '/admin/swap/profits',
 };
 
@@ -117,7 +120,7 @@ export function HourlyBars({ hourly, height = 96 }: { hourly: HourBucket[]; heig
 
 // ── alerts ───────────────────────────────────────────────────────────────────
 
-const SECTION_LABEL: Record<Section, string> = { cctp: 'Cross-chain', solana: 'Solana', system: 'Server' };
+const SECTION_LABEL: Record<Section, string> = { cctp: 'Cross-chain', solana: 'Solana', lend: 'Lending', system: 'Server' };
 
 export function AlertList({ alerts, section }: { alerts: Alert[]; section?: Section }) {
   const list = section ? alerts.filter(a => a.section === section) : alerts;

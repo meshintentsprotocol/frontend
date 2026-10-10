@@ -9,7 +9,7 @@ export class SwapApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
 
-export type Section = 'cctp' | 'solana' | 'system';
+export type Section = 'cctp' | 'solana' | 'lend' | 'system';
 export type Severity = 'info' | 'success' | 'warn' | 'error';
 
 export interface SwapEvent {
@@ -157,6 +157,26 @@ export interface ProfitsView {
   history: SwapEvent[];
 }
 
+// ── lending ──
+/** A loan as the swap server's /lend API describes it. Amounts are base-unit strings. */
+export interface LendLoan {
+  ref: string; provider: string; phase: string;
+  status: { operation: string; state: string; confirmations: number | null; requiredConfirmations: number | null };
+  collateral: { asset: string; chain: string; decimals: number; amount: string };
+  borrow: { asset: string; chain: string; decimals: number; amount: string; destination: string };
+  refundDestination: string;
+  deposit: { amount: string; targets: { chain: string; address: string; amount: string; feeAmount: string }[]; expiresAt: number | null; detectedAt: number | null };
+  repayment: { debt: string; targets: { chain: string; address: string; amount: string; feeAmount: string }[] };
+  position: { collateral: string; borrowed: string; interest: string; totalDebt: string };
+  ltvBps: number; liquidationThresholdBps: number; liquidationPrice: number; borrowApy: number; createdAt: number; updatedAt: number;
+}
+export interface LendSettings { paused: boolean; pauseReason: string; maxBorrowUsd: number; warnLtvBps: number }
+export interface LendOverview {
+  total: number; active: number; byPhase: Record<string, number>; collateralUsd: number; debtUsd: number; averageLtvBps: number;
+  atRisk: LendLoan[]; settings: LendSettings; provider: { name: string; lastOkAt: number | null; lastError: string | null };
+}
+export interface LendLoanRecord { ref: string; loanId: string; view: LendLoan; addresses: string[]; history: { at: number; phase: string; state: string }[]; createdAt: number; updatedAt: number }
+
 export type Query = Record<string, string | number | undefined | null>;
 
 export function createSwapAdminApi(baseUrl: string, getKey: () => string) {
@@ -191,6 +211,12 @@ export function createSwapAdminApi(baseUrl: string, getKey: () => string) {
     setSettings: (patch: SettingsPatch) => post<{ settings: AllSettings; changed: string[] }>('/admin/settings', patch),
     resetSettings: (section: 'cctp' | 'solana') => post<{ settings: AllSettings }>('/admin/settings/reset', { section }),
     system: () => get<SystemInfo>('/admin/system'),
+    // lending
+    lendOverview: () => get<LendOverview>('/admin/lend/overview'),
+    lendLoans: (q?: Query) => get<{ total: number; offset: number; limit: number; loans: LendLoan[] }>('/admin/lend/loans', q),
+    lendLoan: (ref: string) => get<LendLoanRecord>(`/admin/lend/loans/${id(ref)}`),
+    refreshLendLoan: (ref: string) => post<LendLoanRecord>(`/admin/lend/loans/${id(ref)}/refresh`),
+    setLendSettings: (patch: Record<string, unknown>) => post<{ changed: string[]; settings: LendSettings }>('/admin/lend/settings', patch),
     // cross-chain USDC
     transfers: (q?: Query) => get<{ total: number; offset: number; limit: number; byStatus: Record<string, number>; transfers: Transfer[] }>('/admin/cctp/transfers', q),
     transfer: (tid: string) => get<{ transfer: Transfer; events: SwapEvent[] }>(`/admin/cctp/transfers/${id(tid)}`),
