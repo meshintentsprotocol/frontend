@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/popover';
 import { useActiveWallet } from '@/hooks/useActiveWallet';
 import { useBchAddressBalance } from '@/hooks/useBchAddressBalance';
+import { ActiveWalletPicker } from '@/components/wallet/ActiveWalletPicker';
 import { useExternalBCHWallet } from '@/context/ExternalBCHWalletProvider';
 import { TWAPOrderForm } from './TWAPOrderForm';
 import { cashAddressToLockingBytecode, binToHex } from '@bitauth/libauth';
@@ -833,66 +834,8 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                 </div>
 
                 <div className="flex items-center gap-1">
-                    {/* Wallet Selector Dropdown */}
-                    {((bchWallet.connected && bchWallet.address ? 1 : 0) + extBCH.wallets.length > 1) && (
-                        <Popover>
-                            <PopoverTrigger asChild>
-                                <button className={cn(
-                                    "flex items-center gap-1.5 h-7 px-2.5 rounded-lg text-xs font-bold transition-all",
-                                    isMainActive 
-                                        ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"
-                                        : "bg-blue-500/15 text-blue-300 border border-blue-500/30"
-                                )}>
-                                    {isMainActive 
-                                        ? <Wallet className="h-3.5 w-3.5 text-emerald-400" />
-                                        : <ShoppingBag className="h-3.5 w-3.5 text-blue-400" />
-                                    }
-                                    <span className="truncate max-w-[80px]">
-                                        {isMainActive ? 'Main Wallet' : (activeExtWallet?.label || 'External')}
-                                    </span>
-                                    <ChevronDown className="h-3 w-3 opacity-50" />
-                                </button>
-                            </PopoverTrigger>
-                            <PopoverContent align="end" className="w-56 bg-[#0a0a0a]/95 backdrop-blur-xl border border-white/10 rounded-2xl p-2 text-xs">
-                                <div className="space-y-1">
-                                    <p className="px-2 py-1.5 text-[10px] uppercase tracking-wider text-white/40 font-semibold">Active BCH Wallet</p>
-                                    
-                                    {bchWallet.connected && bchWallet.address && (
-                                        <button
-                                            onClick={() => setActiveWallet('main')}
-                                            className={cn(
-                                                "w-full flex items-center justify-between px-2.5 py-2 rounded-xl transition-colors",
-                                                isMainActive ? "bg-emerald-500/10 text-emerald-300" : "hover:bg-white/[0.06] text-white/80"
-                                            )}
-                                        >
-                                            <div className="flex items-center gap-2">
-                                                <Wallet className={cn("h-3.5 w-3.5", isMainActive ? "text-emerald-400" : "text-white/40")} />
-                                                <span>Main Wallet</span>
-                                            </div>
-                                            <span className="text-[10px] opacity-60 font-mono">{formatAddress(bchWallet.address)}</span>
-                                        </button>
-                                    )}
-
-                                    {extBCH.wallets.map((w, idx) => (
-                                        <button
-                                            key={w.id}
-                                            onClick={() => setActiveWallet(w.id)}
-                                            className={cn(
-                                                "w-full flex items-center justify-between px-2.5 py-2 rounded-xl transition-colors",
-                                                activeWalletId === w.id ? "bg-blue-500/10 text-blue-300" : "hover:bg-white/[0.06] text-white/80"
-                                            )}
-                                        >
-                                            <div className="flex items-center gap-2">
-                                                <ShoppingBag className={cn("h-3.5 w-3.5", activeWalletId === w.id ? "text-blue-400" : "text-white/40")} />
-                                                <span>{w.label}</span>
-                                            </div>
-                                            <span className="text-[10px] opacity-60 font-mono">{formatAddress(w.address)}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                            </PopoverContent>
-                        </Popover>
-                    )}
+                    {/* Which BCH wallet acts here: the same state as the header's wallet profile */}
+                    <ActiveWalletPicker />
 
                     {/* Network toggle pill */}
                     <button

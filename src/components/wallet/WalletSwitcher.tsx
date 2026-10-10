@@ -187,11 +187,12 @@ export function WalletSwitcher({ onAddWallet, onOpenWallet }: {
                 onClick={() => setOpen(v => !v)}
                 aria-haspopup="menu"
                 aria-expanded={open}
-                title="Switch wallet"
+                title={`${active.name} · ${shortAddress(active.address, 6, 4)}`}
+                data-wallet-profile
                 className="group inline-flex h-10 shrink-0 items-center gap-2 rounded-xl border border-white/15 bg-[#111111] pl-1.5 pr-2 shadow-[0_0_0_1px_rgba(255,255,255,0.05)_inset,0_4px_16px_-6px_rgba(0,0,0,0.8)] transition-all duration-300 hover:border-white/25 hover:bg-[#181818]"
             >
                 <WalletIcon id={active.iconId} color={active.color} size={28} />
-                <span className="hidden min-w-0 flex-col items-start leading-tight sm:flex">
+                <span className="hidden min-w-0 flex-col items-start leading-tight 2xl:flex">
                     <span className="max-w-[110px] truncate text-[11px] font-bold text-white">{active.name}</span>
                     <span className="font-mono text-[9.5px] text-white/40">{shortAddress(active.address, 5, 4)}</span>
                 </span>
