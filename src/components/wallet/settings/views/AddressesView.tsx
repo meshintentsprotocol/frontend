@@ -324,7 +324,7 @@ function ExternalWalletCard({ wallet, isMainnet, onDisconnect }: ExternalWalletC
         ? `https://blockchair.com/bitcoin-cash/address/${wallet.address}`
         : `https://chipnet.chaingraph.cash/address/${wallet.address}`;
 
-    const sourceLabel = wallet.source === 'wizardconnect' ? 'WizardConnect' : 'WalletConnect';
+    const sourceLabel = wallet.source === 'wizardconnect' ? 'WizardConnect' : wallet.source === 'extension' ? 'Extension' : 'WalletConnect';
 
     return (
         <div className="relative rounded-xl bg-white/[0.02] hover:bg-white/[0.04] border border-blue-500/15 hover:border-blue-500/25 p-3 transition-all duration-200 shadow-sm hover:-translate-y-[1px] shadow-blue-500/5">
@@ -338,7 +338,7 @@ function ExternalWalletCard({ wallet, isMainnet, onDisconnect }: ExternalWalletC
             <div className="flex items-center gap-3 pr-20">
                 {/* Icon */}
                 <div className="h-9 w-9 rounded-xl bg-blue-500/10 border border-blue-500/20 ring-1 ring-blue-500/10 flex items-center justify-center flex-shrink-0 text-base">
-                    {wallet.source === 'wizardconnect' ? '🔵' : '🟢'}
+                    {wallet.source === 'wizardconnect' ? '🔵' : wallet.source === 'extension' ? '🧩' : '🟢'}
                 </div>
 
                 {/* Name + address */}

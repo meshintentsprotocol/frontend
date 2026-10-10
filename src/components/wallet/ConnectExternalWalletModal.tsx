@@ -5,6 +5,7 @@
  *   - Cashonize (WalletConnect v2) with QR + web wallet deep-link
  *   - Paytaca (WizardConnect default tab, WalletConnect secondary tab)
  *   - Other Wallet (generic WalletConnect v2)
+ *   - BCH Intents Wallet (our browser extension, window.bchIntents — no QR)
  *
  * Follows the ParyonUSD reference design documented in wallet-docs.
  */
@@ -21,7 +22,7 @@ import { useExternalBCHWallet, type ExternalWalletSource } from '@/context/Exter
 import { notifyToast as toast } from '@/lib/notify-toast';
 // ── Types ────────────────────────────────────────────────────────────────────
 
-type ModalStep = 'pick-wallet' | 'qr-display' | 'connected';
+type ModalStep = 'pick-wallet' | 'qr-display' | 'extension' | 'connected';
 
 interface WalletOption {
     id: string;
@@ -56,6 +57,13 @@ const WALLET_OPTIONS: WalletOption[] = [
         description: 'Any BCH wallet with WalletConnect v2',
         icon: '🔗',
         color: 'violet',
+    },
+    {
+        id: 'extension',
+        name: 'BCH Intents Wallet',
+        description: 'Browser extension — approve in the wallet, no QR code',
+        icon: '🧩',
+        color: 'amber',
     },
 ];
 
@@ -99,6 +107,28 @@ export function ConnectExternalWalletModal({ open, onClose }: Props) {
         setSelectedWallet(walletId);
         setError(null);
         setUri(null);
+
+        if (walletId === 'extension') {
+            // No pairing URI: the extension opens its own approval screen.
+            setStep('extension');
+            setWaiting(true);
+            try {
+                await ext.connectExtension();
+                setStep('connected');
+                toast.success('Wallet connected!');
+                setTimeout(() => onClose(), 1800);
+            } catch (e: any) {
+                setError(
+                    e?.code === 'NOT_INSTALLED' ? 'not-installed'
+                    : e?.code === 4001 ? 'You declined the connection in the extension.'
+                    : e?.message || 'Connection failed'
+                );
+            } finally {
+                setWaiting(false);
+            }
+            return;
+        }
+
         setStep('qr-display');
 
         try {
@@ -412,6 +442,54 @@ export function ConnectExternalWalletModal({ open, onClose }: Props) {
                                     }
                                 </span>
                             </div>
+                        </div>
+                    )}
+
+                    {/* ═══════ STEP: Browser extension ═══════ */}
+                    {step === 'extension' && (
+                        <div className="space-y-4 mt-2">
+                            {selectedOption && (
+                                <div className="flex items-center gap-3 pb-3 border-b border-white/[0.06]">
+                                    <div className="h-9 w-9 rounded-xl flex items-center justify-center text-lg bg-amber-500/10 ring-1 ring-amber-500/20">
+                                        {selectedOption.icon}
+                                    </div>
+                                    <div>
+                                        <span className="text-sm font-bold text-white">{selectedOption.name}</span>
+                                        <p className="text-[10px] text-white/40">Browser extension</p>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="flex flex-col items-center py-6 space-y-3 text-center">
+                                {waiting ? (
+                                    <>
+                                        <Loader2 className="h-8 w-8 animate-spin text-emerald-400" />
+                                        <p className="text-sm font-bold text-white">Approve in the extension</p>
+                                        <p className="text-[11px] text-white/40 max-w-[300px]">
+                                            The wallet opened a request in its side panel or in a small window. Unlock it if it asks, then choose Connect.
+                                        </p>
+                                    </>
+                                ) : error === 'not-installed' ? (
+                                    <>
+                                        <WifiOff className="h-8 w-8 text-white/30" />
+                                        <p className="text-sm font-bold text-white">Extension not found</p>
+                                        <p className="text-[11px] text-white/40 max-w-[300px]">
+                                            Install the BCH Intents Wallet extension in this browser (or load its dist folder at chrome://extensions), reload this page, and try again.
+                                        </p>
+                                    </>
+                                ) : (
+                                    <p className="text-xs text-red-400 max-w-[320px]">{error}</p>
+                                )}
+                            </div>
+
+                            {!waiting && (
+                                <button
+                                    onClick={() => handleSelectWallet('extension')}
+                                    className="w-full flex items-center justify-center gap-2 h-10 rounded-xl text-xs font-semibold bg-white/[0.04] border border-white/[0.08] text-white/70 hover:bg-white/[0.07] hover:text-white transition-all"
+                                >
+                                    Try again
+                                </button>
+                            )}
                         </div>
                     )}
 
