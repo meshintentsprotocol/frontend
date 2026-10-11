@@ -5,7 +5,7 @@ import { PortfolioChart } from '@/components/portfolio/PortfolioChart';
 import { PortfolioTokens } from '@/components/portfolio/PortfolioTokens';
 import { PortfolioActivity } from '@/components/portfolio/PortfolioActivity';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Copy, MoreHorizontal, ChevronUp, ArrowDownUp, Check, Gift, Trophy, Layers, Zap } from 'lucide-react';
+import { Copy, ArrowDownUp, Check, Gift, Trophy, Zap, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
 import { ConnectWalletButton } from '@/components/connect-wallet-button';
 import { SendModal } from '@/components/portfolio/SendModal';
 import { ReceiveModal } from '@/components/portfolio/ReceiveModal';
@@ -19,11 +19,15 @@ import { useMeshLp, useMeshSigner, useMeshStats } from '@/hooks/useMesh';
 // A unified dashboard inspired by Uniswap's wallet/portfolio view.
 // It aggregates balances across Movement, Solana, and BCH.
 
+// Quick-action tile — uniform from phone (4-up) to the sidebar (3-up), so nothing is displaced.
+const QUICK_TILE = 'group flex flex-col items-center justify-center gap-1.5 rounded-2xl border border-white/[0.05] bg-white/[0.03] p-3 text-center transition-colors hover:bg-white/[0.06]';
+const QUICK_ICON = 'h-5 w-5 text-primary transition-transform group-hover:scale-110';
+const QUICK_LABEL = 'text-[11px] font-medium text-foreground';
+
 export default function PortfolioPage() {
     const { tokens, totalValue, chartData, loading, isRefetching, isConnected } = usePortfolio({ pollingMs: 30000, scope: 'active' });
     const wdk = useWDK();
     const [copied, setCopied] = useState(false);
-    const [showMore, setShowMore] = useState(false);
 
     // Mesh pool stats for the connected wallet (from the server's pool ledger)
     const meshWallet = useMeshSigner();
@@ -200,38 +204,37 @@ export default function PortfolioPage() {
 
                 {/* Right Column: Quick Actions Widget */}
                 <div className="lg:col-span-1">
-                    <div className="sticky top-28 grid grid-cols-2 gap-3">
-                        <SendModal />
-                        <ReceiveModal />
-                        <Link to="/trade" className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-white/[0.03] border border-white/[0.05] hover:bg-white/[0.06] transition-colors group">
-                            <div className="text-primary group-hover:scale-110 transition-transform"><ArrowDownUp className="h-5 w-5" /></div>
-                            <span className="text-sm font-medium text-foreground">Swap</span>
-                        </Link>
-                        <button
-                            onClick={() => setShowMore(v => !v)}
-                            className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-white/[0.03] border border-white/[0.05] hover:bg-white/[0.06] transition-colors group"
-                        >
-                            <div className="text-muted-foreground group-hover:text-foreground transition-colors">
-                                {showMore ? <ChevronUp className="h-5 w-5" /> : <MoreHorizontal className="h-5 w-5" />}
-                            </div>
-                            <span className="text-sm font-medium text-foreground">{showMore ? 'Less' : 'More'}</span>
-                        </button>
-
-                        {showMore && (
-                            <>
-                                <Link to="/portfolio/referral" className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-white/[0.03] border border-white/[0.05] hover:bg-white/[0.06] transition-colors group">
-                                    <div className="text-primary group-hover:scale-110 transition-transform"><Gift className="h-5 w-5" /></div>
-                                    <span className="text-sm font-medium text-foreground">Referral</span>
-                                </Link>
-                                <Link to="/portfolio/points" className="flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-white/[0.03] border border-white/[0.05] hover:bg-white/[0.06] transition-colors group">
-                                    <div className="text-primary group-hover:scale-110 transition-transform"><Trophy className="h-5 w-5" /></div>
-                                    <span className="text-sm font-medium text-foreground">Points</span>
-                                </Link>
-                            </>
-                        )}
+                    <div className="grid grid-cols-1 gap-4 lg:sticky lg:top-28">
+                        {/* Actions — a fixed grid that stays tidy from phone to sidebar */}
+                        <div className="grid grid-cols-4 gap-2 lg:grid-cols-3">
+                            <SendModal>
+                                <button className={QUICK_TILE}>
+                                    <ArrowUpRight className={QUICK_ICON} />
+                                    <span className={QUICK_LABEL}>Send</span>
+                                </button>
+                            </SendModal>
+                            <ReceiveModal>
+                                <button className={QUICK_TILE}>
+                                    <ArrowDownLeft className={QUICK_ICON} />
+                                    <span className={QUICK_LABEL}>Receive</span>
+                                </button>
+                            </ReceiveModal>
+                            <Link to="/trade" className={QUICK_TILE}>
+                                <ArrowDownUp className={QUICK_ICON} />
+                                <span className={QUICK_LABEL}>Swap</span>
+                            </Link>
+                            <Link to="/portfolio/referral" className={QUICK_TILE}>
+                                <Gift className={QUICK_ICON} />
+                                <span className={QUICK_LABEL}>Referral</span>
+                            </Link>
+                            <Link to="/portfolio/points" className={QUICK_TILE}>
+                                <Trophy className={QUICK_ICON} />
+                                <span className={QUICK_LABEL}>Points</span>
+                            </Link>
+                        </div>
 
                         {/* ── Mesh LP Stats Card ── */}
-                        <div className="col-span-2 mt-2 p-5 rounded-2xl bg-black/40 border border-emerald-500/10 backdrop-blur-md space-y-4">
+                        <div className="space-y-4 rounded-2xl border border-emerald-500/10 bg-black/40 p-5 backdrop-blur-md">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2 text-sm font-semibold text-zinc-300">
                                     <Zap className="h-4 w-4 text-emerald-400" />
@@ -264,7 +267,7 @@ export default function PortfolioPage() {
                             </div>
                         </div>
 
-                        <div className="col-span-2 mt-0 p-5 rounded-2xl bg-black/40 border border-white/[0.05] backdrop-blur-md flex justify-between items-center text-sm">
+                        <div className="flex items-center justify-between rounded-2xl border border-white/[0.05] bg-black/40 p-5 text-sm backdrop-blur-md">
                             <div className="flex flex-col">
                                 <span className="text-muted-foreground">Swaps this week</span>
                                 <span className="text-xl font-medium text-foreground mt-1">0</span>
