@@ -8,6 +8,9 @@ import { ConnectWalletButton } from '@/components/connect-wallet-button';
 import { toast } from 'sonner';
 import { usePrices } from '@/hooks/usePrices';
 import { SLIPPAGE_BPS_PRESETS, getAppSettings } from '@/lib/appSettings';
+import { useWDK } from '@/context/WDKProvider';
+import { walletUi } from '@/lib/walletUi';
+import { QuoteCard, QuoteRow } from './QuoteCard';
 
 /**
  * TWAP: the order is split into N Dutch-auction slice intents on the Mesh
@@ -61,6 +64,7 @@ export function TWAPOrderForm({
   const [quoting, setQuoting] = useState(false);
 
   const { prices } = usePrices();
+  const network = useWDK().bchNetwork;
   const { quoteSlice, submitOrder, loading } = useTWAP();
 
   const isSellBCH = sellToken.chain === 'bch' && (sellToken.symbol === 'BCH' || sellToken.type === 'native');
@@ -126,6 +130,8 @@ export function TWAPOrderForm({
         duration: 8000,
       });
       onOrderPlaced?.();
+      // The order's own card, with its slices, the way a bridge shows its steps.
+      walletUi.openOrder({ source: 'twap', id: res.order.orderId });
     } else {
       toast.error('TWAP order failed — see the message below the form');
     }
@@ -134,88 +140,52 @@ export function TWAPOrderForm({
   const fmtOut = (v: bigint) => `${fromBase(v.toString(), buyDecimals).toLocaleString(undefined, { maximumFractionDigits: Math.min(buyDecimals, 8) })} ${buyToken.symbol}`;
   const unsupported = !tokenIn || !tokenOut;
 
+  const chip = (selected: boolean) => cn(
+    'px-2.5 py-0.5 rounded-md text-xs font-semibold transition-colors border',
+    selected ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' : 'text-white/50 hover:text-white border-transparent',
+  );
+  const intervalLabel = intervalSec >= 3600 ? `${intervalSec / 3600}h` : `${intervalSec / 60}m`;
+
   return (
-    <div className="space-y-4 pt-1">
-      {/* ── 1. Slices ── */}
-      <div className="p-3.5 bg-white/[0.02] border border-white/5 rounded-2xl space-y-2.5">
-        <div className="flex items-center justify-between text-xs">
-          <label className="text-zinc-400 font-semibold flex items-center gap-1.5">
-            <Layers className="w-3.5 h-3.5 text-emerald-400" />
-            Number of Slices
-          </label>
-          <span className="font-mono text-zinc-300 font-bold">{numSlices} slices</span>
-        </div>
-        <div className="grid grid-cols-4 gap-1.5">
+    <div className="space-y-3">
+      {/* ── Schedule and price protection: one card, in the swap card's own style ── */}
+      <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/[0.06] space-y-3">
+        <Setting icon={<Layers className="h-3.5 w-3.5" />} label="Slices">
           {SLICE_PRESETS.map(n => (
-            <button key={n} type="button" onClick={() => setNumSlices(n)}
-              className={cn('py-1.5 rounded-xl text-xs font-mono font-bold transition-all border',
-                numSlices === n ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 shadow-sm' : 'bg-white/[0.02] border-white/5 text-zinc-400 hover:text-white hover:bg-white/[0.05]')}>
-              {n}
-            </button>
+            <button key={n} type="button" aria-pressed={numSlices === n} onClick={() => setNumSlices(n)} className={chip(numSlices === n)}>{n}</button>
           ))}
-        </div>
-      </div>
-
-      {/* ── 2. Interval ── */}
-      <div className="p-3.5 bg-white/[0.02] border border-white/5 rounded-2xl space-y-2.5">
-        <div className="flex items-center justify-between text-xs">
-          <label className="text-zinc-400 font-semibold flex items-center gap-1.5">
-            <Clock className="w-3.5 h-3.5 text-emerald-400" />
-            Execution Interval
-          </label>
-          <span className="font-mono text-zinc-300 font-bold">every {intervalSec >= 3600 ? `${intervalSec / 3600} h` : `${intervalSec / 60} min`}</span>
-        </div>
-        <div className="grid grid-cols-4 gap-1.5">
+        </Setting>
+        <Setting icon={<Clock className="h-3.5 w-3.5" />} label="Every" divided>
           {INTERVAL_PRESETS.map(p => (
-            <button key={p.value} type="button" onClick={() => setIntervalSec(p.value)}
-              className={cn('py-1.5 rounded-xl text-xs font-mono font-bold transition-all border',
-                intervalSec === p.value ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 shadow-sm' : 'bg-white/[0.02] border-white/5 text-zinc-400 hover:text-white hover:bg-white/[0.05]')}>
-              {p.label}
-            </button>
+            <button key={p.value} type="button" aria-pressed={intervalSec === p.value} onClick={() => setIntervalSec(p.value)} className={chip(intervalSec === p.value)}>{p.label}</button>
           ))}
-        </div>
-      </div>
-
-      {/* ── 3. Price protection ── */}
-      <div className="p-3.5 bg-white/[0.02] border border-white/5 rounded-2xl space-y-2.5">
-        <div className="flex items-center justify-between text-xs">
-          <label className="text-zinc-400 font-semibold flex items-center gap-1.5">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-            Max slippage per slice
-          </label>
-          <span className="font-mono text-zinc-300 font-bold">{(slippageBps / 100).toFixed(1)}%</span>
-        </div>
-        <div className="grid grid-cols-4 gap-1.5">
+        </Setting>
+        <Setting icon={<ShieldCheck className="h-3.5 w-3.5" />} label="Max slippage" divided>
           {SLIPPAGE_PRESETS.map(b => (
-            <button key={b} type="button" onClick={() => setSlippageBps(b)}
-              className={cn('py-1.5 rounded-xl text-xs font-mono font-bold transition-all border',
-                slippageBps === b ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 shadow-sm' : 'bg-white/[0.02] border-white/5 text-zinc-400 hover:text-white hover:bg-white/[0.05]')}>
-              {(b / 100).toFixed(1)}%
-            </button>
+            <button key={b} type="button" aria-pressed={slippageBps === b} onClick={() => setSlippageBps(b)} className={chip(slippageBps === b)}>{(b / 100).toFixed(1)}%</button>
           ))}
-        </div>
+        </Setting>
       </div>
 
-      {/* ── 4. Breakdown ── */}
-      <div className="p-4 bg-gradient-to-br from-emerald-500/[0.06] via-teal-500/[0.03] to-transparent border border-emerald-500/20 rounded-2xl space-y-2.5 text-xs">
-        <Row label="Market price">
-          {sellPrice > 0 ? `$${sellPrice.toLocaleString(undefined, { maximumFractionDigits: 4 })} / ${sellToken.symbol}` : '—'}
-        </Row>
-        <Row label="Slice size">
-          {sliceIn > 0 ? `${fromBase(sliceIn, sellDecimals).toLocaleString(undefined, { maximumFractionDigits: Math.min(sellDecimals, 8) })} ${sellToken.symbol}` : '—'}
-          {sellPrice > 0 && sliceIn > 0 && <span className="block text-[10px] text-zinc-400">~${(fromBase(sliceIn, sellDecimals) * sellPrice).toFixed(2)}</span>}
-        </Row>
-        <Row label="Expected per slice">
-          {quoting ? <Loader2 className="w-3 h-3 animate-spin inline" /> : quote ? fmtOut(startOut) : '—'}
-          {quote?.routeName && <span className="block text-[10px] text-zinc-400">{quote.routeName}</span>}
-        </Row>
-        <Row label="Minimum per slice">{quote ? fmtOut(minOut) : '—'}</Row>
-        <Row label="Duration" last>{totalDuration} · unfilled slices refund after their window</Row>
-      </div>
+      {/* ── The quote, as every other pair shows it ── */}
+      <QuoteCard
+        icon={<Clock className="h-3 w-3" />}
+        tone="teal"
+        label="TWAP"
+        provider={`${numSlices} slices · every ${intervalLabel} · ${network === 'mainnet' ? 'Mainnet' : 'Testnet'}`}
+        aside={`About ${totalDuration}`}
+      >
+        <QuoteRow label="You send" value={totalIn > 0 ? `${fromBase(totalIn, sellDecimals).toLocaleString(undefined, { maximumFractionDigits: Math.min(sellDecimals, 8) })} ${sellToken.symbol}` : '—'} hint={sellPrice > 0 && totalIn > 0 ? `~$${(fromBase(totalIn, sellDecimals) * sellPrice).toFixed(2)}` : undefined} />
+        <QuoteRow label="Each slice" value={sliceIn > 0 ? `${fromBase(sliceIn, sellDecimals).toLocaleString(undefined, { maximumFractionDigits: Math.min(sellDecimals, 8) })} ${sellToken.symbol}` : '—'} />
+        <QuoteRow label="Expected per slice" value={quoting ? <Loader2 className="inline h-3 w-3 animate-spin" /> : quote ? `≈ ${fmtOut(startOut)}` : '—'} hint={quote?.routeName} />
+        <QuoteRow label="At least per slice" value={quote ? fmtOut(minOut) : '—'} hint={`${(slippageBps / 100).toFixed(1)}% slippage`} />
+        <QuoteRow label="You receive" strong value={quote ? `≈ ${fmtOut(startOut * BigInt(numSlices))}` : '—'} />
+        <p className="pt-1 text-xs text-white/40">All slices are funded in one transaction. A slice that is not filled in its window is refunded.</p>
+      </QuoteCard>
 
       {(quoteError || sliceTooSmall || unsupported) && (
-        <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-200">
-          <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
+        <div className="flex items-start gap-2 text-xs text-amber-200/80 bg-amber-500/[0.06] border border-amber-500/20 rounded-lg px-2.5 py-2">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
           <span>
             {unsupported ? 'This token has no category id; TWAP needs a CashToken or BCH on both sides.'
               : sliceTooSmall ? `Each slice must be worth at least ${MIN_SLICE_SATS.toLocaleString()} sats — use fewer slices or a larger amount.`
@@ -224,7 +194,7 @@ export function TWAPOrderForm({
         </div>
       )}
 
-      {/* ── 5. Submit ── */}
+      {/* ── Submit ── */}
       {!isConnected ? (
         <ConnectWalletButton className="w-full h-14 rounded-2xl" />
       ) : !sellAmount || Number(sellAmount) <= 0 ? (
@@ -237,24 +207,24 @@ export function TWAPOrderForm({
         </Button>
       ) : (
         <Button
-          className="w-full h-14 text-base font-semibold bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 rounded-2xl shadow-lg shadow-emerald-500/20 disabled:opacity-50 transition-all font-heading"
+          className="w-full h-14 text-base font-semibold bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 rounded-2xl shadow-lg shadow-emerald-500/20 disabled:from-white/[0.04] disabled:to-white/[0.04] disabled:text-white/40 disabled:shadow-none transition-all"
           onClick={handlePlaceTwap}
           disabled={loading || quoting || !quote || sliceTooSmall || unsupported}
         >
           {loading
-            ? <><Loader2 className="w-4 h-4 animate-spin mr-2" /> Placing and funding slices…</>
-            : <><Clock className="w-4 h-4 mr-2" /> Place TWAP · {numSlices} slices</>}
+            ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Placing and funding slices…</>
+            : `Place TWAP · ${sellToken.symbol} → ${buyToken.symbol}`}
         </Button>
       )}
     </div>
   );
 }
 
-function Row({ label, children, last }: { label: string; children: ReactNode; last?: boolean }) {
+function Setting({ icon, label, divided, children }: { icon: ReactNode; label: string; divided?: boolean; children: ReactNode }) {
   return (
-    <div className={cn('flex items-start justify-between gap-3', !last && 'pb-2 border-b border-emerald-500/10')}>
-      <span className="text-zinc-400 font-medium">{label}</span>
-      <span className="font-mono font-bold text-white text-right">{children}</span>
+    <div className={cn('flex flex-wrap items-center justify-between gap-y-2', divided && 'pt-3 border-t border-white/[0.04]')}>
+      <span className="flex items-center gap-1.5 text-sm text-white/50"><span className="text-emerald-400">{icon}</span>{label}</span>
+      <div className="flex flex-wrap justify-end gap-1">{children}</div>
     </div>
   );
 }

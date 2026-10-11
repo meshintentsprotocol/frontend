@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import {
     ArrowDown, Loader2, Zap, Globe, AlertTriangle, Settings2, History,
-    Sparkles, ChevronDown, ChevronUp, Wallet, ShoppingBag
+    Sparkles, Target
 } from 'lucide-react';
 import { Token, BCHSwapParams, BCHSwapType, BCHOrderType } from '@/types';
 import { BCHTokenSelector, BCH_TOKENS, SOLANA_TOKENS, ETH_TOKENS, ALL_BCH_SWAP_TOKENS, MAINNET_SWAP_TOKENS } from './BCHTokenSelector';
@@ -28,7 +28,8 @@ import {
 } from '@/components/ui/popover';
 import { useActiveWallet } from '@/hooks/useActiveWallet';
 import { useBchAddressBalance } from '@/hooks/useBchAddressBalance';
-import { ActiveWalletPicker } from '@/components/wallet/ActiveWalletPicker';
+import { ActiveWalletChip } from '@/components/wallet/ActiveWalletChip';
+import { QuoteCard, QuoteRow, QuoteWarning } from './QuoteCard';
 import { useExternalBCHWallet } from '@/context/ExternalBCHWalletProvider';
 import { TWAPOrderForm } from './TWAPOrderForm';
 import { cashAddressToLockingBytecode, binToHex } from '@bitauth/libauth';
@@ -139,7 +140,6 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
     const [prices, setPrices] = useState<Record<string, PriceData>>({});
     const [cauldronPrices, setCauldronPrices] = useState<Record<string, number>>({});
     const [flipping, setFlipping] = useState(false);
-    const [routeExpanded, setRouteExpanded] = useState(false);
 
     const { activeWalletId, setActiveWallet, isMainActive, activeExtWallet } = useActiveWallet();
     const extBCH = useExternalBCHWallet();
@@ -176,10 +176,6 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
     }, [userAddress]);
     const isMainnet = wdk.bchNetwork === 'mainnet';
     const portfolio = usePortfolio({ pollingMs: 30_000 });
-
-    const toggleNetwork = () => {
-        wdk.setBchNetwork(isMainnet ? 'chipnet' : 'mainnet');
-    };
 
     // Pairs the swap server handles (cross-chain USDC through Circle CCTP, Solana swaps through Jupiter) are
     // routed before any flow below; see src/swap-server/routing.ts. `ssHandled` is false for every other pair,
@@ -779,6 +775,10 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
         );
     };
 
+    const expiryLabel = expiryValue === 'custom'
+        ? (customExpiryValue.trim() || '1h')
+        : (EXPIRY_PRESETS.find(p => p.value === expiryValue)?.label ?? '1D');
+
     const formatAddress = (addr: string) => {
         if (addr.length <= 16) return addr;
         return `${addr.slice(0, 12)}...${addr.slice(-6)}`;
@@ -834,28 +834,14 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                 </div>
 
                 <div className="flex items-center gap-1">
-                    {/* Which BCH wallet acts here: the same state as the header's wallet profile */}
-                    <ActiveWalletPicker />
-
-                    {/* Network toggle pill */}
-                    <button
-                        onClick={toggleNetwork}
-                        title={isMainnet ? 'Switch to testnet' : 'Switch to mainnet'}
-                        className={cn(
-                            'h-7 px-2.5 rounded-full text-[11px] font-semibold border transition-colors',
-                            isMainnet
-                                ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/20'
-                                : 'bg-white/[0.04] text-white/50 border-white/[0.08] hover:text-white/80 hover:bg-white/[0.07]'
-                        )}
-                    >
-                        {isMainnet ? 'Mainnet' : 'Testnet'}
-                    </button>
+                    {/* Which BCH wallet signs here. It opens the wallet, where wallets and the network are switched. */}
+                    <ActiveWalletChip />
 
                     {/* Orders & History toggle — hidden in compact/embedded mode */}
                     {onToggleOrders && !compact && (
                         <button
                             onClick={onToggleOrders}
-                            title={ordersVisible ? 'Hide Orders & History' : 'Show Orders & History'}
+                            title={ordersVisible ? 'Hide Orders & History' : 'Orders & History'}
                             aria-pressed={!!ordersVisible}
                             className={cn(
                                 'p-2 rounded-xl transition-colors',
@@ -1203,56 +1189,40 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                     {/* ─── Route summary ─── */}
                     {ss.active && <SwapServerDetails state={ss} />}
                     {!ssHandled && sellAmount && Number(sellAmount) > 0 && (
-                        <div className="mx-4 mt-3 rounded-2xl bg-white/[0.02] border border-white/[0.05] overflow-hidden">
-                            <button
-                                onClick={() => setRouteExpanded(v => !v)}
-                                className="w-full flex items-center justify-between px-4 py-3 text-xs hover:bg-white/[0.02] transition-colors"
-                            >
-                                <div className="flex items-center gap-2">
-                                    <Badge variant="outline" className={cn("text-[10px] h-4 px-1.5 gap-1 border", typeInfo.color)}>
-                                        {typeInfo.icon}{typeInfo.label}
-                                    </Badge>
-                                    <span className="font-mono text-white/70">
-                                        1 {sellToken.symbol} ≈ {
-                                            getTokenPrice(sellToken) > 0 && getTokenPrice(buyToken) > 0
-                                                ? (getTokenPrice(sellToken) / getTokenPrice(buyToken)).toFixed(6)
-                                                : '…'
-                                        } {buyToken.symbol}
-                                    </span>
-                                </div>
-                                {routeExpanded ? <ChevronUp className="h-3 w-3 text-white/40" /> : <ChevronDown className="h-3 w-3 text-white/40" />}
-                            </button>
-                            {routeExpanded && (
-                                <div className="px-4 pb-3 space-y-1.5 text-sm border-t border-white/[0.04] pt-2 animate-in fade-in-50 duration-200">
-                                    <div className="flex justify-between text-white/50">
-                                        <span>Route</span>
-                                        <span className="text-white/80">{typeInfo.desc}</span>
-                                    </div>
-                                    <div className="flex justify-between text-white/50">
-                                        <span>Order type</span>
-                                        <span className="text-white/80 capitalize">{orderType}{orderType === 'market' ? ' (Dutch auction)' : ''}</span>
-                                    </div>
-                                    {orderType === 'market' && (
-                                        <div className="flex justify-between text-white/50">
-                                            <span>Auction duration</span>
-                                            <span className="text-white/80">{formatAuctionDuration(duration)}</span>
-                                        </div>
-                                    )}
-                                    {orderType === 'limit' && limitPrice && (
-                                        <div className="flex justify-between text-white/50">
-                                            <span>Limit price</span>
-                                            <span className="text-white/80">{limitPrice} {buyToken.symbol}</span>
-                                        </div>
-                                    )}
-                                    {swapType !== 'same-chain' && (
-                                        <div className="flex items-center gap-1 text-yellow-400/80 pt-1">
-                                            <AlertTriangle className="h-3 w-3" />
-                                            <span>Cross-chain — relies on solver/relayer fill</span>
-                                        </div>
-                                    )}
-                                </div>
+                        <QuoteCard
+                            className="mx-4 mt-3"
+                            icon={orderType === 'limit' ? <Target className="h-3 w-3" /> : typeInfo.icon}
+                            tone={orderType === 'limit' ? 'violet' : swapType === 'same-chain' ? 'emerald' : 'indigo'}
+                            label={orderType === 'limit' ? 'Limit order' : swapType === 'same-chain' ? 'CashToken swap' : typeInfo.label}
+                            provider={`${orderType === 'limit' ? 'Fills at your price or better' : swapType === 'same-chain' ? 'Dutch auction' : typeInfo.desc} · ${isMainnet ? 'Mainnet' : 'Testnet'}`}
+                            aside={orderType === 'limit' ? `Expires in ${expiryLabel}` : `Up to ${formatAuctionDuration(duration)}`}
+                        >
+                            <QuoteRow label="You send" value={`${sellAmount} ${sellToken.symbol}`} />
+                            {orderType === 'limit' ? (
+                                <QuoteRow
+                                    label="Limit price"
+                                    value={limitPrice ? `1 ${sellToken.symbol} = ${limitPrice} ${buyToken.symbol}` : '…'}
+                                    hint={!referenceIsFillable ? undefined : priceAboveFillable ? 'rests until the market moves' : 'fillable now'}
+                                />
+                            ) : (
+                                <QuoteRow
+                                    label="Rate"
+                                    value={Number(buyAmount) > 0 ? `1 ${sellToken.symbol} ≈ ${(Number(buyAmount) / Number(sellAmount)).toLocaleString(undefined, { maximumFractionDigits: 6 })} ${buyToken.symbol}` : '…'}
+                                    hint={referenceIsFillable ? 'solver quote' : undefined}
+                                />
                             )}
-                        </div>
+                            <QuoteRow
+                                label="You receive"
+                                strong
+                                value={Number(buyAmount) > 0 ? `${orderType === 'limit' ? '' : '≈ '}${Number(buyAmount).toLocaleString(undefined, { maximumFractionDigits: 6 })} ${buyToken.symbol}` : 'No quote'}
+                            />
+                            {orderType === 'market' && <QuoteRow label="Auction" value={formatAuctionDuration(duration)} hint="price walks down until a solver fills" />}
+                            {userAddress && swapType === 'same-chain' && (
+                                <QuoteRow label="To" value={<span className="font-mono text-xs" title={userAddress}>{formatAddress(userAddress.includes(':') ? userAddress.split(':')[1] : userAddress)}</span>} hint="your wallet" />
+                            )}
+                            {swapType !== 'same-chain' && <QuoteWarning>Cross-chain: it relies on a solver or relayer filling the other side.</QuoteWarning>}
+                            {orderType === 'limit' && quoteUnavailable && <QuoteWarning>No solver quote right now, so the price shown is indicative.</QuoteWarning>}
+                        </QuoteCard>
                     )}
 
                     {/* ─── CTA ─── */}
