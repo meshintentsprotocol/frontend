@@ -28,8 +28,10 @@ import { Drawer, DrawerContent, DrawerTitle, DrawerDescription } from '@/compone
 // pools, orders, settings), notifications, connecting a wallet, and creating,
 // importing or unlocking the built-in one. Opened from lib/walletUi.ts.
 //
-// It is a popup under the header by default, a panel docked to the right edge
-// when the "Dock wallet" setting is on, and a bottom sheet on a phone.
+// It fills the height of the screen on the right edge: lying over the page by
+// default, docked beside it when the "Dock wallet" setting is on, and a
+// full-height sheet on a phone. The profile is its top band; everything under
+// the tabs gets the rest of the height.
 
 const SUB_TABS: WalletSubTab[] = ['tokens', 'pools', 'orders', 'settings'];
 
@@ -209,7 +211,7 @@ export function WalletPopup() {
     ) : (
         <>
             {/* ─── Top bar: wallet / notifications, and the frame's own controls ─── */}
-            <div className="flex shrink-0 items-center justify-between gap-2 px-3 pt-3">
+            <div className="flex shrink-0 items-center justify-between gap-2 px-3 py-2">
                 <div role="tablist" aria-label="Wallet sections" className="flex rounded-full p-0.5 lg-well">
                     {(['wallet', 'notifications'] as const).map(tab => (
                         <button
@@ -256,7 +258,7 @@ export function WalletPopup() {
                     />
 
                     {/* ─── Sub tabs ─── */}
-                    <div role="tablist" aria-label="Wallet" className="mx-3 mt-3 flex shrink-0 border-b border-white/[0.07]">
+                    <div role="tablist" aria-label="Wallet" className="flex shrink-0 border-b border-white/[0.07] px-3">
                         {SUB_TABS.map(tab => (
                             <button
                                 key={tab}
@@ -265,7 +267,7 @@ export function WalletPopup() {
                                 aria-selected={subTab === tab}
                                 onClick={() => setSubTab(tab)}
                                 className={cn(
-                                    'relative flex-1 py-2.5 text-xs font-semibold capitalize transition-colors',
+                                    'relative flex-1 py-2 text-xs font-semibold capitalize transition-colors',
                                     subTab === tab ? 'text-white' : 'text-white/40 hover:text-white/75',
                                 )}
                             >
@@ -299,7 +301,7 @@ export function WalletPopup() {
     if (isMobile) {
         return (
             <Drawer open={open} onOpenChange={(o) => !o && onClose()}>
-                <DrawerContent className="lg-panel h-[92dvh] border-b-0 p-0">
+                <DrawerContent className="lg-panel mt-0 h-[100dvh] rounded-t-xl border-b-0 p-0 [&>div:first-child]:pb-1 [&>div:first-child]:pt-2">
                     <DrawerTitle className="sr-only">Wallet</DrawerTitle>
                     <DrawerDescription className="sr-only">Your wallets, balances, orders and settings</DrawerDescription>
                     <div className="flex min-h-0 flex-1 flex-col pb-[env(safe-area-inset-bottom)]">{content}</div>
@@ -315,10 +317,10 @@ export function WalletPopup() {
             aria-label="Wallet"
             data-wallet-frame={docked ? 'docked' : 'popup'}
             className={cn(
-                'lg-panel fixed z-[100] flex w-[404px] max-w-[calc(100vw-24px)] flex-col overflow-hidden',
-                docked
-                    ? 'bottom-0 right-0 top-20 rounded-l-[28px] border-r-0 animate-in slide-in-from-right-8 fade-in duration-300'
-                    : 'right-3 top-[88px] h-[min(760px,calc(100dvh-104px))] rounded-[28px] animate-in slide-in-from-top-2 fade-in duration-200 sm:right-4 2xl:right-[max(1rem,calc((100vw-1400px)/2))]',
+                // Full height on the right edge in both modes. A popup lies over the page and closes on a click outside;
+                // docked, it stays and the page makes room for it (index.css).
+                'lg-panel fixed bottom-0 right-0 top-0 z-[100] flex w-[404px] max-w-full flex-col overflow-hidden rounded-none border-y-0 border-r-0',
+                'animate-in slide-in-from-right-8 fade-in duration-200',
             )}
         >
             {content}

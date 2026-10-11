@@ -59,9 +59,9 @@ type PaytacaTab = 'wizard' | 'wc';
 
 const extensionPresent = () => !!(window as unknown as { bchIntents?: { isBCHIntents?: boolean } }).bchIntents?.isBCHIntents;
 
-const OPTION = 'group flex w-full items-center gap-3 rounded-2xl p-3 text-left transition-all duration-200 lg-well hover:border-white/[0.16] hover:bg-white/[0.06] active:scale-[0.99]';
+const OPTION = 'group flex w-full items-center gap-3 rounded-xl p-3 text-left transition-all duration-200 lg-well hover:border-white/[0.16] hover:bg-white/[0.06] active:scale-[0.99]';
 const TAG = 'rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider';
-const SECONDARY = 'flex h-11 w-full items-center justify-center gap-2 rounded-2xl text-xs font-semibold text-white/75 transition-colors lg-well hover:bg-white/[0.07] hover:text-white disabled:opacity-40';
+const SECONDARY = 'flex h-11 w-full items-center justify-center gap-2 rounded-xl text-xs font-semibold text-white/75 transition-colors lg-well hover:bg-white/[0.07] hover:text-white disabled:opacity-40';
 
 export function ConnectWalletView({ onDone }: {
     /** The user is finished here: go to the wallet. */
@@ -218,7 +218,7 @@ export function ConnectWalletView({ onDone }: {
                 {step === 'pick-wallet' && (
                     <div className="space-y-2.5">
                         {!hasWallet && (
-                            <div className="lg-card mb-3 flex items-center gap-3 rounded-[28px] p-4">
+                            <div className="lg-card mb-3 flex items-center gap-3 rounded-xl p-4">
                                 <div className="min-w-0 flex-1">
                                     <div className="text-lg font-bold leading-tight text-white">Welcome</div>
                                     <p className="mt-1 text-xs leading-relaxed text-white/55">
@@ -239,7 +239,7 @@ export function ConnectWalletView({ onDone }: {
                                 <button
                                     type="button"
                                     onClick={() => walletUi.openOnboarding()}
-                                    className="group flex w-full items-center gap-3 rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/[0.14] to-emerald-500/[0.02] p-3.5 text-left transition-all duration-200 hover:border-emerald-400/50 hover:from-emerald-500/[0.2] active:scale-[0.99]"
+                                    className="group flex w-full items-center gap-3 rounded-xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/[0.14] to-emerald-500/[0.02] p-3.5 text-left transition-all duration-200 hover:border-emerald-400/50 hover:from-emerald-500/[0.2] active:scale-[0.99]"
                                 >
                                     <WalletGlyph size={44} />
                                     <div className="min-w-0 flex-1">
@@ -293,7 +293,7 @@ export function ConnectWalletView({ onDone }: {
                         {selectedHeader}
 
                         {selectedWallet === 'paytaca' && (
-                            <div className="flex rounded-2xl p-1 lg-well">
+                            <div className="flex rounded-xl p-1 lg-well">
                                 {(['wizard', 'wc'] as PaytacaTab[]).map(tab => (
                                     <button key={tab} type="button" onClick={() => handlePaytacaTabSwitch(tab)}
                                         className={cn('flex-1 rounded-xl py-2 text-xs font-semibold transition-all', paytacaTab === tab ? 'bg-white/[0.1] text-white' : 'text-white/40 hover:text-white/70')}>
@@ -305,11 +305,11 @@ export function ConnectWalletView({ onDone }: {
 
                         <div className="flex flex-col items-center">
                             {uri ? (
-                                <div className="rounded-3xl bg-white p-4 shadow-lg shadow-black/20 animate-in fade-in zoom-in-95 duration-300">
+                                <div className="rounded-xl bg-white p-4 shadow-lg shadow-black/20 animate-in fade-in zoom-in-95 duration-300">
                                     <QRCodeSVG value={uri} size={212} level="M" bgColor="#ffffff" fgColor="#000000" includeMargin={false} />
                                 </div>
                             ) : error ? (
-                                <div className="flex h-[244px] w-[244px] flex-col items-center justify-center gap-3 rounded-3xl border border-red-500/20 bg-red-500/[0.04] px-6 text-center">
+                                <div className="flex h-[244px] w-[244px] flex-col items-center justify-center gap-3 rounded-xl border border-red-500/20 bg-red-500/[0.04] px-6 text-center">
                                     <p className="text-xs text-red-400">{error}</p>
                                     <button type="button" onClick={() => selectedWallet && handleSelectWallet(selectedWallet)}
                                         className="flex h-8 items-center gap-1.5 rounded-lg border border-white/[0.1] bg-white/[0.06] px-3 text-[11px] font-semibold text-white transition-colors hover:bg-white/[0.1]">
@@ -317,7 +317,7 @@ export function ConnectWalletView({ onDone }: {
                                     </button>
                                 </div>
                             ) : (
-                                <div className="relative flex h-[244px] w-[244px] flex-col items-center justify-center gap-3 overflow-hidden rounded-3xl lg-well">
+                                <div className="relative flex h-[244px] w-[244px] flex-col items-center justify-center gap-3 overflow-hidden rounded-xl lg-well">
                                     <div className="absolute inset-0 animate-pulse bg-gradient-to-br from-white/[0.05] to-transparent" />
                                     <Loader2 className="relative h-7 w-7 animate-spin text-white/30" />
                                     <span className="relative text-[11px] text-white/35">Preparing a secure link…</span>
@@ -347,13 +347,13 @@ export function ConnectWalletView({ onDone }: {
                         <div className="space-y-2">
                             {cashonizeDeepLink && (
                                 <a href={cashonizeDeepLink} target="_blank" rel="noopener noreferrer"
-                                    className="flex h-11 w-full items-center justify-center gap-2 rounded-2xl border border-emerald-500/25 bg-emerald-500/10 text-xs font-semibold text-emerald-300 transition-all hover:bg-emerald-500/20 hover:text-emerald-200">
+                                    className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 text-xs font-semibold text-emerald-300 transition-all hover:bg-emerald-500/20 hover:text-emerald-200">
                                     <Globe className="h-4 w-4" /> Open in Cashonize Web Wallet
                                 </a>
                             )}
                             {paytacaDeepLink && (
                                 <a href={paytacaDeepLink}
-                                    className="flex h-11 w-full items-center justify-center gap-2 rounded-2xl border border-blue-500/25 bg-blue-500/10 text-xs font-semibold text-blue-300 transition-all hover:bg-blue-500/20 hover:text-blue-200">
+                                    className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-blue-500/25 bg-blue-500/10 text-xs font-semibold text-blue-300 transition-all hover:bg-blue-500/20 hover:text-blue-200">
                                     <Smartphone className="h-4 w-4" /> Open Paytaca App
                                 </a>
                             )}
@@ -362,7 +362,7 @@ export function ConnectWalletView({ onDone }: {
                             </button>
                         </div>
 
-                        <div className="flex items-start gap-2 rounded-2xl border border-amber-500/15 bg-amber-500/[0.06] p-3 text-[10px] text-amber-400/80">
+                        <div className="flex items-start gap-2 rounded-xl border border-amber-500/15 bg-amber-500/[0.06] p-3 text-[10px] text-amber-400/80">
                             <Info className="mt-0.5 h-3 w-3 flex-shrink-0" />
                             <span>
                                 {isWizardMode
@@ -388,7 +388,7 @@ export function ConnectWalletView({ onDone }: {
                                 </>
                             ) : error === 'not-installed' ? (
                                 <>
-                                    <span className="flex h-16 w-16 items-center justify-center rounded-2xl lg-well">
+                                    <span className="flex h-16 w-16 items-center justify-center rounded-xl lg-well">
                                         <Puzzle className="h-7 w-7 text-white/30" />
                                     </span>
                                     <p className="text-sm font-bold text-white">Extension not found</p>
@@ -414,7 +414,7 @@ export function ConnectWalletView({ onDone }: {
                 {/* ═══════ Connected: give it a colour and a name ═══════ */}
                 {step === 'connected' && (
                     <div className="space-y-4 animate-in fade-in zoom-in-95 duration-300">
-                        <div className="lg-card flex items-center gap-3 rounded-[28px] p-4" style={{ ['--lg-tint' as string]: justConnected?.color }}>
+                        <div className="lg-card flex items-center gap-3 rounded-xl p-4" style={{ ['--lg-tint' as string]: justConnected?.color }}>
                             <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-2.5">
                                     <WalletGlyph color={justConnected?.color} size={44} />
@@ -431,7 +431,7 @@ export function ConnectWalletView({ onDone }: {
                         {justConnected && <WalletLookEditor wallet={justConnected} />}
 
                         <button type="button" onClick={onDone} data-connect-done
-                            className="h-12 w-full rounded-2xl text-sm font-bold text-[#050505] transition-transform active:scale-[0.98]"
+                            className="h-12 w-full rounded-xl text-sm font-bold text-[#050505] transition-transform active:scale-[0.98]"
                             style={{ background: justConnected?.color ?? '#10b981' }}>
                             Done
                         </button>

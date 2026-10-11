@@ -65,7 +65,7 @@ function WalletRow({ wallet, isMainnet, hidden, onPick, onEdit }: {
 
     return (
         <li
-            className={cn('flex items-center gap-2 rounded-2xl border p-2 transition-colors', wallet.active ? 'bg-white/[0.06]' : 'border-transparent hover:bg-white/[0.03]')}
+            className={cn('flex items-center gap-2 rounded-xl border p-2 transition-colors', wallet.active ? 'bg-white/[0.06]' : 'border-transparent hover:bg-white/[0.03]')}
             style={wallet.active ? { borderColor: `${wallet.color}55` } : undefined}
         >
             <button type="button" onClick={onPick} aria-pressed={wallet.active} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
@@ -98,14 +98,14 @@ function WalletRow({ wallet, isMainnet, hidden, onPick, onEdit }: {
     );
 }
 
-const ACTION = 'group flex flex-1 flex-col items-center gap-1.5 rounded-2xl py-2.5 text-[11px] font-semibold text-white/75 transition-colors hover:bg-white/[0.06] hover:text-white focus-visible:bg-white/[0.08] focus-visible:outline-none';
-const ACTION_ICON = 'flex h-10 w-10 items-center justify-center rounded-full border border-white/[0.1] bg-white/[0.06] transition-transform duration-200 group-hover:scale-105 group-active:scale-95';
+const ACTION = 'group flex h-8 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.05] px-1.5 text-[11px] font-semibold text-white/80 transition-colors hover:bg-white/[0.1] hover:text-white focus-visible:bg-white/[0.12] focus-visible:outline-none active:scale-[0.98]';
+const ACTION_ICON = 'flex shrink-0 items-center justify-center [&>svg]:h-3.5 [&>svg]:w-3.5';
 
 function Action({ icon, label, onClick, tone }: { icon: ReactNode; label: string; onClick?: () => void; tone?: 'danger' }) {
     return (
-        <button type="button" onClick={onClick} className={cn(ACTION, tone === 'danger' && 'hover:text-red-300')}>
-            <span className={cn(ACTION_ICON, tone === 'danger' && 'group-hover:border-red-400/30 group-hover:bg-red-500/10')}>{icon}</span>
-            {label}
+        <button type="button" onClick={onClick} className={cn(ACTION, tone === 'danger' && 'hover:border-red-400/30 hover:bg-red-500/10 hover:text-red-300')}>
+            <span className={ACTION_ICON}>{icon}</span>
+            <span className="truncate">{label}</span>
         </button>
     );
 }
@@ -169,12 +169,12 @@ export function WalletProfile({ totalValue, loading, busy, onRefresh, balanceVis
         <section
             aria-label="Wallet profile"
             data-wallet-profile
-            className="lg-card mx-3 mt-3 shrink-0 rounded-[28px] transition-[background,box-shadow] duration-500"
+            className="lg-card shrink-0 rounded-none border-x-0 border-t-0 transition-[background,box-shadow] duration-500"
             style={{ '--lg-tint': color } as CSSProperties}
         >
-            <div className="p-4 pb-3">
+            <div className="px-3 pb-2 pt-2.5 sm:px-4">
                 {/* ── identity + network ── */}
-                <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center justify-between gap-2">
                     {active ? (
                         <div className="flex min-w-0 items-center gap-2.5">
                             <button
@@ -183,18 +183,18 @@ export function WalletProfile({ totalValue, loading, busy, onRefresh, balanceVis
                                 aria-expanded={expanded}
                                 aria-controls="wallet-profile-list"
                                 title="Your wallets"
-                                className="flex min-w-0 items-center gap-2.5 rounded-2xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
+                                className="flex min-w-0 items-center gap-2.5 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
                             >
-                                <WalletIcon id={active.iconId} color={active.color} size={44} active />
+                                <WalletIcon id={active.iconId} color={active.color} size={34} active />
                                 <span className="min-w-0">
                                     <span className="flex items-center gap-1">
-                                        <span className="truncate text-[15px] font-bold leading-tight text-white">{active.name}</span>
+                                        <span className="truncate text-sm font-bold leading-tight text-white">{active.name}</span>
                                         {wallets.length > 1 && (
                                             <span className="shrink-0 rounded-full bg-white/[0.1] px-1.5 text-[9px] font-bold tabular-nums text-white/70">{wallets.length}</span>
                                         )}
                                         <ChevronDown className={cn('h-4 w-4 shrink-0 text-white/50 transition-transform duration-200', expanded && 'rotate-180')} />
                                     </span>
-                                    <span className="mt-0.5 block text-[10px] font-semibold uppercase tracking-wider" style={{ color }}>{KIND_LABEL[active.kind]}</span>
+                                    <span className="block text-[9px] font-semibold uppercase tracking-wider" style={{ color }}>{KIND_LABEL[active.kind]}</span>
                                 </span>
                             </button>
                         </div>
@@ -207,32 +207,8 @@ export function WalletProfile({ totalValue, loading, busy, onRefresh, balanceVis
                     <NetworkSwitch />
                 </div>
 
-                {active && (
-                    <div className="mt-2.5 flex items-center gap-1.5">
-                        <button
-                            type="button"
-                            onClick={copyActive}
-                            title="Copy address"
-                            className="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-white/[0.08] bg-black/20 py-1 pl-2.5 pr-2 font-mono text-[11px] text-white/60 transition-colors hover:border-white/20 hover:text-white"
-                        >
-                            <span className="truncate">{shortAddress(active.address, 10, 8)}</span>
-                            <Copy className="h-3 w-3 shrink-0" />
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => setEditingId(active.id)}
-                            title="Edit colour and name"
-                            aria-label={`Edit ${active.name}`}
-                            data-wallet-edit
-                            className="inline-flex shrink-0 items-center gap-1 rounded-full border border-white/[0.08] bg-black/20 px-2.5 py-1 text-[11px] font-semibold text-white/60 transition-colors hover:border-white/20 hover:text-white"
-                        >
-                            <Pencil className="h-3 w-3" /> Edit
-                        </button>
-                    </div>
-                )}
-
                 {/* ── balance, with Cham on its branch ── */}
-                <div className="mt-3 flex items-end justify-between gap-2">
+                <div className="mt-2 flex items-end justify-between gap-2">
                     <div className="min-w-0">
                         <div className="flex items-center gap-1">
                             <span className="text-[10px] font-semibold uppercase tracking-wider text-white/45">
@@ -248,20 +224,43 @@ export function WalletProfile({ totalValue, loading, busy, onRefresh, balanceVis
                                 <RefreshCw className={cn('h-3.5 w-3.5', busy && 'animate-spin')} />
                             </button>
                         </div>
-                        <div className="mt-0.5 truncate text-[34px] font-bold leading-none tracking-tight text-white tabular-nums sm:text-4xl" data-wallet-total>
+                        <div className="truncate text-2xl font-bold leading-tight tracking-tight text-white tabular-nums sm:text-[28px]" data-wallet-total>
                             {!balanceVisible
                                 ? '••••••'
                                 : loading
-                                    ? <span className="inline-block h-8 w-36 rounded-lg bg-white/[0.08] align-middle animate-pulse" />
+                                    ? <span className="inline-block h-6 w-28 rounded-md bg-white/[0.08] align-middle animate-pulse" />
                                     : `$${totalValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                         </div>
+                    {active && (
+                        <div className="mt-1.5 flex items-center gap-1.5">
+                            <button
+                                type="button"
+                                onClick={copyActive}
+                                title="Copy address"
+                                className="inline-flex min-w-0 items-center gap-1.5 rounded-full border border-white/[0.08] bg-black/20 py-0.5 pl-2 pr-1.5 font-mono text-[10px] text-white/60 transition-colors hover:border-white/20 hover:text-white"
+                            >
+                                <span className="truncate">{shortAddress(active.address, 10, 8)}</span>
+                                <Copy className="h-3 w-3 shrink-0" />
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setEditingId(active.id)}
+                                title="Edit colour and name"
+                                aria-label={`Edit ${active.name}`}
+                                data-wallet-edit
+                                className="inline-flex shrink-0 items-center gap-1 rounded-full border border-white/[0.08] bg-black/20 px-2 py-0.5 text-[10px] font-semibold text-white/60 transition-colors hover:border-white/20 hover:text-white"
+                            >
+                                <Pencil className="h-3 w-3" /> Edit
+                            </button>
+                        </div>
+                    )}
                     </div>
-                    <Chameleon size={104} tone={color} mood={mood} className="-mb-1 -mr-1 text-white/40" />
+                    <Chameleon size={76} tone={color} mood={mood} className="shrink-0 text-white/40" />
                 </div>
             </div>
 
             {/* ── actions ── */}
-            <div className="flex items-stretch gap-1 border-t border-white/[0.07] px-2 py-1.5">
+            <div className="flex items-stretch gap-1.5 px-3 pb-2.5 sm:px-4">
                 {wdk.isInitialized ? (
                     <>
                         <SendModal>
@@ -284,7 +283,7 @@ export function WalletProfile({ totalValue, loading, busy, onRefresh, balanceVis
                         onClick={() => walletUi.openOnboarding()}
                     />
                 )}
-                <Action icon={<Plus className="h-4 w-4" />} label="Add wallet" onClick={() => walletUi.openConnect()} />
+                <Action icon={<Plus className="h-4 w-4" />} label="Add" onClick={() => walletUi.openConnect()} />
                 {active && (
                     <Action
                         tone="danger"
@@ -302,14 +301,14 @@ export function WalletProfile({ totalValue, loading, busy, onRefresh, balanceVis
                         <span className="text-[10px] font-semibold uppercase tracking-wider text-white/40">Wallets · {wallets.length}</span>
                         <span className="text-[10px] text-white/35">Tap one to make it active</span>
                     </div>
-                    <ul className="max-h-[236px] space-y-1 overflow-y-auto lg-scroll">
+                    <ul className="max-h-[200px] space-y-1 overflow-y-auto lg-scroll">
                         {wallets.map(w => (
                             <WalletRow key={w.id} wallet={w} isMainnet={isMainnet} hidden={!balanceVisible} onPick={() => pick(w.id)} onEdit={() => setEditingId(w.id)} />
                         ))}
                         {mainLocked && (
                             <li>
                                 <button type="button" onClick={() => walletUi.openOnboarding()}
-                                    className="flex w-full items-center gap-2.5 rounded-2xl p-2 text-left hover:bg-white/[0.03]">
+                                    className="flex w-full items-center gap-2.5 rounded-xl p-2 text-left hover:bg-white/[0.03]">
                                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px] border border-white/[0.08] bg-white/[0.04] text-white/40"><Lock className="h-4 w-4" /></span>
                                     <span className="min-w-0 flex-1">
                                         <span className="block text-[13px] font-bold text-white/70">Main Wallet</span>
@@ -321,7 +320,7 @@ export function WalletProfile({ totalValue, loading, busy, onRefresh, balanceVis
                         )}
                     </ul>
                     <button type="button" onClick={() => walletUi.openConnect()}
-                        className="mt-1.5 flex h-10 w-full items-center justify-center gap-1.5 rounded-2xl border border-dashed border-white/[0.16] text-[11px] font-semibold text-white/70 transition-colors hover:border-white/30 hover:bg-white/[0.05] hover:text-white">
+                        className="mt-1.5 flex h-10 w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-white/[0.16] text-[11px] font-semibold text-white/70 transition-colors hover:border-white/30 hover:bg-white/[0.05] hover:text-white">
                         <Plus className="h-3.5 w-3.5" /> Add a wallet
                     </button>
                 </div>

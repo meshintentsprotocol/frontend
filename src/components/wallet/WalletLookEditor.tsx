@@ -91,7 +91,7 @@ export function WalletEditCard({ walletId, onClose }: { walletId: string | null;
 
     return (
         <Dialog open={!!wallet} onOpenChange={o => { if (!o) onClose(); }}>
-            <DialogContent className="lg-panel w-[calc(100%-24px)] max-w-[380px] gap-4 rounded-[28px] p-5 sm:rounded-[28px]">
+            <DialogContent className="lg-panel w-[calc(100%-24px)] max-w-[380px] gap-4 rounded-xl p-5 sm:rounded-xl">
                 {wallet && (
                     <>
                         <div className="flex items-center gap-3 pr-8">
@@ -104,11 +104,11 @@ export function WalletEditCard({ walletId, onClose }: { walletId: string | null;
                         <WalletLookEditor wallet={wallet} />
                         <div className="flex gap-2">
                             <button type="button" onClick={remove}
-                                className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-2xl border border-red-500/20 bg-red-500/[0.06] text-xs font-semibold text-red-300 transition-colors hover:bg-red-500/15">
+                                className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-red-500/20 bg-red-500/[0.06] text-xs font-semibold text-red-300 transition-colors hover:bg-red-500/15">
                                 {wallet.kind === 'main' ? <><Lock className="h-3.5 w-3.5" /> Lock</> : <><Unplug className="h-3.5 w-3.5" /> Disconnect</>}
                             </button>
                             <button type="button" onClick={onClose}
-                                className="h-11 flex-1 rounded-2xl text-xs font-bold text-[#050505] transition-transform active:scale-[0.98]"
+                                className="h-11 flex-1 rounded-xl text-xs font-bold text-[#050505] transition-transform active:scale-[0.98]"
                                 style={{ background: wallet.color }}>
                                 Done
                             </button>

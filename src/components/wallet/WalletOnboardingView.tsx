@@ -25,8 +25,8 @@ const TITLE: Record<Step, string> = {
     unlock: 'Welcome back',
 };
 
-const PRIMARY = 'flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-500 to-emerald-600 px-6 text-sm font-bold text-[#04130b] transition-all duration-300 hover:from-emerald-400 hover:to-emerald-500 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50';
-const SECONDARY = 'flex h-12 w-full items-center justify-center gap-2 rounded-2xl px-6 text-sm font-semibold text-white/80 transition-all lg-well hover:bg-white/[0.08] hover:text-white disabled:opacity-50';
+const PRIMARY = 'flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 px-6 text-sm font-bold text-[#04130b] transition-all duration-300 hover:from-emerald-400 hover:to-emerald-500 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50';
+const SECONDARY = 'flex h-12 w-full items-center justify-center gap-2 rounded-xl px-6 text-sm font-semibold text-white/80 transition-all lg-well hover:bg-white/[0.08] hover:text-white disabled:opacity-50';
 const ERROR = 'rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-400';
 
 export function WalletOnboardingView({ onDone, onBack }: {
@@ -104,7 +104,7 @@ export function WalletOnboardingView({ onDone, onBack }: {
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6 lg-scroll">
-                <div className="lg-card mb-4 flex flex-col items-center rounded-[28px] px-4 pb-4 pt-5 text-center">
+                <div className="lg-card mb-4 flex flex-col items-center rounded-xl px-4 pb-4 pt-5 text-center">
                     {/* key: the head shake replays on every new error */}
                     <Chameleon key={error || 'ok'} size={148} mood={mood} className="text-white/40" />
                     <p className="mt-2 max-w-[300px] text-xs leading-relaxed text-white/55">
@@ -141,10 +141,10 @@ export function WalletOnboardingView({ onDone, onBack }: {
                         <p className="flex items-center gap-1.5 text-xs text-amber-400">
                             <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> Anyone with these words can take your funds.
                         </p>
-                        <div className="relative rounded-2xl p-3 lg-well">
+                        <div className="relative rounded-xl p-3 lg-well">
                             {!showSeed && (
                                 <button type="button" onClick={() => setShowSeed(true)}
-                                    className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-2xl bg-black/80 backdrop-blur-sm">
+                                    className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 rounded-xl bg-black/80 backdrop-blur-sm">
                                     <EyeOff className="h-5 w-5 text-white/40" />
                                     <span className="text-sm text-white/40">Click to reveal</span>
                                 </button>
@@ -188,7 +188,7 @@ export function WalletOnboardingView({ onDone, onBack }: {
                             onChange={e => setImportPhrase(e.target.value)}
                             rows={4}
                             aria-label="Seed phrase"
-                            className="w-full resize-none rounded-2xl px-4 py-3 font-mono text-sm leading-relaxed text-white outline-none transition-all lg-well placeholder:text-white/30 focus:border-emerald-500/50"
+                            className="w-full resize-none rounded-xl px-4 py-3 font-mono text-sm leading-relaxed text-white outline-none transition-all lg-well placeholder:text-white/30 focus:border-emerald-500/50"
                         />
                         {error && <p className={ERROR}>{error}</p>}
                         <button type="button" className={PRIMARY} onClick={handleImport} disabled={loading}>

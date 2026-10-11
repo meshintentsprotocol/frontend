@@ -41,8 +41,8 @@ export function OrderStepList({ steps }: { steps: DialogStep[] }) {
                 <li key={s.key} className="flex items-start gap-3">
                     <StepIcon state={s.state} />
                     <div className="min-w-0 flex-1 pt-0.5">
-                        <div className="flex items-center justify-between gap-2">
-                            <span className={cn('text-sm', s.state === 'pending' ? 'text-white/40' : 'text-white/90', s.state === 'active' && 'font-medium')}>{s.label}</span>
+                        <div className="flex items-start justify-between gap-2">
+                            <span className={cn('min-w-0 break-words text-[13px] sm:text-sm', s.state === 'pending' ? 'text-white/40' : 'text-white/90', s.state === 'active' && 'font-medium')}>{s.label}</span>
                             {s.link && (
                                 <a href={s.link} target="_blank" rel="noopener noreferrer" className="inline-flex shrink-0 items-center gap-1 text-xs text-white/40 hover:text-emerald-400">
                                     View <ExternalLink className="h-3 w-3" />
@@ -65,8 +65,8 @@ const CHAM_TONE: Partial<Record<OrderTone, string>> = { failed: '#f87171', refun
 /** What goes in and what comes out, with Cham showing how it is going. */
 export function OrderSummary({ item }: { item: OrderItem }) {
     return (
-        <div className="lg-well flex items-center justify-between gap-3 rounded-2xl px-4 py-3">
-            <div className="flex min-w-0 items-center gap-2.5">
+        <div className="lg-well flex min-w-0 items-center justify-between gap-2 rounded-xl px-3 py-2.5 sm:gap-3 sm:px-4 sm:py-3">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
                 <TokenChainIcon tokenIcon={item.sell.icon ?? ''} tokenName={item.sell.symbol} chain={item.sell.chain} size="md" />
                 <div className="min-w-0">
                     <div className="truncate text-sm font-semibold text-white">{item.sell.amount} {item.sell.symbol}</div>
@@ -74,7 +74,7 @@ export function OrderSummary({ item }: { item: OrderItem }) {
                 </div>
             </div>
             <ArrowRight className="h-4 w-4 shrink-0 text-white/40" />
-            <div className="flex min-w-0 items-center justify-end gap-2.5">
+            <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
                 <div className="min-w-0 text-right">
                     <div className="truncate text-sm font-semibold text-white">{item.buyApprox ? '≈ ' : ''}{item.buy.amount} {item.buy.symbol}</div>
                     <div className="text-xs text-white/50">{item.buyApprox ? 'You receive' : 'Received'}</div>
@@ -118,7 +118,7 @@ export function OrderDetailsDialog() {
 
     return (
         <Dialog open={!!ref} onOpenChange={o => { if (!o) walletUi.closeOrder(); }}>
-            <DialogContent className="lg-panel max-h-[92dvh] w-[calc(100%-24px)] gap-4 overflow-y-auto rounded-[28px] bg-transparent p-5 sm:max-w-[460px] sm:rounded-[28px] lg-scroll" data-order-card>
+            <DialogContent className="lg-panel max-h-[calc(100dvh-24px)] w-[calc(100vw-24px)] max-w-[460px] gap-3 overflow-y-auto overflow-x-hidden rounded-xl bg-transparent p-4 sm:gap-4 sm:rounded-xl sm:p-5 lg-scroll" data-order-card>
                 {!item ? (
                     <DialogHeader>
                         <DialogTitle>Order</DialogTitle>
@@ -126,7 +126,7 @@ export function OrderDetailsDialog() {
                     </DialogHeader>
                 ) : (
                     <>
-                        <div className="flex items-start justify-between gap-3 pr-6">
+                        <div className="flex min-w-0 items-start justify-between gap-2 pr-6">
                             <DialogHeader className="min-w-0 space-y-1.5 text-left">
                                 <DialogTitle className="flex flex-wrap items-center gap-2 text-base">
                                     {item.kind === 'twap' ? 'TWAP order' : item.kind === 'limit' ? 'Limit order' : 'Swap'}
@@ -136,7 +136,7 @@ export function OrderDetailsDialog() {
                                 <DialogDescription className="text-xs text-white/55">{headline}</DialogDescription>
                                 <p className="text-[11px] text-white/35">{item.route}</p>
                             </DialogHeader>
-                            <Chameleon size={84} mood={CHAM[item.status.tone]} tone={CHAM_TONE[item.status.tone]} className="-mt-1 shrink-0 text-white/35" />
+                            <Chameleon size={84} mood={CHAM[item.status.tone]} tone={CHAM_TONE[item.status.tone]} className="-mt-1 h-auto w-14 shrink-0 text-white/35 sm:w-[84px]" />
                         </div>
 
                         <OrderSummary item={item} />

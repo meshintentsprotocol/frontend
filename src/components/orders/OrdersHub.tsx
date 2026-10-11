@@ -123,7 +123,7 @@ export function OrdersHub({ variant = 'board', filter: wanted, className, style 
         <section
             aria-label="Orders and history"
             data-orders-hub={variant}
-            className={cn('flex min-h-0 flex-col', embedded ? 'flex-1' : 'lg-panel overflow-hidden rounded-3xl', className)}
+            className={cn('flex min-h-0 flex-col', embedded ? 'flex-1' : 'lg-panel overflow-hidden rounded-xl', className)}
             style={style}
         >
             {/* ── open / history, sort, refresh ── */}

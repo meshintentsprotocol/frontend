@@ -20,7 +20,7 @@ export function OrdersPopup() {
     if (isMobile) {
         return (
             <Drawer open={ui.orders} onOpenChange={o => !o && onClose()}>
-                <DrawerContent className="lg-panel h-[88dvh] border-b-0 p-0">
+                <DrawerContent className="lg-panel mt-0 h-[100dvh] rounded-t-xl border-b-0 p-0">
                     <DrawerTitle className="px-4 pb-1 text-base text-white">Orders & History</DrawerTitle>
                     <DrawerDescription className="sr-only">{DESCRIPTION}</DrawerDescription>
                     {ui.orders && <OrdersHub variant="embedded" filter={ui.ordersFilter} className="pb-[env(safe-area-inset-bottom)]" />}
@@ -31,7 +31,7 @@ export function OrdersPopup() {
 
     return (
         <Dialog open={ui.orders} onOpenChange={o => !o && onClose()}>
-            <DialogContent className="lg-panel flex h-[min(680px,calc(100dvh-96px))] max-w-[760px] flex-col gap-0 overflow-hidden rounded-[28px] bg-transparent p-0 sm:rounded-[28px]" data-orders-popup>
+            <DialogContent className="lg-panel flex h-[min(680px,calc(100dvh-96px))] max-w-[760px] flex-col gap-0 overflow-hidden rounded-xl bg-transparent p-0 sm:rounded-xl" data-orders-popup>
                 {/* pr-12 keeps the title clear of the dialog's close button */}
                 <div className="flex h-12 shrink-0 items-center pl-5 pr-12">
                     <DialogTitle className="text-sm font-semibold text-white">Orders & History</DialogTitle>
