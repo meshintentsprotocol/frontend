@@ -658,9 +658,4 @@
   html.wallet-docked body {
     padding-right: 404px;
   }
-
-  /* The header is fixed, so it has to step aside by itself. */
-  html.wallet-docked body header.fixed {
-    right: 404px;
-  }
 }

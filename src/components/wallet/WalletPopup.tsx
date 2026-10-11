@@ -28,7 +28,7 @@ import { Drawer, DrawerContent, DrawerTitle, DrawerDescription } from '@/compone
 // pools, orders, settings), notifications, connecting a wallet, and creating,
 // importing or unlocking the built-in one. Opened from lib/walletUi.ts.
 //
-// It fills the height of the screen on the right edge: lying over the page by
+// It runs from under the header to just above the bottom of the screen, on the right edge: lying over the page by
 // default, docked beside it when the "Dock wallet" setting is on, and a
 // full-height sheet on a phone. The profile is its top band; everything under
 // the tabs gets the rest of the height.
@@ -317,13 +317,16 @@ export function WalletPopup() {
             aria-label="Wallet"
             data-wallet-frame={docked ? 'docked' : 'popup'}
             className={cn(
-                // Full height on the right edge in both modes. A popup lies over the page and closes on a click outside;
-                // docked, it stays and the page makes room for it (index.css).
-                'lg-panel fixed bottom-0 right-0 top-0 z-[100] flex w-[404px] max-w-full flex-col overflow-hidden rounded-none border-y-0 border-r-0',
+                // From under the header to just short of the bottom, on the right edge, in both modes. A popup lies over
+                // the page and closes on a click outside; docked, it stays and the page makes room for it (index.css).
+                'lg-panel fixed bottom-2 right-0 top-20 z-[100] flex w-[404px] max-w-full flex-col overflow-hidden rounded-l-xl border-r-0',
                 'animate-in slide-in-from-right-8 fade-in duration-200',
             )}
         >
             {content}
+            {/* Where the wallet ends: a thin line of light along its bottom edge. */}
+            <div aria-hidden className="pointer-events-none absolute inset-x-8 bottom-0 h-px bg-gradient-to-r from-transparent via-emerald-400/80 to-transparent shadow-[0_0_22px_3px_rgba(16,185,129,0.5)]" />
+            <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-emerald-500/[0.09] to-transparent" />
         </div>
     );
 }
