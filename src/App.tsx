@@ -14,7 +14,7 @@ import { ResolverPage } from "./pages/ResolverPage"
 import CrossChainPage from "./pages/CrossChainPage"
 import CrossOrders from "./pages/CrossOrders"
 import PortfolioPage from './pages/PortfolioPage';
-import PortfolioComingSoonPage from './pages/PortfolioComingSoonPage';
+import { ReferralPage, PointsPage } from './pages/ReferralPointsPages';
 import ProPage from "./pages/ProPage"
 import { MonitorPage } from "./pages/MonitorPage"
 import { SolverPage } from "./pages/SolverPage"
@@ -177,13 +177,13 @@ function App() {
                                                     <Route path="/portfolio/referral" element={
                                                         <div className="flex flex-col min-h-screen">
                                                             <Header />
-                                                            <main className="flex-1 pt-24"><PortfolioComingSoonPage variant="referral" /></main>
+                                                            <main className="flex-1 pt-24"><ReferralPage /></main>
                                                         </div>
                                                     } />
                                                     <Route path="/portfolio/points" element={
                                                         <div className="flex flex-col min-h-screen">
                                                             <Header />
-                                                            <main className="flex-1 pt-24"><PortfolioComingSoonPage variant="points" /></main>
+                                                            <main className="flex-1 pt-24"><PointsPage /></main>
                                                         </div>
                                                     } />
                                                     {adminRoutes}
