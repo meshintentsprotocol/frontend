@@ -84,7 +84,7 @@ export function WalletSecuritySection() {
                         transition={{ duration: 0.6, delay: 0.2 }}
                         className="text-zinc-400 text-base sm:text-lg max-w-2xl mx-auto"
                     >
-                        In DeFi, true security means removing intermediaries and unverified bridges entirely. Intent Wallet enforces mathematical guarantees at every layer.
+                        In DeFi, true security means removing intermediaries and unverified bridges entirely. Cham Wallet enforces mathematical guarantees at every layer.
                     </motion.p>
                 </div>
 

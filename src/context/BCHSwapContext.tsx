@@ -853,7 +853,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
         try {
             const { isMainActive } = activeWalletRef.current;
             if (!isMainActive) {
-                throw new Error('Early cancellation currently requires the main wallet — external wallets (Cashonize/WalletConnect) are not yet supported for this action.');
+                throw new Error('Early cancellation currently requires Cham Wallet — external wallets (Cashonize/WalletConnect) are not yet supported for this action.');
             }
 
             const key = getOrdersKey(wdkRef.current.bchNetwork);

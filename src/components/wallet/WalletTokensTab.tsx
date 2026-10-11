@@ -157,7 +157,7 @@ export function WalletTokensTab({ balanceVisible, activeTokens, loading, onClose
     // True empty state: no main wallet AND no external wallets at all
     if (!wdk.isInitialized && extBCH.wallets.length === 0) {
         return (
-            <EmptyState title="No wallet connected" hint="Create the built-in wallet or connect an external one." />
+            <EmptyState title="No wallet connected" hint="Create a Cham Wallet or connect an external one." />
         );
     }
 

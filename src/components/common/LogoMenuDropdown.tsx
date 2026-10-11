@@ -25,7 +25,7 @@ interface ExploreItem {
 
 const EXPLORE_ITEMS: ExploreItem[] = [
     { name: 'Admin Analytics', path: '/admin', description: 'Real-time swap flows & profits', icon: ShieldCheck },
-    { name: 'Intent Wallet', path: '/wallet', description: 'Crosschain Mobile & Extension', icon: Wallet },
+    { name: 'Cham Wallet', path: '/wallet', description: 'Crosschain Mobile & Extension', icon: Wallet },
     { name: 'Features', path: '/features', description: 'Core protocol capabilities', icon: Zap },
     { name: 'Ecosystem', path: '/ecosystem', description: 'Partners & integrations', icon: Globe },
     { name: 'Integrate', path: '/integrate', description: 'Add BCH Intents to your app', icon: Puzzle },

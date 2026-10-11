@@ -37,7 +37,7 @@ export function WalletDownloadBanner() {
                         </h2>
 
                         <p className="text-zinc-400 text-base sm:text-lg leading-relaxed">
-                            Join thousands of users experiencing seamless cross-chain swaps, native CashTokens, and automated yield with Intent Wallet.
+                            Join thousands of users experiencing seamless cross-chain swaps, native CashTokens, and automated yield with Cham Wallet.
                         </p>
 
                         {/* CTA Buttons */}

@@ -37,10 +37,10 @@ function ScrollProgressBar() {
 export default function WalletPage() {
   return (
     <>
-      <title>Intent Wallet — The Multi-Chain Self-Custody App for BCH, EVM & Solana</title>
+      <title>Cham Wallet — The Multi-Chain Self-Custody App for BCH, EVM & Solana</title>
       <meta 
         name="description" 
-        content="Intent Wallet is a multi-chain, self-custody mobile app and browser extension for cross-chain swaps, native CashTokens, and automated yield across Bitcoin Cash, EVM, and Solana." 
+        content="Cham Wallet is a multi-chain, self-custody mobile app and browser extension for cross-chain swaps, native CashTokens, and automated yield across Bitcoin Cash, EVM, and Solana." 
       />
 
       <div className="flex flex-col min-h-screen bg-[#050505] selection:bg-emerald-500/30 text-foreground">

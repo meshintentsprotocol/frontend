@@ -172,7 +172,7 @@ export function WalletChainsArc() {
                         transition={{ duration: 0.6, delay: 0.2 }}
                         className="text-zinc-400 text-base sm:text-lg max-w-2xl mx-auto"
                     >
-                        Intent Wallet eliminates network switching. Manage Bitcoin Cash UTXOs, EVM tokens, Solana SPL, and MoveVM assets simultaneously with zero RPC configuration.
+                        Cham Wallet eliminates network switching. Manage Bitcoin Cash UTXOs, EVM tokens, Solana SPL, and MoveVM assets simultaneously with zero RPC configuration.
                     </motion.p>
                 </div>
 

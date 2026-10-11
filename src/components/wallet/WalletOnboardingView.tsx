@@ -18,7 +18,7 @@ import { PasswordInput, PasswordStrengthMeter } from './PasswordInput';
 type Step = 'choose' | 'create-show' | 'create-password' | 'import' | 'unlock';
 
 const TITLE: Record<Step, string> = {
-    choose: 'BCH Intents Wallet',
+    choose: 'Cham Wallet',
     'create-show': 'Your recovery phrase',
     'create-password': 'Set a password',
     import: 'Import a wallet',

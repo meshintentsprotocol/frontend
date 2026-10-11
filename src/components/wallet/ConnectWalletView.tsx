@@ -4,11 +4,11 @@
  * wallet yet, the frame opens on it.
  *
  * Offers, in this order:
- *   - the built-in BCH Intents Wallet (create / import / unlock), while it is not unlocked
+ *   - the built-in Cham Wallet (create / import / unlock), while it is not unlocked
  *   - Cashonize (WalletConnect v2) with QR + web wallet deep-link
  *   - Paytaca (WizardConnect default tab, WalletConnect secondary tab)
  *   - Other Wallet (generic WalletConnect v2)
- *   - BCH Intents Wallet (our browser extension, window.bchIntents — no QR)
+ *   - Cham Wallet (our browser extension, window.bchIntents — no QR)
  *
  * An external wallet can be connected with or without the built-in wallet; the
  * one just connected becomes the active wallet, and its colour and name are
@@ -52,7 +52,7 @@ const WALLET_OPTIONS: WalletOption[] = [
     { id: 'cashonize', name: 'Cashonize', description: 'Full CashTokens + BCMR support', iconId: 'cashonize', accent: '#4ade80', method: 'WalletConnect', recommended: true },
     { id: 'paytaca', name: 'Paytaca', description: 'Mobile BCH wallet with WizardConnect', iconId: 'paytaca', accent: '#60a5fa', method: 'WizardConnect' },
     { id: 'other', name: 'Other Wallet', description: 'Any BCH wallet with WalletConnect v2', iconId: 'walletconnect', accent: '#a5b4fc', method: 'WalletConnect' },
-    { id: 'extension', name: 'BCH Intents Wallet', description: 'Browser extension — approve in the wallet, no QR code', iconId: 'bch-intents', accent: '#fbbf24', method: 'Extension' },
+    { id: 'extension', name: 'Cham Wallet Extension', description: 'Browser extension — approve in the wallet, no QR code', iconId: 'bch-intents', accent: '#fbbf24', method: 'Extension' },
 ];
 
 type PaytacaTab = 'wizard' | 'wc';
@@ -222,7 +222,7 @@ export function ConnectWalletView({ onDone }: {
                                 <div className="min-w-0 flex-1">
                                     <div className="text-lg font-bold leading-tight text-white">Welcome</div>
                                     <p className="mt-1 text-xs leading-relaxed text-white/55">
-                                        Use the built-in wallet for every chain, or connect a Bitcoin Cash wallet you already have. You can add more later.
+                                        Use Cham Wallet for every chain, or connect a Bitcoin Cash wallet you already have. You can add more later.
                                     </p>
                                 </div>
                                 <Chameleon size={96} className="-mr-1 text-white/40" />
@@ -244,7 +244,7 @@ export function ConnectWalletView({ onDone }: {
                                     <WalletGlyph size={44} />
                                     <div className="min-w-0 flex-1">
                                         <div className="flex flex-wrap items-center gap-2">
-                                            <span className="text-sm font-bold text-white">BCH Intents Wallet</span>
+                                            <span className="text-sm font-bold text-white">Cham Wallet</span>
                                             <span className={cn(TAG, 'border-emerald-500/25 bg-emerald-500/15 text-emerald-400')}>Built-in</span>
                                         </div>
                                         <p className="mt-0.5 text-[11px] text-white/50">
@@ -393,7 +393,7 @@ export function ConnectWalletView({ onDone }: {
                                     </span>
                                     <p className="text-sm font-bold text-white">Extension not found</p>
                                     <p className="max-w-[300px] text-[11px] text-white/40">
-                                        Install the BCH Intents Wallet extension in this browser (or load its dist folder at chrome://extensions), reload this page, and try again.
+                                        Install the Cham Wallet extension in this browser (or load its dist folder at chrome://extensions), reload this page, and try again.
                                     </p>
                                 </>
                             ) : (

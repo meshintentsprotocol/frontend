@@ -48,7 +48,7 @@ export function WalletBentoOverview() {
                         transition={{ duration: 0.6, delay: 0.2 }}
                         className="text-zinc-400 text-base sm:text-lg max-w-2xl mx-auto"
                     >
-                        Say goodbye to clumsy bridges, gas estimation headaches, and fragmented UTXO wallets. Intent Wallet orchestrates multi-chain liquidity with one unified interface.
+                        Say goodbye to clumsy bridges, gas estimation headaches, and fragmented UTXO wallets. Cham Wallet orchestrates multi-chain liquidity with one unified interface.
                     </motion.p>
                 </div>
 

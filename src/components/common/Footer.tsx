@@ -24,7 +24,7 @@ const footerLinks = {
         { label: 'Order Book', href: '/orderbook' },
     ],
     explore: [
-        { label: 'Intent Wallet', href: '/wallet' },
+        { label: 'Cham Wallet', href: '/wallet' },
         { label: 'Features', href: '/features' },
         { label: 'Ecosystem', href: '/ecosystem' },
         { label: 'Integrate', href: '/integrate' },

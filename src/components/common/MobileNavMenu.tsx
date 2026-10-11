@@ -49,7 +49,7 @@ const LINK_GROUPS: { title: string; links: SubLink[] }[] = [
     {
         title: 'Products',
         links: [
-            { name: 'Intent Wallet', path: '/wallet' },
+            { name: 'Cham Wallet', path: '/wallet' },
             { name: 'Features', path: '/features' },
             { name: 'Ecosystem', path: '/ecosystem' },
             { name: 'Integrate', path: '/integrate' },

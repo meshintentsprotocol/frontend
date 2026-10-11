@@ -9,32 +9,32 @@ interface FAQItem {
 
 const FAQS: FAQItem[] = [
     {
-        question: 'What is Intent Wallet and how does it differ from traditional crypto wallets?',
-        answer: 'Intent Wallet is a multi-chain, self-custodial mobile app and browser extension built for declarative onchain finance. Instead of manually bridging tokens, calculating slippage, and signing multiple approval transactions across disparate networks, you simply express what you want (e.g. "Swap 5 BCH for SOL at current market price"). Decentralized solvers compete to fulfill your order atomically with zero lockup bridges.'
+        question: 'What is Cham Wallet and how does it differ from traditional crypto wallets?',
+        answer: 'Cham Wallet is a multi-chain, self-custodial mobile app and browser extension built for declarative onchain finance. Instead of manually bridging tokens, calculating slippage, and signing multiple approval transactions across disparate networks, you simply express what you want (e.g. "Swap 5 BCH for SOL at current market price"). Decentralized solvers compete to fulfill your order atomically with zero lockup bridges.'
     },
     {
         question: 'How do cross-chain swaps work without wrapped token bridges?',
-        answer: 'Intent Wallet uses Hash Time-Locked Contracts (HTLCs) and CashScript smart covenants. When you submit an intent, solvers lock funds on the destination chain (e.g., Solana SPL) and you lock on the origin chain (e.g., Bitcoin Cash). Once cryptographic pre-images are revealed, settlement executes simultaneously. If a counterparty fails to fulfill, your funds automatically refund upon timeout with zero risk of bridge exploit.'
+        answer: 'Cham Wallet uses Hash Time-Locked Contracts (HTLCs) and CashScript smart covenants. When you submit an intent, solvers lock funds on the destination chain (e.g., Solana SPL) and you lock on the origin chain (e.g., Bitcoin Cash). Once cryptographic pre-images are revealed, settlement executes simultaneously. If a counterparty fails to fulfill, your funds automatically refund upon timeout with zero risk of bridge exploit.'
     },
     {
         question: 'Which blockchains and token standards are supported?',
-        answer: 'Intent Wallet supports Bitcoin Cash (Native UTXO & CashTokens), Solana (SPL tokens), Ethereum (ERC-20), Movement Network (MoveVM), BNB Chain (BEP-20), Arbitrum One, Base, and Monero (XMR via atomic scriptless scripts). New chains are continually added via modular relayer integrations.'
+        answer: 'Cham Wallet supports Bitcoin Cash (Native UTXO & CashTokens), Solana (SPL tokens), Ethereum (ERC-20), Movement Network (MoveVM), BNB Chain (BEP-20), Arbitrum One, Base, and Monero (XMR via atomic scriptless scripts). New chains are continually added via modular relayer integrations.'
     },
     {
-        question: 'Does Intent Wallet have full support for Bitcoin Cash CashTokens?',
-        answer: 'Yes! Intent Wallet is one of the few mobile & extension wallets with native, first-class CashTokens support. You can store, send, receive, and mint both Fungible Tokens (FT) and Non-Fungible Tokens (NFT) on Bitcoin Cash, complete with BCMR onchain metadata resolution and UTXO commitment inspection.'
+        question: 'Does Cham Wallet have full support for Bitcoin Cash CashTokens?',
+        answer: 'Yes! Cham Wallet is one of the few mobile & extension wallets with native, first-class CashTokens support. You can store, send, receive, and mint both Fungible Tokens (FT) and Non-Fungible Tokens (NFT) on Bitcoin Cash, complete with BCMR onchain metadata resolution and UTXO commitment inspection.'
     },
     {
         question: 'How can I earn yield using BCH Mesh inside the wallet?',
-        answer: 'Intent Wallet integrates directly with the BCH Mesh peer-to-peer liquidity protocol. You can deposit idle BCH, CashTokens, or stablecoins into decentralized mesh pools with a single tap. Liquidity providers earn real transaction swap fees paid by active solvers and arbitrageurs.'
+        answer: 'Cham Wallet integrates directly with the BCH Mesh peer-to-peer liquidity protocol. You can deposit idle BCH, CashTokens, or stablecoins into decentralized mesh pools with a single tap. Liquidity providers earn real transaction swap fees paid by active solvers and arbitrageurs.'
     },
     {
-        question: 'Is Intent Wallet non-custodial? Who owns the private keys?',
-        answer: 'Intent Wallet is 100% self-custodial. Your private keys and 12/24-word recovery seed are encrypted locally on your device using AES-256-GCM and stored inside your hardware Secure Enclave or Keychain. No server, developer, or relayer ever has access to your keys.'
+        question: 'Is Cham Wallet non-custodial? Who owns the private keys?',
+        answer: 'Cham Wallet is 100% self-custodial. Your private keys and 12/24-word recovery seed are encrypted locally on your device using AES-256-GCM and stored inside your hardware Secure Enclave or Keychain. No server, developer, or relayer ever has access to your keys.'
     },
     {
-        question: 'How do I install Intent Wallet on my devices?',
-        answer: 'Intent Wallet is available as a Chrome/Brave/Firefox browser extension, an iOS app (via Apple App Store & TestFlight), and an Android app (via Google Play Store & Direct APK). Click any "Download" button on this page to install or join the early beta program.'
+        question: 'How do I install Cham Wallet on my devices?',
+        answer: 'Cham Wallet is available as a Chrome/Brave/Firefox browser extension, an iOS app (via Apple App Store & TestFlight), and an Android app (via Google Play Store & Direct APK). Click any "Download" button on this page to install or join the early beta program.'
     }
 ];
 
@@ -76,7 +76,7 @@ export function WalletFAQ() {
                         transition={{ duration: 0.6, delay: 0.2 }}
                         className="text-zinc-400 text-base sm:text-lg max-w-xl mx-auto"
                     >
-                        Everything you need to know about Intent Wallet, security architecture, and cross-chain mechanics.
+                        Everything you need to know about Cham Wallet, security architecture, and cross-chain mechanics.
                     </motion.p>
                 </div>
 

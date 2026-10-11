@@ -54,7 +54,7 @@ export function WalletDownloadModal({ isOpen, onClose }: WalletDownloadModalProp
                             {/* Header */}
                             <div className="flex items-center justify-between px-6 py-4 border-b border-white/5">
                                 <div>
-                                    <h3 className="text-lg font-bold text-white">Get Intent Wallet</h3>
+                                    <h3 className="text-lg font-bold text-white">Get Cham Wallet</h3>
                                     <p className="text-xs text-zinc-500">Available on all platforms</p>
                                 </div>
                                 <button

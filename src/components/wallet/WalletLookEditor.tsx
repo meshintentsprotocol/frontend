@@ -81,7 +81,7 @@ export function WalletEditCard({ walletId, onClose }: { walletId: string | null;
         if (!wallet) return;
         if (wallet.kind === 'main') {
             wdk.disconnect();
-            toast.success('Main wallet locked');
+            toast.success('Cham Wallet locked');
         } else {
             ext.disconnectWallet(wallet.id);
             toast.success(`${wallet.name} disconnected`);

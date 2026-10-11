@@ -49,7 +49,7 @@ export function ConnectWalletButton({ className, variant = 'cta' }: { className?
                     <Wallet className="relative h-4 w-4" />
                     <span className="relative tracking-tight">
                         {needsMain
-                            ? (wdk.hasStoredWallet ? 'Unlock main wallet' : 'Set up main wallet')
+                            ? (wdk.hasStoredWallet ? 'Unlock Cham Wallet' : 'Set up Cham Wallet')
                             : hasWallet ? 'Add a wallet' : 'Connect'}
                     </span>
                 </button>

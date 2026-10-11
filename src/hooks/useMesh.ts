@@ -215,9 +215,9 @@ export function useMeshSigner(): MeshSignerState {
     const provider = electrumProviderFor(network);
     try {
       if (isMainActive) {
-        if (!wif) return { signer: null, pkh: null, address: null, network, kind: null, label: 'Built-in wallet', unavailable: 'Unlock or create the built-in wallet' };
+        if (!wif) return { signer: null, pkh: null, address: null, network, kind: null, label: 'Cham Wallet', unavailable: 'Unlock or create the built-in wallet' };
         const s = new LocalWifSigner(wif, network, provider);
-        return { signer: s, pkh: s.pkh, address: s.address, network, kind: 'local', label: 'Built-in wallet' };
+        return { signer: s, pkh: s.pkh, address: s.address, network, kind: 'local', label: 'Cham Wallet' };
       }
       if (activeExtWallet) {
         const s = new ExternalWcSigner(activeExtWallet.address, network, provider,

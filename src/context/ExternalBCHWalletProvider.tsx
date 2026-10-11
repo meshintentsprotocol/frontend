@@ -1,7 +1,7 @@
 /**
  * ExternalBCHWalletProvider — manages WalletConnect v2 and WizardConnect
  * sessions for external BCH wallets (Cashonize, Paytaca, etc.), and the
- * BCH Intents Wallet browser extension (window.bchIntents).
+ * Cham Wallet browser extension (window.bchIntents).
  *
  * This context is separate from WDKProvider. It manages:
  *   - Active WC2 / WizardConnect sessions, and the extension connection
@@ -62,7 +62,7 @@ interface ExternalBCHWalletContextType {
     waitForWizardConnect: () => Promise<void>;
 
     /**
-     * Connect the BCH Intents Wallet browser extension. Resolves once the user
+     * Connect the Cham Wallet browser extension. Resolves once the user
      * approved in the extension; rejects with code 'NOT_INSTALLED' when the
      * extension is not there, and 4001 when the user declined.
      */
@@ -168,11 +168,11 @@ async function getWCClient(): Promise<any> {
     return window.__wcBchClientPending;
 }
 
-// ── BCH Intents Wallet extension ─────────────────────────────────────────────
+// ── Cham Wallet extension ─────────────────────────────────────────────
 // The extension injects window.bchIntents at document_start. Reference:
 // bch-intents-wallet-extension/docs/developers/provider-api.md
 
-export const EXTENSION_WALLET_LABEL = 'BCH Intents Wallet';
+export const EXTENSION_WALLET_LABEL = 'Cham Extension';
 
 interface BchIntentsProvider {
     isBCHIntents: true;
@@ -188,7 +188,7 @@ function getExtensionProvider(timeoutMs = 3000): Promise<BchIntentsProvider> {
         const onReady = () => { clearTimeout(timer); resolve(w.bchIntents!); };
         const timer = setTimeout(() => {
             window.removeEventListener('bchIntents#initialized', onReady);
-            reject(Object.assign(new Error('BCH Intents Wallet extension is not installed.'), { code: 'NOT_INSTALLED' }));
+            reject(Object.assign(new Error('Cham Wallet extension is not installed.'), { code: 'NOT_INSTALLED' }));
         }, timeoutMs);
         window.addEventListener('bchIntents#initialized', onReady, { once: true });
     });
@@ -296,7 +296,7 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
-    // ── BCH Intents Wallet extension ─────────────────────────────────────────
+    // ── Cham Wallet extension ─────────────────────────────────────────
     // The extension is the source of truth: it tells us when the user switches
     // account or network, or disconnects this site from the wallet's settings.
 
@@ -632,7 +632,7 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
             // The extension signs for the account that is active in it now.
             const [address] = await provider.request({ method: 'bch_accounts' }) as string[];
             if (address !== wallet.address) {
-                throw new Error('The account in the BCH Intents Wallet changed. Reconnect the extension and try again.');
+                throw new Error('The account in the Cham Wallet extension changed. Reconnect the extension and try again.');
             }
 
             // Same payload as WalletConnect's bch_signTransaction; the extension

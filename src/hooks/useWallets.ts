@@ -46,7 +46,7 @@ export function useWallets() {
         if (wdk.isInitialized && wdk.bchAddress) {
             list.push({
                 id: MAIN_WALLET_ID, kind: 'main', iconId: 'main',
-                name: looks[MAIN_WALLET_ID]?.name || 'Main Wallet',
+                name: looks[MAIN_WALLET_ID]?.name || 'Cham Wallet',
                 address: wdk.bchAddress,
                 color: looks[MAIN_WALLET_ID]?.color || defaultWalletColor(MAIN_WALLET_ID),
                 active: activeWalletId === MAIN_WALLET_ID,

@@ -279,7 +279,7 @@ export function WalletProfile({ totalValue, loading, busy, onRefresh, balanceVis
                 ) : (
                     <Action
                         icon={<KeyRound className="h-4 w-4" />}
-                        label={mainLocked ? 'Unlock main' : 'Built-in wallet'}
+                        label={mainLocked ? 'Unlock Cham' : 'Cham Wallet'}
                         onClick={() => walletUi.openOnboarding()}
                     />
                 )}
@@ -311,7 +311,7 @@ export function WalletProfile({ totalValue, loading, busy, onRefresh, balanceVis
                                     className="flex w-full items-center gap-2.5 rounded-xl p-2 text-left hover:bg-white/[0.03]">
                                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px] border border-white/[0.08] bg-white/[0.04] text-white/40"><Lock className="h-4 w-4" /></span>
                                     <span className="min-w-0 flex-1">
-                                        <span className="block text-[13px] font-bold text-white/70">Main Wallet</span>
+                                        <span className="block text-[13px] font-bold text-white/70">Cham Wallet</span>
                                         <span className="block text-[10px] text-white/40">Locked on this device</span>
                                     </span>
                                     <span className="rounded-full border border-white/[0.1] bg-white/[0.06] px-2.5 py-1 text-[10px] font-semibold text-white">Unlock</span>
