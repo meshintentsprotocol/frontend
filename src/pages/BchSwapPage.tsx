@@ -61,7 +61,7 @@ export default function BchSwapPage() {
         const fresh = known.current ? pending.find(o => !known.current!.has(o.id) && Date.now() - o.createdAt < 60_000) : undefined;
         known.current = ids;
         if (!fresh) return;
-        walletUi.openOrder({ source: 'bch', id: fresh.id });
+        // The order's own card is opened by BCHSwapCard (so it works on the token page too); the page just unfolds the dock.
         setShowDock(true);
     }, [pending]);
 
@@ -103,8 +103,8 @@ export default function BchSwapPage() {
 
                     {/* Orders & History, docked: slides + scales in */}
                     {panelVisible && (
-                        <div className="w-full min-w-0 lg:flex-1 animate-in fade-in slide-in-from-right-10 zoom-in-95 duration-500 ease-out fill-mode-both delay-100">
-                            <OrdersHub filter={filter} style={{ height: 'var(--swap-card-height, auto)', minHeight: 480 }} />
+                        <div className="mt-4 w-full min-w-0 lg:mt-0 lg:flex-1 h-[clamp(460px,72vh,640px)] lg:h-[var(--swap-card-height,auto)] lg:min-h-[480px] animate-in fade-in slide-in-from-right-10 zoom-in-95 duration-500 ease-out fill-mode-both delay-100">
+                            <OrdersHub filter={filter} className="h-full" />
                         </div>
                     )}
                 </div>

@@ -128,6 +128,21 @@ export function WalletProfile({ totalValue, loading, busy, onRefresh, balanceVis
     const [editingId, setEditingId] = useState<string | null>(null);
     const isMainnet = wdk.bchNetwork === 'mainnet';
     const closeEdit = useCallback(() => setEditingId(null), []);
+    const listRef = useRef<HTMLDivElement>(null);
+    const toggleRef = useRef<HTMLButtonElement>(null);
+
+    // The wallet list is a dropdown: a pointer down anywhere else — another part of the wallet, or outside it —
+    // folds it away. (The whole profile unmounts when the wallet closes, so reopening always starts folded.)
+    useEffect(() => {
+        if (!expanded) return;
+        const onDown = (e: PointerEvent) => {
+            const t = e.target as Node;
+            if (listRef.current?.contains(t) || toggleRef.current?.contains(t)) return;
+            setExpanded(false);
+        };
+        document.addEventListener('pointerdown', onDown);
+        return () => document.removeEventListener('pointerdown', onDown);
+    }, [expanded]);
 
     // Cham reacts for a moment (a copy, a switch), then goes back to what the card is showing.
     const [flash, setFlash] = useState<ChamMood | null>(null);
@@ -178,6 +193,7 @@ export function WalletProfile({ totalValue, loading, busy, onRefresh, balanceVis
                     {active ? (
                         <div className="flex min-w-0 items-center gap-2.5">
                             <button
+                                ref={toggleRef}
                                 type="button"
                                 onClick={() => setExpanded(v => !v)}
                                 aria-expanded={expanded}
@@ -296,7 +312,7 @@ export function WalletProfile({ totalValue, loading, busy, onRefresh, balanceVis
 
             {/* ── wallets ── */}
             {expanded && (
-                <div id="wallet-profile-list" className="border-t border-white/[0.07] p-2 animate-in fade-in-50 slide-in-from-top-1 duration-200">
+                <div ref={listRef} id="wallet-profile-list" className="border-t border-white/[0.07] p-2 animate-in fade-in-50 slide-in-from-top-1 duration-200">
                     <div className="flex items-center justify-between px-1.5 pb-1.5 pt-0.5">
                         <span className="text-[10px] font-semibold uppercase tracking-wider text-white/40">Wallets · {wallets.length}</span>
                         <span className="text-[10px] text-white/35">Tap one to make it active</span>

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -36,6 +36,7 @@ import { cashAddressToLockingBytecode, binToHex } from '@bitauth/libauth';
 import { pusdToken, PUSD_MAINNET, PUSD_CHIPNET } from '@/lib/pusd';
 import { useSwapServerCard } from '@/swap-server/useSwapServerCard';
 import { SwapServerButton, SwapServerDetails } from '@/swap-server/SwapServerCardParts';
+import { walletUi } from '@/lib/walletUi';
 
 // ============================================================================
 // BCH Swap Card — Uniswap-style unified swap card
@@ -144,8 +145,20 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
     const { activeWalletId, setActiveWallet, isMainActive, activeExtWallet } = useActiveWallet();
     const extBCH = useExternalBCHWallet();
     const bchWallet = useBCHWallet();
-    const { detectSwapType, executeSwap, isLoading, swapStep } = useBCHSwap();
+    const { detectSwapType, executeSwap, isLoading, swapStep, pendingOrders } = useBCHSwap();
     const wdk = useWDK();
+
+    // A new BCH order (market or limit) opens its own step card, on this page or embedded on a token page.
+    // The swap server's pairs and TWAP open theirs from their own flows.
+    const seenOrderIds = useRef<Set<string> | null>(null);
+    useEffect(() => {
+        const ids = new Set((pendingOrders ?? []).map(o => o.id));
+        if (seenOrderIds.current) {
+            const fresh = (pendingOrders ?? []).find(o => !seenOrderIds.current!.has(o.id) && Date.now() - o.createdAt < 60_000);
+            if (fresh) walletUi.openOrder({ source: 'bch', id: fresh.id });
+        }
+        seenOrderIds.current = ids;
+    }, [pendingOrders]);
 
     // An external wallet's holdings are read from chain by address; the built-in wallet's come from bchWallet.
     const extBalance = useBchAddressBalance({

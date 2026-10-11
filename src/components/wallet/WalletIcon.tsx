@@ -13,16 +13,26 @@ import { cn } from '@/lib/utils';
  * wherever a wallet is shown by colour instead of by brand.
  */
 export function WalletGlyph({ color = '#10b981', size = 40, className }: { color?: string; size?: number; className?: string }) {
+    const radius = Math.round(size * 0.3);
     return (
         <span
-            className={cn('relative inline-flex shrink-0 items-center justify-center transition-[background-color,box-shadow] duration-500', className)}
+            className={cn('relative inline-flex shrink-0 items-center justify-center overflow-hidden transition-[background-color] duration-500', className)}
             style={{
-                width: size, height: size, borderRadius: Math.round(size * 0.3),
-                background: `linear-gradient(145deg, color-mix(in srgb, ${color} 82%, #ffffff) 0%, ${color} 45%, color-mix(in srgb, ${color} 78%, #000000) 100%)`,
-                boxShadow: `inset 0 1px 0 rgba(255,255,255,0.45), inset 0 -1px 0 rgba(0,0,0,0.25), 0 6px 18px -6px ${color}`,
+                width: size, height: size, borderRadius: radius,
+                // A single lit gem: light from the top-left, a thin bright rim, a soft inner floor and a gentle ambient shadow.
+                background: `radial-gradient(130% 115% at 28% 18%, color-mix(in srgb, ${color} 90%, #ffffff) 0%, ${color} 46%, color-mix(in srgb, ${color} 72%, #04110a) 100%)`,
+                boxShadow: [
+                    `inset 0 1px 1px rgba(255,255,255,0.55)`,
+                    `inset 0 0 0 1px color-mix(in srgb, ${color} 50%, #ffffff)`,
+                    `inset 0 -${Math.max(1, size * 0.05)}px ${Math.max(2, size * 0.1)}px rgba(0,0,0,0.3)`,
+                    `0 1px 2px rgba(0,0,0,0.45)`,
+                    `0 ${Math.round(size * 0.18)}px ${Math.round(size * 0.4)}px -${Math.round(size * 0.26)}px color-mix(in srgb, ${color} 65%, transparent)`,
+                ].join(', '),
             }}
         >
-            <Wallet className="text-[#050505]" strokeWidth={2.6} style={{ width: size * 0.52, height: size * 0.52 }} />
+            {/* top sheen */}
+            <span aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-1/2" style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.4), transparent)' }} />
+            <Wallet className="relative text-[#04110a]" strokeWidth={2.4} style={{ width: size * 0.5, height: size * 0.5, filter: 'drop-shadow(0 1px 0.5px rgba(255,255,255,0.35))' }} />
         </span>
     );
 }
