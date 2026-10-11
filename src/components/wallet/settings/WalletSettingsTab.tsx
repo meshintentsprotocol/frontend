@@ -1,16 +1,16 @@
 import { useState } from 'react';
 import {
-    BellRing, BookOpen, Contrast, EyeOff, Info, KeyRound, Languages, Lock, LogOut,
-    Moon, PlugZap, ScrollText, SlidersHorizontal, Sun, Timer, Wallet,
+    BellRing, BookOpen, Contrast, EyeOff, Info, KeyRound, Languages,
+    Moon, PanelRight, PanelsLeftRight, ScrollText, SlidersHorizontal, Sun, Timer, Wallet,
 } from 'lucide-react';
 import { useWDK } from '@/context/WDKProvider';
-import { useExternalBCHWallet } from '@/context/ExternalBCHWalletProvider';
 import { useTheme } from '@/context/theme-provider';
 import { hasStoredWallet } from '@/lib/crypto';
 import {
     AUTO_LOCK_MINUTES_OPTIONS, MUTABLE_TOAST_LEVELS, formatAuctionDuration, getAppSettings,
-    isWalletBackedUp, saveAppSettings,
+    isWalletBackedUp, saveAppSettings, useAppSettings,
 } from '@/lib/appSettings';
+import { walletUi } from '@/lib/walletUi';
 import {
     SegmentedControl, SettingsRow, SettingsSection, SettingsSelect, SettingsSubpage, SettingsSwitch,
 } from './primitives';
@@ -45,19 +45,14 @@ interface WalletSettingsTabProps {
     onBalanceVisibleChange: (visible: boolean) => void;
     /** Opens the wallet-popup's change-password modal (wired by WalletPopup). */
     onChangePassword: () => void;
-    /** Opens the connect-external-wallet modal (wired by WalletPopup). */
-    onConnectExternal: () => void;
-    /** Ends the wallet session (wired by WalletPopup). */
-    onLock: () => void;
 }
 
 export function WalletSettingsTab({
-    balanceVisible, onBalanceVisibleChange, onChangePassword, onConnectExternal, onLock,
+    balanceVisible, onBalanceVisibleChange, onChangePassword,
 }: WalletSettingsTabProps) {
     const [view, setView] = useState<SettingsView>('root');
     const [autoLockMinutes, setAutoLockMinutes] = useState(() => getAppSettings().autoLockMinutes);
     const wdk = useWDK();
-    const extBCH = useExternalBCHWallet();
     const { theme, setTheme } = useTheme();
     const hasEncrypted = hasStoredWallet();
 
@@ -66,7 +61,7 @@ export function WalletSettingsTab({
             <SettingsSubpage title={VIEW_TITLES[view]} onBack={() => setView('root')}>
                 {view === 'trading' && <TradingView />}
                 {view === 'notifications' && <NotificationsView />}
-                {view === 'addresses' && <AddressesView onConnectExternal={onConnectExternal} />}
+                {view === 'addresses' && <AddressesView onConnectExternal={() => walletUi.openConnect()} />}
                 {view === 'recovery' && <RecoveryPhraseView />}
                 {view === 'about' && <AboutView />}
             </SettingsSubpage>
@@ -78,8 +73,7 @@ export function WalletSettingsTab({
         saveAppSettings({ autoLockMinutes: minutes });
     };
 
-    const settings = getAppSettings();
-    const externalCount = extBCH.wallets.length;
+    const settings = useAppSettings();
     // Errors can't be muted, so they always count as on.
     const toastLevels = MUTABLE_TOAST_LEVELS.length + 1;
     const mutedCount = settings.mutedToasts.length;
@@ -144,15 +138,36 @@ export function WalletSettingsTab({
                     />
                 </SettingsSection>
 
+                <SettingsSection title="Layout">
+                    <SettingsRow
+                        icon={PanelRight}
+                        label="Dock wallet to the side"
+                        description="Keeps the wallet open on the right edge. Off: it opens as a popup."
+                        control={
+                            <SettingsSwitch
+                                ariaLabel="Dock wallet to the side"
+                                checked={settings.dockWallet}
+                                onChange={dockWallet => saveAppSettings({ dockWallet })}
+                            />
+                        }
+                    />
+                    <SettingsRow
+                        icon={PanelsLeftRight}
+                        label="Dock orders beside the swap"
+                        description="Shows Orders & History next to the swap card. Off: the history icon opens it as a popup."
+                        control={
+                            <SettingsSwitch
+                                ariaLabel="Dock orders beside the swap"
+                                checked={settings.dockOrders}
+                                onChange={dockOrders => saveAppSettings({ dockOrders })}
+                            />
+                        }
+                    />
+                </SettingsSection>
+
                 {wdk.isInitialized && (
                     <SettingsSection title="Wallet">
                         <SettingsRow icon={Wallet} label="Addresses" onClick={() => setView('addresses')} />
-                        <SettingsRow
-                            icon={PlugZap}
-                            label="Connect external wallet"
-                            value={externalCount > 0 ? `${externalCount} connected` : undefined}
-                            onClick={onConnectExternal}
-                        />
                     </SettingsSection>
                 )}
 
@@ -194,18 +209,6 @@ export function WalletSettingsTab({
                 <p className="px-2 text-[10px] text-white/30">Version {APP_VERSION}</p>
             </div>
 
-            {wdk.isInitialized && (
-                <div className="sticky bottom-0 -mx-3 mt-4 px-3 pt-4 pb-1 bg-gradient-to-t from-[#0A0A0A] via-[#0A0A0A] to-transparent">
-                    <button
-                        type="button"
-                        onClick={onLock}
-                        className="w-full h-11 rounded-2xl flex items-center justify-center gap-2 text-[13px] font-semibold bg-white/[0.06] border border-white/[0.08] text-white/90 hover:bg-white/[0.1] transition-colors"
-                    >
-                        {hasEncrypted ? <Lock className="h-4 w-4" /> : <LogOut className="h-4 w-4" />}
-                        {hasEncrypted ? 'Lock wallet' : 'Disconnect wallet'}
-                    </button>
-                </div>
-            )}
         </div>
     );
 }

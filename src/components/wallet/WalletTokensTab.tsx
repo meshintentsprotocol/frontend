@@ -5,10 +5,8 @@ import { useWDK } from '@/context/WDKProvider';
 import { useExternalBCHWallet, type ExternalBCHWallet } from '@/context/ExternalBCHWalletProvider';
 import { useBchAddressBalance } from '@/hooks/useBchAddressBalance';
 import { useActiveWallet } from '@/hooks/useActiveWallet';
-import { useWallets } from '@/hooks/useWallets';
-import { WalletIcon } from './WalletIcon';
 import { Badge } from '@/components/ui/badge';
-import { ArrowUpRight, ArrowDownRight, ArrowDownLeft, ArrowLeftRight, Copy, Check, ChevronDown, Loader2, Wallet, ExternalLink, ShoppingBag, Wifi, Plus } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, ArrowDownLeft, ArrowLeftRight, Copy, Check, ChevronDown, Loader2, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PortfolioToken } from '@/hooks/usePortfolio';
 import { CauldronService } from '@/lib/cauldron';
@@ -17,6 +15,7 @@ import { SendModal } from '@/components/portfolio/SendModal';
 import { ReceiveModal } from '@/components/portfolio/ReceiveModal';
 import { notifyToast as toast } from '@/lib/notify-toast';
 import { pusdCategory } from '@/lib/pusd';
+import { EmptyState } from '@/components/common/EmptyState';
 // pUSD per network (always shown alongside BCH for external wallets)
 const getPusdCategory = pusdCategory;
 
@@ -81,7 +80,6 @@ interface WalletTokensTabProps {
     loading?: boolean;
     /** Closes the wallet popup — used when navigating away (Swap). */
     onClose?: () => void;
-    onConnectExternal?: () => void;
 }
 
 // Action card inside an expanded token row.
@@ -94,7 +92,7 @@ interface TokenData {
     change24h: number;
 }
 
-export function WalletTokensTab({ balanceVisible, activeTokens, loading, onClose, onConnectExternal }: WalletTokensTabProps) {
+export function WalletTokensTab({ balanceVisible, activeTokens, loading, onClose }: WalletTokensTabProps) {
     const bchWallet = useBCHWallet();
     const wdk = useWDK();
     const extBCH = useExternalBCHWallet();
@@ -107,10 +105,9 @@ export function WalletTokensTab({ balanceVisible, activeTokens, loading, onClose
     const [chainFilter, setChainFilter] = useState<string>(DEFAULT_CHAIN);
     
     // Global active wallet state
-    const { activeWalletId, setActiveWalletId } = useActiveWallet();
+    const { activeWalletId } = useActiveWallet();
 
     const activeExtWallet = extBCH.wallets.find(w => w.id === activeWalletId);
-    const { wallets: connectedWallets } = useWallets();
     
     // Always call hook, but it only fetches if address is not null
     const { data: extData, isLoading: isExtLoading } = useBchAddressBalance({
@@ -160,13 +157,7 @@ export function WalletTokensTab({ balanceVisible, activeTokens, loading, onClose
     // True empty state: no main wallet AND no external wallets at all
     if (!wdk.isInitialized && extBCH.wallets.length === 0) {
         return (
-            <div className="flex flex-col items-center justify-center py-10 text-center px-4">
-                <Wallet className="h-10 w-10 text-muted-foreground/30 mb-3" />
-                <p className="text-sm text-muted-foreground">No wallet connected</p>
-                <p className="text-[10px] text-muted-foreground/60 mt-1">
-                    Create the built-in wallet or connect an external one
-                </p>
-            </div>
+            <EmptyState title="No wallet connected" hint="Create the built-in wallet or connect an external one." />
         );
     }
 
@@ -319,49 +310,7 @@ export function WalletTokensTab({ balanceVisible, activeTokens, loading, onClose
     );
 
     return (
-        <div className="space-y-1">
-            {/* Global Wallet Switcher — ALWAYS shown */}
-            <div className="flex items-center justify-between px-1 py-2 mb-2 border-b border-white/[0.04]">
-                <div className="flex flex-wrap gap-1.5 flex-1 min-w-0">
-                    {/* One chip per connected wallet, in its own colour */}
-                    {connectedWallets.map(w => (
-                        <button
-                            key={w.id}
-                            onClick={() => setActiveWalletId(w.id)}
-                            aria-pressed={w.active}
-                            title={w.address}
-                            className={cn(
-                                "flex items-center gap-1.5 pl-1 pr-2.5 py-1 rounded-lg text-xs font-bold transition-all max-w-[140px] border",
-                                w.active ? "bg-white/[0.06]" : "bg-white/[0.02] text-white/40 border-white/[0.05] hover:bg-white/[0.05] hover:text-white/60"
-                            )}
-                            style={w.active ? { color: w.color, borderColor: `${w.color}55` } : undefined}
-                        >
-                            <WalletIcon id={w.iconId} color={w.active ? w.color : undefined} size={20} />
-                            <span className="truncate">{w.kind === 'main' ? 'Main' : w.name}</span>
-                        </button>
-                    ))}
-                    {/* Main wallet exists on this device but is locked */}
-                    {!wdk.isInitialized && wdk.hasStoredWallet && (
-                        <div
-                            title="Main wallet is locked"
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-white/[0.01] text-white/20 border border-white/[0.04] cursor-not-allowed select-none"
-                        >
-                            <Wallet className="h-3.5 w-3.5" />
-                            Main
-                            <span className="text-[8px] px-1 py-0.5 rounded bg-white/[0.04] text-white/25">🔒</span>
-                        </div>
-                    )}
-                    <button
-                        onClick={onConnectExternal}
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-white/[0.02] text-white/40 border border-dashed border-white/[0.15] hover:bg-white/[0.05] hover:text-white/80 hover:border-white/30"
-                        title="Add a wallet"
-                    >
-                        <Plus className="h-3.5 w-3.5 flex-shrink-0" />
-                        <span className="truncate">Add</span>
-                    </button>
-                </div>
-            </div>
-
+        <div className="space-y-1 pt-2">
             {/* Chain filter — only when there is more than one chain to choose from */}
             {chains.length > 1 && (
                 <div role="tablist" aria-label="Filter by chain" className="flex gap-1.5 overflow-x-auto px-1 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -387,11 +336,7 @@ export function WalletTokensTab({ balanceVisible, activeTokens, loading, onClose
                 </span>
             </div>
 
-            {visibleTokens.length === 0 && (
-                <div className="text-center py-8 text-xs text-muted-foreground">
-                    No assets to display
-                </div>
-            )}
+            {visibleTokens.length === 0 && <EmptyState title="No assets to display" hint="Tokens this wallet holds show up here." size="sm" />}
 
             {visibleTokens.map((token) => {
                 const { balance, valueUsd, change24h } = getTokenData(token);
@@ -427,7 +372,7 @@ export function WalletTokensTab({ balanceVisible, activeTokens, loading, onClose
                                         </Badge>
                                         <ExternalLink className="h-2.5 w-2.5 text-muted-foreground/30 group-hover:text-muted-foreground/60 transition-colors" />
                                     </div>
-                                    <span className="text-[11px] text-muted-foreground">{token.name}</span>
+                                    <span className="block truncate text-[11px] text-muted-foreground">{token.name}</span>
                                 </div>
                             </div>
 

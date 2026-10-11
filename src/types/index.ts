@@ -80,6 +80,8 @@ export interface TwapSliceView {
     startBuyAmount?:   string;
     endBuyAmount?:     string;
     startTime?:        number;
+    /** Unix seconds: when the slice intent was created. */
+    createdAt?:        number;
     duration?:         number;
     refundEligibleAt:  number;
     fillTxid?:         string;

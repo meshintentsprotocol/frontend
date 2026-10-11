@@ -565,3 +565,97 @@
     cursor: grab;
   }
 }
+
+/* ============================================================
+   LIQUID GLASS — the wallet's surfaces
+   ============================================================
+   The same recipe as the extension's glass(): a translucent, blurred and
+   saturated surface with a lit top edge. Kept dark in both themes, because
+   everything drawn on it uses the white-on-dark palette.
+
+   .lg-panel   the outer surface: wallet panel, orders board, dialogs
+   .lg-card    a raised card on a panel; set --lg-tint to colour its glow
+   .lg-well    a recessed row or field on a panel
+   .lg-scroll  the thin scrollbar that goes with them
+   ============================================================ */
+@layer components {
+  .lg-panel {
+    background: linear-gradient(180deg, hsla(240, 10%, 13%, 0.74) 0%, hsla(240, 10%, 6%, 0.88) 100%);
+    -webkit-backdrop-filter: blur(28px) saturate(180%);
+    backdrop-filter: blur(28px) saturate(180%);
+    border: 1px solid hsla(0, 0%, 100%, 0.09);
+    box-shadow:
+      inset 0 1px 0 hsla(0, 0%, 100%, 0.12),
+      0 30px 80px -28px rgba(0, 0, 0, 0.85),
+      0 8px 24px -12px rgba(0, 0, 0, 0.6);
+  }
+
+  /* Without backdrop-filter the surface must carry itself. */
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .lg-panel {
+      background: hsl(240, 10%, 7%);
+    }
+  }
+
+  .lg-card {
+    position: relative;
+    isolation: isolate;
+    background:
+      radial-gradient(130% 100% at 0% 0%, color-mix(in srgb, var(--lg-tint, #10b981) 20%, transparent) 0%, transparent 58%),
+      radial-gradient(90% 80% at 100% 100%, color-mix(in srgb, var(--lg-tint, #10b981) 9%, transparent) 0%, transparent 60%),
+      linear-gradient(180deg, hsla(0, 0%, 100%, 0.07), hsla(0, 0%, 100%, 0.025));
+    border: 1px solid hsla(0, 0%, 100%, 0.1);
+    box-shadow:
+      inset 0 1px 0 hsla(0, 0%, 100%, 0.16),
+      inset 0 -1px 0 hsla(0, 0%, 0%, 0.25),
+      0 18px 40px -26px color-mix(in srgb, var(--lg-tint, #10b981) 60%, transparent);
+  }
+
+  /* The sheen: light catching the top-left corner. */
+  .lg-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    pointer-events: none;
+    background: linear-gradient(115deg, hsla(0, 0%, 100%, 0.09) 0%, transparent 32%, transparent 70%, hsla(0, 0%, 100%, 0.03) 100%);
+  }
+
+  .lg-well {
+    background: hsla(0, 0%, 100%, 0.035);
+    border: 1px solid hsla(0, 0%, 100%, 0.06);
+    box-shadow: inset 0 1px 0 hsla(0, 0%, 100%, 0.04);
+  }
+
+  .lg-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: hsla(0, 0%, 100%, 0.12) transparent;
+  }
+
+  .lg-scroll::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .lg-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .lg-scroll::-webkit-scrollbar-thumb {
+    background: hsla(0, 0%, 100%, 0.12);
+    border-radius: 3px;
+  }
+
+  .lg-scroll::-webkit-scrollbar-thumb:hover {
+    background: hsla(0, 0%, 100%, 0.22);
+  }
+}
+
+/* The wallet docked to the right edge (a setting). On a wide screen the page makes room for it;
+   on a narrower one it sits over the page, like a drawer. */
+@media (min-width: 1536px) {
+  html.wallet-docked body {
+    padding-right: 404px;
+  }
+}

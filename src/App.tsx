@@ -51,6 +51,7 @@ import { AdminPoolPage } from "./pages/AdminPoolPage"
 import { WDKProvider } from "./context/WDKProvider"
 import { ExternalBCHWalletProvider } from "./context/ExternalBCHWalletProvider"
 import { PWAUpdatePrompt } from "./components/common/PWAUpdatePrompt"
+import { WalletUiRoot } from "./components/wallet/WalletUiRoot"
 
 // Developer docs are a self-contained subtree, loaded on demand.
 const DocsApp = lazy(() => import("./docs/DocsApp"))
@@ -278,6 +279,8 @@ function App() {
                                                         </div>
                                                     } />
                                                 </Routes>
+                                                {/* The wallet frame, the orders board and the order card: one of each for the whole app. */}
+                                                <WalletUiRoot />
                                                 </SwapServerRoot>
                                             </BCHSwapProvider>
                                         </BCHWalletProvider>

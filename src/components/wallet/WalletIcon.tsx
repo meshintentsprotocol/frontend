@@ -8,6 +8,25 @@ import { cn } from '@/lib/utils';
  * the real logos (see the README next to them). A missing file falls back to
  * a generic wallet glyph.
  */
+/**
+ * The wallet as a solid tile in its own colour: the header's wallet button, and
+ * wherever a wallet is shown by colour instead of by brand.
+ */
+export function WalletGlyph({ color = '#10b981', size = 40, className }: { color?: string; size?: number; className?: string }) {
+    return (
+        <span
+            className={cn('relative inline-flex shrink-0 items-center justify-center transition-[background-color,box-shadow] duration-500', className)}
+            style={{
+                width: size, height: size, borderRadius: Math.round(size * 0.3),
+                background: `linear-gradient(145deg, color-mix(in srgb, ${color} 82%, #ffffff) 0%, ${color} 45%, color-mix(in srgb, ${color} 78%, #000000) 100%)`,
+                boxShadow: `inset 0 1px 0 rgba(255,255,255,0.45), inset 0 -1px 0 rgba(0,0,0,0.25), 0 6px 18px -6px ${color}`,
+            }}
+        >
+            <Wallet className="text-[#050505]" strokeWidth={2.6} style={{ width: size * 0.52, height: size * 0.52 }} />
+        </span>
+    );
+}
+
 export function WalletIcon({ id, color, size = 36, active, className }: {
     /** 'main' | 'cashonize' | 'paytaca' | 'walletconnect' | 'bch-intents' */
     id: string;

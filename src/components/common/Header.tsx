@@ -4,7 +4,7 @@ import { ConnectWalletButton } from '@/components/connect-wallet-button';
 import { TokenSearchModal } from '@/components/common/TokenSearchModal';
 import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { useWDK } from '@/context/WDKProvider';
+import { NetworkBadge } from '@/components/wallet/NetworkControl';
 
 import { MeshNavDropdown } from '@/components/common/MeshNavDropdown';
 import { TradeNavDropdown } from '@/components/common/TradeNavDropdown';
@@ -15,8 +15,6 @@ import { MobileNavMenu } from '@/components/common/MobileNavMenu';
 export function Header() {
     const [searchOpen, setSearchOpen] = useState(false);
     const location = useLocation();
-    const wdk = useWDK();
-    const isMainnet = wdk.bchNetwork === 'mainnet';
 
     // Listen for search open events dispatched from the wallet pill
     useEffect(() => {
@@ -116,64 +114,14 @@ export function Header() {
                     </nav>
                 </div>
 
-                {/* ── Right Section: Search + Network toggle + Connect Wallet ── */}
+                {/* ── Right Section: network badge + wallet ── */}
                 <div className="hidden lg:flex items-center gap-3 shrink-0">
                     {/* Programmatic modal for cross-component open-token-search event */}
                     <TokenSearchModal open={searchOpen} onOpenChange={setSearchOpen}>
                         <span />
                     </TokenSearchModal>
-                    {/* Network segmented toggle — sliding indicator */}
-                    <div
-                        role="tablist"
-                        aria-label="Network"
-                        className={cn(
-                            "relative flex h-10 w-[176px] items-center rounded-xl p-1 bg-[#0A0A0A]/60 backdrop-blur-xl border transition-all duration-300",
-                            isMainnet
-                                ? "border-emerald-500/30 shadow-[0_0_0_1px_rgba(16,185,129,0.08)_inset,0_4px_20px_-8px_rgba(16,185,129,0.4)]"
-                                : "border-white/10 shadow-[0_0_0_1px_rgba(255,255,255,0.04)_inset]"
-                        )}
-                    >
-                        {/* Sliding indicator — spring-eased switch */}
-                        <span
-                            aria-hidden
-                            className={cn(
-                                "absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-lg",
-                                "transition-[left,background-color,box-shadow] duration-300 ease-[cubic-bezier(0.34,1.4,0.64,1)]",
-                                isMainnet
-                                    ? "left-[calc(50%+0px)] bg-gradient-to-br from-emerald-500/30 to-emerald-600/20 border border-emerald-400/40 shadow-[0_0_12px_rgba(16,185,129,0.4)]"
-                                    : "left-1 bg-white/[0.08] border border-white/10"
-                            )}
-                        />
-
-                        <button
-                            role="tab"
-                            aria-selected={!isMainnet}
-                            onClick={() => wdk.setBchNetwork('chipnet')}
-                            className={cn(
-                                "relative z-10 flex-1 h-8 rounded-lg text-xs font-semibold transition-colors duration-200 active:scale-95",
-                                !isMainnet ? "text-white" : "text-zinc-500 hover:text-zinc-300"
-                            )}
-                        >
-                            Testnet
-                        </button>
-                        <button
-                            role="tab"
-                            aria-selected={isMainnet}
-                            onClick={() => wdk.setBchNetwork('mainnet')}
-                            className={cn(
-                                "relative z-10 flex-1 h-8 rounded-lg text-xs font-semibold transition-colors duration-200 active:scale-95 flex items-center justify-center gap-1",
-                                isMainnet ? "text-emerald-300" : "text-zinc-500 hover:text-zinc-300"
-                            )}
-                        >
-                            {isMainnet && (
-                                <span className="relative flex h-1.5 w-1.5">
-                                    <span className="absolute inset-0 animate-ping rounded-full bg-emerald-400/70" />
-                                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                                </span>
-                            )}
-                            Mainnet
-                        </button>
-                    </div>
+                    {/* Which network is on. The switch itself is in the wallet's profile. */}
+                    <NetworkBadge />
 
                     <ConnectWalletButton variant="header" />
                 </div>

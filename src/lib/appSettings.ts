@@ -3,9 +3,15 @@
  *
  * Holds trading defaults (auction duration, max slippage), the wallet
  * auto-lock timeout, the hide-balances preference, which toast levels are
- * muted, and which wallets have confirmed a recovery-phrase backup. Kept as an
- * object so more preferences can be added without changing the storage shape.
+ * muted, which wallets have confirmed a recovery-phrase backup, and whether the
+ * wallet and the orders board dock to the side. Kept as an object so more
+ * preferences can be added without changing the storage shape.
+ *
+ * `useAppSettings()` re-renders its caller when a setting changes, in this tab or
+ * another one. `getAppSettings()` is the plain read for code outside React.
  */
+
+import { useSyncExternalStore } from 'react';
 
 const STORAGE_KEY = 'intent_app_settings_v1';
 
@@ -52,6 +58,10 @@ export interface AppSettings {
     mutedToasts: MutableToastLevel[];
     /** Wallets (by EVM address, lower-case) whose owner confirmed a recovery-phrase backup. */
     backedUpWallets: string[];
+    /** Keep the wallet docked to the right edge of the screen instead of opening it as a popup. */
+    dockWallet: boolean;
+    /** Show Orders & History beside the swap card instead of opening it as a popup. */
+    dockOrders: boolean;
 }
 
 const DEFAULTS: AppSettings = {
@@ -61,6 +71,8 @@ const DEFAULTS: AppSettings = {
     defaultSlippageBps: SLIPPAGE_BPS_DEFAULT,
     mutedToasts: [],
     backedUpWallets: [],
+    dockWallet: false,
+    dockOrders: false,
 };
 
 function clampAuction(seconds: number): number {
@@ -97,10 +109,37 @@ export function getAppSettings(): AppSettings {
             defaultSlippageBps: validSlippage(parsed.defaultSlippageBps),
             mutedToasts: validMuted(parsed.mutedToasts),
             backedUpWallets: validWallets(parsed.backedUpWallets),
+            dockWallet: parsed.dockWallet === true,
+            dockOrders: parsed.dockOrders === true,
         };
     } catch {
         return { ...DEFAULTS };
     }
+}
+
+// One parsed copy for React: useSyncExternalStore needs the same object back until something changes.
+let snapshot: AppSettings | null = null;
+const listeners = new Set<() => void>();
+
+function changed() {
+    snapshot = null;
+    for (const l of listeners) l();
+}
+
+function subscribe(listener: () => void) {
+    listeners.add(listener);
+    return () => { listeners.delete(listener); };
+}
+
+const readSnapshot = () => (snapshot ??= getAppSettings());
+
+if (typeof window !== 'undefined') {
+    window.addEventListener('storage', e => { if (e.key === STORAGE_KEY) changed(); });
+}
+
+/** The settings, live: the component re-renders when any of them is saved. */
+export function useAppSettings(): AppSettings {
+    return useSyncExternalStore(subscribe, readSnapshot, readSnapshot);
 }
 
 /** Convenience reader for the default auction duration (seconds). */
@@ -137,8 +176,11 @@ export function saveAppSettings(patch: Partial<AppSettings>): void {
         next.autoLockMinutes = validAutoLock(next.autoLockMinutes);
         next.defaultSlippageBps = validSlippage(next.defaultSlippageBps);
         next.mutedToasts = validMuted(next.mutedToasts);
+        next.dockWallet = next.dockWallet === true;
+        next.dockOrders = next.dockOrders === true;
         localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     } catch {
         /* storage unavailable — non-fatal */
     }
+    changed();
 }

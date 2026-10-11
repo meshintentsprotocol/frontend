@@ -1,48 +1,37 @@
-import { useState, useEffect, useRef } from 'react';
-import { X, Wallet, Bell, LogOut, RefreshCw, Eye, EyeOff, CheckCircle2, Clock, XCircle, Settings, Plus } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { X, Bell, CheckCircle2, Clock, XCircle, PanelRightClose, PanelRightOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useWDK } from '@/context/WDKProvider';
-import { useExternalBCHWallet } from '@/context/ExternalBCHWalletProvider';
 import { WalletTokensTab } from './WalletTokensTab';
-import { WalletOrdersTab } from './WalletOrdersTab';
 import { WalletPoolsTab } from './WalletPoolsTab';
-import { WalletHistoryTab } from './WalletHistoryTab';
 import { WalletSettingsTab } from './settings/WalletSettingsTab';
 import { ChangePasswordModal } from './ChangePasswordModal';
-import { ConnectExternalWalletModal } from './ConnectExternalWalletModal';
+import { WalletProfile } from './WalletProfile';
+import { ConnectWalletView } from './ConnectWalletView';
+import { WalletOnboardingView } from './WalletOnboardingView';
+import { Chameleon } from './Chameleon';
+import { OrdersHub } from '@/components/orders/OrdersHub';
 
-import { getAppSettings, saveAppSettings } from '@/lib/appSettings';
-import { notifyToast as toast } from '@/lib/notify-toast';
-import {
-    setNotifNetwork, markNotificationsSeen, readNotifications, clearNotifications,
-} from '@/lib/notifications';
+import { saveAppSettings, useAppSettings } from '@/lib/appSettings';
+import { setNotifNetwork, markNotificationsSeen, readNotifications, clearNotifications } from '@/lib/notifications';
 import type { StoredNotification } from '@/lib/notifications';
 import { usePortfolio } from '@/hooks/usePortfolio';
-import { useWallets, shortAddress } from '@/hooks/useWallets';
-import { WalletIcon } from './WalletIcon';
+import { useWallets } from '@/hooks/useWallets';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { walletUi, useWalletUi, type WalletSubTab } from '@/lib/walletUi';
 import { Drawer, DrawerContent, DrawerTitle, DrawerDescription } from '@/components/ui/drawer';
 
 // ============================================================================
-// Wallet Popup — Multi-tab wallet panel for the navbar
+// Wallet Popup — the wallet frame
 // ============================================================================
+// One frame for everything about wallets: the wallet itself (profile, tokens,
+// pools, orders, settings), notifications, connecting a wallet, and creating,
+// importing or unlocking the built-in one. Opened from lib/walletUi.ts.
+//
+// It is a popup under the header by default, a panel docked to the right edge
+// when the "Dock wallet" setting is on, and a bottom sheet on a phone.
 
-type TopTab = 'wallet' | 'notifications';
-type SubTab = 'tokens' | 'pools' | 'orders' | 'history' | 'settings';
-
-// ============================================================================
-// Notifications Panel — Shows captured toast/notification events
-// ============================================================================
-
-// The notification store moved to @/lib/notifications: keeping it here made
-// notify-toast.ts import a component module, which became a real import cycle
-// once this file started using notifyToast itself.
-// Re-exported so existing importers of this module keep working.
-export {
-    setNotifNetwork, pushNotification, markNotificationsSeen, hasUnseenNotifications,
-} from '@/lib/notifications';
-export type { StoredNotification } from '@/lib/notifications';
+const SUB_TABS: WalletSubTab[] = ['tokens', 'pools', 'orders', 'settings'];
 
 function getTimeAgo(ts: number): string {
     const diff = Date.now() - ts;
@@ -74,57 +63,38 @@ function NotificationsPanel() {
     };
 
     const typeConfig: Record<string, { icon: React.ReactNode; color: string }> = {
-        success: { icon: <CheckCircle2 className="h-4 w-4 text-emerald-400" />, color: 'border-emerald-500/30' },
-        error: { icon: <XCircle className="h-4 w-4 text-red-400" />, color: 'border-red-500/30' },
-        info: { icon: <Bell className="h-4 w-4 text-blue-400" />, color: 'border-blue-500/30' },
-        warning: { icon: <Clock className="h-4 w-4 text-yellow-400" />, color: 'border-yellow-500/30' },
+        success: { icon: <CheckCircle2 className="h-4 w-4 text-emerald-400" />, color: 'border-emerald-500/40' },
+        error: { icon: <XCircle className="h-4 w-4 text-red-400" />, color: 'border-red-500/40' },
+        info: { icon: <Bell className="h-4 w-4 text-blue-400" />, color: 'border-blue-500/40' },
+        warning: { icon: <Clock className="h-4 w-4 text-yellow-400" />, color: 'border-yellow-500/40' },
     };
 
     if (notifications.length === 0) {
         return (
-            <div className="flex-1 px-4 py-10 text-center">
-                <Bell className="h-10 w-10 mx-auto text-muted-foreground/20 mb-3" />
-                <p className="text-sm text-muted-foreground">No notifications yet</p>
-                <p className="text-[10px] text-muted-foreground/60 mt-1">
-                    Toast events will appear here
-                </p>
+            <div className="flex flex-1 flex-col items-center justify-center px-4 py-10 text-center">
+                <Chameleon size={120} className="text-white/30" />
+                <p className="mt-3 text-sm font-semibold text-white/80">No notifications yet</p>
+                <p className="mt-1 text-[11px] text-white/40">Swaps, orders and wallet events show up here.</p>
             </div>
         );
     }
 
     return (
-        <div className="flex-1 overflow-y-auto min-h-0 px-3 pb-3 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/10">
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4 lg-scroll">
             <div className="flex items-center justify-between px-1 py-2">
-                <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                    {notifications.length} Notifications
-                </span>
-                <button
-                    onClick={clearAll}
-                    className="text-[10px] text-muted-foreground hover:text-red-400 transition-colors"
-                >
-                    Clear All
-                </button>
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-white/40">{notifications.length} Notifications</span>
+                <button type="button" onClick={clearAll} className="text-[10px] font-semibold text-white/40 transition-colors hover:text-red-400">Clear All</button>
             </div>
             <div className="space-y-1.5">
                 {notifications.map(notif => {
                     const cfg = typeConfig[notif.type] || typeConfig.info;
                     return (
-                        <div
-                            key={notif.id}
-                            className={cn(
-                                "flex items-start gap-2.5 p-2.5 rounded-lg border-l-2 bg-white/[0.02] hover:bg-white/[0.04] transition-colors",
-                                cfg.color
-                            )}
-                        >
+                        <div key={notif.id} className={cn('flex items-start gap-2.5 rounded-xl border-l-2 bg-white/[0.03] p-2.5 transition-colors hover:bg-white/[0.05]', cfg.color)}>
                             <div className="mt-0.5 flex-shrink-0">{cfg.icon}</div>
-                            <div className="flex-1 min-w-0">
-                                <div className="text-xs font-medium text-foreground">{notif.message}</div>
-                                {notif.description && (
-                                    <div className="text-[10px] text-muted-foreground mt-0.5 line-clamp-2">{notif.description}</div>
-                                )}
-                                <div className="text-[9px] text-muted-foreground/60 mt-0.5">
-                                    {getTimeAgo(notif.timestamp)}
-                                </div>
+                            <div className="min-w-0 flex-1">
+                                <div className="text-xs font-medium text-white">{notif.message}</div>
+                                {notif.description && <div className="mt-0.5 line-clamp-2 text-[10px] text-white/50">{notif.description}</div>}
+                                <div className="mt-0.5 text-[9px] text-white/35">{getTimeAgo(notif.timestamp)}</div>
                             </div>
                         </div>
                     );
@@ -134,51 +104,48 @@ function NotificationsPanel() {
     );
 }
 
-interface WalletPopupProps {
-    open: boolean;
-    onClose: () => void;
-    /** Top tab to show when opened (e.g. 'notifications' from the navbar bell). */
-    initialTab?: TopTab;
-}
+const BAR_BUTTON = 'flex h-8 w-8 items-center justify-center rounded-lg text-white/45 transition-colors hover:bg-white/[0.07] hover:text-white';
 
-export function WalletPopup({ open, onClose, initialTab }: WalletPopupProps) {
-    const [topTab, setTopTab] = useState<TopTab>('wallet');
-    const [subTab, setSubTab] = useState<SubTab>('tokens');
-    const [balanceVisible, setBalanceVisibleState] = useState(() => !getAppSettings().hideBalances);
-    const [showChangePwd, setShowChangePwd] = useState(false);
-    const [showConnectExt, setShowConnectExt] = useState(false);
-    const panelRef = useRef<HTMLDivElement>(null);
+export function WalletPopup() {
+    const ui = useWalletUi();
+    const open = ui.wallet;
+    const settings = useAppSettings();
     const isMobile = useIsMobile();
+    const docked = settings.dockWallet && !isMobile;
+
+    const [subTab, setSubTab] = useState<WalletSubTab>('tokens');
+    const [showChangePwd, setShowChangePwd] = useState(false);
+    const [refreshing, setRefreshing] = useState(false);
+    const panelRef = useRef<HTMLDivElement>(null);
 
     const wdk = useWDK();
-    const extBCH = useExternalBCHWallet();
-    const { active: activeWallet } = useWallets();
+    const { hasWallet } = useWallets();
+    const balanceVisible = !settings.hideBalances;
+
+    // With no wallet there is nothing to show but the way to get one.
+    const view = ui.walletView === 'home' && !hasWallet ? 'connect' : ui.walletView;
+    const onClose = walletUi.closeWallet;
 
     // Keep module-level _activeNetwork in sync so pushNotification() writes to the right key
     useEffect(() => { setNotifNetwork(wdk.bchNetwork); }, [wdk.bchNetwork]);
 
-    // Honour the requested tab whenever the popup is opened from the navbar.
-    useEffect(() => {
-        if (open && initialTab) setTopTab(initialTab);
-    }, [open, initialTab]);
+    // An opener may ask for a particular tab (the orders board, settings).
+    useEffect(() => { if (open && ui.walletSub) setSubTab(ui.walletSub); }, [open, ui.walletSub]);
 
-    // A child modal (change-password / settings) portals outside the panel, so
-    // suspend the popup's own close handlers while one is open.
-    const childModalOpen = showChangePwd || showConnectExt;
-
-    // True while a Radix dialog (Send / Receive / token selector …) is open —
+    // True while a Radix dialog (Send / Receive / edit card / token selector …) is open —
     // those portal to <body>, so the popup must not treat clicks in them as
     // "outside" and close itself.
     const radixDialogOpen = () => !!document.querySelector('[role="dialog"][data-state="open"]');
 
-    // Close on outside click
+    // A popup closes on a click outside it; a docked panel stays until it is closed.
     useEffect(() => {
-        if (!open || childModalOpen) return;
+        if (!open || showChangePwd || docked || isMobile) return;
         const handler = (e: MouseEvent) => {
             if (radixDialogOpen()) return;
-            if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
-                onClose();
-            }
+            const target = e.target as Element;
+            // The header's own wallet buttons toggle the popup themselves.
+            if (target.closest?.('[data-wallet-trigger]')) return;
+            if (panelRef.current && !panelRef.current.contains(target)) onClose();
         };
         // Delay to avoid click-through from the trigger button
         const timer = setTimeout(() => document.addEventListener('mousedown', handler), 100);
@@ -186,261 +153,156 @@ export function WalletPopup({ open, onClose, initialTab }: WalletPopupProps) {
             clearTimeout(timer);
             document.removeEventListener('mousedown', handler);
         };
-    }, [open, onClose, childModalOpen]);
+    }, [open, onClose, showChangePwd, docked, isMobile]);
 
-    // Close on Escape
     useEffect(() => {
-        if (!open || childModalOpen) return;
+        if (!open || showChangePwd) return;
         const handler = (e: KeyboardEvent) => {
             if (e.key === 'Escape' && !radixDialogOpen()) onClose();
         };
         document.addEventListener('keydown', handler);
         return () => document.removeEventListener('keydown', handler);
-    }, [open, onClose, childModalOpen]);
+    }, [open, onClose, showChangePwd]);
+
+    // A docked wallet takes its strip of the page on a wide screen (index.css).
+    useEffect(() => {
+        const on = open && docked;
+        document.documentElement.classList.toggle('wallet-docked', on);
+        return () => document.documentElement.classList.remove('wallet-docked');
+    }, [open, docked]);
 
     // Calculate total portfolio value using shared hook to ensure UI consistency.
     // While open, balances poll every 5s in the background (stale-while-revalidate);
     // while closed, polling stops but the cache keeps the last-known values warm.
-    const { tokens: activeTokens, totalValue: portfolioValue, loading: portfolioLoading, isRefetching: portfolioRefetching, refetch: refetchPortfolio } = usePortfolio({ pollingMs: open ? 5000 : 0, scope: 'active' });
+    const { tokens: activeTokens, totalValue: portfolioValue, loading: portfolioLoading, refetch: refetchPortfolio } = usePortfolio({ pollingMs: open ? 5000 : 0, scope: 'active' });
 
     // Refresh immediately when popup opens
     useEffect(() => {
         if (open) refetchPortfolio();
     }, [open, refetchPortfolio]);
 
-    const setBalanceVisible = (visible: boolean) => {
-        setBalanceVisibleState(visible);
-        saveAppSettings({ hideBalances: !visible });
-    };
+    const setBalanceVisible = (visible: boolean) => saveAppSettings({ hideBalances: !visible });
 
-    const handleGlobalRefresh = () => {
-        refetchPortfolio();
-    };
-
-    const handleLogout = () => {
-        if (wdk.isInitialized) {
-            wdk.disconnect();
-            toast.success('Main wallet disconnected');
-        } else {
-            // No built-in wallet in use: this button ends the external connections.
-            extBCH.disconnectAll();
-            toast.success('Wallets disconnected');
-        }
-        onClose();
-    };
-
+    const handleRefresh = useCallback(async () => {
+        setRefreshing(true);
+        try { await refetchPortfolio(); } finally { setTimeout(() => setRefreshing(false), 600); }
+    }, [refetchPortfolio]);
 
     if (!open) return null;
 
-    const content = (
+    const closeButton = !isMobile && (
+        <button type="button" onClick={onClose} title="Close" aria-label="Close the wallet" className={BAR_BUTTON}>
+            <X className="h-4 w-4" />
+        </button>
+    );
+
+    const content = view === 'connect' ? (
+        <div className="relative flex min-h-0 flex-1 flex-col">
+            <div className="absolute right-2 top-2 z-10">{closeButton}</div>
+            <ConnectWalletView onDone={walletUi.showHome} />
+        </div>
+    ) : view === 'onboarding' ? (
+        <div className="relative flex min-h-0 flex-1 flex-col">
+            <div className="absolute right-2 top-2 z-10">{closeButton}</div>
+            <WalletOnboardingView onDone={walletUi.showHome} onBack={hasWallet ? walletUi.showHome : walletUi.openConnect} />
+        </div>
+    ) : (
         <>
-            {/* ─── Top Tab Bar ─── */}
-            <div className="flex items-center justify-between px-1 pt-1 pb-0 border-b border-white/[0.06] shrink-0">
-                <div className="flex">
-                    <button
-                        onClick={() => setTopTab('wallet')}
-                        className={cn(
-                            "flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium rounded-t-lg transition-colors",
-                            topTab === 'wallet'
-                                ? "text-primary bg-white/[0.04] border-b-2 border-primary"
-                                : "text-muted-foreground hover:text-foreground"
-                        )}
-                    >
-                        <Wallet className="h-3.5 w-3.5" />
-                        Wallet
-                    </button>
-                    <button
-                        onClick={() => setTopTab('notifications')}
-                        className={cn(
-                            "flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium rounded-t-lg transition-colors",
-                            topTab === 'notifications'
-                                ? "text-primary bg-white/[0.04] border-b-2 border-primary"
-                                : "text-muted-foreground hover:text-foreground"
-                        )}
-                    >
-                        <Bell className="h-3.5 w-3.5" />
-                        Notifications
-                    </button>
-                </div>
-                <div className="flex items-center gap-1 pr-2">
-                    <Button
-                        variant="ghost" size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-emerald-400 hover:bg-emerald-500/10"
-                        onClick={() => setShowConnectExt(true)}
-                        title="Add a wallet"
-                    >
-                        <Plus className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                        variant="ghost" size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-emerald-400 hover:bg-emerald-500/10"
-                        onClick={() => { setTopTab('wallet'); setSubTab('settings'); }}
-                        title="Settings"
-                    >
-                        <Settings className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button
-                        variant="ghost" size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-red-400 hover:bg-red-500/10"
-                        onClick={handleLogout}
-                        title={wdk.isInitialized ? 'Lock main wallet' : 'Disconnect wallets'}
-                    >
-                        <LogOut className="h-3.5 w-3.5" />
-                    </Button>
-                    {!isMobile && (
-                        <Button
-                            variant="ghost" size="icon"
-                            className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                            onClick={onClose}
+            {/* ─── Top bar: wallet / notifications, and the frame's own controls ─── */}
+            <div className="flex shrink-0 items-center justify-between gap-2 px-3 pt-3">
+                <div role="tablist" aria-label="Wallet sections" className="flex rounded-full p-0.5 lg-well">
+                    {(['wallet', 'notifications'] as const).map(tab => (
+                        <button
+                            key={tab}
+                            type="button"
+                            role="tab"
+                            aria-selected={ui.walletTab === tab}
+                            onClick={() => walletUi.setWalletTab(tab)}
+                            className={cn(
+                                'h-7 rounded-full px-3.5 text-[11px] font-semibold capitalize transition-colors',
+                                ui.walletTab === tab ? 'bg-white/[0.12] text-white' : 'text-white/45 hover:text-white/80',
+                            )}
                         >
-                            <X className="h-3.5 w-3.5" />
-                        </Button>
+                            {tab}
+                        </button>
+                    ))}
+                </div>
+                <div className="flex items-center">
+                    {!isMobile && (
+                        <button
+                            type="button"
+                            onClick={() => saveAppSettings({ dockWallet: !settings.dockWallet })}
+                            title={docked ? 'Undock: open as a popup' : 'Dock to the side'}
+                            aria-label={docked ? 'Undock the wallet' : 'Dock the wallet to the side'}
+                            aria-pressed={docked}
+                            className={cn(BAR_BUTTON, docked && 'text-emerald-300')}
+                        >
+                            {docked ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
+                        </button>
                     )}
+                    {closeButton}
                 </div>
             </div>
 
-            {topTab === 'wallet' ? (
-                <div className="flex flex-col flex-1 min-h-0">
-                    {/* ─── Portfolio Value ─── */}
-                    <div className="px-4 py-4 border-b border-white/[0.06] shrink-0">
-                        <div className="flex items-center justify-between mb-1">
-                            <div className="flex items-center gap-2">
-                                <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-                                    {activeWallet && activeWallet.kind !== 'main' ? 'Wallet Value' : 'Total Portfolio Value'}
-                                </span>
-                                <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground hover:text-foreground"
-                                    onClick={handleGlobalRefresh} disabled={portfolioLoading || portfolioRefetching}>
-                                    <RefreshCw className={cn("h-3 w-3", (portfolioLoading || portfolioRefetching) && "animate-spin")} />
-                                </Button>
-                                <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground hover:text-foreground"
-                                    onClick={() => setBalanceVisible(!balanceVisible)}>
-                                    {balanceVisible ? <Eye className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
-                                </Button>
-                            </div>
-                            {activeWallet && (
-                                <span className="flex items-center gap-1.5 min-w-0 text-[9px] text-muted-foreground/80 bg-white/[0.03] pl-1 pr-2 py-0.5 rounded-md" title={activeWallet.address}>
-                                    <WalletIcon id={activeWallet.iconId} color={activeWallet.color} size={16} />
-                                    <span className="truncate max-w-[70px] font-semibold" style={{ color: activeWallet.color }}>{activeWallet.name}</span>
-                                    <span className="font-mono text-muted-foreground/60">{shortAddress(activeWallet.address, 4, 4)}</span>
-                                </span>
-                            )}
-                        </div>
-                        {/* Amount row + network toggle */}
-                        <div className="flex items-center justify-between gap-3 mt-1">
-                            <div className="text-2xl font-bold tracking-tight">
-                                {!balanceVisible
-                                    ? '••••••'
-                                    : portfolioLoading
-                                        ? <span className="inline-block h-7 w-28 rounded-md bg-white/[0.06] animate-pulse align-middle" />
-                                        : `$${portfolioValue.toFixed(2)}`
-                                }
-                            </div>
-                            {/* Network segmented toggle */}
-                            <div
-                                role="tablist"
-                                aria-label="Network"
-                                className="relative flex h-7 items-center rounded-lg p-0.5 bg-white/[0.04] border border-white/[0.08] shrink-0"
-                            >
-                                <span
-                                    aria-hidden
-                                    className={cn(
-                                        "absolute top-0.5 bottom-0.5 w-[calc(50%-2px)] rounded-md",
-                                        "transition-[left] duration-300 ease-[cubic-bezier(0.34,1.4,0.64,1)]",
-                                        wdk.bchNetwork === 'mainnet'
-                                            ? "left-[calc(50%+1px)] bg-white/[0.1] border border-white/[0.12]"
-                                            : "left-0.5 bg-white/[0.08] border border-white/[0.1]"
-                                    )}
-                                />
-                                <button
-                                    role="tab"
-                                    aria-selected={wdk.bchNetwork !== 'mainnet'}
-                                    onClick={() => wdk.setBchNetwork('chipnet')}
-                                    className={cn(
-                                        "relative z-10 px-2.5 h-6 rounded-md text-[10px] font-semibold transition-colors duration-200",
-                                        wdk.bchNetwork !== 'mainnet' ? "text-white" : "text-zinc-500 hover:text-zinc-300"
-                                    )}
-                                >
-                                    Testnet
-                                </button>
-                                <button
-                                    role="tab"
-                                    aria-selected={wdk.bchNetwork === 'mainnet'}
-                                    onClick={() => wdk.setBchNetwork('mainnet')}
-                                    className={cn(
-                                        "relative z-10 px-2.5 h-6 rounded-md text-[10px] font-semibold transition-colors duration-200 flex items-center gap-1",
-                                        wdk.bchNetwork === 'mainnet' ? "text-white" : "text-zinc-500 hover:text-zinc-300"
-                                    )}
-                                >
-                                    {wdk.bchNetwork === 'mainnet' && (
-                                        <span className="relative flex h-1.5 w-1.5">
-                                            <span className="absolute inset-0 animate-ping rounded-full bg-emerald-400/70" />
-                                            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                                        </span>
-                                    )}
-                                    Mainnet
-                                </button>
-                            </div>
-                        </div>
-                    </div>
+            {ui.walletTab === 'wallet' ? (
+                <div className="flex min-h-0 flex-1 flex-col">
+                    <WalletProfile
+                        totalValue={portfolioValue}
+                        loading={portfolioLoading}
+                        busy={refreshing}
+                        onRefresh={handleRefresh}
+                        balanceVisible={balanceVisible}
+                        onBalanceVisibleChange={setBalanceVisible}
+                    />
 
-
-                    {/* ─── Sub Tabs ─── */}
-                    <div className="flex border-b border-white/[0.06] shrink-0">
-                        {(['tokens', 'pools', 'orders', 'history', 'settings'] as SubTab[]).map(tab => (
+                    {/* ─── Sub tabs ─── */}
+                    <div role="tablist" aria-label="Wallet" className="mx-3 mt-3 flex shrink-0 border-b border-white/[0.07]">
+                        {SUB_TABS.map(tab => (
                             <button
                                 key={tab}
+                                type="button"
+                                role="tab"
+                                aria-selected={subTab === tab}
                                 onClick={() => setSubTab(tab)}
                                 className={cn(
-                                    "flex-1 py-2 text-[11px] font-medium capitalize transition-colors relative",
-                                    subTab === tab
-                                        ? "text-primary"
-                                        : "text-muted-foreground hover:text-foreground"
+                                    'relative flex-1 py-2.5 text-xs font-semibold capitalize transition-colors',
+                                    subTab === tab ? 'text-white' : 'text-white/40 hover:text-white/75',
                                 )}
                             >
                                 {tab}
-                                {subTab === tab && (
-                                    <span className="absolute bottom-0 left-1/4 w-1/2 h-[2px] bg-primary rounded-full" />
-                                )}
+                                {subTab === tab && <span className="absolute inset-x-[22%] bottom-[-1px] h-[2px] rounded-full bg-emerald-400" />}
                             </button>
                         ))}
                     </div>
 
-                    {/* ─── Tab Content ─── */}
-                    <div className="flex-1 overflow-y-auto px-3 pb-6 min-h-0" style={{ scrollbarWidth: 'thin', scrollbarColor: 'rgba(255,255,255,0.08) transparent' }}>
-                        {subTab === 'tokens' && <WalletTokensTab balanceVisible={balanceVisible} activeTokens={activeTokens} loading={portfolioLoading} onClose={onClose} onConnectExternal={() => setShowConnectExt(true)} />}
-                        {subTab === 'pools' && <WalletPoolsTab onClose={onClose} />}
-                        {subTab === 'orders' && <WalletOrdersTab />}
-                        {subTab === 'history' && <WalletHistoryTab />}
+                    <div className={cn('min-h-0 flex-1', subTab === 'orders' ? 'flex flex-col' : 'overflow-y-auto px-3 pb-6 lg-scroll')}>
+                        {subTab === 'tokens' && <WalletTokensTab balanceVisible={balanceVisible} activeTokens={activeTokens} loading={portfolioLoading} onClose={docked ? undefined : onClose} />}
+                        {subTab === 'pools' && <WalletPoolsTab onClose={docked ? undefined : onClose} />}
+                        {subTab === 'orders' && <OrdersHub variant="embedded" />}
                         {subTab === 'settings' && (
                             <WalletSettingsTab
                                 balanceVisible={balanceVisible}
                                 onBalanceVisibleChange={setBalanceVisible}
                                 onChangePassword={() => setShowChangePwd(true)}
-                                onConnectExternal={() => setShowConnectExt(true)}
-                                onLock={handleLogout}
                             />
                         )}
                     </div>
                 </div>
             ) : (
-                /* ─── Notifications Tab ─── */
                 <NotificationsPanel />
             )}
 
             <ChangePasswordModal open={showChangePwd} onClose={() => setShowChangePwd(false)} />
-            <ConnectExternalWalletModal open={showConnectExt} onClose={() => setShowConnectExt(false)} />
         </>
     );
 
     if (isMobile) {
         return (
             <Drawer open={open} onOpenChange={(o) => !o && onClose()}>
-                <DrawerContent className="p-0 h-[88vh]">
+                <DrawerContent className="lg-panel h-[92dvh] border-b-0 p-0">
                     <DrawerTitle className="sr-only">Wallet</DrawerTitle>
-                    <DrawerDescription className="sr-only">Your wallet balances, orders and history</DrawerDescription>
-                    <div className="flex flex-col flex-1 min-h-0 bg-[#0A0A0A] pb-[env(safe-area-inset-bottom)]">
-                        {content}
-                    </div>
+                    <DrawerDescription className="sr-only">Your wallets, balances, orders and settings</DrawerDescription>
+                    <div className="flex min-h-0 flex-1 flex-col pb-[env(safe-area-inset-bottom)]">{content}</div>
                 </DrawerContent>
             </Drawer>
         );
@@ -449,12 +311,14 @@ export function WalletPopup({ open, onClose, initialTab }: WalletPopupProps) {
     return (
         <div
             ref={panelRef}
+            role="dialog"
+            aria-label="Wallet"
+            data-wallet-frame={docked ? 'docked' : 'popup'}
             className={cn(
-                "fixed top-[80px] right-16 z-[100] w-[380px]",
-                "h-[calc(100vh-96px)]",
-                "bg-[#0A0A0A]/95 backdrop-blur-2xl rounded-2xl border border-white/[0.08]",
-                "shadow-2xl shadow-black/50 flex flex-col",
-                "animate-in slide-in-from-top-2 fade-in duration-200"
+                'lg-panel fixed z-[100] flex w-[404px] max-w-[calc(100vw-24px)] flex-col overflow-hidden',
+                docked
+                    ? 'bottom-0 right-0 top-20 rounded-l-[28px] border-r-0 animate-in slide-in-from-right-8 fade-in duration-300'
+                    : 'right-3 top-[88px] h-[min(760px,calc(100dvh-104px))] rounded-[28px] animate-in slide-in-from-top-2 fade-in duration-200 sm:right-4 2xl:right-[max(1rem,calc((100vw-1400px)/2))]',
             )}
         >
             {content}
