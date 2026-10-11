@@ -656,6 +656,6 @@
    on a narrower one it sits over the page, like a drawer. */
 @media (min-width: 1536px) {
   html.wallet-docked body {
-    padding-right: 404px;
+    padding-right: 420px;
   }
 }

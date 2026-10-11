@@ -317,9 +317,9 @@ export function WalletPopup() {
             aria-label="Wallet"
             data-wallet-frame={docked ? 'docked' : 'popup'}
             className={cn(
-                // From under the header to just short of the bottom, on the right edge, in both modes. A popup lies over
+                // From under the header to just short of the bottom, a small margin in from the right edge, in both modes. A popup lies over
                 // the page and closes on a click outside; docked, it stays and the page makes room for it (index.css).
-                'lg-panel fixed bottom-2 right-0 top-20 z-[100] flex w-[404px] max-w-full flex-col overflow-hidden rounded-l-xl border-r-0',
+                'lg-panel fixed bottom-2 right-2 top-20 z-[100] flex w-[404px] max-w-[calc(100vw-16px)] flex-col overflow-hidden rounded-xl',
                 'animate-in slide-in-from-right-8 fade-in duration-200',
             )}
         >
