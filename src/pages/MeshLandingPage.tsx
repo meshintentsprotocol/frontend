@@ -41,7 +41,7 @@ export default function MeshLandingPage() {
   return (
     <>
       {/* SEO meta */}
-      <title>BCHMesh — Non-Custodial Concentrated Liquidity on Bitcoin Cash</title>
+      <title>Mesh Finance — Non-Custodial Concentrated Liquidity & Strategies on Bitcoin Cash</title>
 
       <div className="flex flex-col min-h-screen bg-[#050505] selection:bg-primary/30 text-foreground">
         {/* Scroll progress indicator */}

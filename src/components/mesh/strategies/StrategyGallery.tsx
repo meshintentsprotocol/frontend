@@ -1,11 +1,12 @@
 /**
- * Create: the strategy templates (from the server) plus a custom V3 pool.
- * A strategy is a set of MeshPoolV3 pools deployed in one transaction and
- * managed as one position. Filters by category, a "keeps liquidity in Mesh"
- * toggle, and a three-question helper that highlights the best fits.
+ * Mesh Finance — Strategy Gallery & Archetype Directory
+ *
+ * Explore and configure strategy templates (MeshPoolV3 covenant pools).
+ * Every strategy is a sovereign set of pools funded in a single atomic
+ * transaction and verified on-chain.
  */
 import { useMemo, useState } from 'react';
-import { BookOpen, Loader2, Sparkles, Wrench } from 'lucide-react';
+import { BookOpen, Loader2, Sparkles, Wrench, ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useStrategyTemplates } from '@/hooks/useMesh';
 import { TEMPLATE_FORMS } from '@/lib/mesh/v3/strategyForms';
@@ -19,7 +20,7 @@ type Expect = 'range' | 'up' | 'down' | 'peg';
 type Hold = 'bch' | 'token' | 'both';
 type Keep = 'mesh' | 'wallet';
 
-/** Score templates against the helper's answers; the top ones are highlighted. */
+/** Score templates against the helper's answers; top fits are highlighted. */
 function recommend(expect: Expect | null, hold: Hold | null, keep: Keep | null): string[] {
   if (!expect && !hold && !keep) return [];
   const score = new Map<string, number>(TEMPLATE_FORMS.map(f => [f.id, 0]));
@@ -34,18 +35,40 @@ function recommend(expect: Expect | null, hold: Hold | null, keep: Keep | null):
   if (keep === 'mesh') add([...RECYCLES]);
   if (keep === 'wallet') add(['fixed', 'take-profit', 'accumulate', 'multi-pair']);
   const top = Math.max(...score.values());
-  return top > 0 ? [...score].filter(([, v]) => v === top || v >= top - 1 && top >= 3).sort((a, b) => b[1] - a[1]).map(([k]) => k).slice(0, 3) : [];
+  return top > 0 ? [...score].filter(([, v]) => v === top || (v >= top - 1 && top >= 3)).sort((a, b) => b[1] - a[1]).map(([k]) => k).slice(0, 3) : [];
 }
 
-function Choice<T extends string>({ label, options, value, onChange }: { label: string; options: Array<[T, string]>; value: T | null; onChange: (v: T | null) => void }) {
+function Choice<T extends string>({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string;
+  options: Array<[T, string]>;
+  value: T | null;
+  onChange: (v: T | null) => void;
+}) {
   return (
     <div className="space-y-1.5">
-      <div className="text-[11px] font-medium text-zinc-400">{label}</div>
+      <div className="text-[11px] font-medium text-neutral-400">{label}</div>
       <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={label}>
         {options.map(([v, l]) => (
-          <button key={v} type="button" role="radio" aria-checked={value === v} onClick={() => onChange(value === v ? null : v)}
-            className={cn('rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition-colors',
-              value === v ? 'border-emerald-400/50 bg-emerald-500/10 text-emerald-200' : 'border-white/10 text-zinc-400 hover:text-white')}>{l}</button>
+          <button
+            key={v}
+            type="button"
+            role="radio"
+            aria-checked={value === v}
+            onClick={() => onChange(value === v ? null : v)}
+            className={cn(
+              'rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition-all',
+              value === v
+                ? 'border-emerald-400/60 bg-emerald-500/15 text-emerald-200'
+                : 'border-neutral-800 bg-neutral-900/60 text-neutral-400 hover:text-white hover:border-neutral-700'
+            )}
+          >
+            {l}
+          </button>
         ))}
       </div>
     </div>
@@ -70,83 +93,234 @@ export function StrategyGallery({ onPick }: { onPick: (id: string) => void }) {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-heading text-2xl sm:text-3xl font-bold text-white tracking-tight">New position</h1>
-        <p className="text-xs text-zinc-400 mt-1">Pick a strategy. Each one is a set of pools deployed in one transaction; the covenant enforces every price and only you can withdraw.</p>
+      {/* Header with Mesh Finance Branding */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="font-mono text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full border border-neutral-700 text-neutral-400">
+              Mesh Finance Protocol V3
+            </span>
+            <span className="font-mono text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full border border-emerald-500/40 text-emerald-400 bg-emerald-500/10">
+              Autonomous Strategies
+            </span>
+          </div>
+          <h1 className="font-heading text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+            Strategy Studio
+          </h1>
+          <p className="text-xs text-neutral-400 mt-1 max-w-2xl">
+            Deploy autonomous liquidity strategies governed by Bitcoin Cash UTXO covenants. Each strategy funds multiple discrete covenant pools in a single atomic transaction.
+          </p>
+        </div>
+
+        <a
+          href="/docs/mesh/strategies/configuration-guide"
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-neutral-800 bg-neutral-900 text-xs font-semibold text-neutral-300 hover:text-white hover:border-neutral-700 transition-colors shrink-0"
+        >
+          <BookOpen className="w-3.5 h-3.5 text-emerald-400" />
+          <span>Strategy Guide & Design Docs</span>
+        </a>
       </div>
 
-      <DefiCard className="space-y-3">
-        <div className="flex items-center gap-2 font-heading text-sm font-semibold text-white"><Sparkles className="h-4 w-4 text-emerald-300" />Which one fits?</div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <Choice label="You expect the price to…" value={expect} onChange={setExpect}
-            options={[['range', 'Move in a range'], ['up', 'Rise'], ['down', 'Fall'], ['peg', 'Hold a peg']]} />
-          <Choice label="You hold…" value={hold} onChange={setHold} options={[['bch', 'BCH'], ['token', 'The token'], ['both', 'Both']]} />
-          <Choice label="Proceeds should…" value={keep} onChange={setKeep} options={[['mesh', 'Stay in Mesh'], ['wallet', 'Come to my wallet']]} />
+      {/* Interactive Recommendation Wizard */}
+      <DefiCard className="space-y-3.5 border-neutral-800 bg-neutral-950/60">
+        <div className="flex items-center gap-2 font-heading text-sm font-semibold text-white">
+          <Sparkles className="h-4 w-4 text-emerald-400" />
+          <span>Strategy Matchmaker — Find the Optimal Archetype</span>
         </div>
-        {picks.length > 0 && <p className="text-[11px] text-emerald-200">Best fits: {picks.map(id => TEMPLATE_META[id]?.name ?? id).join(', ')}</p>}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <Choice
+            label="1. You expect the asset price to…"
+            value={expect}
+            onChange={setExpect}
+            options={[
+              ['range', 'Oscillate in a range'],
+              ['up', 'Rise steadily'],
+              ['down', 'Dip / Consolidate'],
+              ['peg', 'Maintain 1:1 Peg'],
+            ]}
+          />
+          <Choice
+            label="2. Assets you currently hold…"
+            value={hold}
+            onChange={setHold}
+            options={[
+              ['bch', 'BCH only'],
+              ['token', 'CashTokens only'],
+              ['both', 'Both BCH & Token'],
+            ]}
+          />
+          <Choice
+            label="3. Strategy proceeds should…"
+            value={keep}
+            onChange={setKeep}
+            options={[
+              ['mesh', 'Recycle & Compound in Mesh'],
+              ['wallet', 'Sweep directly to Wallet'],
+            ]}
+          />
+        </div>
+        {picks.length > 0 && (
+          <div className="p-2.5 rounded-lg bg-emerald-950/30 border border-emerald-800/40 text-[11px] text-emerald-300 flex items-center justify-between">
+            <span>
+              Recommended strategy archetype(s):{' '}
+              <span className="font-bold">
+                {picks.map(id => TEMPLATE_META[id]?.name ?? id).join(', ')}
+              </span>
+            </span>
+            <span className="text-[10px] text-emerald-400/80">Ranked by risk/return profile</span>
+          </div>
+        )}
       </DefiCard>
 
+      {/* Category Tabs & Recycling Toggle */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Category">
           {CATEGORIES.map(c => (
-            <button key={c} type="button" role="tab" aria-selected={category === c} onClick={() => setCategory(c)}
-              className={cn('rounded-full border px-3 py-1 text-[11px] font-semibold transition-colors',
-                category === c ? 'border-white/20 bg-white/10 text-white' : 'border-white/[0.08] text-zinc-500 hover:text-zinc-300')}>{c}</button>
+            <button
+              key={c}
+              type="button"
+              role="tab"
+              aria-selected={category === c}
+              onClick={() => setCategory(c)}
+              className={cn(
+                'rounded-full border px-3 py-1 text-[11px] font-semibold transition-colors',
+                category === c
+                  ? 'border-white/30 bg-white/10 text-white'
+                  : 'border-neutral-800 bg-neutral-900/50 text-neutral-400 hover:text-neutral-200'
+              )}
+            >
+              {c}
+            </button>
           ))}
         </div>
-        <label className="inline-flex items-center gap-2 text-[11px] text-zinc-400 cursor-pointer">
-          <input type="checkbox" checked={keepOnly} onChange={e => setKeepOnly(e.target.checked)} className="h-3.5 w-3.5 accent-emerald-500" />
-          Keeps liquidity in Mesh
+        <label className="inline-flex items-center gap-2 text-[11px] text-neutral-400 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={keepOnly}
+            onChange={e => setKeepOnly(e.target.checked)}
+            className="h-3.5 w-3.5 accent-emerald-500 rounded"
+          />
+          Show only autonomous recycling strategies
         </label>
       </div>
 
-      {templates.isLoading && <div className="flex items-center gap-2 text-xs text-zinc-500"><Loader2 className="w-4 h-4 animate-spin" />Loading templates…</div>}
-      {templates.isError && <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 text-xs text-amber-200">The Mesh server did not return its templates: {(templates.error as Error).message}</div>}
+      {templates.isLoading && (
+        <div className="flex items-center gap-2 text-xs text-neutral-400 py-8 justify-center">
+          <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
+          Loading strategy archetypes from Mesh Finance…
+        </div>
+      )}
 
+      {templates.isError && (
+        <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 text-xs text-amber-200">
+          The Mesh server did not return its templates: {(templates.error as Error).message}
+        </div>
+      )}
+
+      {/* Archetype Cards Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {forms.map(f => {
           const t = byId.get(f.id);
           const best = picks.includes(f.id);
           return (
-            <div key={f.id} className="relative">
-              <button type="button" onClick={() => onPick(f.id)} className="block w-full text-left rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60">
-                <DefiCard interactive className={cn('h-full space-y-3', best && 'border-emerald-400/40')}>
+            <div key={f.id} className="relative group">
+              <button
+                type="button"
+                onClick={() => onPick(f.id)}
+                className="block w-full text-left rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400/60"
+              >
+                <DefiCard
+                  interactive
+                  className={cn(
+                    'h-full space-y-3.5 border-neutral-800 bg-neutral-950/70 p-5 transition-all',
+                    best && 'border-emerald-500/50 ring-1 ring-emerald-500/20'
+                  )}
+                >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-3">
                       <TemplateIcon id={f.id} />
                       <div>
-                        <div className="font-heading font-semibold text-white">{t?.name ?? TEMPLATE_META[f.id]?.name ?? f.id}</div>
-                        <div className="text-[10px] uppercase tracking-wider text-zinc-500">{TEMPLATE_META[f.id]?.category}</div>
+                        <div className="font-heading font-semibold text-white">
+                          {t?.name ?? TEMPLATE_META[f.id]?.name ?? f.id}
+                        </div>
+                        <div className="text-[10px] uppercase tracking-wider text-neutral-500 font-mono">
+                          {TEMPLATE_META[f.id]?.category}
+                        </div>
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-1">
-                      {best && <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-200">Best fit</span>}
+                      {best && (
+                        <span className="rounded-full bg-emerald-500/20 border border-emerald-500/40 px-2 py-0.5 text-[9px] font-bold text-emerald-300">
+                          BEST FIT
+                        </span>
+                      )}
                       {RECYCLES.has(f.id) && <RecyclePill />}
                     </div>
                   </div>
-                  <p className="text-xs text-zinc-300 leading-relaxed">{t?.summary ?? f.earns}</p>
-                  <dl className="space-y-1 text-[11px]">
-                    <div className="flex gap-1.5"><dt className="text-zinc-500 shrink-0">Deposit</dt><dd className="text-zinc-300">{t?.deposit ?? f.deposit}</dd></div>
-                    <div className="flex gap-1.5"><dt className="text-zinc-500 shrink-0">Earns</dt><dd className="text-emerald-200/90">{t?.earns ?? f.earns}</dd></div>
-                    {t?.risk && <div className="flex gap-1.5"><dt className="text-zinc-500 shrink-0">Risk</dt><dd className="text-amber-200/80">{t.risk}</dd></div>}
-                  </dl>
+
+                  <p className="text-xs text-neutral-300 leading-relaxed min-h-[36px]">
+                    {t?.summary ?? f.earns}
+                  </p>
+
+                  <div className="space-y-1.5 text-[11px] pt-2 border-t border-neutral-800/80">
+                    <div className="flex justify-between gap-1.5">
+                      <span className="text-neutral-500">Deposit:</span>
+                      <span className="text-neutral-200 font-mono">{t?.deposit ?? f.deposit}</span>
+                    </div>
+                    <div className="flex justify-between gap-1.5">
+                      <span className="text-neutral-500">Earning Method:</span>
+                      <span className="text-emerald-300 font-medium text-right">
+                        {t?.earns ?? f.earns}
+                      </span>
+                    </div>
+                    {t?.risk && (
+                      <div className="flex justify-between gap-1.5">
+                        <span className="text-neutral-500">Risk Profile:</span>
+                        <span className="text-amber-300/90">{t.risk}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="pt-2 flex items-center justify-between text-xs font-semibold text-neutral-300 group-hover:text-emerald-400 transition-colors">
+                    <span>Configure Strategy</span>
+                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                  </div>
                 </DefiCard>
               </button>
-              <a href={`/docs/mesh/strategies/${f.id}`} target="_blank" rel="noreferrer"
-                className="absolute bottom-4 right-4 inline-flex items-center gap-1 text-[10px] text-zinc-500 hover:text-sky-300">
-                <BookOpen className="h-3 w-3" />Guide
-              </a>
             </div>
           );
         })}
-        {(category === 'All' && !keepOnly) && (
-          <button type="button" onClick={() => onPick('custom')} className="block text-left rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40">
-            <DefiCard interactive className="h-full space-y-3 border-dashed">
+
+        {category === 'All' && !keepOnly && (
+          <button
+            type="button"
+            onClick={() => onPick('custom')}
+            className="block text-left rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+          >
+            <DefiCard
+              interactive
+              className="h-full space-y-3.5 border-dashed border-neutral-800 bg-neutral-950/40 p-5 hover:border-neutral-600"
+            >
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center"><Wrench className="w-4 h-4 text-zinc-300" /></div>
-                <div className="font-heading font-semibold text-white">Custom pool</div>
+                <div className="w-10 h-10 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-center">
+                  <Wrench className="w-4 h-4 text-neutral-300" />
+                </div>
+                <div>
+                  <div className="font-heading font-semibold text-white">Custom V3 Pool</div>
+                  <div className="text-[10px] uppercase tracking-wider text-neutral-500 font-mono">
+                    Advanced Modular
+                  </div>
+                </div>
               </div>
-              <p className="text-xs text-zinc-400 leading-relaxed">One pool, your rules: any reserve, up to three accepted assets with their own prices, proceeds to your wallet or recycled.</p>
+              <p className="text-xs text-neutral-400 leading-relaxed min-h-[36px]">
+                Build a standalone pool with custom reserves, multi-slot assets, and bespoke proceed routing.
+              </p>
+              <div className="pt-4 flex items-center justify-between text-xs font-semibold text-neutral-300">
+                <span>Open Custom Builder</span>
+                <ArrowRight className="w-4 h-4" />
+              </div>
             </DefiCard>
           </button>
         )}
@@ -154,3 +328,5 @@ export function StrategyGallery({ onPick }: { onPick: (id: string) => void }) {
     </div>
   );
 }
+
+export default StrategyGallery;

@@ -158,6 +158,7 @@ export const LOCAL_NAV: NavSection[] = [
                 items: [
                     { slug: 'mesh/v3/meshpool-v3', title: 'MeshPoolV3 pools', badge: 'new' },
                     { slug: 'mesh/strategies/overview', title: 'How strategies work', badge: 'new' },
+                    { slug: 'mesh/strategies/configuration-guide', title: 'Strategy configuration guide', badge: 'new' },
                     { slug: 'mesh/pools/recycling', title: 'Recycling', badge: 'new' },
                     {
                         title: 'Strategy templates',
