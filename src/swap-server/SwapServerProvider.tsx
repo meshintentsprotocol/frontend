@@ -18,8 +18,8 @@ import { runSolanaSwap } from './solana';
 import { BurnNotReported, FeeNotSent, flushJournal, payFee, resumeBridge, selfMint as selfMintFlow, startBridge, type BridgeDeps, type BridgeProgress } from './flows';
 import { createJournal } from './journal';
 import { evmProvider, evmSignerFor, toBase64 } from './signers';
-import type { Operation } from './steps';
-import type { ActivityItem, CctpChain, SolanaSwap, Transfer } from './types';
+import type { BchOperation, Operation } from './steps';
+import type { ActivityItem, BchSwapRecord, CctpChain, SolanaSwap, Transfer } from './types';
 
 const KEY = ['swap-server'] as const;
 const NOTIFIED_KEY = 'swap_server_notified_v1';
@@ -160,8 +160,8 @@ export function SwapServerProvider({ children, api: fixedApi }: { children: Reac
     }, [config, api, journal, deps.chainKnows, chain, refresh]);
 
     // ── the dialog ──
-    const [dialog, setDialog] = useState<{ open: boolean; id: string | null; kind: 'transfer' | 'swap' }>({ open: false, id: null, kind: 'transfer' });
-    const showDialog = useCallback((id: string | null = null, kind: 'transfer' | 'swap' = 'transfer') => setDialog({ open: true, id, kind }), []);
+    const [dialog, setDialog] = useState<{ open: boolean; id: string | null; kind: 'transfer' | 'swap' | 'bch' }>({ open: false, id: null, kind: 'transfer' });
+    const showDialog = useCallback((id: string | null = null, kind: 'transfer' | 'swap' | 'bch' = 'transfer') => setDialog({ open: true, id, kind }), []);
     const hideDialog = useCallback(() => setDialog(d => ({ ...d, open: false })), []);
 
     // ── signing ──
@@ -242,6 +242,64 @@ export function SwapServerProvider({ children, api: fixedApi }: { children: Reac
         }
     }, [api, keypair, wdk.solanaAddress, refresh, queryClient]);
 
+    // ── Bitcoin Cash cross-chain swaps (1Click NEAR Intents) ──
+    const [bchOperation, setBchOperation] = useState<BchOperation | null>(null);
+    const executeBchSwap = useCallback(async (input: {
+        fromAsset: string;
+        toAsset: string;
+        fromChain?: string;
+        toChain?: string;
+        amount: string;
+        recipient: string;
+        refundTo: string;
+        slippageBps?: number;
+        sell: { symbol: string; display: string };
+        buy: { symbol: string; display: string };
+    }): Promise<BchSwapRecord | undefined> => {
+        setBchOperation({
+            stage: 'init',
+            busy: true,
+            sell: input.sell,
+            buy: input.buy,
+        });
+        setDialog({ open: true, id: null, kind: 'bch' });
+        try {
+            const swapRecord = await api.createBchSwap({
+                fromAsset: input.fromAsset,
+                toAsset: input.toAsset,
+                fromChain: input.fromChain,
+                toChain: input.toChain,
+                amount: input.amount,
+                recipient: input.recipient,
+                refundTo: input.refundTo,
+                slippageBps: input.slippageBps,
+            });
+            setBchOperation({
+                id: swapRecord.id,
+                stage: 'deposit',
+                busy: false,
+                sell: input.sell,
+                buy: input.buy,
+                result: swapRecord,
+            });
+            setDialog({ open: true, id: swapRecord.id, kind: 'bch' });
+            refresh();
+            return swapRecord;
+        } catch (e) {
+            const message = describeError(e);
+            setBchOperation(prev => ({
+                stage: 'failed',
+                busy: false,
+                error: message,
+                sell: input.sell,
+                buy: input.buy,
+                id: prev?.id,
+            }));
+            notifyToast.error('Swap creation failed', { description: message });
+            return undefined;
+        }
+    }, [api, refresh]);
+
     const rowChain = useCallback((id: string): { row: ActivityItem; src: CctpChain } | undefined => {
         const row = activity?.find(i => i.id === id);
         const src = row?.transfer ? chain(row.transfer.src) : undefined;
@@ -295,7 +353,7 @@ export function SwapServerProvider({ children, api: fixedApi }: { children: Reac
     const [historyView, setHistoryView] = useState<HistoryView>('auto');
     const [pairRouted, setPairRouted] = useState(false);
     // A choice made with the pills holds until the pair changes sides, or a new transfer starts.
-    const signingNow = !!operation?.busy || !!swapOperation?.busy;
+    const signingNow = !!operation?.busy || !!swapOperation?.busy || !!bchOperation?.busy;
     useEffect(() => { setHistoryView('auto'); }, [pairRouted, signingNow]);
     // Left alone, the page shows ours while the card's pair is ours or a transfer is moving, and then keeps
     // showing it: the row someone was watching must not vanish the moment it completes. It goes back to the
@@ -317,11 +375,11 @@ export function SwapServerProvider({ children, api: fixedApi }: { children: Reac
         chain,
         evmAddress: wdk.evmAddress, solanaAddress: wdk.solanaAddress,
         rows, rowsReceivedAt: activityQuery.data?.receivedAt ?? 0, rowsLoading: activityQuery.isLoading, openCount, activeCount, refresh,
-        operation, bridge, resume, sendFee, swapOperation, swap, selfMint, minting, signing: signingNow,
+        operation, bridge, resume, sendFee, swapOperation, swap, bchOperation, executeBchSwap, selfMint, minting, signing: signingNow,
         dialog, showDialog, hideDialog,
         historyView, setHistoryView, historyOurs, pairRouted, setPairRouted,
     }), [api, activate, on, isMainnet, config, configQuery.isLoading, configQuery.error, chain, wdk.evmAddress, wdk.solanaAddress, rows, activityQuery.data?.receivedAt,
-        activityQuery.isLoading, openCount, activeCount, refresh, operation, bridge, resume, sendFee, swapOperation, swap, selfMint, minting, signingNow, dialog, showDialog, hideDialog, historyView, historyOurs, pairRouted]);
+        activityQuery.isLoading, openCount, activeCount, refresh, operation, bridge, resume, sendFee, swapOperation, swap, bchOperation, executeBchSwap, selfMint, minting, signingNow, dialog, showDialog, hideDialog, historyView, historyOurs, pairRouted]);
 
     return <SwapServerContext.Provider value={value}>{children}</SwapServerContext.Provider>;
 }

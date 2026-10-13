@@ -16,8 +16,9 @@ import { evmFees, evmProvider, evmUsdcBalance } from './signers';
 import { useSwapServerOptional } from './context';
 import { withJupiterTokens } from './solana';
 import { pairAfterSelect, withCctpTokens } from './tokens';
+import { useWDK } from '@/context/WDKProvider';
 import { useSolanaQuote, useSolanaTokenList, useSolanaTokenSearch } from './useSolanaSwap';
-import type { CctpChain, CctpQuote, SolanaQuote, SwapServerConfig } from './types';
+import type { BchQuote, CctpChain, CctpQuote, SolanaQuote, SwapServerConfig } from './types';
 
 function useDebounced<T>(value: T, ms: number): T {
     const [v, setV] = useState(value);
@@ -101,6 +102,8 @@ export interface SwapServerCardState {
     quote?: CctpQuote;
     /** The Jupiter quote, for a Solana swap. */
     solQuote?: SolanaQuote;
+    /** The 1Click NEAR Intents quote, for a Bitcoin Cash cross-chain swap. */
+    bchQuote?: BchQuote;
     quoting: boolean;
     /** Why the button is disabled, when it is. Short: it is the button's label. */
     problem: string | null;
@@ -146,14 +149,52 @@ export function useSwapServerCard({ sellToken, buyToken, sellAmount, isMainnet }
     const tokens = useCallback((base: Token[]) => withCctpTokens(withJupiterTokens(base, solTokens, isMainnet), config, isMainnet), [config, isMainnet, solTokens]);
     const searchTokens = useSolanaTokenSearch(isMainnet);
     const pair = useCallback((p: Token, o: Token, list: Token[]) => pairAfterSelect(p, o, { tokens: list, config, isMainnet }), [config, isMainnet]);
+    const wdk = useWDK();
     const cctp = route?.kind === 'usdc-cctp' ? route : null;
     const jup = route?.kind === 'sol-jupiter' ? route : null;
+    const bch = route?.kind === 'bch-crosschain' ? route : null;
     const sol = useSolanaQuote(jup, sellToken, buyToken, sellAmount);
 
     // The trade page switches its history panel to ours while the pair is one of ours.
     const setPairRouted = ctx?.setPairRouted;
-    const routed = !!cctp || !!jup;
+    const routed = !!cctp || !!jup || !!bch;
     useEffect(() => { setPairRouted?.(routed); return () => setPairRouted?.(false); }, [setPairRouted, routed]);
+
+    // BCH cross-chain quotes
+    const bchTyped = normalizeAmount(sellAmount);
+    const bchAmount = useDebounced(bchTyped, 400);
+    const bchSettled = bchAmount === bchTyped;
+    const bchQuotable = !!bch && !!api && Number(bchAmount) > 0 && !config?.bch?.paused;
+
+    const bchQuoteQuery = useQuery({
+        queryKey: ['swap-server', 'bch-quote', bch?.fromAsset, bch?.toAsset, bchAmount],
+        queryFn: ({ signal }) => api!.getBchQuote({
+            fromAsset: bch!.fromAsset,
+            toAsset: bch!.toAsset,
+            fromChain: bch!.fromChain,
+            toChain: bch!.toChain,
+            amount: bchAmount,
+        }, { signal }),
+        enabled: bchQuotable,
+        staleTime: 10_000,
+        refetchInterval: 20_000,
+        retry: (n, e) => n < 2 && e instanceof SwapServerError && (e.status === 0 || e.status === 429 || e.status >= 500),
+    });
+    const bchQuote = bchQuotable && bchSettled ? bchQuoteQuery.data : undefined;
+
+    const recipient = useMemo(() => {
+        if (!bch) return null;
+        if (bch.toChain === 'bch') return wdk.address || null;
+        if (bch.toChain === 'solana') return wdk.solanaAddress || null;
+        return wdk.evmAddress || null;
+    }, [bch, wdk.address, wdk.solanaAddress, wdk.evmAddress]);
+
+    const refundTo = useMemo(() => {
+        if (!bch) return null;
+        if (bch.fromChain === 'bch') return wdk.address || null;
+        if (bch.fromChain === 'solana') return wdk.solanaAddress || null;
+        return wdk.evmAddress || null;
+    }, [bch, wdk.address, wdk.solanaAddress, wdk.evmAddress]);
 
     const owner = cctp ? (cctp.src.kind === 'evm' ? ctx?.evmAddress : ctx?.solanaAddress) : null;
     const balance = useCctpBalance(cctp?.src, owner);
@@ -225,6 +266,53 @@ export function useSwapServerCard({ sellToken, buyToken, sellAmount, isMainnet }
                         buy: { symbol: buyToken.symbol, display: sol.buyAmount },
                     });
                     return !!done;
+                },
+            };
+        }
+
+        if (route.kind === 'bch-crosschain') {
+            const q = bchQuote;
+            const bchConf = config?.bch;
+            let problem: string | null = null;
+            if (!config) problem = ctx.configLoading ? 'Loading…' : 'BCH swaps unavailable';
+            else if (bchConf?.paused) problem = 'BCH swaps paused';
+            else if (!recipient) problem = `Connect ${route.toChain.toUpperCase()} wallet`;
+            else if (!refundTo) problem = `Connect ${route.fromChain.toUpperCase()} wallet`;
+            else if (hasAmount && (!bchSettled || (bchQuoteQuery.isFetching && !q))) problem = 'Getting quote…';
+            else if (bchQuoteQuery.error) problem = bchQuoteQuery.error instanceof SwapServerError && bchQuoteQuery.error.code === 'RATE_LIMITED' ? 'Busy, retrying…' : 'No quote';
+
+            const notice = !config ? (ctx.configError ?? null)
+                : bchConf?.paused ? (bchConf.pauseReason ?? 'Bitcoin Cash swaps are paused.')
+                : bchQuoteQuery.error ? describeError(bchQuoteQuery.error)
+                : q?.warning ?? null;
+
+            return {
+                ...shared,
+                active: true,
+                blocked: null,
+                buyAmount: q?.amountOutFormatted ?? '',
+                bchQuote: q,
+                quoting: hasAmount && !problem && !q,
+                problem,
+                notice,
+                busy,
+                canSubmit: !!q && !problem && !busy,
+                sellBalance: null,
+                actionLabel: `Swap to ${buyToken.symbol}`,
+                execute: async () => {
+                    if (!q || !recipient || !refundTo) return false;
+                    const record = await ctx.executeBchSwap({
+                        fromAsset: route.fromAsset,
+                        toAsset: route.toAsset,
+                        fromChain: route.fromChain,
+                        toChain: route.toChain,
+                        amount: bchAmount,
+                        recipient,
+                        refundTo,
+                        sell: { symbol: sellToken.symbol, display: sellAmount },
+                        buy: { symbol: buyToken.symbol, display: q.amountOutFormatted },
+                    });
+                    return !!record;
                 },
             };
         }

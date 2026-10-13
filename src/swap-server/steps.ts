@@ -7,7 +7,7 @@
  */
 import { explorerTxUrl } from './cctpChains';
 import type { BridgeStep } from './flows';
-import type { ActivityItem, ActivityPhase, CctpChain, SolanaSwap, Transfer, TransferStatus } from './types';
+import type { ActivityItem, ActivityPhase, BchSwapRecord, CctpChain, SolanaSwap, Transfer, TransferStatus } from './types';
 
 export type StepState = 'done' | 'active' | 'pending' | 'attention' | 'failed';
 
@@ -179,6 +179,102 @@ export function swapHeadline(s: SolanaSwap | undefined, op?: SwapProgress | null
     if (s?.status === 'CREATED' && !op?.busy) return 'Not signed';
     return 'Preparing';
 }
+
+export interface BchOperation {
+    id?: string;
+    stage: 'init' | 'deposit' | 'confirming' | 'processing' | 'done' | 'failed';
+    busy: boolean;
+    error?: string;
+    sell: { symbol: string; display: string };
+    buy: { symbol: string; display: string };
+    result?: BchSwapRecord;
+}
+
+export function bchSwapSteps(record: BchSwapRecord | undefined, op?: BchOperation | null): DialogStep[] {
+    const status = record?.status;
+    const isBad = status === 'FAILED' || status === 'EXPIRED' || status === 'REFUNDED' || !!op?.error;
+    const fromSymbol = record?.fromToken.symbol ?? op?.sell.symbol ?? 'Token';
+    const toSymbol = record?.toToken.symbol ?? op?.buy.symbol ?? 'Token';
+
+    const depositState: StepState = (!record && op?.busy)
+        ? 'active'
+        : (!record && op?.error)
+            ? 'failed'
+            : (status === 'PENDING_DEPOSIT' || !status)
+                ? 'attention'
+                : 'done';
+
+    const confirmState: StepState = (!record || status === 'PENDING_DEPOSIT')
+        ? 'pending'
+        : status === 'KNOWN_DEPOSIT_TX'
+            ? 'active'
+            : 'done';
+
+    const solverState: StepState = (status === 'SUCCESS' || status === 'REFUNDED')
+        ? 'done'
+        : status === 'PROCESSING'
+            ? 'active'
+            : (isBad && status !== 'PENDING_DEPOSIT' && status !== 'KNOWN_DEPOSIT_TX')
+                ? 'failed'
+                : 'pending';
+
+    const settleState: StepState = status === 'SUCCESS'
+        ? 'done'
+        : status === 'REFUNDED'
+            ? 'attention'
+            : (status === 'FAILED' || status === 'EXPIRED')
+                ? 'failed'
+                : 'pending';
+
+    return [
+        {
+            key: 'deposit',
+            label: `Deposit ${fromSymbol} to generated address`,
+            state: depositState,
+            note: status === 'PENDING_DEPOSIT' ? 'Send exact amount to single-use address' : undefined,
+        },
+        {
+            key: 'confirm',
+            label: 'Deposit confirmed on blockchain',
+            state: confirmState,
+            link: record?.depositExplorerUrl,
+            note: status === 'KNOWN_DEPOSIT_TX' ? 'Mempool detection confirmed' : undefined,
+        },
+        {
+            key: 'solver',
+            label: '1Click solver network executing intent',
+            state: solverState,
+            note: status === 'PROCESSING' ? 'Decentralized solvers filling cross-chain intent' : undefined,
+        },
+        {
+            key: 'settle',
+            label: `Delivered ${toSymbol} to recipient`,
+            state: settleState,
+            link: record?.settleExplorerUrl,
+            note: status === 'SUCCESS'
+                ? `${record?.expectedOutFormatted ?? ''} ${toSymbol} delivered`.trim()
+                : status === 'REFUNDED'
+                    ? `Refunded back to origin: ${record?.refundTo}`
+                    : (status === 'FAILED' || status === 'EXPIRED')
+                        ? (record?.failureReason ?? 'Swap could not be fulfilled')
+                        : undefined,
+        },
+    ];
+}
+
+export function bchSwapHeadline(record: BchSwapRecord | undefined, op?: BchOperation | null): string {
+    if (record?.status === 'SUCCESS') return 'Swap completed';
+    if (record?.status === 'REFUNDED') return 'Swap refunded';
+    if (record?.status === 'FAILED') return 'Swap failed';
+    if (record?.status === 'EXPIRED') return 'Deposit window expired';
+    if (record?.status === 'PROCESSING') return 'Solvers executing swap';
+    if (record?.status === 'KNOWN_DEPOSIT_TX') return 'Deposit confirmed';
+    if (record?.status === 'PENDING_DEPOSIT') return 'Waiting for deposit';
+    if (op?.error) return 'Error';
+    if (op?.busy) return 'Preparing deposit address';
+    return 'Bitcoin Cash swap';
+}
+
 
 export const PHASE_LABEL: Record<ActivityPhase, string> = {
     awaiting_signature: 'Needs signature',

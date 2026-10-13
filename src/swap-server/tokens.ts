@@ -8,9 +8,32 @@
 import type { Token } from '@/types';
 import { cctpInMode, localChain } from './cctpChains';
 import { cctpChainOf, isCctpOnly } from './routing';
-import type { SwapServerConfig } from './types';
+import type { BchToken, SwapServerConfig } from './types';
 
 export const USDC_ICON = '/logos/usd-coin-usdc-logo.svg';
+export const BCH_ICON = '/logos/bitcoin-cash-bch-logo.svg';
+
+export const isBchOnly = (token: Token) => token.swapServer?.product === 'bch';
+
+/** Convert a 1Click BchToken catalog item into a Token row for selectors */
+export function toTokenRow(b: BchToken): Token {
+    const chain = (b.chain === 'eth' ? 'ethereum' : b.chain) as Token['chain'];
+    return {
+        symbol: b.symbol,
+        name: b.name,
+        icon: b.icon || (b.chain === 'bch' ? BCH_ICON : USDC_ICON),
+        decimals: b.decimals,
+        type: b.chain === 'solana' ? 'spl-token' : b.chain === 'bch' ? 'native' : 'erc20',
+        chain,
+        address: b.assetId,
+        priceUsd: b.price,
+        swapServer: {
+            product: 'bch',
+            chainKey: b.chain,
+            assetId: b.assetId,
+        },
+    };
+}
 
 /** One USDC row per CCTP chain this build can sign for. */
 export function cctpTokens(config: SwapServerConfig | undefined): Token[] {

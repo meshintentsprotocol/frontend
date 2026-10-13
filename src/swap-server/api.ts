@@ -8,7 +8,7 @@
  */
 import { CCTP_SWAP_SERVER_MAINNET_URL, CCTP_SWAP_SERVER_URL } from '@/lib/config';
 import type {
-    ActivityPage, CctpQuote, ChainBalance, CreatedSolanaSwap, CreatedTransfer, SolanaBalance, SolanaPrices, SolanaQuote, SolanaSwap, SolanaToken,
+    ActivityPage, BchQuote, BchSwapRecord, BchToken, CctpQuote, ChainBalance, CreatedSolanaSwap, CreatedTransfer, SolanaBalance, SolanaPrices, SolanaQuote, SolanaSwap, SolanaToken,
     SolanaTokenPage, SwapServerConfig, SwapServerErrorCode, Transfer,
 } from './types';
 
@@ -108,6 +108,20 @@ export function createSwapServerApi(baseUrl: string = CCTP_SWAP_SERVER_URL, fetc
         /** Answers when the transaction has landed, so the timeout is long. RESULT_UNKNOWN means poll, never re-create. */
         executeSolSwap: (id: string, signedTransaction: string) => request<SolanaSwap>(`/solana/swaps/${id}/execute`, { signedTransaction }, { timeoutMs: 70_000 }),
         getSolSwap: (id: string, o?: RequestOptions) => request<SolanaSwap>(`/solana/swaps/${id}`, undefined, o),
+
+        // ── Bitcoin Cash cross-chain swaps (1Click API) ──
+        getBchTokens: (chain?: string, o?: RequestOptions) =>
+            request<{ tokens: BchToken[]; count: number }>(`/bch/tokens${qs({ chain })}`, undefined, o),
+        getBchQuote: (p: { fromAsset: string; toAsset: string; fromChain?: string; toChain?: string; amount: string; slippageBps?: number }, o?: RequestOptions) =>
+            request<BchQuote>(`/bch/quote${qs(p)}`, undefined, o),
+        createBchSwap: (b: { fromAsset: string; toAsset: string; fromChain?: string; toChain?: string; amount: string; recipient: string; refundTo: string; slippageBps?: number }) =>
+            request<BchSwapRecord>('/bch/swaps', b),
+        getBchSwap: (id: string, o?: RequestOptions) =>
+            request<BchSwapRecord>(`/bch/swaps/${id}`, undefined, o),
+        submitBchDepositTx: (id: string, txHash: string) =>
+            request<BchSwapRecord>(`/bch/swaps/${id}/deposit-tx`, { txHash }),
+        getBchSwaps: (p: { address?: string; limit?: number } = {}, o?: RequestOptions) =>
+            request<{ swaps: BchSwapRecord[]; count: number }>(`/bch/swaps${qs(p)}`, undefined, o),
     };
 }
 

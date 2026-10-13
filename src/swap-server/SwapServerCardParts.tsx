@@ -122,12 +122,51 @@ function JupiterDetails({ state }: { state: SwapServerCardState }) {
     );
 }
 
+function BchDetails({ state }: { state: SwapServerCardState }) {
+    const route = state.route;
+    if (route?.kind !== 'bch-crosschain') return null;
+    const q = state.bchQuote;
+    const feePct = q ? (q.ourFeeBps / 100).toFixed(2) : '0.25';
+    return (
+        <div className="mx-4 mt-3 rounded-2xl bg-white/[0.02] border border-white/[0.05] overflow-hidden">
+            <div className="flex items-center justify-between gap-2 px-4 py-3 text-xs">
+                <div className="flex items-center gap-2 min-w-0">
+                    <Badge variant="outline" className="text-[10px] h-4 px-1.5 gap-1 border text-emerald-400 bg-emerald-500/10 border-emerald-500/20 shrink-0">
+                        <ArrowLeftRight className="h-3 w-3" />BCH Cross-Chain
+                    </Badge>
+                    <span className="text-white/50 truncate">1Click Solvers · ~3 mins</span>
+                </div>
+                {q && <span className="text-white/50 shrink-0">Fee {feePct}%</span>}
+            </div>
+            {q && (
+                <div className="px-4 pb-3 space-y-1.5 text-xs border-t border-white/[0.04] pt-2.5">
+                    <div className="flex justify-between text-white/60">
+                        <span>Expected receive</span>
+                        <span className="font-medium text-white">{q.amountOutFormatted} {q.toToken.symbol}</span>
+                    </div>
+                    <div className="flex justify-between text-white/50 text-[11px]">
+                        <span>Minimum guarantee</span>
+                        <span>{q.minAmountOutFormatted} {q.toToken.symbol}</span>
+                    </div>
+                    {q.priceImpact !== undefined && (
+                        <div className="flex justify-between text-white/50 text-[11px]">
+                            <span>Price impact</span>
+                            <span>{q.priceImpact.toFixed(2)}%</span>
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
 /** What the user sends, both fees, what arrives and when. Takes the place of the card's route summary. */
 export function SwapServerDetails({ state }: { state: SwapServerCardState }) {
     const ctx = useSwapServerOptional();
     const route = state.route;
     if (!ctx || !route) return null;
     if (route.kind === 'sol-jupiter') return <JupiterDetails state={state} />;
+    if (route.kind === 'bch-crosschain') return <BchDetails state={state} />;
     if (route.kind !== 'usdc-cctp') return null;
     const q = state.quote;
     const d = q?.display;

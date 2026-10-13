@@ -4,9 +4,9 @@
  */
 import { createContext, useContext } from 'react';
 import type { SwapServerApi } from './api';
-import type { Operation } from './steps';
+import type { BchOperation, Operation } from './steps';
 import type { SwapStage } from './solana';
-import type { ActivityItem, CctpChain, SolanaSwap, SwapServerConfig, Transfer } from './types';
+import type { ActivityItem, BchSwapRecord, CctpChain, SolanaSwap, SwapServerConfig, Transfer } from './types';
 
 /** The Solana swap this page is signing, or has just signed. */
 export interface SwapOperation {
@@ -50,6 +50,9 @@ export interface SwapServerContextValue {
     swapOperation: SwapOperation | null;
     /** A Solana swap through Jupiter. `amount` is base units of the input token. */
     swap: (input: { inputMint: string; outputMint: string; amount: string; slippageBps?: number; sell: SwapOperation['sell']; buy: SwapOperation['buy'] }) => Promise<SolanaSwap | undefined>;
+    /** A Bitcoin Cash cross-chain swap through 1Click NEAR Intents. */
+    bchOperation: BchOperation | null;
+    executeBchSwap: (input: { fromAsset: string; toAsset: string; fromChain?: string; toChain?: string; amount: string; recipient: string; refundTo: string; slippageBps?: number; sell: { symbol: string; display: string }; buy: { symbol: string; display: string } }) => Promise<BchSwapRecord | undefined>;
     /** Deliver an attested transfer from the user's own wallet (EVM destinations). */
     selfMint: (id: string) => Promise<void>;
     /** The delivery this page is sending itself, if any. */
@@ -60,8 +63,8 @@ export interface SwapServerContextValue {
     sendFee: (id: string) => Promise<void>;
 
     /** The processing dialog: open, and on which record. `null` follows the current operation. */
-    dialog: { open: boolean; id: string | null; kind: 'transfer' | 'swap' };
-    showDialog: (id?: string | null, kind?: 'transfer' | 'swap') => void;
+    dialog: { open: boolean; id: string | null; kind: 'transfer' | 'swap' | 'bch' };
+    showDialog: (id?: string | null, kind?: 'transfer' | 'swap' | 'bch') => void;
     hideDialog: () => void;
 
     /** Which history the trade page shows. The card reports whether its pair is one of ours. */

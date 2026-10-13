@@ -14,8 +14,9 @@ export interface Token {
     comingSoon?: boolean; // shows "Soon" badge
     /** Set on tokens that come from the swap server (src/swap-server): they trade only through that server. */
     swapServer?: {
-        product: 'cctp' | 'jupiter';
-        chainKey?: string;     // cctp: the server's chain key, e.g. 'base-sepolia'
+        product: 'cctp' | 'jupiter' | 'bch';
+        chainKey?: string;     // cctp/bch: the server's chain key, e.g. 'base-sepolia' or 'bch'
+        assetId?: string;      // bch: 1click asset identifier
         verified?: boolean;    // jupiter: on Jupiter's verified list
         suspicious?: boolean;  // jupiter: flagged by Jupiter
         isStock?: boolean;     // jupiter: a tokenized stock

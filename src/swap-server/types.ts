@@ -60,6 +60,16 @@ export interface SwapServerConfig {
         nativeMint: string;
         fee: { referralFeeBps: number; stocksFeeBps: number | null; stablesFeeBps: number | null; active: boolean };
     };
+    bch?: {
+        enabled: boolean;
+        paused: boolean;
+        pauseReason?: string;
+        feeBps: number;
+        nearFeeRecipient?: string;
+        minSwapUsd: number;
+        maxSwapUsd: number;
+        supportedChains: string[];
+    };
 }
 
 // ── cross-chain USDC ─────────────────────────────────────────────────────────
@@ -284,4 +294,69 @@ export interface CreatedSolanaSwap {
     swap: SolanaSwap;
     quote: SolanaQuote;
     tx: { serializedTx: string; lastValidBlockHeight?: number; expiresInSec: number; expiresAt: number };
+}
+
+// ── Bitcoin Cash (BCH) cross-chain swaps (1Click API) ──────────────────────
+
+export interface BchToken {
+    assetId: string;
+    symbol: string;
+    name: string;
+    decimals: number;
+    chain: string;
+    defuseAssetId?: string;
+    icon?: string;
+    price?: number;
+}
+
+export interface BchQuote {
+    fromToken: BchToken;
+    toToken: BchToken;
+    amountIn: string;
+    amountInFormatted: string;
+    amountOut: string;
+    amountOutFormatted: string;
+    minAmountOut: string;
+    minAmountOutFormatted: string;
+    timeEstimateSec: number;
+    priceImpact?: number;
+    ourFeeBps: number;
+    warning?: string;
+}
+
+export type BchSwapStatus =
+    | 'PENDING_DEPOSIT'
+    | 'KNOWN_DEPOSIT_TX'
+    | 'PROCESSING'
+    | 'SUCCESS'
+    | 'REFUNDED'
+    | 'FAILED'
+    | 'EXPIRED';
+
+export interface BchSwapRecord {
+    id: string;
+    status: BchSwapStatus;
+    depositAddress: string;
+    depositMemo?: string;
+    fromToken: BchToken;
+    toToken: BchToken;
+    amountIn: string;
+    amountInFormatted: string;
+    expectedOut: string;
+    expectedOutFormatted: string;
+    minAmountOut: string;
+    minAmountOutFormatted?: string;
+    recipient: string;
+    refundTo: string;
+    depositTxHash?: string;
+    settleTxHash?: string;
+    depositExplorerUrl?: string;
+    settleExplorerUrl?: string;
+    deadline: string;
+    createdAt: number;
+    updatedAt: number;
+    completedAt?: number;
+    failureReason?: string;
+    ourFeeBps: number;
+    nearFeeRecipient?: string;
 }
