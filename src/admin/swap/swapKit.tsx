@@ -22,6 +22,7 @@ export const swapUrl = {
   bchSwaps: '/admin/swap/bch',
   bchSwap: (id: string) => `/admin/swap/bch/${encodeURIComponent(id)}`,
   bchTokens: '/admin/swap/bch/tokens',
+  bchChains: '/admin/swap/bch/chains',
 };
 
 // ── money ────────────────────────────────────────────────────────────────────

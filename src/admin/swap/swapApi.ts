@@ -273,6 +273,7 @@ export function createSwapAdminApi(baseUrl: string, getKey: () => string) {
     bchSwaps: (q?: Query) => get<{ swaps: BchSwapRecord[]; count: number }>('/bch/swaps', q),
     bchSwap: (sid: string) => get<BchSwapRecord>(`/bch/swaps/${id(sid)}`),
     bchTokens: (chain?: string) => get<{ tokens: BchToken[]; count: number }>('/bch/tokens', { chain }),
+    bchQuote: (q: { fromAsset: string; toAsset: string; amount: string; fromChain?: string; toChain?: string }) => get<any>('/bch/quote', q),
     submitBchDepositTx: (sid: string, txHash: string) => post<BchSwapRecord>(`/bch/swaps/${id(sid)}/deposit-tx`, { txHash }),
     pauseBch: (reason?: string) => post<{ changed: string[]; settings: AllSettings }>('/admin/settings', { bch: { paused: true, pauseReason: reason }, note: 'BCH pause from admin console' }),
     resumeBch: () => post<{ changed: string[]; settings: AllSettings }>('/admin/settings', { bch: { paused: false, pauseReason: '' }, note: 'BCH resume from admin console' }),
