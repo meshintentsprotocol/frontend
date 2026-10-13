@@ -81,14 +81,15 @@ const unsupported = (reason: string): SwapRoute => ({ kind: 'unsupported', reaso
 export function bchAssetIdOf(t: Token): string {
     if (t.swapServer?.assetId) return t.swapServer.assetId;
     const f = family(t);
-    if (f === 'bch') return 'bch';
-    if (t.address) return t.address;
-    return `${t.chain || 'bch'}:${t.symbol}`;
+    if (f === 'bch' || t.symbol?.toUpperCase() === 'BCH') return 'bch';
+    if (t.address && t.address.startsWith('0x')) return t.address;
+    const c = bchChainOf(t);
+    return `${c}:${t.symbol}`;
 }
 
 export function bchChainOf(t: Token): string {
     const f = family(t);
-    if (f === 'bch') return 'bch';
+    if (f === 'bch' || t.symbol?.toUpperCase() === 'BCH') return 'bch';
     if (t.chain === 'ethereum') return 'eth';
     return t.chain || 'bch';
 }
@@ -96,16 +97,13 @@ export function bchChainOf(t: Token): string {
 export function resolveRoute(sell: Token, buy: Token, ctx: RouteContext): SwapRoute | null {
     const fromServer = !!sell.swapServer || !!buy.swapServer;
     const fs = family(sell), fb = family(buy);
-    if (!fromServer && EXISTING_FLOWS.has(`${fs}>${fb}`)) return null;
-
-    // Nothing in BCHSwapContext can execute this pair: it is one of ours, or it is not available.
-    const bothUsdc = sell.symbol === 'USDC' && buy.symbol === 'USDC';
 
     // Bitcoin Cash cross-chain swaps (1Click NEAR Intents):
     // Active when either token has swapServer.product === 'bch', or when one leg is BCH and the other leg
-    // is a cross-chain asset served by the swap server.
-    const isBchLeg = (fs === 'bch' && fb !== 'bch') || (fs !== 'bch' && fb === 'bch');
-    if (sell.swapServer?.product === 'bch' || buy.swapServer?.product === 'bch' || (fromServer && isBchLeg)) {
+    // is a cross-chain asset (EVM or Solana), excluding same-chain BCH and Movement HTLC.
+    const isBchLeg = (fs === 'bch' && fb !== 'bch' && fb !== 'movement' && fb !== 'xmr') ||
+                     (fs !== 'bch' && fb === 'bch' && fs !== 'movement' && fs !== 'xmr');
+    if (sell.swapServer?.product === 'bch' || buy.swapServer?.product === 'bch' || isBchLeg) {
         if (ctx.config?.bch?.paused) {
             return unsupported(ctx.config.bch.pauseReason || 'Bitcoin Cash cross-chain swaps are temporarily paused.');
         }
@@ -117,6 +115,8 @@ export function resolveRoute(sell: Token, buy: Token, ctx: RouteContext): SwapRo
             toChain: bchChainOf(buy),
         };
     }
+
+    if (!fromServer && EXISTING_FLOWS.has(`${fs}>${fb}`)) return null;
 
     // Two Solana tokens in Mainnet mode are a swap, also when one of them is the USDC that can be bridged.
     if (ctx.isMainnet && fs === 'solana' && fb === 'solana') {

@@ -19,6 +19,7 @@ import { SwapArea } from './swap/SwapArea';
 import { SwapOverviewPage, SwapEventsPage, SwapSettingsPage } from './swap/SwapOverviewPages';
 import { CctpTransfersPage, CctpTransferDetailPage, CctpChainsPage } from './swap/CctpPages';
 import { SolanaSwapsPage, SolanaSwapDetailPage, SolanaTokensPage } from './swap/SolanaPages';
+import { BchSwapsPage, BchSwapDetailPage, BchTokensPage } from './swap/BchPages';
 import { ProfitsPage } from './swap/ProfitPages';
 
 export const adminRoutes = (
@@ -57,6 +58,9 @@ export const adminRoutes = (
       <Route path="cctp" element={<CctpTransfersPage />} />
       <Route path="cctp/chains" element={<CctpChainsPage />} />
       <Route path="cctp/:id" element={<CctpTransferDetailPage />} />
+      <Route path="bch" element={<BchSwapsPage />} />
+      <Route path="bch/tokens" element={<BchTokensPage />} />
+      <Route path="bch/:id" element={<BchSwapDetailPage />} />
       <Route path="solana" element={<SolanaSwapsPage />} />
       <Route path="solana/tokens" element={<SolanaTokensPage />} />
       <Route path="solana/:id" element={<SolanaSwapDetailPage />} />

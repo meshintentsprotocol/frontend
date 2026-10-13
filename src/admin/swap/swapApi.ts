@@ -5,11 +5,13 @@
  * Jupiter (/admin/solana/*). Every request sends x-admin-key. Amounts are base-unit strings; the server adds a
  * `display` object with the human-readable values.
  */
+import type { BchSwapRecord, BchToken } from '@/swap-server/types';
+
 export class SwapApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }
 
-export type Section = 'cctp' | 'solana' | 'lend' | 'system';
+export type Section = 'cctp' | 'solana' | 'lend' | 'system' | 'bch';
 export type Severity = 'info' | 'success' | 'warn' | 'error';
 
 export interface SwapEvent {
@@ -113,13 +115,23 @@ export interface SwapOverview {
   events: { h24: Record<Severity, number>; recent: SwapEvent[] };
 }
 
-export interface AllSettings { cctp: CctpSettings; solana: SolanaSettings; updatedAt: number }
+export interface BchSettings {
+  enabled: boolean;
+  paused: boolean;
+  pauseReason?: string;
+  feeBps: number;
+  feeRecipientNear: string;
+  minSwapUsd: number;
+  maxSwapUsd: number;
+}
+
+export interface AllSettings { cctp: CctpSettings; solana: SolanaSettings; bch?: BchSettings; updatedAt: number }
 export interface SettingsView {
   settings: AllSettings;
   env: { referralAccount: string | null; chains: Array<{ key: string; name: string }>; defaults: { minTransferUsdc: number; maxTransferUsdc: number; feeBufferPct: number; maxSlippageBps: number } };
   history: SwapEvent[];
 }
-export interface SettingsPatch { cctp?: Partial<CctpSettings>; solana?: Partial<SolanaSettings>; note?: string }
+export interface SettingsPatch { cctp?: Partial<CctpSettings>; solana?: Partial<SolanaSettings>; bch?: Partial<BchSettings>; note?: string }
 
 export interface SystemInfo {
   uptimeSec: number; node: string; memoryMb: number; port: number; dataDir: string; secrets: string[];
@@ -147,11 +159,18 @@ export interface ProfitStats {
 }
 export interface ProfitsView {
   stats: ProfitStats;
+  bchStats?: {
+    totalSwaps: number;
+    successfulSwaps: number;
+    totalVolumeUsd: number;
+    totalProfitUsd: number;
+  };
   margins: {
     cctp: Pick<CctpSettings, 'feeBps' | 'feeMinUsdc' | 'feeMaxUsdc' | 'gasFeeUsdc' | 'feeEnforced'>;
     solana: { referralFeeBps: number; stocksFeeBps: number | null; stablesFeeBps: number | null; referralAccount: string | null };
+    bch?: { feeBps: number; feeRecipientNear: string; minSwapUsd: number; maxSwapUsd: number };
   };
-  collecting: { evm: boolean; solanaCctp: boolean; jupiter: boolean };
+  collecting: { evm: boolean; solanaCctp: boolean; jupiter: boolean; bch?: boolean };
   treasury: TreasuryWallet[];
   referral: ReferralStatus;
   history: SwapEvent[];
@@ -209,7 +228,7 @@ export function createSwapAdminApi(baseUrl: string, getKey: () => string) {
     note: (text: string, section?: Section) => post<{ event: SwapEvent }>('/admin/events/note', { text, section }),
     settings: () => get<SettingsView>('/admin/settings'),
     setSettings: (patch: SettingsPatch) => post<{ settings: AllSettings; changed: string[] }>('/admin/settings', patch),
-    resetSettings: (section: 'cctp' | 'solana') => post<{ settings: AllSettings }>('/admin/settings/reset', { section }),
+    resetSettings: (section: 'cctp' | 'solana' | 'bch') => post<{ settings: AllSettings }>('/admin/settings/reset', { section }),
     system: () => get<SystemInfo>('/admin/system'),
     // lending
     lendOverview: () => get<LendOverview>('/admin/lend/overview'),
@@ -250,6 +269,13 @@ export function createSwapAdminApi(baseUrl: string, getKey: () => string) {
     tokens: (q?: Query) => get<{ total: number; offset: number; limit: number; tokens: TokenView[] }>('/solana/tokens', q),
     stocks: (q?: Query) => get<{ total: number; offset: number; limit: number; issuers: Record<string, number>; tokens: TokenView[] }>('/solana/stocks', q),
     searchTokens: (q: string) => get<{ tokens: TokenView[] }>('/solana/tokens/search', { q }),
+    // Bitcoin Cash cross-chain swaps (1Click NEAR Intents)
+    bchSwaps: (q?: Query) => get<{ swaps: BchSwapRecord[]; count: number }>('/bch/swaps', q),
+    bchSwap: (sid: string) => get<BchSwapRecord>(`/bch/swaps/${id(sid)}`),
+    bchTokens: (chain?: string) => get<{ tokens: BchToken[]; count: number }>('/bch/tokens', { chain }),
+    submitBchDepositTx: (sid: string, txHash: string) => post<BchSwapRecord>(`/bch/swaps/${id(sid)}/deposit-tx`, { txHash }),
+    pauseBch: (reason?: string) => post<{ changed: string[]; settings: AllSettings }>('/admin/settings', { bch: { paused: true, pauseReason: reason }, note: 'BCH pause from admin console' }),
+    resumeBch: () => post<{ changed: string[]; settings: AllSettings }>('/admin/settings', { bch: { paused: false, pauseReason: '' }, note: 'BCH resume from admin console' }),
   };
 }
 

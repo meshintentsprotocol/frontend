@@ -6,17 +6,17 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Activity, ArrowLeftRight, Coins, Pause, Play, Settings2, ShieldAlert, RotateCcw, Save, StickyNote, Server, LogOut } from 'lucide-react';
 import { ActionButton, ConfirmAction, KeyValue, KpiTile, PageHeader, Pager, Pill, QueryState, SearchBox, Section, Segmented, useUrlState } from '../kit';
-import { useSwapAction, useSwapAdmin, useSwapEvents, useSwapOverview, useSwapSettings, useSwapSystem } from './SwapAdminContext';
+import { useBchSwaps, useProfits, useSwapAction, useSwapAdmin, useSwapEvents, useSwapOverview, useSwapSettings, useSwapSystem } from './SwapAdminContext';
 import { AlertList, HourlyBars, SwapEventList, SwitchRow, pct, secs, swapUrl, usd, usdc } from './swapKit';
-import type { CctpSettings, SolanaSettings, SwapOverview } from './swapApi';
+import type { BchSettings, CctpSettings, SolanaSettings, SwapOverview } from './swapApi';
 
 /** Pause or resume one product. Pausing asks for a reason, which is shown to operators and logged. */
-export function PauseControl({ section, paused }: { section: 'cctp' | 'solana'; paused: boolean }) {
+export function PauseControl({ section, paused }: { section: 'cctp' | 'solana' | 'bch'; paused: boolean }) {
   const { api } = useSwapAdmin();
   const [reason, setReason] = useState('');
-  const what = section === 'cctp' ? 'cross-chain transfers' : 'Solana swaps';
-  const pause = useSwapAction((r: string) => (section === 'cctp' ? api.pauseCctp(r) : api.pauseSolana(r)), { label: 'Pause', success: () => `New ${what} paused` });
-  const resume = useSwapAction(() => (section === 'cctp' ? api.resumeCctp() : api.resumeSolana()), { label: 'Resume', success: () => `New ${what} resumed` });
+  const what = section === 'cctp' ? 'cross-chain transfers' : section === 'solana' ? 'Solana swaps' : 'Bitcoin Cash swaps';
+  const pause = useSwapAction((r: string) => (section === 'cctp' ? api.pauseCctp(r) : section === 'solana' ? api.pauseSolana(r) : api.pauseBch(r)), { label: 'Pause', success: () => `New ${what} paused` });
+  const resume = useSwapAction(() => (section === 'cctp' ? api.resumeCctp() : section === 'solana' ? api.resumeSolana() : api.resumeBch()), { label: 'Resume', success: () => `New ${what} resumed` });
   if (paused) {
     return <ActionButton tone="primary" icon={<Play className="w-3.5 h-3.5" />} pending={resume.isPending} onClick={() => resume.run(undefined)}>Resume</ActionButton>;
   }
@@ -36,7 +36,7 @@ export function PauseControl({ section, paused }: { section: 'cctp' | 'solana'; 
 }
 
 function ProductCard({ title, icon, paused, pauseReason, section, to, children }: {
-  title: string; icon: ReactNode; paused: boolean; pauseReason?: string; section: 'cctp' | 'solana'; to: string; children: ReactNode;
+  title: string; icon: ReactNode; paused: boolean; pauseReason?: string; section: 'cctp' | 'solana' | 'bch'; to: string; children: ReactNode;
 }) {
   return (
     <Section title={<Link to={to} className="hover:text-emerald-300">{title}</Link>} icon={icon}
@@ -87,13 +87,35 @@ function SolanaCard({ o }: { o: SwapOverview }) {
   );
 }
 
+function BchCard() {
+  const p = useProfits();
+  const q = useBchSwaps({ limit: 10 });
+  const bchStats = p.data?.bchStats;
+  const swaps = q.data?.swaps ?? [];
+  const bchPaused = !!p.data?.margins.bch && !p.data?.collecting.bch;
+  return (
+    <ProductCard title="Bitcoin Cash" icon={<ArrowLeftRight className="w-4 h-4 text-emerald-400" aria-hidden />} paused={bchPaused} section="bch" to={swapUrl.bchSwaps}>
+      <div className="grid grid-cols-2 gap-2.5">
+        <KpiTile label="Total Swaps" value={bchStats?.totalSwaps ?? swaps.length} sub={`${bchStats?.successfulSwaps ?? swaps.filter(s => s.status === 'SUCCESS').length} settled`} to={swapUrl.bchSwaps} />
+        <KpiTile label="Est. Total Volume" value={usd(bchStats?.totalVolumeUsd ?? 0)} sub="Across all chains" />
+        <KpiTile label="Net App Profit" value={usd(bchStats?.totalProfitUsd ?? 0)} tone="emerald" sub="0.25% margin" />
+        <KpiTile label="Pending Deposits" value={swaps.filter(s => s.status === 'PENDING_DEPOSIT').length} sub="Awaiting send" to={`${swapUrl.bchSwaps}?status=PENDING_DEPOSIT`} />
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-zinc-500 pt-3 border-t border-white/[0.05]">
+        <span>NEAR Intents 1Click · Bidirectional</span>
+        <Link to={swapUrl.bchTokens} className="hover:text-zinc-200">Token catalog →</Link>
+      </div>
+    </ProductCard>
+  );
+}
+
 export function SwapOverviewPage() {
   const q = useSwapOverview();
   const { setAdminKey, serverUrl } = useSwapAdmin();
   return (
     <>
       <PageHeader title="Swap server" icon={<Server className="w-5 h-5 text-emerald-300" aria-hidden />}
-        description="Cross-chain USDC through Circle CCTP and Solana swaps through Jupiter, served by one server. Each has its own pause, limits and history."
+        description="Cross-chain USDC (CCTP), Solana (Jupiter), and Bitcoin Cash (1Click), served by one server. Each has its own controls and audit trails."
         actions={<>
           <span className="text-[11px] text-zinc-500 font-mono">{serverUrl.replace(/^https?:\/\//, '')}</span>
           <ActionButton icon={<LogOut className="w-3.5 h-3.5" />} onClick={() => setAdminKey(null)} title="Forget the swap server key saved in this browser">Forget key</ActionButton>
@@ -101,9 +123,10 @@ export function SwapOverviewPage() {
       <QueryState q={q} rows={8}>{o => (
         <>
           <Section title="Needs attention" icon={<ShieldAlert className="w-4 h-4 text-amber-300" aria-hidden />}><AlertList alerts={o.alerts} /></Section>
-          <div className="grid gap-5 xl:grid-cols-2">
+          <div className="grid gap-5 xl:grid-cols-3 items-start">
             <CctpCard o={o} />
             <SolanaCard o={o} />
+            <BchCard />
           </div>
           <Section title="Latest events" icon={<Activity className="w-4 h-4 text-emerald-300" aria-hidden />}
             description={`Last 24 hours: ${o.events.h24.error} errors, ${o.events.h24.warn} warnings, ${o.events.h24.success} completions`}
@@ -318,6 +341,43 @@ function SolanaSettingsCard({ saved, referralAccount }: { saved: SolanaSettings;
   );
 }
 
+function BchSettingsCard({ saved }: { saved?: BchSettings }) {
+  const { api } = useSwapAdmin();
+  const defaultSaved: BchSettings = saved ?? {
+    enabled: true,
+    paused: false,
+    pauseReason: '',
+    feeBps: 25,
+    feeRecipientNear: '',
+    minSwapUsd: 1,
+    maxSwapUsd: 100000,
+  };
+  const d = useDraft(defaultSaved);
+  const save = useSwapAction(() => api.setSettings({ bch: d.patch }), { label: 'Save', success: r => (r.changed.length ? `Saved: ${r.changed.join(', ')}` : 'Nothing changed') });
+  const reset = useSwapAction(() => api.resetSettings('bch'), { label: 'Reset', success: () => 'BCH settings reset' });
+  return (
+    <Section title="Bitcoin Cash" icon={<ArrowLeftRight className="w-4 h-4 text-emerald-300" aria-hidden />} description="NEAR Intents 1Click cross-chain swap settings."
+      actions={<ConfirmAction label="Reset" icon={<RotateCcw className="w-3.5 h-3.5" />} title="Reset BCH settings?" description="Resets BCH settings to server defaults." confirmLabel="Reset" tone="warn" onConfirm={() => reset.run(undefined)} pending={reset.isPending} />}>
+      <div className="divide-y divide-white/[0.05]">
+        <SwitchRow label="Enable BCH Swaps" checked={d.draft.enabled} onChange={v => d.set({ enabled: v })} description="Allow quoting and swapping cross-chain tokens to and from Bitcoin Cash." />
+        <SwitchRow label="Pause new swaps" danger checked={d.draft.paused} onChange={v => d.set({ paused: v })} description="Refuses new quotes and deposits. Existing pending deposits continue processing." />
+        <div className="grid sm:grid-cols-3 gap-x-4">
+          <NumberField label="Fee rate" hint="Basis points taken from each swap." value={d.draft.feeBps} onChange={v => d.set({ feeBps: v })} min={0} max={500} suffix="bps (25 = 0.25%)" />
+          <NumberField label="Min swap USD" hint="Lower bound order size." value={d.draft.minSwapUsd} onChange={v => d.set({ minSwapUsd: v })} min={0.1} step={1} suffix="USD" />
+          <NumberField label="Max swap USD" hint="Upper bound order size." value={d.draft.maxSwapUsd} onChange={v => d.set({ maxSwapUsd: v })} min={1} step={100} suffix="USD" />
+        </div>
+        <label className="block py-2.5">
+          <span className="text-xs font-medium text-zinc-200">NEAR Fee Recipient Account</span>
+          <span className="block mt-0.5 text-[11px] text-zinc-500">The NEAR account ID that protocol fees are credited to by NEAR Intents.</span>
+          <input value={d.draft.feeRecipientNear} onChange={e => d.set({ feeRecipientNear: e.target.value.trim() })} placeholder="e.g. treasury.near" aria-label="Fee recipient"
+            className="mt-1.5 w-full h-8 px-2.5 rounded-lg bg-white/[0.03] border border-white/10 text-xs text-white font-mono placeholder:text-zinc-600 focus:outline-none focus:border-emerald-400/50" />
+        </label>
+      </div>
+      <SaveBar changed={d.changed as string[]} onSave={() => save.run(undefined)} onDiscard={d.reset} pending={save.isPending} />
+    </Section>
+  );
+}
+
 export function SwapSettingsPage() {
   const q = useSwapSettings();
   const sys = useSwapSystem();
@@ -327,9 +387,10 @@ export function SwapSettingsPage() {
         description="What can be changed while the server runs. Saved on the server and kept across restarts. Keys, RPC URLs and the referral account are set in the server's env, not here." />
       <QueryState q={q} rows={10}>{s => (
         <>
-          <div className="grid gap-5 xl:grid-cols-2 items-start">
+          <div className="grid gap-5 xl:grid-cols-3 items-start">
             <CctpSettingsCard saved={s.settings.cctp} chains={s.env.chains} />
             <SolanaSettingsCard saved={s.settings.solana} referralAccount={s.env.referralAccount} />
+            <BchSettingsCard saved={s.settings.bch} />
           </div>
           <Section title="Setting changes" description="Who changed what, newest first."><SwapEventList events={s.history} empty="No setting has been changed yet" showSection={false} /></Section>
         </>

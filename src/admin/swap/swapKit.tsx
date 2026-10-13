@@ -19,6 +19,9 @@ export const swapUrl = {
   lendLoans: '/admin/swap/lend/loans',
   lendLoan: (ref: string) => `/admin/swap/lend/loans/${encodeURIComponent(ref)}`,
   profits: '/admin/swap/profits',
+  bchSwaps: '/admin/swap/bch',
+  bchSwap: (id: string) => `/admin/swap/bch/${encodeURIComponent(id)}`,
+  bchTokens: '/admin/swap/bch/tokens',
 };
 
 // ── money ────────────────────────────────────────────────────────────────────
@@ -72,6 +75,21 @@ export function TransferStatusBadge({ status }: { status: string }) {
 }
 export function SwapStatusBadge({ status }: { status: string }) {
   const m = SWAP_STATUS[status] ?? { tone: 'zinc' as Tone, label: status };
+  return <Pill tone={m.tone} dot>{m.label}</Pill>;
+}
+
+const BCH_STATUS: Record<string, { tone: Tone; label: string }> = {
+  PENDING_DEPOSIT: { tone: 'amber', label: 'Pending Deposit' },
+  KNOWN_DEPOSIT_TX: { tone: 'sky', label: 'Deposit Seen' },
+  PROCESSING: { tone: 'violet', label: 'Processing' },
+  SUCCESS: { tone: 'emerald', label: 'Success' },
+  REFUNDED: { tone: 'amber', label: 'Refunded' },
+  FAILED: { tone: 'rose', label: 'Failed' },
+  EXPIRED: { tone: 'zinc', label: 'Expired' },
+};
+export const bchStatusLabel = (s: string) => BCH_STATUS[s]?.label ?? s;
+export function BchStatusBadge({ status }: { status: string }) {
+  const m = BCH_STATUS[status] ?? { tone: 'zinc' as Tone, label: status };
   return <Pill tone={m.tone} dot>{m.label}</Pill>;
 }
 

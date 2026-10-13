@@ -351,11 +351,12 @@ export function EmptyBlock({ title, children, icon }: { title: string; children?
 }
 
 /** Wraps a query: loading skeleton, error with retry, or children. */
-export function QueryState<T>({ q, children, rows }: { q: { data?: T; error: unknown; isLoading: boolean; refetch: () => unknown }; children: (data: T) => ReactNode; rows?: number }) {
+export function QueryState<T>({ q, children, rows }: { q?: { data?: T; error: unknown; isLoading: boolean; refetch: () => unknown }; children: ((data: T) => ReactNode) | ReactNode; rows?: number }) {
+  if (!q) return <LoadingBlock rows={rows} />;
   if (q.isLoading && !q.data) return <LoadingBlock rows={rows} />;
   if (q.error && !q.data) return <ErrorBlock error={q.error} onRetry={() => void q.refetch()} />;
   if (!q.data) return null;
-  return <>{children(q.data)}</>;
+  return <>{typeof children === 'function' ? (children as (data: T) => ReactNode)(q.data) : children}</>;
 }
 
 // ── Table ────────────────────────────────────────────────────────────────────

@@ -51,6 +51,8 @@ function Collecting({ p }: { p: ProfitsView }) {
   const rate = `${m.cctp.feeBps} bps${m.cctp.feeMinUsdc ? `, minimum ${m.cctp.feeMinUsdc} USDC` : ''}${m.cctp.feeMaxUsdc ? `, maximum ${m.cctp.feeMaxUsdc} USDC` : ''}${Object.keys(m.cctp.gasFeeUsdc).length ? `, plus a gas charge on ${Object.keys(m.cctp.gasFeeUsdc).length} destination(s)` : ''}`;
   const why = (kind: 'evm' | 'solana') => (!cctpRate ? 'The rate is 0. Set one in the settings.' : !has(kind) ? `No active ${kind === 'evm' ? 'EVM' : 'Solana'} treasury wallet: there is nowhere to send the fee. Create one below.` : `${rate}. ${m.cctp.feeEnforced ? 'Delivery waits for the fee.' : 'Delivery does not wait for the fee.'}`);
   const jup = m.solana.referralFeeBps > 0 || !!m.solana.stocksFeeBps || !!m.solana.stablesFeeBps;
+  const bchActive = c.bch ?? (m.bch ? m.bch.feeBps > 0 && !!m.bch.feeRecipientNear : false);
+  const bchWhy = !m.bch ? 'BCH swap server not configured.' : m.bch.feeBps <= 0 ? 'BCH fee rate is 0 bps.' : !m.bch.feeRecipientNear ? 'No NEAR fee recipient account configured in settings.' : `${m.bch.feeBps} bps paid to ${m.bch.feeRecipientNear} via NEAR Intents.`;
   return (
     <Section title="Is each fee being collected?" description={<>Margins are set on the <Link to={swapUrl.settings} className="text-zinc-300 hover:text-emerald-300">settings page</Link>. A rate alone collects nothing: it also needs somewhere to go.</>}>
       <ul className="divide-y divide-white/[0.05]">
@@ -59,6 +61,7 @@ function Collecting({ p }: { p: ProfitsView }) {
         <CollectingRow on={c.jupiter} label="Solana swaps (Jupiter):"
           why={!m.solana.referralAccount ? 'No Jupiter referral account. Create one below or paste one in the settings.' : !jup ? 'A referral account is set but every rate is 0.'
             : `${m.solana.referralFeeBps} bps${m.solana.stocksFeeBps !== null ? `, stocks ${m.solana.stocksFeeBps} bps` : ''}${m.solana.stablesFeeBps !== null ? `, stablecoin pairs ${m.solana.stablesFeeBps} bps` : ''}. Jupiter keeps 20% of it.`} />
+        <CollectingRow on={bchActive} label="Bitcoin Cash cross-chain (NEAR Intents):" why={bchWhy} />
       </ul>
     </Section>
   );
@@ -209,11 +212,12 @@ export function ProfitsPage() {
         const gas = Object.entries(cctp.relayCost);
         return (
           <>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-2.5">
               <KpiTile label="Cross-chain fees received" value={`${usdc(cctp.paid, 4)} USDC`} sub={`${cctp.paidCount} transfer(s) · ${usdc(cctp.last24h.paid, 4)} in 24h`} tone={cctp.paidCount ? 'emerald' : undefined} icon={<PiggyBank className="w-4 h-4" />} />
               <KpiTile label="Waiting or unpaid" value={`${usdc((BigInt(cctp.awaiting) + BigInt(cctp.unpaid)).toString(), 4)} USDC`} tone={cctp.awaitingCount || cctp.unpaidCount ? 'amber' : undefined}
                 sub={`${cctp.awaitingCount} on hold · ${cctp.unpaidCount} delivered unpaid`} to={`${swapUrl.transfers}?status=active`} />
               <KpiTile label="Solana fees, estimated" value={usd(solana.estimatedUsd)} sub={`${solana.swapsWithFee} swap(s) · ${usd(solana.last24h.estimatedUsd)} in 24h`} tone={solana.swapsWithFee ? 'emerald' : undefined} />
+              <KpiTile label="BCH Swap profit" value={usd(p.bchStats?.totalProfitUsd ?? 0)} sub={`${p.bchStats?.totalSwaps ?? 0} swaps · ${usd(p.bchStats?.totalVolumeUsd ?? 0)} vol`} tone={(p.bchStats?.totalProfitUsd ?? 0) > 0 ? 'emerald' : undefined} to={swapUrl.bchSwaps} />
               <KpiTile label="Relayer gas spent" icon={<Fuel className="w-4 h-4" />} value={gas.length ? gas.map(([sym, n]) => `${n.toLocaleString(undefined, { maximumSignificantDigits: 3 })} ${sym}`).join(' · ') : '—'} sub={`${cctp.relayed} mint(s) paid for`} />
             </div>
             <Collecting p={p} />

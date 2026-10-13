@@ -15,7 +15,7 @@ import { resolveRoute, type SwapRoute } from './routing';
 import { evmFees, evmProvider, evmUsdcBalance } from './signers';
 import { useSwapServerOptional } from './context';
 import { withJupiterTokens } from './solana';
-import { pairAfterSelect, withCctpTokens } from './tokens';
+import { pairAfterSelect, withBchTokens, withCctpTokens } from './tokens';
 import { useWDK } from '@/context/WDKProvider';
 import { useSolanaQuote, useSolanaTokenList, useSolanaTokenSearch } from './useSolanaSwap';
 import type { BchQuote, CctpChain, CctpQuote, SolanaQuote, SwapServerConfig } from './types';
@@ -145,8 +145,21 @@ export function useSwapServerCard({ sellToken, buyToken, sellAmount, isMainnet }
     const stocks = !!config?.solana.stocksEnabled;
     const solList = useSolanaTokenList(isMainnet);
     const solTokens = useMemo(() => (stocks ? solList : solList?.filter(t => !t.isStock)), [solList, stocks]);
-    // Jupiter's rows first: its USDC row then also serves as the Solana end of cross-chain USDC on mainnet.
-    const tokens = useCallback((base: Token[]) => withCctpTokens(withJupiterTokens(base, solTokens, isMainnet), config, isMainnet), [config, isMainnet, solTokens]);
+
+    // 1Click BCH tokens from server catalog (207+ cross-chain tokens)
+    const bchListQuery = useQuery({
+        queryKey: ['swap-server', 'bch-tokens'],
+        queryFn: ({ signal }) => (api ? api.getBchTokens(undefined, { signal }).then(r => r.tokens).catch(() => []) : Promise.resolve([])),
+        enabled: !!api,
+        staleTime: 5 * 60_000,
+    });
+    const bchTokens = bchListQuery.data;
+
+    // Jupiter's rows first, then CCTP, then 1Click BCH tokens.
+    const tokens = useCallback(
+        (base: Token[]) => withBchTokens(withCctpTokens(withJupiterTokens(base, solTokens, isMainnet), config, isMainnet), bchTokens),
+        [config, isMainnet, solTokens, bchTokens]
+    );
     const searchTokens = useSolanaTokenSearch(isMainnet);
     const pair = useCallback((p: Token, o: Token, list: Token[]) => pairAfterSelect(p, o, { tokens: list, config, isMainnet }), [config, isMainnet]);
     const wdk = useWDK();
@@ -182,19 +195,21 @@ export function useSwapServerCard({ sellToken, buyToken, sellAmount, isMainnet }
     });
     const bchQuote = bchQuotable && bchSettled ? bchQuoteQuery.data : undefined;
 
+    const bchAddress = (isMainnet ? wdk.bchMainnetAddress : wdk.bchAddress) || wdk.bchAddress || wdk.bchMainnetAddress || wdk.bchChipnetAddress || null;
+
     const recipient = useMemo(() => {
         if (!bch) return null;
-        if (bch.toChain === 'bch') return wdk.address || null;
+        if (bch.toChain === 'bch') return bchAddress;
         if (bch.toChain === 'solana') return wdk.solanaAddress || null;
         return wdk.evmAddress || null;
-    }, [bch, wdk.address, wdk.solanaAddress, wdk.evmAddress]);
+    }, [bch, bchAddress, wdk.solanaAddress, wdk.evmAddress]);
 
     const refundTo = useMemo(() => {
         if (!bch) return null;
-        if (bch.fromChain === 'bch') return wdk.address || null;
+        if (bch.fromChain === 'bch') return bchAddress;
         if (bch.fromChain === 'solana') return wdk.solanaAddress || null;
         return wdk.evmAddress || null;
-    }, [bch, wdk.address, wdk.solanaAddress, wdk.evmAddress]);
+    }, [bch, bchAddress, wdk.solanaAddress, wdk.evmAddress]);
 
     const owner = cctp ? (cctp.src.kind === 'evm' ? ctx?.evmAddress : ctx?.solanaAddress) : null;
     const balance = useCctpBalance(cctp?.src, owner);
@@ -351,5 +366,5 @@ export function useSwapServerCard({ sellToken, buyToken, sellAmount, isMainnet }
                 return !!t;
             },
         };
-    }, [ctx, route, config, tokens, pair, searchTokens, sellAmount, sellToken, buyToken, sol, typed, invalid, paused, settled, quote, quoteError, quoteQuery.isFetching, balance.data, gas]);
+    }, [ctx, route, config, tokens, pair, searchTokens, sellAmount, sellToken, buyToken, sol, typed, invalid, paused, settled, quote, quoteError, quoteQuery.isFetching, balance.data, gas, bchQuote, bchQuoteQuery.isFetching, bchAmount, recipient, refundTo]);
 }

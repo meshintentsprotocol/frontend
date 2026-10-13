@@ -78,6 +78,12 @@ const NAV: Array<{ group: string; items: NavItem[] }> = [
     ],
   },
   {
+    group: 'Bitcoin Cash', items: [
+      { to: '/admin/swap/bch', label: 'BCH Swaps', icon: ArrowLeftRight, end: true },
+      { to: '/admin/swap/bch/tokens', label: '1Click Tokens', icon: Coins },
+    ],
+  },
+  {
     group: 'Solana swaps', items: [
       { to: '/admin/swap/solana', label: 'Swaps', icon: Coins, end: true },
       { to: '/admin/swap/solana/tokens', label: 'Tokens & stocks', icon: LineChart },

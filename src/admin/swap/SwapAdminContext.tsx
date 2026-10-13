@@ -47,6 +47,9 @@ export function useLendOverview() { const { api } = useSwapAdmin(); return usePo
 export function useLendLoans(q: Query) { const { api } = useSwapAdmin(); return usePolled(k('lend', 'loans', q), () => api.lendLoans(q)); }
 export function useLendLoan(ref: string) { const { api } = useSwapAdmin(); return usePolled(k('lend', 'loan', ref), () => api.lendLoan(ref), 1, !!ref); }
 export function useProfits() { const { api } = useSwapAdmin(); return usePolled(k('profits'), () => api.profits(), 2); }
+export function useBchSwaps(q: Query = {}) { const { api } = useSwapAdmin(); return usePolled(k('bch-swaps', q), () => api.bchSwaps(q)); }
+export function useBchSwap(id: string) { const { api } = useSwapAdmin(); return usePolled(k('bch-swap', id), () => api.bchSwap(id), 1, !!id); }
+export function useBchTokens(chain?: string) { const { api } = useSwapAdmin(); return usePolled(k('bch-tokens', chain), () => api.bchTokens(chain), 5); }
 export function useBlockedTokens() { const { api } = useSwapAdmin(); return usePolled(k('blocked'), api.blockedTokens, 3); }
 export function useTokenBrowser(mode: 'tokens' | 'stocks', q: Query) {
   const { api } = useSwapAdmin();

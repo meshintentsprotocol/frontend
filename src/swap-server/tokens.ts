@@ -25,7 +25,7 @@ export function toTokenRow(b: BchToken): Token {
         decimals: b.decimals,
         type: b.chain === 'solana' ? 'spl-token' : b.chain === 'bch' ? 'native' : 'erc20',
         chain,
-        address: b.assetId,
+        address: b.contractAddress || b.assetId,
         priceUsd: b.price,
         swapServer: {
             product: 'bch',
@@ -33,6 +33,30 @@ export function toTokenRow(b: BchToken): Token {
             assetId: b.assetId,
         },
     };
+}
+
+/**
+ * Merge 1Click BCH tokens into the token list.
+ * Tags matching existing tokens with swapServer product 'bch', and appends new tokens.
+ */
+export function withBchTokens(base: Token[], bchTokens: BchToken[] | undefined): Token[] {
+    if (!bchTokens || bchTokens.length === 0) return base;
+    const out = [...base];
+    for (const b of bchTokens) {
+        const row = toTokenRow(b);
+        const existing = out.find(x =>
+            (x.chain === row.chain || (!x.chain && row.chain === 'bch')) &&
+            x.symbol?.toUpperCase() === row.symbol?.toUpperCase()
+        );
+        if (existing) {
+            if (!existing.swapServer) {
+                existing.swapServer = row.swapServer;
+            }
+        } else {
+            out.push(row);
+        }
+    }
+    return out;
 }
 
 /** One USDC row per CCTP chain this build can sign for. */
