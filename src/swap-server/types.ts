@@ -9,9 +9,9 @@
 export type SwapServerErrorCode =
     | 'PAUSED' | 'ROUTE_CLOSED' | 'UNKNOWN_CHAIN' | 'SAME_CHAIN'
     | 'BELOW_MINIMUM' | 'ABOVE_MAXIMUM' | 'AMOUNT_TOO_SMALL' | 'INVALID_AMOUNT' | 'FAST_UNAVAILABLE'
-    | 'INSUFFICIENT_FUNDS' | 'SWAP_NOT_BUILDABLE' | 'SWAP_TOO_LARGE'
+    | 'INSUFFICIENT_FUNDS' | 'SWAP_NOT_BUILDABLE' | 'SWAP_TOO_LARGE' | 'TX_REJECTED' | 'TX_MISMATCH' | 'INVALID_SIGNED_TX'
     | 'STOCKS_DISABLED' | 'TOKEN_BLOCKED' | 'UNVERIFIED_DISABLED'
-    | 'EXPIRED' | 'WRONG_STATE' | 'IN_PROGRESS' | 'TX_MISMATCH' | 'BURN_ALREADY_REGISTERED' | 'NO_FEE_DUE'
+    | 'EXPIRED' | 'WRONG_STATE' | 'IN_PROGRESS' | 'BURN_ALREADY_REGISTERED' | 'NO_FEE_DUE'
     | 'RESULT_UNKNOWN' | 'UPSTREAM_ERROR' | 'RATE_LIMITED' | 'NOT_FOUND' | 'INVALID_REQUEST' | 'FORBIDDEN' | 'UNAVAILABLE' | 'INTERNAL'
     /** Set by the client when the server did not answer at all. */
     | 'UNREACHABLE';
@@ -35,7 +35,7 @@ export interface CctpChain {
 export interface SwapServerConfig {
     serverTime: number;
     cctp: {
-        network: string;          // 'testnet' until a mainnet chain set exists
+        network: string;          // 'testnet' or 'mainnet': one server serves one of them
         paused: boolean;
         pauseReason?: string;
         relayEnabled: boolean;
@@ -140,6 +140,17 @@ export interface SolanaBuiltTx {
 
 export type BuiltTx = EvmBuiltTx | SolanaBuiltTx;
 
+/** A wallet's USDC and gas on one CCTP chain, read by the server. */
+export interface ChainBalance {
+    chain: string;
+    owner: string;
+    usdc: string;
+    display: string;
+    native: string;               // wei or lamports; on Arc the same USDC balance at 18 decimals
+    nativeDecimals: number;
+    nativeSymbol: string;         // 'ETH' | 'SOL' | 'USDC'
+}
+
 export interface CreatedTransfer { transfer: Transfer; quote: CctpQuote; txs: BuiltTx[] }
 
 // ── activity: transfers and swaps as one list ────────────────────────────────
@@ -206,6 +217,21 @@ export interface SolanaToken {
 }
 
 export interface SolanaTokenPage { total: number; offset: number; limit: number; tokens: SolanaToken[]; issuers?: Record<string, number> }
+
+export interface SolanaBalance {
+    mint: string;
+    native: boolean;          // SOL itself, reported under the wrapped-SOL mint
+    amount: string;
+    decimals: number;
+    display: string;
+    symbol?: string;
+    name?: string;
+    icon?: string;
+    verified: boolean;
+    isStock: boolean;
+    usdPrice?: number;
+    usdValue?: number;
+}
 
 export type SolanaPrices = Record<string, { usdPrice: number; decimals: number; priceChange24h?: number; stockData?: { price: number } }>;
 

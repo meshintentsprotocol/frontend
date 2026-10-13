@@ -220,6 +220,11 @@ export function WalletTokensTab({ balanceVisible, activeTokens, loading, onClose
         }
     };
 
+    // USDC on the swap server's chains and Solana mainnet tokens the wallet holds (from usePortfolio).
+    const heldSwapServer = activeTokens
+        .filter(t => t.swapServer)
+        .map(t => ({ symbol: t.symbol, name: t.name, chain: t.chain, icon: t.icon, decimals: t.decimals ?? 0, held: true }));
+
     // CashTokens the user actually holds — sourced from usePortfolio so they
     // always appear (and carry a USD value) even if outside the Cauldron top list.
     const heldCashTokens = activeTokens
@@ -239,8 +244,8 @@ export function WalletTokensTab({ balanceVisible, activeTokens, loading, onClose
         const out: any[] = [];
         
         if (activeWalletId === 'main') {
-            for (const t of [...WALLET_TOKENS, ...heldCashTokens, ...dynamicTokens]) {
-                if (!isChainConnected(t.chain)) continue;
+            for (const t of [...WALLET_TOKENS, ...heldCashTokens, ...heldSwapServer, ...dynamicTokens]) {
+                if (!(t as any).held && !isChainConnected(t.chain)) continue;
                 const key = (t as any).type ? `cat-${(t as any).type}` : `${t.chain}-${t.symbol}`;
                 if (seen.has(key)) continue;
                 seen.add(key);
@@ -293,7 +298,7 @@ export function WalletTokensTab({ balanceVisible, activeTokens, loading, onClose
         }
         
         return out;
-    }, [activeWalletId, WALLET_TOKENS, heldCashTokens, dynamicTokens, extData, wdk.bchNetwork]);
+    }, [activeWalletId, WALLET_TOKENS, heldCashTokens, heldSwapServer, dynamicTokens, extData, wdk.bchNetwork]);
 
     // Chains that have at least one row, in list order. If the selected chain is
     // gone (wallet or network switch), fall back to BCH, then to everything.

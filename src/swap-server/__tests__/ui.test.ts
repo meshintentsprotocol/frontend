@@ -30,7 +30,8 @@ const ctxValue = (over: Partial<SwapServerContextValue> = {}): SwapServerContext
     chain, evmAddress: '0x318a63dEd371020d25670edeeCeD1E193E8D947E', solanaAddress: 'VBmpGVzabx8AsptQXrA2okEwqFVjbuosHvR2NkuBoaS',
     rows: items, rowsReceivedAt: 0, rowsLoading: false, openCount: 0, activeCount: 0, refresh: () => undefined,
     operation: null, bridge: async () => undefined, resume: async () => undefined, sendFee: async () => undefined,
-    dialog: { open: false, id: null }, showDialog: () => undefined, hideDialog: () => undefined,
+    swapOperation: null, swap: async () => undefined, signing: false, selfMint: async () => undefined, minting: null,
+    dialog: { open: false, id: null, kind: 'transfer' }, showDialog: () => undefined, hideDialog: () => undefined,
     historyView: 'auto', setHistoryView: () => undefined, historyOurs: false, pairRouted: false, setPairRouted: () => undefined,
     ...over,
 });

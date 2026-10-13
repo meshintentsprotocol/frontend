@@ -39,7 +39,7 @@ export function SwapServerButton({ state, onClick }: { state: SwapServerCardStat
     }
     return (
         <div className="space-y-2">
-            {state.notice && <Notice tone={state.problem === 'Bridge paused' ? 'amber' : 'red'}>{state.notice}</Notice>}
+            {state.notice && <Notice tone={state.problem?.endsWith('paused') || state.problem?.endsWith('for gas') || state.solQuote ? 'amber' : 'red'}>{state.notice}</Notice>}
             {state.busy ? (
                 <Button className={cn(BUTTON, BUTTON_OFF)} disabled><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Signing…</Button>
             ) : state.problem ? (
@@ -76,11 +76,59 @@ function Row({ label, value, strong, hint }: { label: string; value: React.React
     );
 }
 
+const trim = (v: string | undefined, digits = 6) => {
+    if (v === undefined) return '?';
+    const n = Number(v);
+    return Number.isFinite(n) ? n.toLocaleString(undefined, { maximumFractionDigits: n >= 1000 ? 2 : digits }) : v;
+};
+
+/** A Jupiter quote: rate, the least the user can receive, price impact, the route and Jupiter's warnings. */
+function JupiterDetails({ state }: { state: SwapServerCardState }) {
+    const q = state.solQuote;
+    const d = q?.display;
+    const rate = q && Number(d?.inAmount) > 0 ? Number(d?.outAmount) / Number(d?.inAmount) : undefined;
+    const impact = q?.priceImpactPct;
+    const venues = q ? [...new Set(q.route.map(r => r.label))] : [];
+    return (
+        <div className="mx-4 mt-3 rounded-2xl bg-white/[0.02] border border-white/[0.05] overflow-hidden">
+            <div className="flex items-center justify-between gap-2 px-4 py-3 text-xs">
+                <div className="flex items-center gap-2 min-w-0">
+                    <Badge variant="outline" className="text-[10px] h-4 px-1.5 gap-1 border text-purple-300 bg-purple-500/10 border-purple-500/20 shrink-0">
+                        <ArrowLeftRight className="h-3 w-3" />Solana swap
+                    </Badge>
+                    <span className="text-white/50 truncate">Jupiter · Mainnet</span>
+                </div>
+                {q && <span className="text-white/50 shrink-0">{q.gasless ? 'Gasless' : 'A few seconds'}</span>}
+            </div>
+            {q && d && (
+                <div className="px-4 pb-3 space-y-1.5 text-sm border-t border-white/[0.04] pt-2">
+                    {rate !== undefined && <Row label="Rate" value={`1 ${d.inSymbol ?? ''} ≈ ${trim(String(rate))} ${d.outSymbol ?? ''}`} />}
+                    <Row label="You receive" value={`≈ ${trim(d.outAmount)} ${d.outSymbol ?? ''}`} strong />
+                    <Row label="At least" value={`${trim(d.minOutAmount)} ${d.outSymbol ?? ''}`} hint={`${q.slippageBps / 100}% slippage`} />
+                    {impact !== undefined && Math.abs(impact) >= 0.01 && (
+                        <Row label="Price impact" value={<span className={cn(impact <= -3 ? 'text-red-400' : impact <= -1 ? 'text-amber-300' : undefined)}>{impact.toFixed(2)}%</span>} />
+                    )}
+                    <Row label="Service fee" value={q.referralFeeBps > 0 ? `${q.referralFeeBps / 100}%` : 'None'} />
+                    {venues.length > 0 && <Row label="Route" value={<span className="text-xs">{venues.slice(0, 3).join(', ')}{venues.length > 3 ? ` +${venues.length - 3}` : ''}</span>} />}
+                    {q.warnings.map(w => (
+                        <div key={w} className="flex items-start gap-1.5 text-xs text-yellow-400/80 pt-1">
+                            <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5" />
+                            <span>{w}</span>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
 /** What the user sends, both fees, what arrives and when. Takes the place of the card's route summary. */
 export function SwapServerDetails({ state }: { state: SwapServerCardState }) {
     const ctx = useSwapServerOptional();
     const route = state.route;
-    if (!ctx || !route || route.kind !== 'usdc-cctp') return null;
+    if (!ctx || !route) return null;
+    if (route.kind === 'sol-jupiter') return <JupiterDetails state={state} />;
+    if (route.kind !== 'usdc-cctp') return null;
     const q = state.quote;
     const d = q?.display;
     const recipient = route.dst.kind === 'evm' ? ctx.evmAddress : ctx.solanaAddress;

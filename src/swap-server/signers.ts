@@ -11,7 +11,7 @@
 import { ethers } from 'ethers';
 import { Keypair, VersionedTransaction } from '@solana/web3.js';
 import { localChain } from './cctpChains';
-import type { CctpChain, EvmBuiltTx } from './types';
+import type { CctpChain, EvmBuiltTx, Transfer } from './types';
 
 const GWEI = 1_000_000_000n;
 
@@ -57,7 +57,7 @@ export interface SentEvmTx {
  * estimateGas runs first, so a transaction that would revert is refused before it costs anything.
  */
 export async function sendEvmTx(
-    signer: ethers.Signer, tx: EvmBuiltTx,
+    signer: ethers.Signer, tx: Pick<EvmBuiltTx, 'to' | 'data' | 'chainId' | 'minMaxFeePerGasGwei'>,
     opts: { onHash?: (hash: string) => void | Promise<void>; waitTimeoutMs?: number } = {},
 ): Promise<SentEvmTx> {
     const provider = signer.provider;
@@ -92,6 +92,17 @@ export function feeTx(chain: CctpChain, feeRecipient: string, protocolFee: strin
         kind: 'fee', chain: 'evm', chainId: chain.chainId!, to: chain.usdc, value: '0',
         data: erc20.encodeFunctionData('transfer', [feeRecipient, BigInt(protocolFee)]),
         minMaxFeePerGasGwei: chain.minMaxFeePerGasGwei,
+    };
+}
+
+const transmitter = new ethers.Interface(['function receiveMessage(bytes message, bytes attestation) returns (bool)']);
+
+/** The delivery of an attested transfer, for the user to send: MessageTransmitterV2.receiveMessage on the destination. */
+export function mintTx(dst: CctpChain, selfMint: NonNullable<Transfer['selfMint']>): Pick<EvmBuiltTx, 'to' | 'data' | 'chainId' | 'minMaxFeePerGasGwei'> {
+    return {
+        chainId: dst.chainId!, to: selfMint.contract,
+        data: transmitter.encodeFunctionData('receiveMessage', [selfMint.message, selfMint.attestation]),
+        minMaxFeePerGasGwei: dst.minMaxFeePerGasGwei,
     };
 }
 

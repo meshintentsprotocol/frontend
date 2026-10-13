@@ -6,7 +6,7 @@
  * use them too. The rest replace a "Soon" placeholder or are new (Arc).
  */
 import type { Token } from '@/types';
-import { localChain } from './cctpChains';
+import { cctpInMode, localChain } from './cctpChains';
 import { cctpChainOf, isCctpOnly } from './routing';
 import type { SwapServerConfig } from './types';
 
@@ -28,16 +28,19 @@ export function cctpTokens(config: SwapServerConfig | undefined): Token[] {
 }
 
 /**
- * The selector's list with the CCTP rows in. A server row replaces a disabled placeholder for the same chain and
- * symbol, joins the list when nothing is there, and leaves a live static row alone.
+ * The selector's list with the CCTP rows in, when the server's network is the mode's. A row that already is
+ * this USDC (same chain, same address) is left alone, because other flows use it too. Otherwise the server row
+ * replaces a disabled placeholder for the chain, or joins the list: a live static row with another address is a
+ * different token (the list still carries testnet USDC in Mainnet mode) and stays next to it.
  */
 export function withCctpTokens(base: Token[], config: SwapServerConfig | undefined, isMainnet: boolean): Token[] {
-    if (isMainnet || !config) return base;
+    if (!config || !cctpInMode(config, isMainnet)) return base;
     const out = [...base];
+    const same = (a?: string, b?: string) => !!a && !!b && (a === b || a.toLowerCase() === b.toLowerCase());
     for (const t of cctpTokens(config)) {
-        const i = out.findIndex(x => x.chain === t.chain && x.symbol === t.symbol);
-        if (i < 0) out.push(t);
-        else if (out[i].disabled) out[i] = t;
+        if (out.some(x => x.chain === t.chain && !x.disabled && same(x.address, t.address))) continue;
+        const i = out.findIndex(x => x.chain === t.chain && x.symbol === t.symbol && x.disabled);
+        if (i < 0) out.push(t); else out[i] = t;
     }
     return out;
 }
@@ -56,7 +59,7 @@ const PREFERRED: NonNullable<Token['chain']>[] = ['ethereum', 'base', 'arbitrum'
 export function pairAfterSelect(
     picked: Token, other: Token, ctx: { tokens: Token[]; config?: SwapServerConfig; isMainnet: boolean },
 ): { other?: Token; reset?: boolean } {
-    if (ctx.isMainnet || !ctx.config) return {};
+    if (!ctx.config || !cctpInMode(ctx.config, ctx.isMainnet)) return {};
     const pickedChain = cctpChainOf(picked, ctx.config), otherChain = cctpChainOf(other, ctx.config);
     if (isCctpOnly(picked) && pickedChain && (!otherChain || otherChain.key === pickedChain.key)) {
         const candidates = ctx.tokens.filter(t => !t.disabled && cctpChainOf(t, ctx.config)?.key !== pickedChain.key && cctpChainOf(t, ctx.config));

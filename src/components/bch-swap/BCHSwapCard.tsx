@@ -271,6 +271,8 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
     }, [isMainnet]);
 
     const getTokenPrice = useCallback((token: Token): number => {
+        // A Solana mainnet token from the swap server is priced by its mint, never by its symbol.
+        if (token.swapServer?.product === 'jupiter') return token.priceUsd ?? 0;
         const cleanSymbol = token.symbol.replace('.b', '').toUpperCase();
         // CashTokens are priced by Cauldron; only native/bridged assets use the market feed.
         const feedKey = token.chain === 'bch' && token.categoryId ? null : marketSymbolFor(token.symbol);
@@ -1075,7 +1077,7 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                             inputMode="decimal"
                             className="border-none bg-transparent text-2xl sm:text-3xl font-bold p-0 h-auto focus-visible:ring-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none flex-1 min-w-0 text-white placeholder:text-white/20"
                         />
-                        <BCHTokenSelector value={sellToken} onSelect={handleSellTokenSelect} tokens={availableTokens} evmNetworkLabel={activeEvmLabel} isMainnet={isMainnet} />
+                        <BCHTokenSelector value={sellToken} onSelect={handleSellTokenSelect} tokens={availableTokens} evmNetworkLabel={activeEvmLabel} isMainnet={isMainnet} searchTokens={ss.searchTokens} />
                     </div>
                     <div className="text-sm text-white/40 font-mono">
                         ≈ ${sellUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -1118,7 +1120,7 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                             inputMode="decimal"
                             className="border-none bg-transparent text-2xl sm:text-3xl font-bold p-0 h-auto focus-visible:ring-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none flex-1 min-w-0 text-white placeholder:text-white/20"
                         />
-                        <BCHTokenSelector value={buyToken} onSelect={handleBuyTokenSelect} tokens={availableTokens} evmNetworkLabel={activeEvmLabel} isMainnet={isMainnet} />
+                        <BCHTokenSelector value={buyToken} onSelect={handleBuyTokenSelect} tokens={availableTokens} evmNetworkLabel={activeEvmLabel} isMainnet={isMainnet} searchTokens={ss.searchTokens} />
                     </div>
                     <div className="flex items-center justify-between text-sm">
                         <span className="text-white/40 font-mono">

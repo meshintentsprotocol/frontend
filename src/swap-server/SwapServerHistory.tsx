@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { TokenChainIcon } from '@/components/common/TokenChainIcon';
 import { cn } from '@/lib/utils';
-import { localChain } from './cctpChains';
+import { cctpInMode, localChain } from './cctpChains';
 import { useSwapServer, useSwapServerOptional } from './context';
 import { formatCountdown, PHASE_CLASS, rowStatusLabel, secondsLeft } from './steps';
 import { USDC_ICON } from './tokens';
@@ -113,32 +113,37 @@ function Empty({ title, hint }: { title: string; hint: string }) {
 
 export function SwapServerHistory() {
     const ctx = useSwapServer();
-    const { rows, rowsReceivedAt, operation } = ctx;
+    const { rows, rowsReceivedAt } = ctx;
     const open = rows.filter(r => !r.terminal);
     const history = rows.filter(r => r.terminal);
     const [tab, setTab] = useState<'open' | 'history'>('open');
 
     // One clock for every countdown in the list.
     const [now, setNow] = useState(() => Date.now());
-    const counting = open.some(r => r.phase === 'awaiting_signature');
+    const counting = open.some(r => r.kind === 'transfer' && r.phase === 'awaiting_signature');
     useEffect(() => {
         if (!counting) return;
         const t = setInterval(() => setNow(Date.now()), 1000);
         return () => clearInterval(t);
     }, [counting]);
 
-    const busy = !!operation?.busy;
-    const row = (item: ActivityItem) => (
+    const busy = ctx.signing;
+    // An unsigned swap cannot be signed later: its transaction is only handed out when it is created.
+    const row = (item: ActivityItem) => item.kind === 'swap' ? (
+        <ActivityRow key={item.id} item={item} onOpen={() => ctx.showDialog(item.id, 'swap')} />
+    ) : (
         <ActivityRow
             key={item.id} item={item} busy={busy}
             left={secondsLeft(item, rowsReceivedAt, now)}
-            onOpen={() => ctx.showDialog(item.id)}
+            onOpen={() => ctx.showDialog(item.id, item.kind)}
             onSign={() => void ctx.resume(item.id)}
             onPayFee={() => void ctx.sendFee(item.id)}
         />
     );
-    const what = ctx.isMainnet ? 'Solana swaps' : 'USDC transfers';
-    const hint = ctx.isMainnet ? 'Swap two Solana tokens to see it here.' : 'Send USDC from one chain to another to see it here.';
+    const both = ctx.isMainnet && cctpInMode(ctx.config, true);
+    const what = both ? 'swaps or transfers' : ctx.isMainnet ? 'Solana swaps' : 'USDC transfers';
+    const hint = both ? 'Swap two Solana tokens, or send USDC to another chain, to see it here.'
+        : ctx.isMainnet ? 'Swap two Solana tokens to see it here.' : 'Send USDC from one chain to another to see it here.';
 
     return (
         <Card className="w-full rounded-3xl border border-muted/50 bg-card/80 backdrop-blur-sm shadow-lg overflow-hidden flex flex-col" style={{ height: 'var(--swap-card-height, auto)', minHeight: '480px' }}>
@@ -186,9 +191,9 @@ export function TradeHistorySlot({ children }: { children: ReactNode }) {
     const ctx = useSwapServerOptional();
     const activate = ctx?.activate;
     useEffect(() => { activate?.(); }, [activate]);
-    if (!ctx || (ctx.rows.length === 0 && !ctx.pairRouted && !ctx.operation)) return <>{children}</>;
+    if (!ctx || (ctx.rows.length === 0 && !ctx.pairRouted && !ctx.operation && !ctx.swapOperation)) return <>{children}</>;
     const ours = ctx.historyOurs;
-    const label = ctx.isMainnet ? 'Solana' : 'Bridge';
+    const label = !ctx.isMainnet ? 'Bridge' : cctpInMode(ctx.config, true) ? 'Swaps and bridge' : 'Solana';
     const pill = (active: boolean) => cn(
         'px-3 py-1 rounded-full text-xs font-semibold border transition-colors',
         active ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' : 'bg-white/[0.03] text-white/60 border-white/[0.06] hover:text-white hover:bg-white/[0.06]',

@@ -15,6 +15,7 @@ import {
   Shield,
   BarChart3,
   CheckCircle2,
+  Wallet,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
@@ -161,6 +162,36 @@ const ecosystemCards: EcosystemCardData[] = [
       { label: 'BCHMesh Docs', href: 'https://docs.intentsprotocol.xyz/bchmesh' },
     ],
   },
+  {
+    id: 'cham-wallet',
+    title: 'Cham Wallet',
+    tagline: 'Multi-chain self-custody. One interface for every chain.',
+    description: 'The official BCH Intents wallet — a self-custody app and browser extension for cross-chain swaps, native CashTokens, and automated yield across Bitcoin Cash, EVM, and Solana.',
+    icon: <Wallet className="w-8 h-8 text-black" />,
+    gradient: 'from-green-400 to-emerald-600',
+    accentColor: 'emerald',
+    badgeColor: 'bg-green-500/20 text-green-300',
+    tag: 'Wallet',
+    status: 'live',
+    stats: [
+      { label: 'Chains', value: 'Multi-chain' },
+      { label: 'Custody', value: 'Self-custody' },
+      { label: 'Platforms', value: 'Web & Extension' },
+    ],
+    features: [
+      'Non-custodial multi-chain wallet for BCH, EVM & Solana',
+      'Built-in cross-chain swaps via BCH Intents Protocol',
+      'Native CashToken support with full UTXO control',
+      'Browser extension for seamless dApp connectivity',
+      'Chameleon-themed adaptive UI that shifts with your chain',
+      'One-click portfolio overview across all connected chains',
+    ],
+    details: 'Cham Wallet is the official multi-chain wallet of the BCH Intents ecosystem. It provides a unified, self-custody interface for managing assets across Bitcoin Cash, EVM-compatible chains, and Solana. With built-in protocol-native swaps, CashToken management, and a browser extension for dApp connectivity, Cham Wallet is the single pane of glass for the intent-driven future of DeFi.',
+    links: [
+      { label: 'Open Cham Wallet', href: 'https://cham-wallet-web.vercel.app', primary: true },
+      { label: 'Get Extension', href: 'https://cham-wallet-web.vercel.app', },
+    ],
+  },
 ];
 
 // ─── Status Badge ───────────────────────────────────────────────────────────────
@@ -184,24 +215,28 @@ const accentCheckMap: Record<string, string> = {
   cyan: 'text-cyan-400',
   teal: 'text-teal-400',
   violet: 'text-violet-400',
+  green: 'text-green-400',
 };
 const accentBtnPrimaryMap: Record<string, string> = {
   emerald: 'bg-emerald-500 hover:bg-emerald-400 text-black',
   cyan: 'bg-cyan-500 hover:bg-cyan-400 text-black',
   teal: 'bg-teal-500 hover:bg-teal-400 text-black',
   violet: 'bg-violet-500 hover:bg-violet-400 text-white',
+  green: 'bg-green-500 hover:bg-green-400 text-black',
 };
 const accentBtnSecondaryMap: Record<string, string> = {
   emerald: 'border-emerald-500/30 hover:border-emerald-400/60 hover:bg-emerald-500/10 text-emerald-300',
   cyan: 'border-cyan-500/30 hover:border-cyan-400/60 hover:bg-cyan-500/10 text-cyan-300',
   teal: 'border-teal-500/30 hover:border-teal-400/60 hover:bg-teal-500/10 text-teal-300',
   violet: 'border-violet-500/30 hover:border-violet-400/60 hover:bg-violet-500/10 text-violet-300',
+  green: 'border-green-500/30 hover:border-green-400/60 hover:bg-green-500/10 text-green-300',
 };
 const accentHoverGlowMap: Record<string, string> = {
   emerald: 'from-emerald-500/10',
   cyan: 'from-cyan-500/10',
   teal: 'from-teal-500/10',
   violet: 'from-violet-500/10',
+  green: 'from-green-500/10',
 };
 
 // ─── Detail Popup Modal ─────────────────────────────────────────────────────────
@@ -251,7 +286,9 @@ function EcosystemDetailModal({ card, onClose }: { card: EcosystemCardData; onCl
             {/* Header */}
             <div className="flex items-start gap-5">
               <div className={cn('w-16 h-16 rounded-2xl bg-gradient-to-br flex items-center justify-center flex-shrink-0 shadow-lg', card.gradient)}>
-                {card.icon}
+                {card.id === 'cham-wallet' ? (
+                  <img src="/logos/wallets/cham-spiral.png" alt="Cham Wallet" className="w-10 h-10 object-contain" />
+                ) : card.icon}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-3 mb-1 flex-wrap">
@@ -349,7 +386,9 @@ function EcosystemCard({ card, delay, onOpen }: { card: EcosystemCardData; delay
         </div>
         {/* Icon */}
         <div className={cn('w-16 h-16 rounded-2xl bg-gradient-to-br flex items-center justify-center mb-5 shadow-lg', card.gradient)}>
-          {card.icon}
+          {card.id === 'cham-wallet' ? (
+            <img src="/logos/wallets/cham-spiral.png" alt="Cham Wallet" className="w-10 h-10 object-contain" />
+          ) : card.icon}
         </div>
         <h3 className="text-2xl font-bold mb-3">{card.title}</h3>
         <p className="text-muted-foreground text-base mb-6 flex-1">{card.description}</p>
@@ -395,7 +434,7 @@ export default function EcosystemPage() {
                 initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.1 }}
                 className="inline-block text-xs font-semibold uppercase tracking-widest px-4 py-2 rounded-full bg-white/5 border border-white/10 text-zinc-400 mb-2"
               >
-                4 products · 1 unified protocol
+                5 products · 1 unified protocol
               </motion.span>
               <h1 className="text-5xl md:text-7xl font-black tracking-tighter">
                 The BCH Intents{' '}

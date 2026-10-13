@@ -6,9 +6,9 @@
  *   cross-chain (/quote, /transfers)  decimal USDC          "1.5"
  *   Solana swaps (/solana/*)          integer base units    "1500000"
  */
-import { CCTP_SWAP_SERVER_URL } from '@/lib/config';
+import { CCTP_SWAP_SERVER_MAINNET_URL, CCTP_SWAP_SERVER_URL } from '@/lib/config';
 import type {
-    ActivityPage, CctpQuote, CreatedSolanaSwap, CreatedTransfer, SolanaPrices, SolanaQuote, SolanaSwap, SolanaToken,
+    ActivityPage, CctpQuote, ChainBalance, CreatedSolanaSwap, CreatedTransfer, SolanaBalance, SolanaPrices, SolanaQuote, SolanaSwap, SolanaToken,
     SolanaTokenPage, SwapServerConfig, SwapServerErrorCode, Transfer,
 } from './types';
 
@@ -84,6 +84,12 @@ export function createSwapServerApi(baseUrl: string = CCTP_SWAP_SERVER_URL, fetc
         getTransfer: (id: string, o?: RequestOptions) => request<Transfer>(`/transfers/${id}`, undefined, o),
         /** Have the server adopt a burn it has no open record for, so it is still delivered. */
         trackBurn: (src: string, txHash: string) => request<Transfer>('/track', { src, txHash }),
+        /** USDC and gas of a wallet on one chain. For Solana this is the only way: its public RPC refuses browsers. */
+        getChainBalance: (chain: string, owner: string, o?: RequestOptions) => request<ChainBalance>(`/chains/${chain}/balance${qs({ owner })}`, undefined, o),
+        /** Does the chain know this transaction, mined or pending? */
+        chainKnowsTx: (chain: string, hash: string, o?: RequestOptions) => request<{ known: boolean }>(`/chains/${chain}/tx/${hash}`, undefined, o).then(r => r.known),
+        /** Solana source: send the burn the wallet signed and register it, in one step. */
+        broadcastBurn: (id: string, signedTx: string) => request<Transfer>(`/transfers/${id}/broadcast`, { signedTx }, { timeoutMs: 45_000 }),
 
         // ── Solana swaps: amounts are base units of the input token ──
         getSolTokens: (p: { q?: string; tag?: string; sort?: 'liquidity' | 'volume' | 'mcap'; limit?: number; offset?: number } = {}, o?: RequestOptions) =>
@@ -93,6 +99,8 @@ export function createSwapServerApi(baseUrl: string = CCTP_SWAP_SERVER_URL, fetc
         getSolStocks: (p: { issuer?: string; q?: string; minLiquidity?: number; limit?: number; offset?: number } = {}, o?: RequestOptions) =>
             request<SolanaTokenPage>(`/solana/stocks${qs(p)}`, undefined, o),
         getSolPrices: (mints: string[], o?: RequestOptions) => request<SolanaPrices>(`/solana/prices${qs({ ids: mints.join(',') })}`, undefined, o),
+        /** SOL and every token the wallet holds on mainnet, with prices. */
+        getSolBalances: (owner: string, o?: RequestOptions) => request<{ owner: string; balances: SolanaBalance[] }>(`/solana/balances${qs({ owner })}`, undefined, o),
         getSolQuote: (p: { inputMint: string; outputMint: string; amount: string; slippageBps?: number; taker?: string }, o?: RequestOptions) =>
             request<SolanaQuote>(`/solana/quote${qs(p)}`, undefined, o),
         createSolSwap: (b: { inputMint: string; outputMint: string; amount: string; taker: string; slippageBps?: number; receiver?: string }) =>
@@ -109,9 +117,17 @@ export type SwapServerApi = ReturnType<typeof createSwapServerApi>;
  * False in a production build that was not given the server's URL. The default URL is a developer's localhost,
  * and a public site must not send its visitors' browsers there.
  */
-export const swapServerConfigured: boolean = !(import.meta.env.PROD && /\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(CCTP_SWAP_SERVER_URL));
+const usable = (url: string) => !!url && !(import.meta.env.PROD && /\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(url));
+export const swapServerConfigured: boolean = usable(CCTP_SWAP_SERVER_URL);
 
 export const swapServerApi = createSwapServerApi();
+/** The mainnet instance, when this build was given one. */
+export const swapServerMainnetApi: SwapServerApi | undefined = usable(CCTP_SWAP_SERVER_MAINNET_URL) ? createSwapServerApi(CCTP_SWAP_SERVER_MAINNET_URL) : undefined;
+
+/** The server a mode talks to. Without a mainnet instance, Mainnet mode uses the one server for its Solana swaps. */
+export function swapServerApiFor(isMainnet: boolean): SwapServerApi {
+    return isMainnet && swapServerMainnetApi ? swapServerMainnetApi : swapServerApi;
+}
 
 /** A sentence for the user. The server's own sentence is used unless the code calls for something more useful. */
 export function describeError(e: unknown): string {

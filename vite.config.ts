@@ -28,39 +28,13 @@ export default defineConfig({
             "@mem-cash/validation": fileURLToPath(
                 new URL("./src/lib/mem-cash-validation-stub.ts", import.meta.url)
             ),
+            "@telegram-apps/bridge": fileURLToPath(
+                new URL("./src/lib/telegram-bridge-stub.ts", import.meta.url)
+            ),
         },
     },
     build: {
         rollupOptions: {
-            output: {
-                manualChunks: {
-                    'chunk-solana': [
-                        '@solana/web3.js',
-                        '@solana/wallet-adapter-react',
-                        '@solana/wallet-adapter-react-ui',
-                        '@solana/wallet-adapter-wallets',
-                        '@solana/spl-token',
-                    ],
-                    'chunk-aptos': [
-                        '@aptos-labs/ts-sdk',
-                        '@aptos-labs/wallet-adapter-react',
-                        '@aptos-labs/wallet-adapter-core',
-                        '@aptos-labs/wallet-standard',
-                    ],
-                    'chunk-ui': [
-                        'framer-motion',
-                        'recharts',
-                        'lucide-react',
-                        'embla-carousel-react',
-                    ],
-                    'chunk-react': [
-                        'react',
-                        'react-dom',
-                        'react-router-dom',
-                        '@tanstack/react-query',
-                    ],
-                },
-            },
         },
     },
     server: {

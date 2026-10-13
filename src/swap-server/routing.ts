@@ -11,7 +11,7 @@
  * wrong executor.
  */
 import type { Token } from '@/types';
-import { chainForTokenChain } from './cctpChains';
+import { cctpInMode, chainForTokenChain } from './cctpChains';
 import type { CctpChain, SwapServerConfig } from './types';
 
 export type SwapRoute =
@@ -64,7 +64,8 @@ export const isCctpOnly = (token: Token) => token.swapServer?.product === 'cctp'
 /** The mint Jupiter trades this token by, or undefined when it is not a Solana mainnet token. */
 export function jupiterMintOf(token: Token, config?: SwapServerConfig): string | undefined {
     if (token.chain !== 'solana') return undefined;
-    if (token.swapServer?.product === 'jupiter') return token.address;
+    // A cross-chain USDC row on Solana mainnet is the same mint Jupiter trades.
+    if (token.swapServer?.product === 'jupiter' || (token.swapServer?.product === 'cctp' && config?.cctp.network === 'mainnet')) return token.address;
     // The static SOL row is the same asset on every Solana network.
     if (token.symbol === 'SOL' && (!token.address || token.address === NATIVE_SOL_MINT)) return config?.solana.nativeMint ?? NATIVE_SOL_MINT;
     return undefined;
@@ -82,23 +83,26 @@ export function resolveRoute(sell: Token, buy: Token, ctx: RouteContext): SwapRo
 
     // Nothing in BCHSwapContext can execute this pair: it is one of ours, or it is not available.
     const bothUsdc = sell.symbol === 'USDC' && buy.symbol === 'USDC';
+    // Two Solana tokens in Mainnet mode are a swap, also when one of them is the USDC that can be bridged.
+    if (ctx.isMainnet && fs === 'solana' && fb === 'solana') {
+        const a = jupiterMintOf(sell, ctx.config), b = jupiterMintOf(buy, ctx.config);
+        if (a && b) return a === b ? unsupported('Pick two different tokens.') : { kind: 'sol-jupiter', inputMint: a, outputMint: b };
+    }
+    // Cross-chain USDC, when the server this mode talks to is on the mode's network.
+    const cctp = cctpInMode(ctx.config, ctx.isMainnet);
+    const src = cctp ? cctpChainOf(sell, ctx.config) : undefined, dst = cctp ? cctpChainOf(buy, ctx.config) : undefined;
+    if (src && dst) {
+        if (src.key === dst.key) return unsupported('Pick USDC on two different chains.');
+        if (ctx.config!.cctp.closedRoutes.includes(`${src.key}>${dst.key}`)) return unsupported(`${src.name} → ${dst.name} is temporarily closed.`);
+        return { kind: 'usdc-cctp', src, dst };
+    }
+    const only = src ?? dst;
+    if (only && (isCctpOnly(sell) || isCctpOnly(buy))) return unsupported(`USDC on ${only.name} can only be sent to USDC on another chain.`);
     if (!ctx.isMainnet) {
-        const src = cctpChainOf(sell, ctx.config), dst = cctpChainOf(buy, ctx.config);
-        if (src && dst) {
-            if (src.key === dst.key) return unsupported('Pick USDC on two different chains.');
-            if (ctx.config!.cctp.closedRoutes.includes(`${src.key}>${dst.key}`)) return unsupported(`${src.name} → ${dst.name} is temporarily closed.`);
-            return { kind: 'usdc-cctp', src, dst };
-        }
         if (!ctx.config && bothUsdc) return unsupported('The USDC bridge cannot be reached right now.');
-        const only = src ?? dst;
-        if (only && (isCctpOnly(sell) || isCctpOnly(buy))) return unsupported(`USDC on ${only.name} can only be sent to USDC on another chain.`);
         if (fs === 'solana' && fb === 'solana') return unsupported('Solana swaps are available in Mainnet mode.');
-    } else {
-        if (fs === 'solana' && fb === 'solana') {
-            const a = jupiterMintOf(sell, ctx.config), b = jupiterMintOf(buy, ctx.config);
-            if (a && b) return a === b ? unsupported('Pick two different tokens.') : { kind: 'sol-jupiter', inputMint: a, outputMint: b };
-        }
-        if (isCctpOnly(sell) || isCctpOnly(buy) || (bothUsdc && fs !== fb)) return unsupported('Cross-chain USDC is available in Testnet mode.');
+    } else if (!cctp && (isCctpOnly(sell) || isCctpOnly(buy) || (bothUsdc && fs !== fb))) {
+        return unsupported('Cross-chain USDC is available in Testnet mode.');
     }
     return unsupported(PAIR_NOT_AVAILABLE);
 }

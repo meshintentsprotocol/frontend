@@ -241,7 +241,10 @@ export function ConnectWalletView({ onDone }: {
                                     onClick={() => walletUi.openOnboarding()}
                                     className="group flex w-full items-center gap-3 rounded-xl border border-emerald-500/30 bg-gradient-to-br from-emerald-500/[0.14] to-emerald-500/[0.02] p-3.5 text-left transition-all duration-200 hover:border-emerald-400/50 hover:from-emerald-500/[0.2] active:scale-[0.99]"
                                 >
-                                    <WalletGlyph size={44} />
+                                    <div className="relative flex items-center justify-center shrink-0">
+                                        <div className="absolute inset-0 rounded-full blur-md bg-emerald-500/25" />
+                                        <img src="/logos/wallets/main.svg" alt="Cham Wallet" className="relative w-11 h-11 object-contain drop-shadow-[0_2px_8px_rgba(0,209,143,0.45)]" />
+                                    </div>
                                     <div className="min-w-0 flex-1">
                                         <div className="flex flex-wrap items-center gap-2">
                                             <span className="text-sm font-bold text-white">Cham Wallet</span>

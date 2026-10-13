@@ -14,7 +14,7 @@ import type { Keypair } from '@solana/web3.js';
 import type { SwapServerApi } from './api';
 import { SwapServerError } from './api';
 import type { Journal } from './journal';
-import { feeTx, sendEvmTx, signSolanaTx } from './signers';
+import { feeTx, sendEvmTx, signSolanaTx, mintTx } from './signers';
 import type { BuiltTx, CctpChain, CctpQuote, EvmBuiltTx, SolanaBuiltTx, Transfer } from './types';
 
 export type BridgeStep = 'create' | 'approve' | 'burn' | 'fee';
@@ -30,8 +30,8 @@ export interface BridgeProgress {
 
 export interface SolanaSender {
     keypair: Keypair;
-    /** Broadcast a signed transaction and return its signature. */
-    send(raw: Uint8Array): Promise<string>;
+    /** Broadcast the signed burn of this transfer and return its signature. */
+    send(raw: Uint8Array, transferId: string): Promise<string>;
 }
 
 export interface BridgeDeps {
@@ -88,9 +88,11 @@ async function report<T>(fn: () => Promise<T>, delayMs: number): Promise<T> {
     throw last;
 }
 
-const isBlockhashExpired = (e: unknown) => /blockhash not found|block height exceeded|expired/i.test(String((e as Error)?.message ?? e));
+const isBlockhashExpired = (e: unknown) => (e instanceof SwapServerError && e.code === 'EXPIRED') || /blockhash not found|block height exceeded|expired/i.test(String((e as Error)?.message ?? e));
+/** The server answered that it did not send the transaction (a 409 other than EXPIRED means an earlier one is out). */
+const refusedByServer = (e: unknown) => e instanceof SwapServerError && e.status >= 400 && e.status < 500 && e.status !== 409;
 /** The node refused the transaction before sending it anywhere, so it is certain that nothing was broadcast. */
-const wasNotBroadcast = (e: unknown) => isBlockhashExpired(e) || /simulation failed|insufficient (funds|lamports)|custom program error/i.test(String((e as Error)?.message ?? e));
+const wasNotBroadcast = (e: unknown) => isBlockhashExpired(e) || refusedByServer(e) || /simulation failed|insufficient (funds|lamports)|custom program error/i.test(String((e as Error)?.message ?? e));
 
 /** Sign the server's transactions for `transfer` in order and report the hashes. */
 export async function signTransfer(transfer: Transfer, txs: BuiltTx[], src: CctpChain, deps: BridgeDeps, alreadyRebuilt = false): Promise<Transfer> {
@@ -106,7 +108,7 @@ export async function signTransfer(transfer: Transfer, txs: BuiltTx[], src: Cctp
         deps.journal.set(transfer.id, { burn: signed.signature });
         let signature: string;
         try {
-            signature = await deps.solana.send(signed.raw);
+            signature = await deps.solana.send(signed.raw, transfer.id);
         } catch (e) {
             // Keep the journal entry unless it is certain nothing went out: an error from the network can hide a
             // transaction that did reach it, and resumeBridge must then not sign a second burn.
@@ -194,6 +196,39 @@ export function feeIsDue(t: Pick<Transfer, 'protocolFee' | 'feeStatus' | 'feeRec
     return src.kind === 'evm' && !!t.burnTxHash && !!t.feeRecipient && !!t.protocolFee && t.protocolFee !== '0'
         && (t.feeStatus === 'awaiting' || (t.feeStatus === 'pending' && !t.feeTxHash))
         && t.status !== 'COMPLETED' && t.status !== 'COMPLETED_EXTERNAL' && t.status !== 'FAILED' && t.status !== 'EXPIRED';
+}
+
+/** How long the bridge is given to deliver an attested transfer before the user is offered to do it. */
+export const SELF_MINT_AFTER_MS = 2 * 60_000;
+
+/**
+ * True when the user can deliver the transfer themselves: Circle has attested it, nobody has minted it, and the
+ * destination is an EVM chain (a Solana delivery needs accounts only the bridge prepares). Offered when the
+ * bridge's own delivery is switched off or has not happened for a while; never while it is simply on its way.
+ */
+export function canSelfMint(t: Pick<Transfer, 'selfMint' | 'status' | 'updatedAt'>, dst: CctpChain | undefined, ctx: { relayEnabled: boolean; now: number }): boolean {
+    if (!t.selfMint || !dst || dst.kind !== 'evm' || t.status !== 'ATTESTED') return false;
+    return !ctx.relayEnabled || ctx.now - t.updatedAt > SELF_MINT_AFTER_MS;
+}
+
+/**
+ * Deliver an attested transfer from the user's own wallet. The destination contract accepts each attestation
+ * once, so this cannot mint twice: if the bridge got there first the gas estimate fails and nothing is sent.
+ */
+export async function selfMint(transferId: string, dst: CctpChain, deps: Pick<BridgeDeps, 'api' | 'evmSigner'>): Promise<{ transfer: Transfer; hash: string }> {
+    const t = await deps.api.getTransfer(transferId);
+    if (!t.selfMint || dst.kind !== 'evm') throw new Error('This transfer cannot be delivered from the wallet right now.');
+    if (!deps.evmSigner) throw new Error('No EVM wallet is connected');
+    const signer = await deps.evmSigner(dst);
+    let sent;
+    try { sent = await sendEvmTx(signer, mintTx(dst, t.selfMint)); }
+    catch (e) {
+        const now = await deps.api.getTransfer(transferId).catch(() => t);
+        if (now.status === 'COMPLETED' || now.status === 'COMPLETED_EXTERNAL' || now.status === 'MINT_SUBMITTED') return { transfer: now, hash: now.mintTxHash ?? '' };
+        throw e;
+    }
+    await sent.wait();
+    return { transfer: await deps.api.getTransfer(transferId).catch(() => t), hash: sent.hash };
 }
 
 /** Send the service fee of a transfer whose burn is already out. The transaction is rebuilt from the record. */

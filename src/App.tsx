@@ -39,7 +39,7 @@ import { BCHWalletProvider, CashonizeProvider } from "./context/BCHWalletProvide
 import { BCHSwapProvider } from "./context/BCHSwapContext"
 import { SwapServerRoot } from "./swap-server/SwapServerRoot"
 import BchSwapPage from "./pages/BchSwapPage"
-import WalletPage from "./pages/WalletPage"
+// WalletPage removed — now served externally at https://cham-wallet-web.vercel.app
 import OverviewPage from "./pages/OverviewPage"
 import MeshPage from "./pages/MeshPage"
 import MeshPoolDetailPage, { MeshPoolOutpointRedirect } from "./pages/MeshPoolDetailPage"
@@ -60,6 +60,14 @@ const McpPage = lazy(() => import("./pages/McpPage"))
 const FundOrderPage = lazy(() => import("./pages/FundOrderPage"))
 // Borrow & supply: its own chunk, with its own nested routes (see lend/LendRoot.tsx).
 const LendRoot = lazy(() => import("./lend/LendRoot"))
+
+/** Opens an external URL in a new tab, then navigates back to home. */
+function ExternalRedirect({ url }: { url: string }) {
+    window.open(url, '_blank', 'noopener,noreferrer');
+    // Send the user back to home so the current tab isn't left blank
+    window.location.replace('/');
+    return null;
+}
 
 function App() {
     useLanguage();
@@ -83,7 +91,10 @@ function App() {
                                                 <Routes>
                                                     <Route path="/" element={<LandingPage />} />
                                                     <Route path="/home" element={<LandingPage />} />
-                                                    <Route path="/wallet" element={<WalletPage />} />
+                                                    {/* /wallet now redirects to the standalone Cham Wallet site */}
+                                                    <Route path="/wallet" element={
+                                                        <ExternalRedirect url="https://chamwallet.vercel.app" />
+                                                    } />
                                                     <Route path="/features" element={<FeaturesPage />} />
                                                     <Route path="/swap" element={<Navigate to="/" replace />} />
                                                     <Route path="/orders" element={<Navigate to="/" replace />} />

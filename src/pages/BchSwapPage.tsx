@@ -101,10 +101,13 @@ export default function BchSwapPage() {
                         />
                     </div>
 
-                    {/* Orders & History, docked: slides + scales in */}
+                    {/* Orders & History, docked: like the wallet — from its top down to a bottom margin, with a glow. */}
                     {panelVisible && (
-                        <div className="mt-4 w-full min-w-0 lg:mt-0 lg:flex-1 h-[clamp(460px,72vh,640px)] lg:h-[var(--swap-card-height,auto)] lg:min-h-[480px] animate-in fade-in slide-in-from-right-10 zoom-in-95 duration-500 ease-out fill-mode-both delay-100">
+                        <div className="relative mt-4 w-full min-w-0 lg:mt-0 lg:flex-1 h-[clamp(460px,74vh,900px)] lg:sticky lg:top-24 lg:h-[calc(100dvh-10rem)] animate-in fade-in slide-in-from-right-10 zoom-in-95 duration-500 ease-out fill-mode-both delay-100">
                             <OrdersHub filter={filter} className="h-full" />
+                            {/* Where it ends: a thin line of light along the bottom edge, as on the wallet. */}
+                            <div aria-hidden className="pointer-events-none absolute inset-x-8 bottom-0 h-px bg-gradient-to-r from-transparent via-emerald-400/80 to-transparent shadow-[0_0_22px_3px_rgba(16,185,129,0.5)]" />
+                            <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-16 rounded-b-xl bg-gradient-to-t from-emerald-500/[0.09] to-transparent" />
                         </div>
                     )}
                 </div>

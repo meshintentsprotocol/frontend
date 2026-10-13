@@ -1,0 +1,158 @@
+{
+  "recordedAt": "2026-10-09T00:55:30.226Z",
+  "config": {
+    "serverTime": 1791507326924,
+    "cctp": {
+      "network": "mainnet",
+      "paused": false,
+      "relayEnabled": true,
+      "fastEnabled": true,
+      "minTransferUsdc": 1,
+      "maxTransferUsdc": 100,
+      "createdTtlSec": 3600,
+      "fee": {
+        "bps": 0,
+        "minUsdc": 0,
+        "maxUsdc": 0,
+        "gasUsdc": {},
+        "enforced": true,
+        "collecting": {
+          "evm": false,
+          "solana": false
+        }
+      },
+      "chains": [
+        {
+          "key": "ethereum",
+          "name": "Ethereum",
+          "kind": "evm",
+          "domain": 0,
+          "chainId": 1,
+          "usdc": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+          "tokenMessenger": "0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d",
+          "messageTransmitter": "0x81D40F21F12A8F0E3252Bccb954D722d4c464B64",
+          "fastSource": true,
+          "standardEtaSec": 1020,
+          "fastEtaSec": 20,
+          "explorerTx": "https://etherscan.io/tx/{tx}"
+        },
+        {
+          "key": "optimism",
+          "name": "OP Mainnet",
+          "kind": "evm",
+          "domain": 2,
+          "chainId": 10,
+          "usdc": "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+          "tokenMessenger": "0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d",
+          "messageTransmitter": "0x81D40F21F12A8F0E3252Bccb954D722d4c464B64",
+          "fastSource": true,
+          "standardEtaSec": 1020,
+          "fastEtaSec": 8,
+          "explorerTx": "https://optimistic.etherscan.io/tx/{tx}"
+        },
+        {
+          "key": "arbitrum",
+          "name": "Arbitrum",
+          "kind": "evm",
+          "domain": 3,
+          "chainId": 42161,
+          "usdc": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+          "tokenMessenger": "0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d",
+          "messageTransmitter": "0x81D40F21F12A8F0E3252Bccb954D722d4c464B64",
+          "fastSource": true,
+          "standardEtaSec": 1020,
+          "fastEtaSec": 8,
+          "explorerTx": "https://arbiscan.io/tx/{tx}"
+        },
+        {
+          "key": "base",
+          "name": "Base",
+          "kind": "evm",
+          "domain": 6,
+          "chainId": 8453,
+          "usdc": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          "tokenMessenger": "0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d",
+          "messageTransmitter": "0x81D40F21F12A8F0E3252Bccb954D722d4c464B64",
+          "fastSource": true,
+          "standardEtaSec": 1020,
+          "fastEtaSec": 8,
+          "explorerTx": "https://basescan.org/tx/{tx}"
+        },
+        {
+          "key": "arc",
+          "name": "Arc",
+          "kind": "evm",
+          "domain": 26,
+          "chainId": 5042,
+          "usdc": "0x3600000000000000000000000000000000000000",
+          "tokenMessenger": "0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d",
+          "messageTransmitter": "0x81D40F21F12A8F0E3252Bccb954D722d4c464B64",
+          "fastSource": false,
+          "standardEtaSec": 1,
+          "minMaxFeePerGasGwei": 20,
+          "explorerTx": "https://explorer.arc.io/tx/{tx}"
+        },
+        {
+          "key": "solana",
+          "name": "Solana",
+          "kind": "solana",
+          "domain": 5,
+          "usdc": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          "tokenMessenger": "CCTPV2vPZJS2u2BBsUoscuikbYjnpFmbFsvVuJdgUMQe",
+          "messageTransmitter": "CCTPV2Sm4AdWt5296sk4P66VBZ7bEhcARwFaaS9YPbeC",
+          "fastSource": true,
+          "standardEtaSec": 25,
+          "fastEtaSec": 8,
+          "explorerTx": "https://explorer.solana.com/tx/{tx}"
+        }
+      ],
+      "closedRoutes": []
+    },
+    "solana": {
+      "enabled": true,
+      "network": "mainnet",
+      "paused": false,
+      "stocksEnabled": true,
+      "allowUnverified": true,
+      "slippage": {
+        "defaultBps": 0,
+        "maxBps": 1000
+      },
+      "maxSwapUsd": 0,
+      "orderTtlSec": 120,
+      "nativeMint": "So11111111111111111111111111111111111111112",
+      "fee": {
+        "referralFeeBps": 0,
+        "stocksFeeBps": null,
+        "stablesFeeBps": null,
+        "active": false
+      }
+    }
+  },
+  "quote": {
+    "src": "base",
+    "dst": "solana",
+    "amount": "25000000",
+    "protocolFee": "0",
+    "burnAmount": "25000000",
+    "speed": "fast",
+    "minFinalityThreshold": 1000,
+    "feeBps": 1.3,
+    "expectedFee": "3250",
+    "maxFee": "3900",
+    "expectedReceive": "24996750",
+    "etaSec": 18,
+    "fastAllowanceOk": true,
+    "warnings": [
+      "The recipient USDC token account is created automatically if it does not exist."
+    ],
+    "display": {
+      "amount": "25",
+      "protocolFee": "0",
+      "burnAmount": "25",
+      "expectedFee": "0.00325",
+      "maxFee": "0.0039",
+      "expectedReceive": "24.99675"
+    }
+  }
+}

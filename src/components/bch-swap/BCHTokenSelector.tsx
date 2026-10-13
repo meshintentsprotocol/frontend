@@ -257,6 +257,8 @@ interface BCHTokenSelectorProps {
     evmNetworkLabel?: string;
     /** Whether to fetch from BCH mainnet Cauldron (true) or chipnet (false) */
     isMainnet?: boolean;
+    /** Finds tokens beyond the list (Solana mainnet tokens from the swap server), by name, symbol or mint. */
+    searchTokens?: (query: string) => Promise<Token[]>;
 }
 
 type ChainFilter = 'all' | 'bch' | 'ethereum' | 'bsc' | 'base' | 'arbitrum' | 'optimism' | 'arc' | 'solana' | 'movement' | 'xmr';
@@ -318,6 +320,7 @@ export function BCHTokenSelector({
     className,
     label,
     isMainnet = false,
+    searchTokens,
 }: BCHTokenSelectorProps) {
     const [open, setOpen] = useState(false);
     const [search, setSearch] = useState("");
@@ -346,25 +349,36 @@ export function BCHTokenSelector({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isMainnet]);
 
+    // Remote search, a moment after the typing stops; an answer for an older query is dropped.
+    const [found, setFound] = useState<Token[]>([]);
+    const [isSearching, setIsSearching] = useState(false);
+    const query = search.trim();
+    useEffect(() => {
+        if (!open || !searchTokens || query.length < 2 || (chainFilter !== 'all' && chainFilter !== 'solana')) { setFound([]); setIsSearching(false); return; }
+        let live = true;
+        setIsSearching(true);
+        const t = setTimeout(() => {
+            searchTokens(query).then(r => { if (live) setFound(r); }).catch(() => { if (live) setFound([]); }).finally(() => { if (live) setIsSearching(false); });
+        }, 350);
+        return () => { live = false; clearTimeout(t); };
+    }, [open, searchTokens, query, chainFilter]);
+
     const baseList = [...(tokens || ALL_BCH_SWAP_TOKENS), ...dynamicTokens];
     const displayTokens = (value?.categoryId && !baseList.some(t => t.categoryId === value.categoryId))
         ? [value, ...baseList]
         : baseList;
 
-    const filteredTokens = displayTokens.filter(t => {
-        const q = search.toLowerCase();
+    const localMatches = displayTokens.filter(t => {
+        const q = query.toLowerCase();
         const matchesSearch = !q ||
             t.name.toLowerCase().includes(q) ||
-            t.symbol.toLowerCase().includes(q);
+            t.symbol.toLowerCase().includes(q) ||
+            (q.length >= 32 && t.address?.toLowerCase() === q);
         const matchesChain = chainFilter === 'all' || t.chain === chainFilter;
         return matchesSearch && matchesChain;
     });
-
-    const handleSelect = (token: Token) => {
-        if (token.disabled) return;
-        onSelect(token);
-        setOpen(false);
-    };
+    const listed = new Set(localMatches.filter(t => t.address).map(t => `${t.chain}:${t.address}`));
+    const filteredTokens = [...localMatches, ...found.filter(t => !listed.has(`${t.chain}:${t.address}`))];
 
     const handleOpenChange = (next: boolean) => {
         setOpen(next);
@@ -372,6 +386,13 @@ export function BCHTokenSelector({
             setSearch("");
             setChainFilter('all');
         }
+    };
+
+    const handleSelect = (token: Token) => {
+        if (token.disabled) return;
+        onSelect(token);
+        // Same as closing: the next open starts from the whole list, not from this pick's chain or search.
+        handleOpenChange(false);
     };
 
     // By category for CashTokens, by address where both rows have one (several tokens can share a symbol),
@@ -416,6 +437,11 @@ export function BCHTokenSelector({
                 <span className="text-xs text-muted-foreground truncate">{token.name}</span>
             </div>
             <div className="ml-auto flex items-center gap-2 shrink-0">
+                {token.swapServer?.suspicious ? (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-400">Flagged</span>
+                ) : token.swapServer?.product === 'jupiter' && token.swapServer.verified === false ? (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400">Unverified</span>
+                ) : null}
                 {token.comingSoon && (
                     <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
                         <Lock className="h-2.5 w-2.5" />
@@ -467,7 +493,7 @@ export function BCHTokenSelector({
                     <div className="relative">
                         <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                         <Input
-                            placeholder="Search token name or symbol"
+                            placeholder={searchTokens ? "Search name, symbol or Solana mint" : "Search token name or symbol"}
                             className="pl-9 bg-muted/50 border-none focus-visible:ring-1"
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
@@ -508,7 +534,7 @@ export function BCHTokenSelector({
                 <div className="max-h-[350px] overflow-y-auto p-2">
                     {filteredTokens.length === 0 ? (
                         <div className="text-center text-sm text-muted-foreground py-8">
-                            {isLoadingDynamic
+                            {isLoadingDynamic || isSearching
                                 ? <div className="flex justify-center items-center gap-2"><Loader2 className="animate-spin h-4 w-4" /> Fetching tokens...</div>
                                 : "No tokens found"}
                         </div>

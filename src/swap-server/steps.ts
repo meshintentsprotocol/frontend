@@ -7,7 +7,7 @@
  */
 import { explorerTxUrl } from './cctpChains';
 import type { BridgeStep } from './flows';
-import type { ActivityItem, ActivityPhase, CctpChain, Transfer, TransferStatus } from './types';
+import type { ActivityItem, ActivityPhase, CctpChain, SolanaSwap, Transfer, TransferStatus } from './types';
 
 export type StepState = 'done' | 'active' | 'pending' | 'attention' | 'failed';
 
@@ -125,6 +125,61 @@ export function transferHeadline(t: Transfer | undefined, op?: Operation | null)
     }
 }
 
+/** What the page itself is doing for a Solana swap (SwapOperation in context.ts). */
+export interface SwapProgress {
+    stage: 'create' | 'sign' | 'landing' | 'done' | 'failed';
+    busy: boolean;
+    error?: string;
+}
+
+/**
+ * The steps of a Solana swap. While this page signs, they follow its stage; otherwise the server's record. A
+ * swap that was created and never signed cannot be signed later: Jupiter's transaction is handed out once.
+ */
+export function swapSteps(s: SolanaSwap | undefined, op?: SwapProgress | null): DialogStep[] {
+    const status = s?.status;
+    const stage = op?.stage;
+    // How far it got: 0 nothing, 1 created, 2 signed and handed to Jupiter, 3 landed.
+    const reached = status === 'COMPLETED' ? 3 : status === 'SUBMITTED' || stage === 'landing' ? 2 : stage === 'sign' || status === 'CREATED' ? 1 : status ? 2 : 0;
+    // A swap the server has handed to Jupiter may still land, whatever went wrong on this page afterwards.
+    const pageFailed = stage === 'failed' && status !== 'SUBMITTED' && status !== 'COMPLETED';
+    const bad = status === 'FAILED' || status === 'EXPIRED' || pageFailed;
+    // A failure before the record says SUBMITTED happened at the step the page was on.
+    const failedAt = !bad ? -1 : status === 'EXPIRED' ? 1 : status === 'FAILED' ? (s?.signature ? 2 : 1) : s ? 1 : 0;
+    const note = status === 'EXPIRED' ? 'Not signed in time. Nothing was sent.' : (s?.failReason ?? op?.error ?? 'The swap did not go through');
+    const state = (i: number): StepState => {
+        if (bad) return i < failedAt ? 'done' : i === failedAt ? 'failed' : 'pending';
+        if (i < reached) return 'done';
+        if (i > reached) return 'pending';
+        // Nobody is signing an unsigned record that this page did not just create.
+        return i === 1 && !op?.busy ? 'attention' : 'active';
+    };
+    const out = s?.display.outAmount ?? undefined;
+    return [
+        { key: 'create', label: 'Preparing the swap', state: state(0), note: failedAt === 0 ? note : undefined },
+        {
+            key: 'sign', label: 'Sign in your wallet', state: state(1),
+            note: failedAt === 1 ? note : state(1) === 'attention' ? 'This swap was not signed. Start a new one from the card.' : undefined,
+        },
+        { key: 'landing', label: 'Landing on Solana', state: state(2), link: s?.links.tx, note: failedAt === 2 ? note : undefined },
+        {
+            key: 'done', label: 'Received', state: !bad && reached === 3 ? 'done' : 'pending',
+            note: !bad && reached === 3 && out ? `${out} ${s?.display.outSymbol ?? ''} arrived`.trim() : undefined,
+        },
+    ];
+}
+
+export function swapHeadline(s: SolanaSwap | undefined, op?: SwapProgress | null): string {
+    if (s?.status === 'COMPLETED') return 'Completed';
+    if (s?.status === 'EXPIRED') return 'Expired';
+    if (s?.status === 'SUBMITTED') return 'Landing on Solana';
+    if (s?.status === 'FAILED' || op?.stage === 'failed') return 'Failed';
+    if (op?.stage === 'landing') return 'Landing on Solana';
+    if (op?.stage === 'sign') return 'Signing';
+    if (s?.status === 'CREATED' && !op?.busy) return 'Not signed';
+    return 'Preparing';
+}
+
 export const PHASE_LABEL: Record<ActivityPhase, string> = {
     awaiting_signature: 'Needs signature',
     processing: 'In progress',
@@ -146,6 +201,7 @@ export const PHASE_CLASS: Record<ActivityPhase, string> = {
 
 /** A finer label for a row that is in progress: which step it is on. */
 export function rowStatusLabel(i: ActivityItem): string {
+    if (i.kind === 'swap' && i.phase === 'awaiting_signature') return 'Not signed';
     if (i.phase !== 'processing' || i.kind !== 'transfer') return PHASE_LABEL[i.phase];
     switch (i.status) {
         case 'BURN_SUBMITTED': return 'Confirming';

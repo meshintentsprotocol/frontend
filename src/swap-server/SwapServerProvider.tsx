@@ -8,18 +8,18 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useConnection } from '@solana/wallet-adapter-react';
 import { Keypair } from '@solana/web3.js';
 import { useWDK } from '@/context/WDKProvider';
 import { notifyToast } from '@/lib/notify-toast';
 import { ActivityService } from '@/lib/activity';
-import { describeError, swapServerApi, swapServerConfigured, type SwapServerApi } from './api';
-import { SwapServerContext, type HistoryView, type SwapServerContextValue } from './context';
-import { BurnNotReported, FeeNotSent, flushJournal, payFee, resumeBridge, startBridge, type BridgeDeps, type BridgeProgress } from './flows';
+import { describeError, swapServerApiFor, swapServerConfigured, type SwapServerApi } from './api';
+import { SwapServerContext, type HistoryView, type SwapOperation, type SwapServerContextValue } from './context';
+import { runSolanaSwap } from './solana';
+import { BurnNotReported, FeeNotSent, flushJournal, payFee, resumeBridge, selfMint as selfMintFlow, startBridge, type BridgeDeps, type BridgeProgress } from './flows';
 import { createJournal } from './journal';
-import { evmProvider, evmSignerFor } from './signers';
+import { evmProvider, evmSignerFor, toBase64 } from './signers';
 import type { Operation } from './steps';
-import type { ActivityItem, CctpChain, Transfer } from './types';
+import type { ActivityItem, CctpChain, SolanaSwap, Transfer } from './types';
 
 const KEY = ['swap-server'] as const;
 const NOTIFIED_KEY = 'swap_server_notified_v1';
@@ -57,11 +57,18 @@ function announce(i: ActivityItem) {
     });
 }
 
-export function SwapServerProvider({ children, api = swapServerApi }: { children: ReactNode; api?: SwapServerApi }) {
+export function SwapServerProvider({ children, api: fixedApi }: { children: ReactNode; api?: SwapServerApi }) {
     const wdk = useWDK();
-    const { connection } = useConnection();
     const queryClient = useQueryClient();
     const isMainnet = wdk.bchNetwork === 'mainnet';
+    // Each mode has its server (see swapServerApiFor). What was fetched from one is never shown for the other.
+    const api = fixedApi ?? swapServerApiFor(isMainnet);
+    const lastApi = useRef(api);
+    useEffect(() => {
+        if (lastApi.current === api) return;
+        lastApi.current = api;
+        void queryClient.resetQueries({ queryKey: KEY });
+    }, [api, queryClient]);
     const journal = useMemo(() => createJournal(), []);
 
     // The provider wraps the whole app, but only the trade page shows its data. Nothing is fetched until a
@@ -72,7 +79,7 @@ export function SwapServerProvider({ children, api = swapServerApi }: { children
 
     // ── config ──
     const configQuery = useQuery({
-        queryKey: [...KEY, 'config'],
+        queryKey: [...KEY, 'config', api.baseUrl],
         queryFn: ({ signal }) => api.getConfig({ signal }),
         enabled: on,
         staleTime: 30_000, refetchInterval: 60_000, retry: 1,
@@ -90,25 +97,27 @@ export function SwapServerProvider({ children, api = swapServerApi }: { children
     const deps = useMemo((): BridgeDeps => ({
         api, journal,
         evmSigner: evmWallet ? c => evmSignerFor(c, evmWallet) : undefined,
-        solana: keypair ? { keypair, send: raw => connection.sendRawTransaction(raw) } : undefined,
-        chainKnows: async (c, hash) => {
-            if (c.kind === 'evm') return (await evmProvider(c).getTransaction(hash)) !== null;
-            return (await connection.getSignatureStatuses([hash], { searchTransactionHistory: true })).value[0] !== null;
-        },
-    }), [api, journal, evmWallet, keypair, connection]);
+        // Solana goes through the server on both networks: its public mainnet RPC refuses browsers. The server
+        // sends the burn and registers it in one step; the flow's own report after it is then a no-op.
+        solana: keypair ? { keypair, send: async (raw, id) => (await api.broadcastBurn(id, toBase64(raw))).burnTxHash! } : undefined,
+        chainKnows: async (c, hash) => (c.kind === 'evm' ? (await evmProvider(c).getTransaction(hash)) !== null : api.chainKnowsTx(c.key, hash)),
+    }), [api, journal, evmWallet, keypair]);
 
     // ── history ──
     const addresses = useMemo(() => [wdk.evmAddress, wdk.solanaAddress].filter((a): a is string => !!a), [wdk.evmAddress, wdk.solanaAddress]);
     const [operation, setOperation] = useState<Operation | null>(null);
     const opRef = useRef<Operation | null>(null);
     opRef.current = operation;
+    const [swapOperation, setSwapOperation] = useState<SwapOperation | null>(null);
+    const swapRef = useRef<SwapOperation | null>(null);
+    swapRef.current = swapOperation;
 
     const activityQuery = useQuery({
-        queryKey: [...KEY, 'activity', addresses],
+        queryKey: [...KEY, 'activity', api.baseUrl, addresses],
         queryFn: async ({ signal }) => ({ ...(await api.getActivity(addresses, { limit: 50 }, { signal })), receivedAt: Date.now() }),
         enabled: on && addresses.length > 0,
         // Fast while something is moving, slow otherwise. The query client already pauses polling in a hidden tab.
-        refetchInterval: q => (opRef.current?.busy || q.state.data?.items.some(i => !i.terminal) ? 5_000 : 30_000),
+        refetchInterval: q => (opRef.current?.busy || swapRef.current?.busy || q.state.data?.items.some(i => !i.terminal) ? 5_000 : 30_000),
         staleTime: 2_000, retry: 1,
     });
     const activity = activityQuery.data?.items;
@@ -151,8 +160,8 @@ export function SwapServerProvider({ children, api = swapServerApi }: { children
     }, [config, api, journal, deps.chainKnows, chain, refresh]);
 
     // ── the dialog ──
-    const [dialog, setDialog] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
-    const showDialog = useCallback((id: string | null = null) => setDialog({ open: true, id }), []);
+    const [dialog, setDialog] = useState<{ open: boolean; id: string | null; kind: 'transfer' | 'swap' }>({ open: false, id: null, kind: 'transfer' });
+    const showDialog = useCallback((id: string | null = null, kind: 'transfer' | 'swap' = 'transfer') => setDialog({ open: true, id, kind }), []);
     const hideDialog = useCallback(() => setDialog(d => ({ ...d, open: false })), []);
 
     // ── signing ──
@@ -178,7 +187,7 @@ export function SwapServerProvider({ children, api = swapServerApi }: { children
         if (opRef.current?.busy) return undefined;
         opRef.current = start;
         setOperation(start);
-        setDialog({ open: true, id: null });
+        setDialog({ open: true, id: null, kind: 'transfer' });
         try {
             const transfer = await flow({ ...deps, onProgress: track });
             remember(transfer);
@@ -206,6 +215,33 @@ export function SwapServerProvider({ children, api = swapServerApi }: { children
         );
     }, [wdk.evmAddress, wdk.solanaAddress, sign]);
 
+    // ── Solana swaps ──
+    const swap = useCallback(async (input: { inputMint: string; outputMint: string; amount: string; slippageBps?: number; sell: SwapOperation['sell']; buy: SwapOperation['buy'] }): Promise<SolanaSwap | undefined> => {
+        if (swapRef.current?.busy || opRef.current?.busy) return undefined;
+        if (!keypair || !wdk.solanaAddress) { notifyToast.error('Connect your wallet first'); return undefined; }
+        const start: SwapOperation = { stage: 'create', busy: true, sell: input.sell, buy: input.buy };
+        swapRef.current = start;
+        setSwapOperation(start);
+        setDialog({ open: true, id: null, kind: 'swap' });
+        try {
+            const result = await runSolanaSwap(
+                { inputMint: input.inputMint, outputMint: input.outputMint, amount: input.amount, taker: wdk.solanaAddress, slippageBps: input.slippageBps },
+                { api, keypair, onStage: (stage, s) => { if (s) watched.current.add(s.id); setSwapOperation(o => o && { ...o, stage, id: s?.id ?? o.id }); } },
+            );
+            const failed = result.status === 'FAILED' || result.status === 'EXPIRED';
+            setSwapOperation(o => o && { ...o, id: result.id, busy: false, stage: failed ? 'failed' : 'done', result, error: failed ? (result.failReason ?? 'The swap did not go through') : undefined });
+            return failed ? undefined : result;
+        } catch (e) {
+            const message = describeError(e);
+            setSwapOperation(o => o && { ...o, busy: false, stage: 'failed', error: message });
+            notifyToast.error('Swap not sent', { description: message });
+            return undefined;
+        } finally {
+            refresh();
+            void queryClient.invalidateQueries({ queryKey: [...KEY, 'sol-balances'] });
+        }
+    }, [api, keypair, wdk.solanaAddress, refresh, queryClient]);
+
     const rowChain = useCallback((id: string): { row: ActivityItem; src: CctpChain } | undefined => {
         const row = activity?.find(i => i.id === id);
         const src = row?.transfer ? chain(row.transfer.src) : undefined;
@@ -230,11 +266,36 @@ export function SwapServerProvider({ children, api = swapServerApi }: { children
         );
     }, [rowChain, sign]);
 
+    // ── delivering an attested transfer from the user's own wallet ──
+    const [minting, setMinting] = useState<{ id: string; busy: boolean; error?: string } | null>(null);
+    const mintRef = useRef(false);
+    const selfMint = useCallback(async (id: string) => {
+        const t = queryClient.getQueryData<Transfer>([...KEY, 'transfer', id]) ?? await api.getTransfer(id).catch(() => undefined);
+        const dst = t ? chain(t.dst) : undefined;
+        if (!dst || mintRef.current || opRef.current?.busy) return;
+        mintRef.current = true;
+        setMinting({ id, busy: true });
+        try {
+            const done = await selfMintFlow(id, dst, deps);
+            remember(done.transfer);
+            setMinting(null);
+            notifyToast.success('Delivery sent', { description: `Your USDC is arriving on ${dst.name}.` });
+        } catch (e) {
+            const message = describeError(e);
+            setMinting({ id, busy: false, error: message });
+            notifyToast.error('Delivery not sent', { description: message });
+        } finally {
+            mintRef.current = false;
+            refresh();
+            refreshBalances();
+        }
+    }, [api, chain, deps, queryClient, remember, refresh, refreshBalances]);
+
     // ── which history the trade page shows ──
     const [historyView, setHistoryView] = useState<HistoryView>('auto');
     const [pairRouted, setPairRouted] = useState(false);
     // A choice made with the pills holds until the pair changes sides, or a new transfer starts.
-    const signingNow = !!operation?.busy;
+    const signingNow = !!operation?.busy || !!swapOperation?.busy;
     useEffect(() => { setHistoryView('auto'); }, [pairRouted, signingNow]);
     // Left alone, the page shows ours while the card's pair is ours or a transfer is moving, and then keeps
     // showing it: the row someone was watching must not vanish the moment it completes. It goes back to the
@@ -256,11 +317,11 @@ export function SwapServerProvider({ children, api = swapServerApi }: { children
         chain,
         evmAddress: wdk.evmAddress, solanaAddress: wdk.solanaAddress,
         rows, rowsReceivedAt: activityQuery.data?.receivedAt ?? 0, rowsLoading: activityQuery.isLoading, openCount, activeCount, refresh,
-        operation, bridge, resume, sendFee,
+        operation, bridge, resume, sendFee, swapOperation, swap, selfMint, minting, signing: signingNow,
         dialog, showDialog, hideDialog,
         historyView, setHistoryView, historyOurs, pairRouted, setPairRouted,
     }), [api, activate, on, isMainnet, config, configQuery.isLoading, configQuery.error, chain, wdk.evmAddress, wdk.solanaAddress, rows, activityQuery.data?.receivedAt,
-        activityQuery.isLoading, openCount, activeCount, refresh, operation, bridge, resume, sendFee, dialog, showDialog, hideDialog, historyView, historyOurs, pairRouted]);
+        activityQuery.isLoading, openCount, activeCount, refresh, operation, bridge, resume, sendFee, swapOperation, swap, selfMint, minting, signingNow, dialog, showDialog, hideDialog, historyView, historyOurs, pairRouted]);
 
     return <SwapServerContext.Provider value={value}>{children}</SwapServerContext.Provider>;
 }

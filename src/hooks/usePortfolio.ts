@@ -28,6 +28,7 @@ import { CauldronService } from '@/lib/cauldron';
 import { resolveTokenIconUri } from '@/lib/tokenIcons';
 import { useTokenMetadataMany } from '@/hooks/useTokenMetadata';
 import { readPersisted } from '@/lib/persist';
+import { useSwapServerHoldings } from '@/swap-server/useHoldings';
 import { useActiveWallet } from '@/hooks/useActiveWallet';
 import { useBchAddressBalance } from '@/hooks/useBchAddressBalance';
 
@@ -45,6 +46,8 @@ export interface PortfolioToken {
     decimals?: number;
     /** CashToken category id — set for BCH CashTokens. */
     category?: string;
+    /** Set on rows read through the swap server: USDC on its cross-chain chains, Solana mainnet tokens. */
+    swapServer?: boolean;
 }
 
 interface EvmBalances {
@@ -261,6 +264,13 @@ export function usePortfolio(options?: { pollingMs?: number; scope?: 'main' | 'a
     const bcmrQuery = useTokenMetadataMany(unlistedHeldCategories, isMainnet);
 
     // ── Compose tokens ────────────────────────────────────────────────────────
+    // USDC on the swap server's chains and, in Mainnet mode, every Solana token the wallet holds.
+    const swapServer = useSwapServerHoldings({
+        evmAddress, solanaAddress, isMainnet, refetchInterval,
+        usdcPrice: prices['USDC']?.price || 1, usdcChange24h: prices['USDC']?.change24h,
+    });
+    const swapServerKey = JSON.stringify(swapServer.holdings);
+
     const tokens = useMemo<PortfolioToken[]>(() => {
         const list: PortfolioToken[] = [];
         const networkLabel = isMainnet ? 'BSC Mainnet' : 'Sepolia';
@@ -478,9 +488,13 @@ export function usePortfolio(options?: { pollingMs?: number; scope?: 'main' | 'a
             });
         }
 
+        for (const h of (extActive ? [] : JSON.parse(swapServerKey)) as PortfolioToken[]) {
+            if (!list.some(t => t.chain === h.chain && t.symbol === h.symbol)) list.push({ ...h, swapServer: true });
+        }
+
         list.sort((a, b) => b.valueUsd - a.valueUsd);
         return list;
-    }, [evmAddress, solanaAddress, movementAddress, bchOwner, extActive, bchHeld, btcAddress, isMainnet, evmQuery.data, solQuery.data, movementQuery.data, btcQuery.data, cauldronQuery.data, bcmrQuery.data, prices]);
+    }, [swapServerKey, evmAddress, solanaAddress, movementAddress, bchOwner, extActive, bchHeld, btcAddress, isMainnet, evmQuery.data, solQuery.data, movementQuery.data, btcQuery.data, cauldronQuery.data, bcmrQuery.data, prices]);
 
     // Total is the strict aggregate of the rendered token rows.
     const totalValue = useMemo(
@@ -501,6 +515,8 @@ export function usePortfolio(options?: { pollingMs?: number; scope?: 'main' | 'a
         extQuery.refetch();
         btcQuery.refetch();
         cauldronQuery.refetch();
+        swapServer.refetch();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [evmQuery.refetch, solQuery.refetch, movementQuery.refetch, bchQuery.refetch, extQuery.refetch, btcQuery.refetch, cauldronQuery.refetch]);
 
     const anyChainLoading = extActive ? (extQuery.isLoading || pricesLoading) :

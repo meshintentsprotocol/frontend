@@ -3,6 +3,8 @@
 // Ported from bchintents-explorer/src/lib/api.ts for use in the frontend.
 // ============================================================================
 
+import { swapServerApiFor, swapServerConfigured } from '@/swap-server/api';
+import type { ActivityItem } from '@/swap-server/types';
 import {
     CASHTOKEN_RELAYER_URL,
     CASHTOKEN_RELAYER_MAINNET_URL,
@@ -13,7 +15,7 @@ const BSC_BCH_SERVER_URL = import.meta.env.VITE_BSC_BCH_SERVER_URL || 'http://lo
 const BSC_BCH_SERVER_MAINNET_URL = import.meta.env.VITE_BSC_BCH_SERVER_MAINNET_URL || 'http://localhost:3005';
 
 export type TxStatus = 'PENDING' | 'ACTIVE' | 'FILLED' | 'COMPLETED' | 'REFUNDED' | 'FAILED' | 'EXPIRED';
-export type TxSource = 'cashtoken' | 'bsc-bch' | 'sol-bch';
+export type TxSource = 'cashtoken' | 'bsc-bch' | 'sol-bch' | 'cctp' | 'jupiter';
 
 export interface ProtocolTx {
     id: string;
@@ -199,6 +201,43 @@ function normalizeSol(r: RawSolIntent): ProtocolTx {
     };
 }
 
+// ─── Swap server: cross-chain USDC (Circle CCTP) and Solana swaps (Jupiter) ────
+
+const SWAP_SERVER_STATUS: Record<ActivityItem['phase'], TxStatus> = {
+    awaiting_signature: 'PENDING', processing: 'ACTIVE', action_needed: 'ACTIVE', completed: 'COMPLETED', failed: 'FAILED', expired: 'EXPIRED',
+};
+
+/** One row of the swap server's public feed in the shape of this list. The explorer link comes with the row. */
+export function normalizeSwapServer(i: ActivityItem): ProtocolTx {
+    return {
+        id: i.id,
+        source: i.product === 'cctp' ? 'cctp' : 'jupiter',
+        direction: i.kind === 'transfer' ? `${i.sell.chainName} → ${i.buy.chainName}` : 'Solana',
+        status: SWAP_SERVER_STATUS[i.phase] ?? 'FAILED',
+        sellToken: i.sell.symbol ?? 'TOKEN',
+        buyToken: i.buy.symbol ?? 'TOKEN',
+        sellTokenRaw: i.sell.token,
+        buyTokenRaw: i.buy.token,
+        sellAmount: i.sell.display ?? '0',
+        buyAmount: i.buy.display ?? '0',
+        makerAddress: i.owner,
+        createdAt: toSec(i.createdAt),
+        explorerUrl: i.links.destination ?? i.links.source,
+    };
+}
+
+export async function fetchSwapServerTxs(isMainnet: boolean): Promise<ProtocolTx[]> {
+    if (!swapServerConfigured) return [];
+    const network = isMainnet ? 'mainnet' : 'testnet';
+    try {
+        // No address: the public feed, which leaves out records that never reached a chain.
+        const page = await swapServerApiFor(isMainnet).getActivity([], { limit: 100 }, { timeoutMs: 8000 });
+        return page.items.filter(i => i.network === network).map(normalizeSwapServer);
+    } catch {
+        return [];
+    }
+}
+
 // ─── Public fetch functions ───────────────────────────────────────────────────
 
 export async function fetchCashTokenTxs(isMainnet: boolean): Promise<ProtocolTx[]> {
@@ -228,10 +267,11 @@ export async function fetchSolBchTxs(isMainnet: boolean): Promise<ProtocolTx[]> 
 }
 
 export async function fetchAllProtocolTxs(isMainnet: boolean): Promise<ProtocolTx[]> {
-    const [cash, bsc, sol] = await Promise.all([
+    const [cash, bsc, sol, swapServer] = await Promise.all([
         fetchCashTokenTxs(isMainnet),
         fetchBscBchTxs(isMainnet),
         fetchSolBchTxs(isMainnet),
+        fetchSwapServerTxs(isMainnet),
     ]);
-    return [...cash, ...bsc, ...sol].sort((a, b) => b.createdAt - a.createdAt);
+    return [...cash, ...bsc, ...sol, ...swapServer].sort((a, b) => b.createdAt - a.createdAt);
 }

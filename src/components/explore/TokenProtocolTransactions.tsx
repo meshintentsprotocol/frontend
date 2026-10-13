@@ -35,7 +35,8 @@ function truncateAddr(addr: string): string {
 
 function explorerLink(tx: ProtocolTx): string | undefined {
     const txid = tx.fillTxid;
-    if (!txid) return tx.explorerUrl;
+    // Swap-server rows carry their own link, to whichever chain the transaction is on.
+    if (!txid || tx.source === 'cctp' || tx.source === 'jupiter') return tx.explorerUrl;
     if (tx.source === 'cashtoken' || tx.source === 'bsc-bch')
         return `https://blockchair.com/bitcoin-cash/transaction/${txid}`;
     return `https://solscan.io/tx/${txid}`;
