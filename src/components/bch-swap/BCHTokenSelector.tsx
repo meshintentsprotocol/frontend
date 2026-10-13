@@ -125,7 +125,7 @@ export const ETH_TOKENS: Token[] = [
     },
 ];
 
-// ── Coming-soon EVM chains ────────────────────────────────────────────────────
+// ── Cross-chain EVM chains ────────────────────────────────────────────────────
 
 export const BSC_TOKENS: Token[] = [
     {
@@ -135,8 +135,6 @@ export const BSC_TOKENS: Token[] = [
         decimals: 18,
         type: "native",
         chain: "bsc",
-        disabled: true,
-        comingSoon: true,
     },
     {
         symbol: "USDT",
@@ -146,8 +144,6 @@ export const BSC_TOKENS: Token[] = [
         type: "erc20",
         chain: "bsc",
         address: "0x55d398326f99059fF775485246999027B3197955",
-        disabled: true,
-        comingSoon: true,
     },
 ];
 
@@ -159,8 +155,6 @@ export const BASE_TOKENS: Token[] = [
         decimals: 18,
         type: "native",
         chain: "base",
-        disabled: true,
-        comingSoon: true,
     },
     {
         symbol: "USDC",
@@ -169,8 +163,7 @@ export const BASE_TOKENS: Token[] = [
         decimals: 6,
         type: "erc20",
         chain: "base",
-        disabled: true,
-        comingSoon: true,
+        address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
     },
 ];
 
@@ -182,8 +175,6 @@ export const ARBITRUM_TOKENS: Token[] = [
         decimals: 18,
         type: "native",
         chain: "arbitrum",
-        disabled: true,
-        comingSoon: true,
     },
     {
         symbol: "USDC",
@@ -192,8 +183,7 @@ export const ARBITRUM_TOKENS: Token[] = [
         decimals: 6,
         type: "erc20",
         chain: "arbitrum",
-        disabled: true,
-        comingSoon: true,
+        address: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
     },
 ];
 
@@ -205,8 +195,6 @@ export const OPTIMISM_TOKENS: Token[] = [
         decimals: 18,
         type: "native",
         chain: "optimism",
-        disabled: true,
-        comingSoon: true,
     },
     {
         symbol: "USDC",
@@ -215,8 +203,28 @@ export const OPTIMISM_TOKENS: Token[] = [
         decimals: 6,
         type: "erc20",
         chain: "optimism",
-        disabled: true,
-        comingSoon: true,
+        address: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+    },
+];
+
+export const NEAR_TOKENS: Token[] = [
+    {
+        symbol: "wNEAR",
+        name: "Wrapped NEAR",
+        icon: "/logos/near.svg",
+        decimals: 24,
+        type: "nep141",
+        chain: "near",
+        address: "wrap.near",
+    },
+    {
+        symbol: "USDC",
+        name: "USD Coin (NEAR)",
+        icon: "/logos/usd-coin-usdc-logo.svg",
+        decimals: 6,
+        type: "nep141",
+        chain: "near",
+        address: "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
     },
 ];
 
@@ -227,12 +235,13 @@ export const ALL_BCH_SWAP_TOKENS: Token[] = [
     ...BASE_TOKENS,
     ...ARBITRUM_TOKENS,
     ...OPTIMISM_TOKENS,
+    ...NEAR_TOKENS,
     ...SOLANA_TOKENS,
     ...MOVEMENT_TOKENS,
     ...XMR_TOKENS,
 ];
 
-// Mainnet list: BCH + EVM tokens (Solana/Movement/XMR excluded until mainnet deploy)
+// Mainnet list: BCH + cross-chain tokens
 export const MAINNET_SWAP_TOKENS: Token[] = [
     ...BCH_TOKENS,
     ...ETH_TOKENS,
@@ -240,6 +249,7 @@ export const MAINNET_SWAP_TOKENS: Token[] = [
     ...BASE_TOKENS,
     ...ARBITRUM_TOKENS,
     ...OPTIMISM_TOKENS,
+    ...NEAR_TOKENS,
     ...SOLANA_TOKENS,
     ...MOVEMENT_TOKENS,
 ];
@@ -261,18 +271,21 @@ interface BCHTokenSelectorProps {
     searchTokens?: (query: string) => Promise<Token[]>;
 }
 
-type ChainFilter = 'all' | 'bch' | 'ethereum' | 'bsc' | 'base' | 'arbitrum' | 'optimism' | 'arc' | 'solana' | 'movement' | 'xmr';
+type ChainFilter = 'all' | 'bch' | 'ethereum' | 'near' | 'bsc' | 'base' | 'arbitrum' | 'optimism' | 'solana' | 'polygon' | 'avalanche' | 'arc' | 'movement' | 'xmr';
 
 const CHAIN_FILTERS: { key: ChainFilter; label: string; logo: string | null }[] = [
     { key: 'all',       label: 'All',      logo: null },
     { key: 'bch',       label: 'BCH',      logo: '/logos/bitcoin-cash-bch-logo.svg' },
+    { key: 'near',      label: 'NEAR',     logo: '/logos/near.svg' },
     { key: 'ethereum',  label: 'Ethereum', logo: '/logos/ethereum-eth-logo.svg' },
-    { key: 'bsc',       label: 'BNB',      logo: '/logos/bnb-bnb-logo.svg' },
+    { key: 'solana',    label: 'Solana',   logo: '/logos/solana.svg' },
     { key: 'base',      label: 'Base',     logo: '/logos/Base_square_blue.svg' },
     { key: 'arbitrum',  label: 'Arbitrum', logo: '/logos/arbitrum-arb-logo.svg' },
+    { key: 'bsc',       label: 'BNB',      logo: '/logos/bnb-bnb-logo.svg' },
     { key: 'optimism',  label: 'Optimism', logo: '/logos/optimism.svg' },
+    { key: 'polygon',   label: 'Polygon',  logo: '/logos/polygon-matic-logo.svg' },
+    { key: 'avalanche', label: 'Avalanche',logo: '/logos/avalanche-avax-logo.svg' },
     { key: 'arc',       label: 'Arc',      logo: '/logos/arc.svg' },
-    { key: 'solana',    label: 'Solana',   logo: '/logos/solana.svg' },
     { key: 'movement',  label: 'Movement', logo: '/logos/movement.svg' },
     { key: 'xmr',       label: 'Monero',   logo: '/logos/monero.svg' },
 ];
@@ -284,33 +297,46 @@ const SECTIONS: {
     dotColor: string;
 }[] = [
     { chain: 'bch',       label: 'Bitcoin Cash',    dotColor: 'bg-emerald-400' },
+    { chain: 'near',      label: 'NEAR Protocol',   dotColor: 'bg-emerald-400' },
     { chain: 'ethereum',  label: 'Ethereum',         dotColor: 'bg-blue-400' },
-    { chain: 'bsc',       label: 'BNB Chain',        dotColor: 'bg-yellow-400' },
+    { chain: 'solana',    label: 'Solana',           dotColor: 'bg-purple-400' },
     { chain: 'base',      label: 'Base',             dotColor: 'bg-blue-500' },
     { chain: 'arbitrum',  label: 'Arbitrum',         dotColor: 'bg-sky-400' },
+    { chain: 'bsc',       label: 'BNB Chain',        dotColor: 'bg-yellow-400' },
     { chain: 'optimism',  label: 'Optimism',         dotColor: 'bg-red-400' },
+    { chain: 'polygon',   label: 'Polygon',          dotColor: 'bg-purple-500' },
+    { chain: 'avalanche', label: 'Avalanche',        dotColor: 'bg-red-500' },
     { chain: 'arc',       label: 'Arc',              dotColor: 'bg-sky-300' },
-    { chain: 'solana',    label: 'Solana',           dotColor: 'bg-purple-400' },
     { chain: 'movement',  label: 'Movement',         dotColor: 'bg-yellow-300' },
     { chain: 'xmr',       label: 'Monero',           dotColor: 'bg-orange-400' },
 ];
 
 const CHAIN_BADGE_STYLE: Record<string, string> = {
     bch:      'bg-emerald-500/15 text-emerald-400',
+    near:     'bg-teal-500/15 text-teal-300',
     ethereum: 'bg-blue-500/15 text-blue-400',
+    eth:      'bg-blue-500/15 text-blue-400',
     bsc:      'bg-yellow-500/15 text-yellow-400',
     base:     'bg-blue-600/15 text-blue-300',
     arbitrum: 'bg-sky-500/15 text-sky-400',
+    arb:      'bg-sky-500/15 text-sky-400',
     optimism: 'bg-red-500/15 text-red-400',
+    op:       'bg-red-500/15 text-red-400',
     arc:      'bg-sky-500/15 text-sky-300',
     solana:   'bg-purple-500/15 text-purple-400',
+    sol:      'bg-purple-500/15 text-purple-400',
+    polygon:  'bg-purple-500/15 text-purple-400',
+    pol:      'bg-purple-500/15 text-purple-400',
+    avalanche:'bg-red-500/15 text-red-400',
+    avax:     'bg-red-500/15 text-red-400',
     movement: 'bg-yellow-500/15 text-yellow-400',
     xmr:      'bg-orange-500/15 text-orange-400',
 };
 
 const CHAIN_BADGE_LABEL: Record<string, string> = {
-    bch: 'BCH', ethereum: 'ETH', bsc: 'BNB', base: 'BASE',
-    arbitrum: 'ARB', optimism: 'OP', arc: 'ARC', solana: 'SOL', movement: 'MOVE', xmr: 'XMR',
+    bch: 'BCH', near: 'NEAR', ethereum: 'ETH', eth: 'ETH', bsc: 'BNB', base: 'BASE',
+    arbitrum: 'ARB', arb: 'ARB', optimism: 'OP', op: 'OP', arc: 'ARC', solana: 'SOL', sol: 'SOL',
+    polygon: 'POL', pol: 'POL', avalanche: 'AVAX', avax: 'AVAX', movement: 'MOVE', xmr: 'XMR',
 };
 
 export function BCHTokenSelector({
@@ -363,10 +389,31 @@ export function BCHTokenSelector({
         return () => { live = false; clearTimeout(t); };
     }, [open, searchTokens, query, chainFilter]);
 
-    const baseList = [...(tokens || ALL_BCH_SWAP_TOKENS), ...dynamicTokens];
-    const displayTokens = (value?.categoryId && !baseList.some(t => t.categoryId === value.categoryId))
-        ? [value, ...baseList]
-        : baseList;
+    const normChain = (c?: string) => {
+        if (!c) return 'bch';
+        const lc = c.toLowerCase().trim();
+        if (lc === 'eth') return 'ethereum';
+        if (lc === 'arb') return 'arbitrum';
+        if (lc === 'op') return 'optimism';
+        if (lc === 'sol') return 'solana';
+        if (lc === 'pol') return 'polygon';
+        if (lc === 'avax') return 'avalanche';
+        return lc;
+    };
+
+    const rawList = [...(tokens || ALL_BCH_SWAP_TOKENS), ...dynamicTokens];
+    const initialList = (value?.categoryId && !rawList.some(t => t.categoryId === value.categoryId))
+        ? [value, ...rawList]
+        : rawList;
+
+    // Strict deduplication to prevent repetition between hardcoded and catalog tokens
+    const seenKeys = new Set<string>();
+    const displayTokens = initialList.filter(t => {
+        const k = t.categoryId ? `cat:${t.categoryId}` : `${normChain(t.chain)}:${t.symbol.toUpperCase()}`;
+        if (seenKeys.has(k)) return false;
+        seenKeys.add(k);
+        return true;
+    });
 
     const localMatches = displayTokens.filter(t => {
         const q = query.toLowerCase();
@@ -374,7 +421,7 @@ export function BCHTokenSelector({
             t.name.toLowerCase().includes(q) ||
             t.symbol.toLowerCase().includes(q) ||
             (q.length >= 32 && t.address?.toLowerCase() === q);
-        const matchesChain = chainFilter === 'all' || t.chain === chainFilter;
+        const matchesChain = chainFilter === 'all' || normChain(t.chain) === chainFilter;
         return matchesSearch && matchesChain;
     });
     const listed = new Set(localMatches.filter(t => t.address).map(t => `${t.chain}:${t.address}`));

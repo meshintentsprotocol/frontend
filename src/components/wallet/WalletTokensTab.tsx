@@ -36,13 +36,17 @@ interface WalletTokenDef {
     decimals: number;
 }
 
-// Network-aware base token list. The EVM tokens are BNB Chain on mainnet and
-// Ethereum (Sepolia) on testnet, so the chain badge always reflects reality.
+// Network-aware base token list. The EVM tokens are BNB Chain, Base, Arbitrum on mainnet
+// and Ethereum (Sepolia) on testnet, so the chain badge always reflects reality.
 function getWalletTokens(isMainnet: boolean): WalletTokenDef[] {
     const evm: WalletTokenDef[] = isMainnet
         ? [
+            { symbol: 'ETH', name: 'Ethereum', chain: 'Ethereum', icon: '/logos/ethereum-eth-logo.svg', decimals: 18 },
             { symbol: 'BNB', name: 'BNB (BSC)', chain: 'BSC', icon: '/logos/bnb-bnb-logo.svg', decimals: 18 },
             { symbol: 'USDT', name: 'Tether USD (BSC)', chain: 'BSC', icon: '/logos/usdt-svgrepo-com.svg', decimals: 6 },
+            { symbol: 'USDC', name: 'USD Coin (Base)', chain: 'Base', icon: '/logos/usd-coin-usdc-logo.svg', decimals: 6 },
+            { symbol: 'USDC', name: 'USD Coin (Arbitrum)', chain: 'Arbitrum', icon: '/logos/usd-coin-usdc-logo.svg', decimals: 6 },
+            { symbol: 'wNEAR', name: 'Wrapped NEAR', chain: 'NEAR', icon: '/logos/near.svg', decimals: 24 },
         ]
         : [
             { symbol: 'ETH', name: 'Ethereum (Sepolia)', chain: 'Ethereum', icon: '/logos/ethereum-eth-logo.svg', decimals: 18 },
@@ -52,7 +56,7 @@ function getWalletTokens(isMainnet: boolean): WalletTokenDef[] {
         { symbol: 'BCH', name: 'Bitcoin Cash', chain: 'Bitcoin Cash', icon: '/logos/bitcoin-cash-bch-logo.svg', decimals: 8 },
         { symbol: 'BTC', name: 'Bitcoin', chain: 'Bitcoin', icon: '/logos/bitcoin-btc-logo.svg', decimals: 8 },
         ...evm,
-        { symbol: 'SOL', name: 'Solana', chain: 'Solana', icon: '/assets/solanaLogo.png', decimals: 9 },
+        { symbol: 'SOL', name: 'Solana', chain: 'Solana', icon: '/logos/solana.svg', decimals: 9 },
         { symbol: 'USDC', name: 'USD Coin', chain: 'Solana', icon: '/logos/usd-coin-usdc-logo.svg', decimals: 6 },
         { symbol: 'USDT (SOL)', name: 'Tether USD', chain: 'Solana', icon: '/logos/usdt-svgrepo-com.svg', decimals: 6 },
         { symbol: 'MOVE', name: 'Movement', chain: 'Movement', icon: '/logos/movement.svg', decimals: 8 },
@@ -70,7 +74,10 @@ const CHAIN_CHIPS: Record<string, { label: string; icon: string }> = {
     'Bitcoin': { label: 'BTC', icon: '/logos/bitcoin-btc-logo.svg' },
     'Ethereum': { label: 'ETH', icon: '/logos/ethereum-eth-logo.svg' },
     'BSC': { label: 'BSC', icon: '/logos/bnb-bnb-logo.svg' },
-    'Solana': { label: 'Solana', icon: '/assets/solanaLogo.png' },
+    'Base': { label: 'BASE', icon: '/logos/Base_square_blue.svg' },
+    'Arbitrum': { label: 'ARB', icon: '/logos/arbitrum-arb-logo.svg' },
+    'Solana': { label: 'Solana', icon: '/logos/solana.svg' },
+    'NEAR': { label: 'NEAR', icon: '/logos/near.svg' },
     'Movement': { label: 'Movement', icon: '/logos/movement.svg' },
 };
 
@@ -202,7 +209,12 @@ export function WalletTokensTab({ balanceVisible, activeTokens, loading, onClose
         switch (chain) {
             case 'Ethereum': return 'bg-blue-500/15 text-blue-400 border-blue-500/20';
             case 'BSC': return 'bg-yellow-500/15 text-yellow-400 border-yellow-500/20';
+            case 'Base': return 'bg-blue-600/15 text-blue-300 border-blue-600/20';
+            case 'Arbitrum': return 'bg-sky-500/15 text-sky-400 border-sky-500/20';
+            case 'Optimism': return 'bg-red-500/15 text-red-400 border-red-500/20';
             case 'Solana': return 'bg-purple-500/15 text-purple-400 border-purple-500/20';
+            case 'NEAR': return 'bg-teal-500/15 text-teal-300 border-teal-500/20';
+            case 'Movement': return 'bg-amber-500/15 text-amber-300 border-amber-500/20';
             case 'Bitcoin Cash': return 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20';
             case 'Bitcoin': return 'bg-orange-500/15 text-orange-400 border-orange-500/20';
             default: return '';
@@ -212,10 +224,15 @@ export function WalletTokensTab({ balanceVisible, activeTokens, loading, onClose
     const isChainConnected = (chain: string) => {
         switch (chain) {
             case 'Ethereum':
-            case 'BSC': return !!wdk.evmAddress;
+            case 'BSC':
+            case 'Base':
+            case 'Arbitrum':
+            case 'Optimism': return !!wdk.evmAddress;
             case 'Solana': return !!wdk.solanaAddress;
             case 'Bitcoin Cash': return !!wdk.bchAddress;
             case 'Bitcoin': return !!wdk.btcAddress;
+            case 'Movement': return !!wdk.movementAddress;
+            case 'NEAR': return true; // Intent route target
             default: return false;
         }
     };

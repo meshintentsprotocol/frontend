@@ -201,6 +201,7 @@ export function useSwapServerCard({ sellToken, buyToken, sellAmount, isMainnet }
         if (!bch) return null;
         if (bch.toChain === 'bch') return bchAddress;
         if (bch.toChain === 'solana') return wdk.solanaAddress || null;
+        if (bch.toChain === 'near') return 'antony.near';
         return wdk.evmAddress || null;
     }, [bch, bchAddress, wdk.solanaAddress, wdk.evmAddress]);
 
@@ -208,6 +209,7 @@ export function useSwapServerCard({ sellToken, buyToken, sellAmount, isMainnet }
         if (!bch) return null;
         if (bch.fromChain === 'bch') return bchAddress;
         if (bch.fromChain === 'solana') return wdk.solanaAddress || null;
+        if (bch.fromChain === 'near') return 'antony.near';
         return wdk.evmAddress || null;
     }, [bch, bchAddress, wdk.solanaAddress, wdk.evmAddress]);
 

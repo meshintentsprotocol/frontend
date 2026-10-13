@@ -573,10 +573,24 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
         setTimeout(() => setFlipping(false), 300);
     };
 
-    // A bridge-only USDC row needs USDC on another chain opposite it, and nothing else pairs with one
-    // (src/swap-server/tokens.ts). Not applied on a token page, where one side is pinned.
+    const isBchToken = (t: Token) => (!t.chain || t.chain === 'bch') && (t.symbol === 'BCH' || t.type === 'native');
+    const isCrossChainToken = (t: Token) => !!t.chain && t.chain !== 'bch' && t.chain !== 'movement' && t.chain !== 'xmr';
+
+    // A bridge-only USDC row needs USDC on another chain opposite it, and cross-chain tokens pair with BCH.
     const pairAcross = (picked: Token, other: Token, setOther: (t: Token) => void) => {
         if (anchorToken) return;
+
+        // Allow Solana same-chain swaps in mainnet mode
+        if (isMainnet && picked.chain === 'solana' && other.chain === 'solana') {
+            return;
+        }
+
+        // Cross-chain tokens require one leg to be BCH for 1Click Intent routing
+        if (isCrossChainToken(picked) && !isBchToken(other)) {
+            setOther(BCH_TOKENS[0]);
+            return;
+        }
+
         const fix = ss.pair(picked, other, availableTokens);
         if (fix.other) setOther(fix.other);
         else if (fix.reset) setOther(picked.chain === 'bch' && picked.type === 'native' ? pusdToken(isMainnet) : BCH_TOKENS[0]);

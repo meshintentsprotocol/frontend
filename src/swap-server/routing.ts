@@ -28,13 +28,14 @@ export interface RouteContext {
 
 export const NATIVE_SOL_MINT = 'So11111111111111111111111111111111111111112';
 
-type Family = 'bch' | 'solana' | 'evm' | 'arc' | 'movement' | 'xmr';
+type Family = 'bch' | 'solana' | 'evm' | 'near' | 'arc' | 'movement' | 'xmr';
 
 /** A CashToken from Cauldron can come without a chain; the card has always treated that as BCH. */
 function family(t: Token): Family {
     switch (t.chain) {
         case undefined: case 'bch': return 'bch';
         case 'solana': return 'solana';
+        case 'near': return 'near';
         case 'movement': return 'movement';
         case 'xmr': return 'xmr';
         case 'arc': return 'arc';
@@ -91,6 +92,11 @@ export function bchChainOf(t: Token): string {
     const f = family(t);
     if (f === 'bch' || t.symbol?.toUpperCase() === 'BCH') return 'bch';
     if (t.chain === 'ethereum') return 'eth';
+    if (t.chain === 'arbitrum') return 'arb';
+    if (t.chain === 'optimism') return 'op';
+    if (t.chain === 'solana') return 'sol';
+    if (t.chain === 'polygon') return 'pol';
+    if (t.chain === 'avalanche') return 'avax';
     return t.chain || 'bch';
 }
 
