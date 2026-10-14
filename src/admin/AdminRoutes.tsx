@@ -2,7 +2,7 @@
  * Route table for the admin console (mounted at /admin/* in App.tsx).
  */
 import { Route } from 'react-router-dom';
-import { LendLoanDetailPage, LendLoansPage, LendOverviewPage } from './swap/LendPages';
+import { LendLoanDetailPage, LendLoansPage, LendOverviewPage, LendUsersPage, LendUserDetailPage } from './swap/LendPages';
 import { AdminShell } from './AdminShell';
 import { OverviewPage } from './pages/OverviewPage';
 import { EventsPage } from './pages/EventsPage';
@@ -66,6 +66,8 @@ export const adminRoutes = (
       <Route path="solana/tokens" element={<SolanaTokensPage />} />
       <Route path="solana/:id" element={<SolanaSwapDetailPage />} />
       <Route path="lend" element={<LendOverviewPage />} />
+      <Route path="lend/users" element={<LendUsersPage />} />
+      <Route path="lend/users/:profileId" element={<LendUserDetailPage />} />
       <Route path="lend/loans" element={<LendLoansPage />} />
       <Route path="lend/loans/:ref" element={<LendLoanDetailPage />} />
     </Route>

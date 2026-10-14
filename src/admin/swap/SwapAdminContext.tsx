@@ -46,6 +46,8 @@ export function useSolanaSwap(id: string) { const { api } = useSwapAdmin(); retu
 export function useLendOverview() { const { api } = useSwapAdmin(); return usePolled(k('lend', 'overview'), api.lendOverview); }
 export function useLendLoans(q: Query) { const { api } = useSwapAdmin(); return usePolled(k('lend', 'loans', q), () => api.lendLoans(q)); }
 export function useLendLoan(ref: string) { const { api } = useSwapAdmin(); return usePolled(k('lend', 'loan', ref), () => api.lendLoan(ref), 1, !!ref); }
+export function useLendUsers(q: Query = {}) { const { api } = useSwapAdmin(); return usePolled(k('lend', 'users', q), () => api.lendUsers(q)); }
+export function useLendUser(profileId: string) { const { api } = useSwapAdmin(); return usePolled(k('lend', 'user', profileId), () => api.lendUser(profileId), 1, !!profileId); }
 export function useProfits() { const { api } = useSwapAdmin(); return usePolled(k('profits'), () => api.profits(), 2); }
 export function useBchSwaps(q: Query = {}) { const { api } = useSwapAdmin(); return usePolled(k('bch-swaps', q), () => api.bchSwaps(q)); }
 export function useBchSwap(id: string) { const { api } = useSwapAdmin(); return usePolled(k('bch-swap', id), () => api.bchSwap(id), 1, !!id); }

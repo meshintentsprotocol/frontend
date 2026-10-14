@@ -18,6 +18,8 @@ export const swapUrl = {
   lend: '/admin/swap/lend',
   lendLoans: '/admin/swap/lend/loans',
   lendLoan: (ref: string) => `/admin/swap/lend/loans/${encodeURIComponent(ref)}`,
+  lendUsers: '/admin/swap/lend/users',
+  lendUser: (profileId: string) => `/admin/swap/lend/users/${encodeURIComponent(profileId)}`,
   profits: '/admin/swap/profits',
   bchSwaps: '/admin/swap/bch',
   bchSwap: (id: string) => `/admin/swap/bch/${encodeURIComponent(id)}`,

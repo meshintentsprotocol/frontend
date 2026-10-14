@@ -60,15 +60,34 @@ function Unavailable() {
 }
 
 function ProfileLoginCard() {
-    const { login, profileLoading, addresses, setDemo } = useLend();
+    const { login, profileLoading, addresses, setDemo, provider } = useLend();
     const [chain, setChain] = useState<'ETH' | 'BTC'>(addresses.evm ? 'ETH' : 'BTC');
     const [error, setError] = useState('');
+    const [existingPid, setExistingPid] = useState<string | null>(null);
+
+    const account = chain === 'ETH' ? addresses.evm : addresses.btc;
+
+    useEffect(() => {
+        let active = true;
+        if (!account || !provider.advanced?.getProfileId) {
+            setExistingPid(null);
+            return;
+        }
+        provider.advanced.getProfileId(account).then(pid => {
+            if (active) setExistingPid(pid);
+        }).catch(() => {
+            if (active) setExistingPid(null);
+        });
+        return () => { active = false; };
+    }, [account, provider]);
 
     const handleLogin = async () => {
         setError('');
         try {
             await login(chain);
-            notifyToast.success('Liquidium profile initialized!', { description: 'Cross-collateral lending is now active' });
+            notifyToast.success(existingPid ? 'Liquidium profile connected!' : 'Liquidium profile initialized!', {
+                description: 'Cross-collateral lending is active',
+            });
         } catch (e: any) {
             setError(e?.message ?? 'Failed to initialize profile');
         }
@@ -79,9 +98,13 @@ function ProfileLoginCard() {
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-400">
                 <ShieldCheck className="h-7 w-7" />
             </div>
-            <p className="mt-3 text-xl font-bold">Initialize Lending Profile</p>
+            <p className="mt-3 text-xl font-bold">{existingPid ? 'Connect Lending Profile' : 'Initialize Lending Profile'}</p>
             <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-zinc-400">
-                Liquidium Advanced Mode uses a unified cross-collateral profile on the canister. Sign a 1-click verification with your wallet to activate your account.
+                {existingPid ? (
+                    <>Your wallet is linked to profile <span className="font-mono text-emerald-400 font-semibold">{existingPid.slice(0, 8)}...{existingPid.slice(-6)}</span>. Connect to view your positions and borrow capacity.</>
+                ) : (
+                    'Liquidium Advanced Mode uses a unified cross-collateral profile on the canister. Sign a 1-click verification with your wallet to activate your account.'
+                )}
             </p>
 
             <div className="mx-auto mt-6 max-w-sm space-y-3">
@@ -105,7 +128,7 @@ function ProfileLoginCard() {
                 {error ? <Notice tone="error">{error}</Notice> : null}
 
                 <PrimaryButton onClick={handleLogin} loading={profileLoading} testId="initialize-profile-btn">
-                    Sign to Initialize Profile
+                    {existingPid ? 'Connect Profile' : 'Sign to Initialize Profile'}
                 </PrimaryButton>
             </div>
 

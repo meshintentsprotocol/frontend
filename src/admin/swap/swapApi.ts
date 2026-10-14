@@ -196,6 +196,67 @@ export interface LendOverview {
 }
 export interface LendLoanRecord { ref: string; loanId: string; view: LendLoan; addresses: string[]; history: { at: number; phase: string; state: string }[]; createdAt: number; updatedAt: number }
 
+export interface AdminLendUserSummary {
+  profileId: string;
+  primaryAddress: string;
+  wallets: { address: string; chain: string; addedAt: number }[];
+  createdAt: number;
+  lastSeenAt: number;
+  notes?: string;
+  portfolio?: {
+    suppliedUsd: number;
+    borrowedUsd: number;
+    netValueUsd: number;
+    netApy: number;
+    healthFactor: number | null;
+    healthPct: number;
+    suppliedCount: number;
+    borrowedCount: number;
+  };
+  loansCount: number;
+}
+
+export interface AdminLendUsersResponse {
+  total: number;
+  offset: number;
+  limit: number;
+  stats: {
+    totalUsers: number;
+    activeBorrowers: number;
+    totalSuppliedUsd: number;
+    totalBorrowedUsd: number;
+    atRiskCount: number;
+  };
+  users: AdminLendUserSummary[];
+}
+
+export interface AdminLendUserDetail {
+  profile: {
+    profileId: string;
+    primaryAddress: string;
+    wallets: { address: string; chain: string; addedAt: number }[];
+    createdAt: number;
+    lastSeenAt: number;
+    notes?: string;
+  };
+  portfolio: {
+    profileId: string;
+    supplied: { asset: string; poolId: string; amount: string; usd: number; apy: number; interest: string }[];
+    borrowed: { asset: string; poolId: string; amount: string; usd: number; apy: number; interest: string }[];
+    suppliedUsd: number;
+    borrowedUsd: number;
+    healthPct: number;
+    healthFactor: number | null;
+    netApy: number;
+    netValueUsd: number;
+    netInterestUsd: number;
+    borrowable: Record<string, string>;
+    wallet: Record<string, string>;
+  };
+  loans: LendLoan[];
+  events?: SwapEvent[];
+}
+
 export type Query = Record<string, string | number | undefined | null>;
 
 export function createSwapAdminApi(baseUrl: string, getKey: () => string) {
@@ -236,6 +297,10 @@ export function createSwapAdminApi(baseUrl: string, getKey: () => string) {
     lendLoan: (ref: string) => get<LendLoanRecord>(`/admin/lend/loans/${id(ref)}`),
     refreshLendLoan: (ref: string) => post<LendLoanRecord>(`/admin/lend/loans/${id(ref)}/refresh`),
     setLendSettings: (patch: Record<string, unknown>) => post<{ changed: string[]; settings: LendSettings }>('/admin/lend/settings', patch),
+    lendUsers: (q?: Query) => get<AdminLendUsersResponse>('/admin/lend/users', q),
+    lendUser: (profileId: string) => get<AdminLendUserDetail>(`/admin/lend/users/${id(profileId)}`),
+    trackLendUser: (addressOrProfileId: string) => post<AdminLendUserDetail>('/admin/lend/users/track', { addressOrProfileId }),
+    setLendUserNotes: (profileId: string, notes: string) => post<{ profileId: string; notes: string }>(`/admin/lend/users/${id(profileId)}/notes`, { notes }),
     // cross-chain USDC
     transfers: (q?: Query) => get<{ total: number; offset: number; limit: number; byStatus: Record<string, number>; transfers: Transfer[] }>('/admin/cctp/transfers', q),
     transfer: (tid: string) => get<{ transfer: Transfer; events: SwapEvent[] }>(`/admin/cctp/transfers/${id(tid)}`),

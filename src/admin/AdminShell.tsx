@@ -93,6 +93,7 @@ const NAV: Array<{ group: string; items: NavItem[] }> = [
   {
     group: 'Lending', items: [
       { to: '/admin/swap/lend', label: 'Overview', icon: Landmark, end: true },
+      { to: '/admin/swap/lend/users', label: 'Users & Accounts', icon: Users },
       { to: '/admin/swap/lend/loans', label: 'Loans', icon: Coins },
     ],
   },
