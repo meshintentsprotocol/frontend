@@ -34,12 +34,23 @@ export interface LendProvider {
         depositMore(ref: string, amount: bigint): Promise<LoanView>;
     };
 
-    /** Advanced mode: supply to earn and borrow against the whole account. Demo only for now. */
+    /** Advanced mode: supply to earn and borrow against the whole account. */
     advanced?: {
-        portfolio(): Promise<Portfolio>;
+        portfolio(profileId?: string): Promise<Portfolio>;
         supply(asset: string, amount: bigint): Promise<AdvancedReceipt>;
         withdraw(asset: string, amount: bigint): Promise<AdvancedReceipt>;
         borrow(asset: string, amount: bigint): Promise<AdvancedReceipt>;
         repay(asset: string, amount: bigint): Promise<AdvancedReceipt>;
+
+        // Profile & Account Management
+        getProfileId?(address: string): Promise<string | null>;
+        prepareCreateProfile?(account: string): Promise<{ message: string; expiryTimestamp: string; actionType: string; account: string }>;
+        createProfile?(params: { account: string; chain: 'BTC' | 'ETH'; signature: string; expiryTimestamp: string }): Promise<{ profileId: string; account: string }>;
+        supplyTarget?(params: { profileId: string; poolId: string; action: 'deposit' | 'repay'; chain: string }): Promise<{ targetAddress: string; poolId: string; action: string; chain: string }>;
+        prepareBorrow?(params: { profileId: string; poolId: string; amount: string; chain: string; receiver: string; signerWalletAddress: string }): Promise<{ message: string; expiryTimestamp: string; data: any }>;
+        submitBorrow?(params: { profileId: string; poolId: string; amount: string; chain: string; receiver: string; signerWalletAddress: string; expiryTimestamp: string; signature: string; signingChain: 'BTC' | 'ETH' }): Promise<AdvancedReceipt>;
+        prepareWithdraw?(params: { profileId: string; poolId: string; amount: string; chain: string; receiver: string; signerWalletAddress: string }): Promise<{ message: string; expiryTimestamp: string; data: any }>;
+        submitWithdraw?(params: { profileId: string; poolId: string; amount: string; chain: string; receiver: string; signerWalletAddress: string; expiryTimestamp: string; signature: string; signingChain: 'BTC' | 'ETH' }): Promise<AdvancedReceipt>;
+        submitInflow?(txid: string, operation: 'deposit' | 'repayment', chain?: string): Promise<void>;
     };
 }

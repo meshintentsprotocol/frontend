@@ -6,7 +6,7 @@
  */
 import { CCTP_SWAP_SERVER_MAINNET_URL } from '@/lib/config';
 import { LendError, type LendProvider } from '../provider';
-import type { CreateLoanRequest, LendQuote, LoanView, Market, QuoteRequest } from '../types';
+import type { AdvancedReceipt, CreateLoanRequest, LendQuote, LoanView, Market, Portfolio, QuoteRequest } from '../types';
 
 const REFS_KEY = 'lend_loan_refs_v1';
 /** Loans the user removed from their history. They still exist; they are only not listed here. */
@@ -83,5 +83,65 @@ export function createLiquidiumProvider(baseUrl: string = CCTP_SWAP_SERVER_MAINN
             return [...found.values()].filter(l => !hidden.has(l.ref)).sort((a, b) => b.createdAt - a.createdAt);
         },
         forgetLoan: ref => { writeRefs(readRefs().filter(r => r !== ref)); writeRefs([ref, ...readRefs(HIDDEN_KEY)], HIDDEN_KEY); },
+
+        advanced: {
+            portfolio: async (profileId?: string) => {
+                if (!profileId) {
+                    return {
+                        supplied: [],
+                        borrowed: [],
+                        suppliedUsd: 0,
+                        borrowedUsd: 0,
+                        healthPct: 100,
+                        netApy: 0,
+                        netValueUsd: 0,
+                        netInterestUsd: 0,
+                        wallet: {},
+                        borrowable: {},
+                    };
+                }
+                return request<Portfolio>(`/lend/account/${encodeURIComponent(profileId)}/portfolio`);
+            },
+            getProfileId: async (address: string) => {
+                const res = await request<{ profileId: string | null }>(`/lend/account/resolve/${encodeURIComponent(address)}`);
+                return res.profileId;
+            },
+            prepareCreateProfile: async (account: string) => {
+                return request<{ message: string; expiryTimestamp: string; actionType: string; account: string }>('/lend/account/prepare-create', { account });
+            },
+            createProfile: async (params: { account: string; chain: 'BTC' | 'ETH'; signature: string; expiryTimestamp: string }) => {
+                return request<{ profileId: string; account: string }>('/lend/account/create', params);
+            },
+            supplyTarget: async (params: { profileId: string; poolId: string; action: 'deposit' | 'repay'; chain: string }) => {
+                return request<{ targetAddress: string; poolId: string; action: string; chain: string }>('/lend/account/supply-target', params);
+            },
+            prepareBorrow: async (params: { profileId: string; poolId: string; amount: string; chain: string; receiver: string; signerWalletAddress: string }) => {
+                return request<{ message: string; expiryTimestamp: string; data: any }>('/lend/account/prepare-borrow', params);
+            },
+            submitBorrow: async (params: { profileId: string; poolId: string; amount: string; chain: string; receiver: string; signerWalletAddress: string; expiryTimestamp: string; signature: string; signingChain: 'BTC' | 'ETH' }) => {
+                return request<AdvancedReceipt>('/lend/account/submit-borrow', params);
+            },
+            prepareWithdraw: async (params: { profileId: string; poolId: string; amount: string; chain: string; receiver: string; signerWalletAddress: string }) => {
+                return request<{ message: string; expiryTimestamp: string; data: any }>('/lend/account/prepare-withdraw', params);
+            },
+            submitWithdraw: async (params: { profileId: string; poolId: string; amount: string; chain: string; receiver: string; signerWalletAddress: string; expiryTimestamp: string; signature: string; signingChain: 'BTC' | 'ETH' }) => {
+                return request<AdvancedReceipt>('/lend/account/submit-withdraw', params);
+            },
+            submitInflow: async (txid: string, operation: 'deposit' | 'repayment', chain?: string) => {
+                await request('/lend/account/submit-inflow', { txid, operation, chain });
+            },
+            supply: async (asset: string, amount: bigint) => {
+                throw new LendError(`To supply ${asset}, get a deposit target address from Liquidium and transfer funds.`);
+            },
+            withdraw: async () => {
+                throw new LendError('Withdraw requires signing an outflow authorization.');
+            },
+            borrow: async () => {
+                throw new LendError('Borrow requires signing an outflow authorization.');
+            },
+            repay: async (asset: string) => {
+                throw new LendError(`To repay ${asset}, send funds to the repayment target address.`);
+            },
+        },
     };
 }

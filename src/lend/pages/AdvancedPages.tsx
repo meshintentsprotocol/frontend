@@ -2,13 +2,14 @@
  * Advanced mode: one account that supplies assets to earn and borrows against everything it has supplied.
  * Three tabs (Supply, Borrow, Portfolio) under a health card.
  *
- * For now this runs on demo data only. The real version needs a Liquidium profile, which is created and used
- * by signing messages; that is planned, not built. With demo off, the pages say so.
+ * Supports Demo mode and Real Liquidium mode (with wallet profile signature authentication).
  */
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CheckCircle2, ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
+import { Check, CheckCircle2, ChevronDown, ChevronRight, Copy, ExternalLink, LogOut, RefreshCw, ShieldCheck, Wallet } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { useWDK } from '@/context/WDKProvider';
 import { notifyToast } from '@/lib/notify-toast';
 import { cn } from '@/lib/utils';
 import { useLend } from '../LendProvider';
@@ -21,14 +22,19 @@ const ACTION_DONE: Record<Action, string> = { supply: 'supply was initiated', wi
 
 /** The portfolio, reloaded on a short timer the way Liquidium's health card counts down. */
 function usePortfolio() {
-    const { provider } = useLend();
+    const { provider, profileId, demo } = useLend();
     const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
     const [age, setAge] = useState(0);
     const reload = useCallback(async () => {
         if (!provider.advanced) { setPortfolio(null); return; }
-        setPortfolio(await provider.advanced.portfolio());
-        setAge(0);
-    }, [provider]);
+        try {
+            const p = await provider.advanced.portfolio(demo ? undefined : (profileId ?? undefined));
+            setPortfolio(p);
+            setAge(0);
+        } catch (e) {
+            console.warn('[usePortfolio] failed to load:', e);
+        }
+    }, [provider, profileId, demo]);
     useEffect(() => { reload(); }, [reload]);
     useEffect(() => {
         const id = setInterval(() => setAge(a => { if (a >= 29) { reload(); return 0; } return a + 1; }), 1000);
@@ -40,10 +46,10 @@ function usePortfolio() {
 function Unavailable() {
     const { setDemo } = useLend();
     return (
-        <Panel className="text-center" >
-            <p className="text-lg font-semibold">Supply and account borrowing are coming</p>
+        <Panel className="text-center" data-testid="advanced-unavailable">
+            <p className="text-lg font-semibold">Supply and account borrowing are unavailable</p>
             <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-zinc-400">
-                Advanced mode needs a lending profile linked to your wallet. That is not available yet. You can try all of it in demo mode, or borrow for real in Simple mode.
+                Advanced cross-collateral mode is not configured for this network. You can try all features in Demo mode, or borrow for real in Simple mode.
             </p>
             <div className="mt-5 flex flex-wrap justify-center gap-3">
                 <button type="button" onClick={() => setDemo(true)} className="h-11 rounded-full bg-emerald-400 px-5 text-sm font-semibold text-zinc-950 outline-none hover:bg-emerald-300 focus-visible:ring-2 focus-visible:ring-emerald-300" data-testid="advanced-demo">Try it in demo</button>
@@ -53,14 +59,86 @@ function Unavailable() {
     );
 }
 
+function ProfileLoginCard() {
+    const { login, profileLoading, addresses, setDemo } = useLend();
+    const [chain, setChain] = useState<'ETH' | 'BTC'>(addresses.evm ? 'ETH' : 'BTC');
+    const [error, setError] = useState('');
+
+    const handleLogin = async () => {
+        setError('');
+        try {
+            await login(chain);
+            notifyToast.success('Liquidium profile initialized!', { description: 'Cross-collateral lending is now active' });
+        } catch (e: any) {
+            setError(e?.message ?? 'Failed to initialize profile');
+        }
+    };
+
+    return (
+        <Panel className="text-center" data-testid="profile-login-card">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-400">
+                <ShieldCheck className="h-7 w-7" />
+            </div>
+            <p className="mt-3 text-xl font-bold">Initialize Lending Profile</p>
+            <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-zinc-400">
+                Liquidium Advanced Mode uses a unified cross-collateral profile on the canister. Sign a 1-click verification with your wallet to activate your account.
+            </p>
+
+            <div className="mx-auto mt-6 max-w-sm space-y-3">
+                <div className="flex rounded-full bg-white/[0.06] p-1 text-xs">
+                    <button
+                        type="button"
+                        onClick={() => setChain('ETH')}
+                        className={cn('flex-1 rounded-full py-2 font-medium transition', chain === 'ETH' ? 'bg-white/15 text-white' : 'text-zinc-400 hover:text-white')}
+                    >
+                        EVM ({addresses.evm ? `${addresses.evm.slice(0, 6)}...${addresses.evm.slice(-4)}` : 'Not connected'})
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setChain('BTC')}
+                        className={cn('flex-1 rounded-full py-2 font-medium transition', chain === 'BTC' ? 'bg-white/15 text-white' : 'text-zinc-400 hover:text-white')}
+                    >
+                        BTC ({addresses.btc ? `${addresses.btc.slice(0, 6)}...${addresses.btc.slice(-4)}` : 'Not connected'})
+                    </button>
+                </div>
+
+                {error ? <Notice tone="error">{error}</Notice> : null}
+
+                <PrimaryButton onClick={handleLogin} loading={profileLoading} testId="initialize-profile-btn">
+                    Sign to Initialize Profile
+                </PrimaryButton>
+            </div>
+
+            <div className="mt-6 flex flex-wrap justify-center gap-3 border-t border-white/10 pt-4 text-xs">
+                <button type="button" onClick={() => setDemo(true)} className="font-semibold text-emerald-400 hover:underline">
+                    Explore with Demo Mode
+                </button>
+                <span className="text-zinc-600">·</span>
+                <Link to="/borrow" className="font-semibold text-zinc-400 hover:text-white">
+                    Use Simple Mode (No Account Required)
+                </Link>
+            </div>
+        </Panel>
+    );
+}
+
 export function HealthCard({ portfolio, age, onRefresh }: { portfolio: Portfolio; age: number; onRefresh: () => void }) {
+    const { profileId, logout, demo } = useLend();
     const h = portfolio.healthPct;
     const tone = h >= 60 ? 'bg-emerald-400 text-emerald-400' : h >= 30 ? 'bg-amber-300 text-amber-300' : 'bg-red-400 text-red-400';
     const [bar, text] = tone.split(' ');
     return (
         <Panel data-testid="health-card">
             <div className="flex items-center justify-between text-sm">
-                <span className="font-medium text-zinc-200">Portfolio health<Hint text="How far your borrowing is from liquidation. 100% means no debt; at 0% your collateral can be sold." /></span>
+                <div className="flex items-center gap-2">
+                    <span className="font-medium text-zinc-200">Portfolio health<Hint text="How far your borrowing is from liquidation. 100% means no debt; at 0% your collateral can be sold." /></span>
+                    {!demo && profileId ? (
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-400">
+                            Profile: {profileId.slice(0, 5)}...{profileId.slice(-4)}
+                            <button type="button" onClick={logout} title="Disconnect profile" className="text-zinc-400 hover:text-zinc-200"><LogOut className="h-3 w-3" /></button>
+                        </span>
+                    ) : null}
+                </div>
                 <button type="button" onClick={onRefresh} aria-label="Refresh portfolio" className="inline-flex h-9 items-center gap-1.5 rounded-full px-2 text-xs tabular-nums text-zinc-500 outline-none hover:text-zinc-200 focus-visible:ring-2 focus-visible:ring-emerald-400">{30 - age}s <RefreshCw className="h-3.5 w-3.5" /></button>
             </div>
             <div className="mt-2 flex items-center gap-3">
@@ -76,6 +154,92 @@ export function HealthCard({ portfolio, age, onRefresh }: { portfolio: Portfolio
                 <div><div className="text-xs text-zinc-400">Net interest</div><div className="mt-0.5 font-semibold tabular-nums">{fmtUsd(portfolio.netInterestUsd)}</div></div>
             </div>
         </Panel>
+    );
+}
+
+function SupplyTargetDialog({ target, asset, action, onClose }: { target: { targetAddress: string; poolId: string; action: string; chain: string } | null; asset: string; action: 'supply' | 'repay'; onClose: () => void }) {
+    const { provider } = useLend();
+    const [copied, setCopied] = useState(false);
+    const [txid, setTxid] = useState('');
+    const [submitting, setSubmitting] = useState(false);
+    const [submitted, setSubmitted] = useState(false);
+
+    if (!target) return null;
+
+    const copy = () => {
+        navigator.clipboard?.writeText(target.targetAddress);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    const handleRegisterInflow = async () => {
+        if (!txid.trim() || !provider.advanced?.submitInflow) return;
+        setSubmitting(true);
+        try {
+            await provider.advanced.submitInflow(txid.trim(), action === 'supply' ? 'deposit' : 'repayment', target.chain);
+            setSubmitted(true);
+            notifyToast.success('Transaction registered with Liquidium!');
+        } catch (e: any) {
+            notifyToast.error(e?.message ?? 'Failed to register transaction');
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    return (
+        <Dialog open onOpenChange={o => { if (!o) onClose(); }}>
+            <DialogContent className="max-w-md border-white/10 bg-zinc-950 text-white" data-testid="supply-target-dialog">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                        <CheckCircle2 className="h-5 w-5 text-emerald-400" />
+                        {action === 'supply' ? 'Deposit Collateral Target' : 'Repayment Target'}
+                    </DialogTitle>
+                    <DialogDescription className="text-zinc-300">
+                        Send {asset} to the protocol deposit address below from your wallet.
+                    </DialogDescription>
+                </DialogHeader>
+
+                <div className="flex flex-col items-center justify-center p-3">
+                    <div className="rounded-2xl bg-white p-3">
+                        <QRCodeSVG value={target.targetAddress} size={150} level="M" />
+                    </div>
+                </div>
+
+                <div className="rounded-2xl bg-white/[0.04] p-3 text-xs">
+                    <div className="text-zinc-400">{target.chain} Deposit Address</div>
+                    <div className="mt-1 flex items-center justify-between gap-2 font-mono text-zinc-200">
+                        <span className="truncate">{target.targetAddress}</span>
+                        <button type="button" onClick={copy} className="inline-flex h-8 items-center gap-1 rounded-lg bg-white/10 px-2.5 text-xs text-white hover:bg-white/20">
+                            {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                            {copied ? 'Copied' : 'Copy'}
+                        </button>
+                    </div>
+                </div>
+
+                <div className="space-y-2 border-t border-white/10 pt-3">
+                    <label className="text-xs text-zinc-400">Broadcasted Transaction ID (Optional):</label>
+                    <div className="flex gap-2">
+                        <input
+                            type="text"
+                            placeholder="Paste tx hash / txid"
+                            value={txid}
+                            onChange={e => setTxid(e.target.value)}
+                            className="flex-1 rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-xs text-white outline-none focus:border-emerald-400"
+                        />
+                        <button
+                            type="button"
+                            onClick={handleRegisterInflow}
+                            disabled={!txid.trim() || submitting || submitted}
+                            className="rounded-xl bg-emerald-400 px-3 py-2 text-xs font-semibold text-zinc-950 hover:bg-emerald-300 disabled:opacity-50"
+                        >
+                            {submitted ? 'Registered' : submitting ? '...' : 'Register'}
+                        </button>
+                    </div>
+                </div>
+
+                <PrimaryButton onClick={onClose} testId="supply-target-close">Done</PrimaryButton>
+            </DialogContent>
+        </Dialog>
     );
 }
 
@@ -104,13 +268,16 @@ function ReceiptDialog({ receipt, action, onClose }: { receipt: AdvancedReceipt 
 
 /** The form shared by Supply and Borrow (and reused for Withdraw and Repay from the portfolio rows). */
 function ActionForm({ action, initialAsset, portfolio, onDone }: { action: Action; initialAsset?: string; portfolio: Portfolio; onDone: () => void }) {
-    const { provider, markets, market } = useLend();
+    const { provider, markets, market, demo, profileId, addresses } = useLend();
+    const wdk = useWDK();
     const [asset, setAsset] = useState(initialAsset ?? (action === 'borrow' ? 'USDC' : 'BTC'));
     const [text, setText] = useState('');
     const [picker, setPicker] = useState(false);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
     const [receipt, setReceipt] = useState<AdvancedReceipt | null>(null);
+    const [targetDialog, setTargetDialog] = useState<{ targetAddress: string; poolId: string; action: string; chain: string } | null>(null);
+
     const mk = market(asset);
     const amount = mk ? toUnits(text, mk.decimals) : 0n;
 
@@ -125,19 +292,108 @@ function ActionForm({ action, initialAsset, portfolio, onDone }: { action: Actio
     const blocked = sameToken ? (action === 'borrow' ? 'You cannot borrow while supplying the same token.' : 'You cannot supply a token you are borrowing.') : '';
     const fee = mk && action === 'borrow' ? activationFee(amount, mk.activationFeeBps) : 0n;
     const label = { supply: 'Supply', withdraw: 'Withdraw', borrow: 'Borrow', repay: 'Repay' }[action];
-    const problem = blocked || (amount <= 0n ? 'Enter an amount' : amount > max ? `More than the ${fmt(toNumber(max, mk?.decimals ?? 8), 6)} ${asset} available` : '');
+    const problem = blocked || (amount <= 0n ? 'Enter an amount' : (max > 0n && amount > max ? `More than the ${fmt(toNumber(max, mk?.decimals ?? 8), 6)} ${asset} available` : ''));
 
     const submit = async () => {
-        if (problem || !provider.advanced) return;
+        if (problem || !provider.advanced || !mk) return;
         setBusy(true);
         setError('');
         try {
-            const r = await provider.advanced[action](asset, amount);
-            setReceipt(r);
-            setText('');
-            notifyToast.success(`${mk?.name ?? asset} ${ACTION_DONE[action]}`, { description: `${fromUnits(r.amount, mk?.decimals ?? 8, 8)} ${asset} · demo` });
-            onDone();
-        } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+            if (demo) {
+                const r = await provider.advanced[action](asset, amount);
+                setReceipt(r);
+                setText('');
+                notifyToast.success(`${mk?.name ?? asset} ${ACTION_DONE[action]}`, { description: `${fromUnits(r.amount, mk?.decimals ?? 8, 8)} ${asset} · demo` });
+                onDone();
+                return;
+            }
+
+            if (!profileId) throw new Error('Liquidium profile required');
+
+            // Real mode actions
+            if (action === 'supply' || action === 'repay') {
+                if (!provider.advanced.supplyTarget) throw new Error('Supply target not supported');
+                const t = await provider.advanced.supplyTarget({
+                    profileId,
+                    poolId: mk.poolId,
+                    action: action === 'supply' ? 'deposit' : 'repay',
+                    chain: mk.chain,
+                });
+                setTargetDialog(t);
+                setText('');
+                onDone();
+            } else if (action === 'borrow') {
+                if (!provider.advanced.prepareBorrow || !provider.advanced.submitBorrow) throw new Error('Borrow not supported');
+                const receiver = mk.chain === 'BTC' ? (addresses.btc ?? '') : (addresses.evm ?? '');
+                const signerWallet = addresses.evm || addresses.btc;
+                if (!signerWallet) throw new Error('Wallet not connected');
+
+                const prep = await provider.advanced.prepareBorrow({
+                    profileId,
+                    poolId: mk.poolId,
+                    amount: amount.toString(),
+                    chain: mk.chain,
+                    receiver,
+                    signerWalletAddress: signerWallet,
+                });
+
+                let signature = '';
+                if (addresses.evm && wdk.evmSigner?.signMessage) {
+                    signature = await wdk.evmSigner.signMessage(prep.message);
+                } else if (wdk.btcAccount?.sign) {
+                    signature = await wdk.btcAccount.sign(prep.message);
+                } else {
+                    throw new Error('Wallet cannot sign message');
+                }
+
+                const r = await provider.advanced.submitBorrow({
+                    ...prep.data,
+                    signature,
+                    signingChain: addresses.evm ? 'ETH' : 'BTC',
+                });
+                setReceipt(r);
+                setText('');
+                notifyToast.success(`${mk.name} borrow initiated!`);
+                onDone();
+            } else if (action === 'withdraw') {
+                if (!provider.advanced.prepareWithdraw || !provider.advanced.submitWithdraw) throw new Error('Withdraw not supported');
+                const receiver = mk.chain === 'BTC' ? (addresses.btc ?? '') : (addresses.evm ?? '');
+                const signerWallet = addresses.evm || addresses.btc;
+                if (!signerWallet) throw new Error('Wallet not connected');
+
+                const prep = await provider.advanced.prepareWithdraw({
+                    profileId,
+                    poolId: mk.poolId,
+                    amount: amount.toString(),
+                    chain: mk.chain,
+                    receiver,
+                    signerWalletAddress: signerWallet,
+                });
+
+                let signature = '';
+                if (addresses.evm && wdk.evmSigner?.signMessage) {
+                    signature = await wdk.evmSigner.signMessage(prep.message);
+                } else if (wdk.btcAccount?.sign) {
+                    signature = await wdk.btcAccount.sign(prep.message);
+                } else {
+                    throw new Error('Wallet cannot sign message');
+                }
+
+                const r = await provider.advanced.submitWithdraw({
+                    ...prep.data,
+                    signature,
+                    signingChain: addresses.evm ? 'ETH' : 'BTC',
+                });
+                setReceipt(r);
+                setText('');
+                notifyToast.success(`${mk.name} withdrawal initiated!`);
+                onDone();
+            }
+        } catch (e: any) {
+            setError(e?.message ?? 'Operation failed');
+        } finally {
+            setBusy(false);
+        }
     };
 
     return (
@@ -168,14 +424,16 @@ function ActionForm({ action, initialAsset, portfolio, onDone }: { action: Actio
             <AssetPicker open={picker} onClose={() => setPicker(false)} markets={markets} side={action === 'borrow' ? 'borrow' : 'supply'} selected={asset} onPick={a => { setAsset(a); setText(''); }}
                 balances={action === 'supply' ? portfolio.wallet : action === 'borrow' ? portfolio.borrowable : undefined} />
             <ReceiptDialog receipt={receipt} action={action} onClose={() => setReceipt(null)} />
+            <SupplyTargetDialog target={targetDialog} asset={asset} action={action === 'supply' ? 'supply' : 'repay'} onClose={() => setTargetDialog(null)} />
         </div>
     );
 }
 
 function Frame({ children }: { children: (p: { portfolio: Portfolio; reload: () => void }) => React.ReactNode }) {
-    const { provider } = useLend();
+    const { provider, demo, profileId } = useLend();
     const { portfolio, age, reload } = usePortfolio();
     if (!provider.advanced) return <Unavailable />;
+    if (!demo && !profileId) return <ProfileLoginCard />;
     if (!portfolio) return <div className="h-72 animate-pulse rounded-3xl bg-white/[0.05]" />;
     return <div className="space-y-4"><HealthCard portfolio={portfolio} age={age} onRefresh={reload} />{children({ portfolio, reload })}</div>;
 }
@@ -220,7 +478,7 @@ function PositionRow({ position, side, portfolio, reload }: { position: Position
             ) : null}
             <Dialog open={!!action} onOpenChange={o => { if (!o) setAction(null); }}>
                 <DialogContent className="max-w-lg border-white/10 bg-zinc-950 text-white">
-                    <DialogHeader><DialogTitle>{action ? label[action] : ''}</DialogTitle><DialogDescription className="text-zinc-400">{position.asset} · demo</DialogDescription></DialogHeader>
+                    <DialogHeader><DialogTitle>{action ? label[action] : ''}</DialogTitle><DialogDescription className="text-zinc-400">{position.asset}</DialogDescription></DialogHeader>
                     {action ? <ActionForm action={action} initialAsset={position.asset} portfolio={portfolio} onDone={reload} /> : null}
                 </DialogContent>
             </Dialog>
