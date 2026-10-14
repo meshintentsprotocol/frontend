@@ -30,6 +30,8 @@ interface WDKWalletState {
     evmAddress: string | null;
     solanaAddress: string | null;
     btcAddress: string | null;
+    btcMainnetAddress: string | null;
+    btcTestnetAddress: string | null;
     bchChipnetAddress: string | null;
     bchMainnetAddress: string | null;
     movementAddress: string | null;
@@ -39,7 +41,11 @@ interface WDKWalletState {
     solanaAccount: any | null;
     solanaManager: any | null;
     btcAccount: any | null;
+    btcMainnetAccount: any | null;
+    btcTestnetAccount: any | null;
     btcManager: any | null;
+    btcMainnetManager: any | null;
+    btcTestnetManager: any | null;
     bchChipnetWallet: any | null;
     bchMainnetWallet: any | null;
     movementAccount: any | null;
@@ -118,17 +124,49 @@ async function deriveSolanaSigner(seedPhrase: string): Promise<{ signer: any; ac
     }
 }
 
-async function deriveBtcSigner(seedPhrase: string): Promise<any | null> {
+async function deriveBtcWallets(seedPhrase: string): Promise<{
+    testnetAccount: any | null;
+    testnetManager: any | null;
+    testnetAddress: string | null;
+    mainnetAccount: any | null;
+    mainnetManager: any | null;
+    mainnetAddress: string | null;
+}> {
+    let testnetAccount: any = null;
+    let testnetManager: any = null;
+    let testnetAddress: string | null = null;
+    let mainnetAccount: any = null;
+    let mainnetManager: any = null;
+    let mainnetAddress: string | null = null;
+
     try {
         const client = new ElectrumWs({ url: 'wss://electrum.blockstream.info:50004' });
-        const manager = new WalletManagerBtc(seedPhrase, { client, network: 'testnet', bip: 84 });
-        const account = await manager.getAccount(0);
-        const address = await account.getAddress();
-        return { account, manager, address };
+        testnetManager = new WalletManagerBtc(seedPhrase, { client, network: 'testnet', bip: 84 });
+        testnetAccount = await testnetManager.getAccount(0);
+        testnetAddress = await testnetAccount.getAddress();
+        console.log('[WDK] BTC Testnet:', testnetAddress);
     } catch (e: any) {
-        console.warn('[WDK] BTC derivation failed:', e.message);
-        return null;
+        console.warn('[WDK] BTC Testnet derivation failed:', e.message);
     }
+
+    try {
+        const client = new ElectrumWs({ url: 'wss://electrum.blockstream.info:50002' });
+        mainnetManager = new WalletManagerBtc(seedPhrase, { client, network: 'bitcoin', bip: 84 });
+        mainnetAccount = await mainnetManager.getAccount(0);
+        mainnetAddress = await mainnetAccount.getAddress();
+        console.log('[WDK] BTC Mainnet:', mainnetAddress);
+    } catch (e: any) {
+        console.warn('[WDK] BTC Mainnet derivation failed:', e.message);
+    }
+
+    return {
+        testnetAccount,
+        testnetManager,
+        testnetAddress,
+        mainnetAccount,
+        mainnetManager,
+        mainnetAddress,
+    };
 }
 
 async function deriveBchWallets(seedPhrase: string) {
@@ -178,7 +216,7 @@ async function initializeWallet(seedPhrase: string) {
     const [evmSigner, solanaResult, btcResult, bchResult, movementResult] = await Promise.all([
         deriveEvmWallet(seedPhrase),
         deriveSolanaSigner(seedPhrase),
-        deriveBtcSigner(seedPhrase),
+        deriveBtcWallets(seedPhrase),
         deriveBchWallets(seedPhrase),
         deriveMovementAccount(seedPhrase),
     ]);
@@ -187,14 +225,20 @@ async function initializeWallet(seedPhrase: string) {
         solanaSigner: solanaResult?.signer ?? null,
         solanaAccount: solanaResult?.account ?? null,
         solanaManager: solanaResult?.manager ?? null,
-        btcAccount: btcResult?.account ?? null,
-        btcManager: btcResult?.manager ?? null,
+        btcTestnetAccount: btcResult.testnetAccount,
+        btcMainnetAccount: btcResult.mainnetAccount,
+        btcTestnetManager: btcResult.testnetManager,
+        btcMainnetManager: btcResult.mainnetManager,
+        btcTestnetAddress: btcResult.testnetAddress,
+        btcMainnetAddress: btcResult.mainnetAddress,
+        btcAccount: btcResult.testnetAccount,
+        btcManager: btcResult.testnetManager,
+        btcAddress: btcResult.testnetAddress,
         bchChipnetWallet: bchResult.chipnetWallet,
         bchMainnetWallet: bchResult.mainnetWallet,
         movementAccount: movementResult?.account ?? null,
         evmAddress: evmSigner?.address ?? null,
         solanaAddress: solanaResult?.signer?.address ?? null,
-        btcAddress: btcResult?.address ?? null,
         bchChipnetAddress: bchResult.chipnetAddress,
         bchMainnetAddress: bchResult.mainnetAddress,
         movementAddress: movementResult?.address ?? null,
@@ -218,6 +262,8 @@ const EMPTY_STATE: WDKWalletState = {
     evmAddress: null,
     solanaAddress: null,
     btcAddress: null,
+    btcMainnetAddress: null,
+    btcTestnetAddress: null,
     bchChipnetAddress: null,
     bchMainnetAddress: null,
     movementAddress: null,
@@ -227,7 +273,11 @@ const EMPTY_STATE: WDKWalletState = {
     solanaAccount: null,
     solanaManager: null,
     btcAccount: null,
+    btcMainnetAccount: null,
+    btcTestnetAccount: null,
     btcManager: null,
+    btcMainnetManager: null,
+    btcTestnetManager: null,
     bchChipnetWallet: null,
     bchMainnetWallet: null,
     movementAccount: null,
@@ -504,16 +554,25 @@ export function WDKProvider({ children }: { children: ReactNode }) {
         await fetchBalancesRef.current?.();
     }, []);
 
-    const { bchAddress, bchWallet } = useMemo(() => ({
-        bchAddress: state.bchNetwork === 'chipnet' ? state.bchChipnetAddress : state.bchMainnetAddress,
-        bchWallet: state.bchNetwork === 'chipnet' ? state.bchChipnetWallet : state.bchMainnetWallet,
-    }), [state.bchNetwork, state.bchChipnetAddress, state.bchMainnetAddress, state.bchChipnetWallet, state.bchMainnetWallet]);
+    const { bchAddress, bchWallet, btcAddress, btcAccount, btcManager } = useMemo(() => {
+        const isMainnet = state.bchNetwork === 'mainnet';
+        return {
+            bchAddress: isMainnet ? state.bchMainnetAddress : state.bchChipnetAddress,
+            bchWallet: isMainnet ? state.bchMainnetWallet : state.bchChipnetWallet,
+            btcAddress: isMainnet ? (state.btcMainnetAddress ?? state.btcTestnetAddress) : (state.btcTestnetAddress ?? state.btcMainnetAddress),
+            btcAccount: isMainnet ? (state.btcMainnetAccount ?? state.btcTestnetAccount) : (state.btcTestnetAccount ?? state.btcMainnetAccount),
+            btcManager: isMainnet ? (state.btcMainnetManager ?? state.btcTestnetManager) : (state.btcTestnetManager ?? state.btcMainnetManager),
+        };
+    }, [state.bchNetwork, state.bchChipnetAddress, state.bchMainnetAddress, state.bchChipnetWallet, state.bchMainnetWallet, state.btcMainnetAddress, state.btcTestnetAddress, state.btcMainnetAccount, state.btcTestnetAccount, state.btcMainnetManager, state.btcTestnetManager]);
 
     return (
         <WDKContext.Provider value={{
             ...state,
             bchAddress,
             bchWallet,
+            btcAddress,
+            btcAccount,
+            btcManager,
             setBchNetwork,
             createWallet,
             importWallet,

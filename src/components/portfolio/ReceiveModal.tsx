@@ -50,7 +50,7 @@ export function ReceiveModal({ children }: { children?: React.ReactNode }) {
             explorerUrl: `https://explorer.movementnetwork.xyz/account/${wdk.movementAddress}?network=testnet`,
         },
         wdk.btcAddress && {
-            key: 'btc', label: 'Bitcoin', sublabel: 'Testnet', address: wdk.btcAddress, icon: '/logos/bitcoin-btc-logo.svg', color: '#f7931a',
+            key: 'btc', label: 'Bitcoin', sublabel: isMainnet ? 'Mainnet' : 'Testnet', address: wdk.btcAddress, icon: '/logos/bitcoin-btc-logo.svg', color: '#f7931a',
         },
     ] as (ReceiveChain | false)[]).filter(Boolean) as ReceiveChain[], [wdk.bchAddress, wdk.evmAddress, wdk.solanaAddress, wdk.movementAddress, wdk.btcAddress, isMainnet]);
 

@@ -272,10 +272,10 @@ export function AddressesView({ onConnectExternal }: AddressesViewProps) {
                         <ChainAddressRow
                             icon="/logos/bitcoin-btc-logo.svg"
                             chainName="Bitcoin"
-                            networkLabel="Testnet"
-                            networkColor="orange"
+                            networkLabel={isMainnet ? 'Mainnet' : 'Testnet'}
+                            networkColor={isMainnet ? 'emerald' : 'orange'}
                             address={wdk.btcAddress}
-                            explorerUrl={`https://mempool.space/testnet/address/${wdk.btcAddress}`}
+                            explorerUrl={isMainnet ? `https://mempool.space/address/${wdk.btcAddress}` : `https://mempool.space/testnet/address/${wdk.btcAddress}`}
                             onCopy={() => copyAddress(wdk.btcAddress!, 'Bitcoin')}
                         />
                     )}

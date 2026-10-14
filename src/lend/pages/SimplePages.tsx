@@ -92,6 +92,10 @@ export function BorrowPage() {
     };
 
     const needsAddresses = !demo;
+    const isEvmAddress = (addr: string) => /^0x[0-9a-fA-F]{40}$/.test(addr.trim());
+    const isBtcAddress = (addr: string) => /^((bc1|tb1)[a-z0-9]{25,87}|[132mn][a-km-zA-HJ-NP-Z1-9]{25,34})$/i.test(addr.trim());
+    const isBtcTestnet = (addr: string) => /^(tb1|[2mn])/i.test(addr.trim());
+
     const problem =
         marketsError ? marketsError
         : !b || !c ? 'Loading markets'
@@ -101,7 +105,10 @@ export function BorrowPage() {
         : quote?.errors.length ? quote.errors[0]
         : ltv > maxLtv ? `LTV is over ${fmtPct(maxLtv, 0)}: add collateral`
         : needsAddresses && !destination.trim() ? `Enter the ${b.chain} address to receive ${b.asset}`
+        : needsAddresses && b.chain === 'ETH' && !isEvmAddress(destination) ? 'Enter a valid ETH address (0x…)'
         : needsAddresses && !refund.trim() ? `Enter the ${c.chain} address your collateral returns to`
+        : needsAddresses && c.chain === 'BTC' && isBtcTestnet(refund) ? 'Refund requires a mainnet Bitcoin address (starts with bc1, 1, or 3)'
+        : needsAddresses && c.chain === 'BTC' && !isBtcAddress(refund) ? 'Enter a valid Bitcoin address for collateral refund'
         : error ? error
         : !quote ? 'Checking'
         : '';
@@ -163,12 +170,26 @@ export function BorrowPage() {
             {needsAddresses && b && c ? (
                 <Panel className="space-y-3">
                     <label className="block text-sm">
-                        <span className="mb-1.5 block text-zinc-300">Receive {b.asset} at ({b.chain} address)</span>
+                        <div className="mb-1.5 flex items-center justify-between">
+                            <span className="text-zinc-300">Receive {b.asset} at ({b.chain} address)</span>
+                            {addresses.evm && b.chain === 'ETH' && destination !== addresses.evm && (
+                                <button type="button" onClick={() => setDestination(addresses.evm!)} className="text-xs text-emerald-400 hover:underline">
+                                    Use wallet ({addresses.evm.slice(0, 6)}…{addresses.evm.slice(-4)})
+                                </button>
+                            )}
+                        </div>
                         <input value={destination} onChange={e => setDestination(e.target.value)} placeholder={b.chain === 'ETH' ? '0x…' : 'Address'} spellCheck={false} data-testid="destination"
                             className="h-12 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 font-mono text-sm outline-none focus:border-emerald-400/60" />
                     </label>
                     <label className="block text-sm">
-                        <span className="mb-1.5 block text-zinc-300">Return collateral to ({c.chain} address)</span>
+                        <div className="mb-1.5 flex items-center justify-between">
+                            <span className="text-zinc-300">Return collateral to ({c.chain} address)</span>
+                            {addresses.btc && c.chain === 'BTC' && refund !== addresses.btc && (
+                                <button type="button" onClick={() => setRefund(addresses.btc!)} className="text-xs text-emerald-400 hover:underline">
+                                    Use wallet ({addresses.btc.slice(0, 6)}…{addresses.btc.slice(-4)})
+                                </button>
+                            )}
+                        </div>
                         <input value={refund} onChange={e => setRefund(e.target.value)} placeholder={c.chain === 'BTC' ? 'bc1…' : 'Address'} spellCheck={false} data-testid="refund"
                             className="h-12 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 font-mono text-sm outline-none focus:border-emerald-400/60" />
                     </label>
