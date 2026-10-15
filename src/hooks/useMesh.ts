@@ -83,6 +83,14 @@ export function useMarketRef(token: string | undefined) {
   });
 }
 
+/** A pair's liquidity per level of the canonical bin grid (404 on servers before 2026-10-16). */
+export function usePairDepth(token: string | undefined, step = 100) {
+  return useQuery({
+    queryKey: ['mesh', 'depth', token ?? '', step], queryFn: () => meshApi.depth(token!, step), enabled: !!token && token !== '0x',
+    refetchInterval: 30_000, staleTime: 15_000, retry: (n, e: any) => e?.status !== 404 && n < 1,
+  });
+}
+
 // ── Strategies ───────────────────────────────────────────────────────────────
 
 export function useStrategyTemplates() {

@@ -199,6 +199,8 @@ export interface MarketContext {
   mesh: { bestBid: { satsPerToken: string; address: string } | null; bestAsk: { satsPerToken: string; address: string } | null };
   midSatsPerToken: number | null;
   midSource: 'cauldron' | 'mesh-mid' | 'mesh-bid' | 'mesh-ask' | null;
+  /** 2026-10-16+: is the mid safe to centre a position on (vs. its recent median)? */
+  midCheck?: { recentMedian: number | null; samples: number; windowSec: number; divergenceBps: number | null; maxDivergenceBps: number; ok: boolean };
   bchUsd: number | null;
   tokenUsd: number | null;
 }
@@ -228,6 +230,8 @@ export interface StrategyPoolPreview {
   deposit: { sats: string; token?: { category: string; amount: string } };
   v3: V3Info;
   market?: SlotMarket[];
+  /** 2026-10-16+: where this pool would be priced through the market on deploy (after its fee). */
+  crossesMarket?: Array<{ asset: string; side: 'buys-above-market' | 'sells-below-market'; bps: number }>;
   registered: boolean;
 }
 
@@ -236,6 +240,25 @@ export interface StrategyPreview {
   pools: StrategyPoolPreview[];
   totals: { sats: string; tokens: Record<string, string> };
   market?: Record<string, MarketContext>;
+  /** 2026-10-16+: pools priced through the market, in words; deploy only with the LP's say-so. */
+  warnings?: string[];
+  /** 2026-10-16+: e.g. pools a shaped split left out (their share was below the minimum). */
+  notes?: string[];
+  /** 2026-10-16+: rough deploy transaction size in bytes. */
+  deployBytes?: number;
+}
+
+/** One level of the canonical bin grid (GET /pools/depth). */
+export interface DepthLevel { index: number; satsPerToken: string; bidSats: string; askTokens: string; pools: number; lps: number }
+export interface PairDepth { token: string; stepBps: number; mid: number | null; activeIndex: number | null; levels: DepthLevel[]; minBinSats: string }
+
+/** LP metrics on a strategy (estimates for display). */
+export interface StrategyMetrics {
+  holdValueSats: string; vsHoldSats: string; vsHoldPct: number | null;
+  arbitrage: { fills: number; arbitrageFills: number; arbitrageFillPct: number | null; arbitrageVolumePct: number | null };
+  range: { low: number; high: number } | null;
+  timeInRange: { pct: number | null; samples: number; since: number } | null;
+  stress: { mid: number; rows: Array<{ move: number; satsPerToken: number; positionSats: number; holdSats: number; vsHoldSats: number }> } | null;
 }
 
 export interface StrategyIdleFlag { kinds: IdleKind[]; items: string[]; reasons: string[]; valueSats: string }
@@ -256,6 +279,8 @@ export interface StrategySummary {
   lastActivityAt?: number | null;
   /** owner listings only */
   idle?: StrategyIdleFlag | null;
+  /** 2026-10-16+ */
+  metrics?: StrategyMetrics;
 }
 
 export interface RebalancePlan {
@@ -425,6 +450,8 @@ export function createMeshApi(baseUrl: string, fetchImpl: typeof fetch = (...a) 
       call<RegisterResult>('POST', '/api/v1/pools', { pools: items.map(i => ({ contractName: 'MeshPoolV3', ...i })) }, [207]),
     list: (q: PoolListQuery = {}) => call<{ total: number; count: number; pools: Pool[] }>('GET', `/api/v1/pools${qs(q as any)}`),
     pairs: () => call<{ pairs: PairSummary[]; tokenPairs?: TokenPairSummary[] }>('GET', '/api/v1/pools/pairs'),
+    /** Liquidity per level of the canonical bin grid (step in bps: 10, 25, 50, 100). */
+    depth: (token: string, step = 100) => call<PairDepth>('GET', `/api/v1/pools/depth${qs({ token, step })}`),
     marketRef: (token: string) => call<MarketRef>('GET', `/api/v1/pools/market-ref${qs({ token })}`),
     recentActivity: (q: { limit?: number; type?: PoolEventType } = {}) =>
       call<{ count: number; events: Array<PoolEvent & { ownerPkh?: string }> }>('GET', `/api/v1/pools/activity${qs(q)}`),
