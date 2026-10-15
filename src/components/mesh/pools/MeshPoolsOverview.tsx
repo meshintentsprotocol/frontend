@@ -15,6 +15,7 @@ import { Pager, usePagination } from '@/components/common/Pager';
 import { StrategyCard, strategyTokens } from '@/components/mesh/strategies/StrategyCard';
 import { EmptyState, PoolPairLabel, useTokenInfo } from './shared';
 import { PoolsTable } from './PoolsTable';
+import { DepthChart } from './DepthChart';
 
 const PAIRS_PER_PAGE = 10;
 const POOLS_PER_PAGE = 10;
@@ -145,6 +146,31 @@ function PairCell({ label, children }: { label: string; children: React.ReactNod
 type View = 'pairs' | 'pools' | 'strategies';
 const VIEWS: ReadonlyArray<readonly [View, string, string]> = [['pairs', 'Pairs', 'Pairs'], ['pools', 'All pools', 'Pools'], ['strategies', 'All strategies', 'Strategies']];
 
+/** Depth on the bin grid for one pair at a time, the deepest first. */
+function PairDepthPanel({ pairs }: { pairs: PairSummary[] }) {
+  const sorted = useMemo(() => [...pairs].sort((a, b) => Number(BigInt(b.tvlSats) - BigInt(a.tvlSats))), [pairs]);
+  const { get } = useTokenInfo(sorted.map(p => p.tokenCategory));
+  const [token, setToken] = useState<string | null>(null);
+  const shown = token ?? sorted[0]?.tokenCategory ?? null;
+  if (!shown) return null;
+  const info = get(shown);
+  return (
+    <div className="pt-2 space-y-2">
+      {sorted.length > 1 && (
+        <div className="flex flex-wrap gap-1">
+          {sorted.slice(0, 8).map(p => (
+            <button key={p.tokenCategory} type="button" onClick={() => setToken(p.tokenCategory)}
+              className={cn('px-2.5 py-1 rounded-md text-[11px] font-semibold border', p.tokenCategory === shown ? 'border-white/20 bg-white/10 text-white' : 'border-white/[0.06] text-zinc-500 hover:text-zinc-300')}>
+              BCH / {get(p.tokenCategory).symbol}
+            </button>
+          ))}
+        </div>
+      )}
+      <DepthChart token={shown} decimals={info.decimals} symbol={info.symbol} />
+    </div>
+  );
+}
+
 export function MeshPoolsOverview({ onTab }: { onTab: (t: 'positions' | 'leaderboard' | 'create', token?: string) => void }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const raw = searchParams.get('view');
@@ -206,6 +232,7 @@ export function MeshPoolsOverview({ onTab }: { onTab: (t: 'positions' | 'leaderb
             {pairs.isError ? <div className="text-xs text-amber-300">Could not load pairs: {(pairs.error as Error).message}</div>
               : <PairsTable pairs={pairPages.pageItems} bchUsd={bchUsd} onProvide={t => onTab('create', t)} />}
             <Pager page={pairPages.page} pageCount={pairPages.pageCount} onPage={pairPages.setPage} />
+            {(pairs.data?.pairs.length ?? 0) > 0 && <PairDepthPanel pairs={pairs.data!.pairs} />}
           </>
         )}
         {view === 'pools' && (
