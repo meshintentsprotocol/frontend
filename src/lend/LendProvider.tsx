@@ -84,6 +84,9 @@ export function LendProvider({ children }: { children: ReactNode }) {
         let active = true;
         async function resolve() {
             if (demo || !realProvider.advanced?.getProfileId) return;
+            // If the user manually logged out during this session, do not force auto-login
+            if (sessionStorage.getItem('liquidium_manual_logout') === '1') return;
+
             const eth = wdk.evmAddress;
             const btc = wdk.btcAddress;
             if (!eth && !btc) return;
@@ -116,15 +119,27 @@ export function LendProvider({ children }: { children: ReactNode }) {
     }, [demo, realProvider, wdk.evmAddress, wdk.btcAddress]);
 
     const login = useCallback(async (chain: 'ETH' | 'BTC' = 'ETH') => {
-        if (!realProvider.advanced?.prepareCreateProfile || !realProvider.advanced?.createProfile) {
-            throw new Error('Advanced profile creation is not supported by provider');
-        }
         const account = chain === 'ETH' ? wdk.evmAddress : wdk.btcAddress;
         if (!account) {
             throw new Error(`Please connect your ${chain} wallet first.`);
         }
         setProfileLoading(true);
         try {
+            // Check if profile already exists for this wallet address
+            if (realProvider.advanced?.getProfileId) {
+                const existing = await realProvider.advanced.getProfileId(account).catch(() => null);
+                if (existing) {
+                    setProfileId(existing);
+                    try { localStorage.setItem('liquidium_profile_id_v1', existing); } catch {}
+                    try { sessionStorage.removeItem('liquidium_manual_logout'); } catch {}
+                    return existing;
+                }
+            }
+
+            if (!realProvider.advanced?.prepareCreateProfile || !realProvider.advanced?.createProfile) {
+                throw new Error('Advanced profile creation is not supported by provider');
+            }
+
             const prep = await realProvider.advanced.prepareCreateProfile(account);
             let signature = '';
             if (chain === 'ETH') {
@@ -147,7 +162,19 @@ export function LendProvider({ children }: { children: ReactNode }) {
             });
             setProfileId(res.profileId);
             try { localStorage.setItem('liquidium_profile_id_v1', res.profileId); } catch {}
+            try { sessionStorage.removeItem('liquidium_manual_logout'); } catch {}
             return res.profileId;
+        } catch (err: any) {
+            const msg = err?.message ?? String(err);
+            const m = msg.match(/already linked to profile ([a-z0-9\-]+)/i);
+            if (m && m[1]) {
+                const pid = m[1];
+                setProfileId(pid);
+                try { localStorage.setItem('liquidium_profile_id_v1', pid); } catch {}
+                try { sessionStorage.removeItem('liquidium_manual_logout'); } catch {}
+                return pid;
+            }
+            throw err;
         } finally {
             setProfileLoading(false);
         }
@@ -156,6 +183,7 @@ export function LendProvider({ children }: { children: ReactNode }) {
     const logout = useCallback(() => {
         setProfileId(null);
         try { localStorage.removeItem('liquidium_profile_id_v1'); } catch {}
+        try { sessionStorage.setItem('liquidium_manual_logout', '1'); } catch {}
     }, []);
 
     // Which provider a running load belongs to: an answer for the other one is dropped.
