@@ -23,6 +23,7 @@ import { ManageDock, useSmallScreen } from '@/components/mesh/ui/ManageDock';
 import { RecycleDialog } from '@/components/mesh/strategies/RecycleDialog';
 import { strategyRecycles } from '@/components/mesh/strategies/StrategyCard';
 import { PriceLadder } from '@/components/mesh/strategies/PriceLadder';
+import { StrategyMetricsPanel } from '@/components/mesh/strategies/StrategyMetricsPanel';
 import { strategyUrl } from '@/components/mesh/strategies/StrategyBuilder';
 import { V3PoolLabel, amountOf, useAssetInfo } from '@/components/mesh/v3/V3PoolDetail';
 
@@ -142,6 +143,11 @@ export function MeshStrategyPage() {
         )}
       </DefiCard>
       {mainToken && <MarketStrip ctx={ctx} symbol={mainInfo.symbol} decimals={mainInfo.decimals} loading={market.isLoading} />}
+      {s.metrics && (
+        <Panel title="Against holding · if the market moved">
+          <StrategyMetricsPanel m={s.metrics} symbol={mainToken ? mainInfo.symbol : 'tokens'} decimals={mainInfo.decimals} />
+        </Panel>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         <div className="lg:col-span-7 space-y-6">
