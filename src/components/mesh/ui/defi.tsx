@@ -7,7 +7,7 @@
  */
 import type { ReactNode } from 'react';
 import {
-  Target, ArrowLeftRight, Network, Scale, Repeat, Grid3x3, TrendingUp, TrendingDown, Boxes, Recycle, Moon,
+  Target, ArrowLeftRight, Network, Scale, Repeat, Grid3x3, BarChart3, TrendingUp, TrendingDown, Boxes, Recycle, Moon,
   ArrowUpRight, ArrowDownRight, Minus,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -23,6 +23,7 @@ export const TEMPLATE_META: Record<string, { name: string; icon: typeof Target; 
   'stable-pair': { name: 'Stable pair', icon: Scale, category: 'Stable' },
   'recycling-pair': { name: 'Recycling pair', icon: Repeat, category: 'Range' },
   grid: { name: 'Grid', icon: Grid3x3, category: 'Range' },
+  range: { name: 'Range', icon: BarChart3, category: 'Range' },
   'take-profit': { name: 'Take-profit ladder', icon: TrendingUp, category: 'Directional' },
   accumulate: { name: 'Accumulate ladder', icon: TrendingDown, category: 'Directional' },
 };

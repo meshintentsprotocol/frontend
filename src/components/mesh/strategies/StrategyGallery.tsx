@@ -14,7 +14,7 @@ import { DefiCard, RecyclePill, TemplateIcon, TEMPLATE_META } from '@/components
 
 const CATEGORIES = ['All', 'Range', 'Market making', 'Limit', 'Directional', 'Stable', 'Multi-asset'] as const;
 /** Templates whose proceeds stay in Mesh (spread: by default, with proceeds = recycle). */
-const RECYCLES = new Set(['recycling-pair', 'grid', 'spread']);
+const RECYCLES = new Set(['recycling-pair', 'grid', 'range', 'spread']);
 
 type Expect = 'range' | 'up' | 'down' | 'peg';
 type Hold = 'bch' | 'token' | 'both';
@@ -25,13 +25,13 @@ function recommend(expect: Expect | null, hold: Hold | null, keep: Keep | null):
   if (!expect && !hold && !keep) return [];
   const score = new Map<string, number>(TEMPLATE_FORMS.map(f => [f.id, 0]));
   const add = (ids: string[], w = 1) => ids.forEach(id => score.set(id, (score.get(id) ?? 0) + w));
-  if (expect === 'range') add(['grid', 'recycling-pair', 'spread'], 2);
+  if (expect === 'range') add(['range', 'grid', 'recycling-pair', 'spread'], 2);
   if (expect === 'up') add(['take-profit', 'fixed'], 2);
   if (expect === 'down') add(['accumulate', 'fixed'], 2);
   if (expect === 'peg') add(['stable-pair'], 3);
   if (hold === 'bch') add(['grid', 'recycling-pair', 'accumulate', 'multi-pair', 'fixed']);
   if (hold === 'token') add(['take-profit', 'recycling-pair', 'fixed', 'stable-pair']);
-  if (hold === 'both') add(['spread', 'stable-pair']);
+  if (hold === 'both') add(['range', 'spread', 'stable-pair']);
   if (keep === 'mesh') add([...RECYCLES]);
   if (keep === 'wallet') add(['fixed', 'take-profit', 'accumulate', 'multi-pair']);
   const top = Math.max(...score.values());

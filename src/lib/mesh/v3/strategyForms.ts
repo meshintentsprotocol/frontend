@@ -50,6 +50,28 @@ const proceedsField = (def: 'wallet' | 'recycle'): FieldSpec => ({
   choices: [{ value: 'recycle', label: 'Keep in Mesh (recycle)' }, { value: 'wallet', label: 'Pay to my wallet' }],
 });
 
+/** How a ladder's deposit is spread over its pools (server: strategies/shapes.ts). */
+const shapeField: FieldSpec = {
+  key: 'shape', label: 'Shape', kind: 'choice', default: 'spot',
+  help: 'Spot spreads the deposit evenly, Curve puts most of it next to the market, Bid-Ask most of it at the edges',
+  choices: [{ value: 'spot', label: 'Spot (even)' }, { value: 'curve', label: 'Curve (near the market)' }, { value: 'bidask', label: 'Bid-Ask (at the edges)' }],
+};
+const strengthField: FieldSpec = {
+  key: 'strength', label: 'Shape strength', kind: 'choice', default: 'standard', optional: true,
+  help: 'How strongly Curve or Bid-Ask leans; Spot ignores it',
+  choices: [{ value: 'gentle', label: 'Gentle' }, { value: 'standard', label: 'Standard' }, { value: 'aggressive', label: 'Aggressive' }],
+};
+/** The market price a range is centred on: pools below it hold BCH, pools above it hold the token. */
+const centerField = (optional: boolean): FieldSpec => ({
+  key: 'center', label: 'Market price', kind: 'price', token: 'token', optional,
+  help: 'Filled in from the market. Rungs priced past it start on the token side, so nothing is sold below the market on deploy',
+});
+/** Gap between bins on the shared price grid (server: strategies/binGrid.ts). */
+export const BIN_STEP_CHOICES = [
+  { value: '10', label: '0.1% · pegged pairs' }, { value: '25', label: '0.25% · steady pairs' },
+  { value: '50', label: '0.5% · most pairs' }, { value: '100', label: '1% · volatile pairs' },
+];
+
 export const TEMPLATE_FORMS: TemplateForm[] = [
   { id: 'fixed', icon: 'Target', deposit: 'BCH (bid) or the token (ask)', earns: 'The fee on every fill at your price',
     fields: [
@@ -104,14 +126,32 @@ export const TEMPLATE_FORMS: TemplateForm[] = [
       { key: 'depositBch', label: 'BCH deposit', kind: 'bch', optional: true },
       { key: 'depositTokens', label: 'Token deposit', kind: 'tokenAmount', token: 'token', optional: true },
     ] },
-  { id: 'grid', icon: 'Grid3x3', deposit: 'BCH, split across rungs', earns: 'Every rung buys at its level and sells one level up',
+  { id: 'grid', icon: 'Grid3x3', deposit: 'BCH below the market, the token above it', earns: 'Every rung buys at its level and sells one level up',
     fields: [
       { key: 'token', label: 'Token', kind: 'token' },
       { key: 'low', label: 'Lowest price (1 BCH = most tokens)', kind: 'price', token: 'token' },
       { key: 'high', label: 'Highest price (1 BCH = fewest tokens)', kind: 'price', token: 'token' },
       { key: 'rungs', label: 'Rungs', kind: 'count', min: 2, max: 10, default: '4' },
+      centerField(true),
       FEE,
-      { key: 'depositBch', label: 'BCH', kind: 'bch' },
+      { key: 'depositBch', label: 'BCH (rungs below the market)', kind: 'bch', optional: true },
+      { key: 'depositTokens', label: 'Tokens (rungs above the market)', kind: 'tokenAmount', token: 'token', optional: true },
+      shapeField,
+      strengthField,
+    ] },
+  { id: 'range', icon: 'BarChart3', deposit: 'BCH below the market, the token above it', earns: 'The gap between bins plus the fee, on every move inside the range',
+    fields: [
+      { key: 'token', label: 'Token', kind: 'token' },
+      { key: 'low', label: 'Range low (1 BCH = most tokens)', kind: 'price', token: 'token' },
+      { key: 'high', label: 'Range high (1 BCH = fewest tokens)', kind: 'price', token: 'token' },
+      centerField(false),
+      { key: 'binStepBps', label: 'Bin step', kind: 'choice', default: '100', choices: BIN_STEP_CHOICES,
+        help: 'Gap between bins. Each bin is one pool: wider steps mean fewer, larger bins (at most 20)' },
+      shapeField,
+      strengthField,
+      FEE,
+      { key: 'depositBch', label: 'BCH (bins below the market)', kind: 'bch', optional: true },
+      { key: 'depositTokens', label: 'Tokens (bins above the market)', kind: 'tokenAmount', token: 'token', optional: true },
     ] },
   { id: 'take-profit', icon: 'TrendingUp', deposit: 'The token, split across steps', earns: 'Sells your tokens in steps as the price rises',
     fields: [
@@ -121,6 +161,9 @@ export const TEMPLATE_FORMS: TemplateForm[] = [
       { key: 'steps', label: 'Steps', kind: 'count', min: 2, max: 10, default: '4' },
       FEE,
       { key: 'depositTokens', label: 'Tokens', kind: 'tokenAmount', token: 'token' },
+      shapeField,
+      strengthField,
+      proceedsField('wallet'),
     ] },
   { id: 'accumulate', icon: 'TrendingDown', deposit: 'BCH, split across steps', earns: 'Buys the token in steps as the price falls',
     fields: [
@@ -130,6 +173,9 @@ export const TEMPLATE_FORMS: TemplateForm[] = [
       { key: 'steps', label: 'Steps', kind: 'count', min: 2, max: 10, default: '4' },
       FEE,
       { key: 'depositBch', label: 'BCH', kind: 'bch' },
+      shapeField,
+      strengthField,
+      proceedsField('wallet'),
     ] },
 ];
 
@@ -177,6 +223,8 @@ export function toServerParams(id: string, v: Record<string, string>, dec: Decim
   const units = (k: string, tokenKey: string) => toBaseUnits(need(k, 'token deposit'), dec(need(tokenKey, 'token'))).toString();
   const opt = (k: string) => (v[k] ?? '').trim() !== '';
   const fee = Number(v.feeBps ?? 30);
+  // spot is the server default: only send a shape that changes something
+  const shape = () => (v.shape && v.shape !== 'spot' ? { shape: v.shape, strength: v.strength || 'standard' } : {});
 
   switch (id) {
     case 'fixed': {
@@ -211,13 +259,23 @@ export function toServerParams(id: string, v: Record<string, string>, dec: Decim
     case 'grid':
       // the server's low/high are sats per token: the "lowest price" in tokens-per-BCH terms is the most tokens per BCH
       return { token: need('token'), lowSatsPerToken: price('low', 'token'), highSatsPerToken: price('high', 'token'),
-        rungs: Number(need('rungs')), feeBps: fee, depositSats: sats('depositBch') };
+        rungs: Number(need('rungs')), feeBps: fee, ...shape(),
+        ...(opt('center') ? { centerSatsPerToken: price('center', 'token') } : {}),
+        ...(opt('depositBch') ? { depositSats: sats('depositBch') } : {}),
+        ...(opt('depositTokens') ? { depositTokens: units('depositTokens', 'token') } : {}) };
+    case 'range':
+      return { token: need('token'), lowSatsPerToken: price('low', 'token'), highSatsPerToken: price('high', 'token'),
+        centerSatsPerToken: price('center', 'token'), binStepBps: v.binStepBps || '100', feeBps: fee, ...shape(),
+        ...(opt('depositBch') ? { depositSats: sats('depositBch') } : {}),
+        ...(opt('depositTokens') ? { depositTokens: units('depositTokens', 'token') } : {}) };
     case 'take-profit':
       return { token: need('token'), fromSatsPerToken: price('from', 'token'), toSatsPerToken: price('to', 'token'),
-        steps: Number(need('steps')), feeBps: fee, depositTokens: units('depositTokens', 'token') };
+        steps: Number(need('steps')), feeBps: fee, depositTokens: units('depositTokens', 'token'), ...shape(),
+        ...(v.proceeds === 'recycle' ? { proceeds: 'recycle' } : {}) };
     case 'accumulate':
       return { token: need('token'), fromSatsPerToken: price('from', 'token'), toSatsPerToken: price('to', 'token'),
-        steps: Number(need('steps')), feeBps: fee, depositSats: sats('depositBch') };
+        steps: Number(need('steps')), feeBps: fee, depositSats: sats('depositBch'), ...shape(),
+        ...(v.proceeds === 'recycle' ? { proceeds: 'recycle' } : {}) };
     default:
       throw new Error(`unknown template ${id}`);
   }
@@ -260,9 +318,13 @@ export function fromServerParams(id: string, p: Record<string, any>, dec: Decima
       break;
     }
     case 'recycling-pair': put('buy', tpb(p.buySatsPerToken, 'token')); put('sell', tpb(p.sellSatsPerToken, 'token')); put('start', p.start); break;
-    case 'grid': put('low', tpb(p.lowSatsPerToken, 'token')); put('high', tpb(p.highSatsPerToken, 'token')); put('rungs', p.rungs); break;
+    case 'grid': put('low', tpb(p.lowSatsPerToken, 'token')); put('high', tpb(p.highSatsPerToken, 'token')); put('rungs', p.rungs);
+      put('center', tpb(p.centerSatsPerToken, 'token')); put('shape', p.shape); put('strength', p.strength); break;
+    case 'range': put('low', tpb(p.lowSatsPerToken, 'token')); put('high', tpb(p.highSatsPerToken, 'token'));
+      put('center', tpb(p.centerSatsPerToken, 'token')); put('binStepBps', p.binStepBps); put('shape', p.shape); put('strength', p.strength); break;
     case 'take-profit':
-    case 'accumulate': put('from', tpb(p.fromSatsPerToken, 'token')); put('to', tpb(p.toSatsPerToken, 'token')); put('steps', p.steps); break;
+    case 'accumulate': put('from', tpb(p.fromSatsPerToken, 'token')); put('to', tpb(p.toSatsPerToken, 'token')); put('steps', p.steps);
+      put('shape', p.shape); put('strength', p.strength); put('proceeds', p.proceeds); break;
   }
   return out;
 }

@@ -21,7 +21,7 @@ export function strategyTokens(s: Pick<StrategySummary, 'params'>): string[] {
 
 /** Proceeds stay in Mesh: a recycling template, or a template run with proceeds = recycle. */
 export const strategyRecycles = (s: Pick<StrategySummary, 'template' | 'params'>) =>
-  s.template === 'recycling-pair' || s.template === 'grid' || (s.params as any)?.proceeds === 'recycle';
+  s.template === 'recycling-pair' || s.template === 'grid' || s.template === 'range' || (s.params as any)?.proceeds === 'recycle';
 
 export function StrategyCard({ s, infoOf, bchUsd, className }: {
   s: StrategySummary; infoOf: (cat: string) => TokenInfo; bchUsd?: number | null; className?: string;

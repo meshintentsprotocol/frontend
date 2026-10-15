@@ -88,6 +88,7 @@ import {
 import { tokenPerBchFromSatsPerUnit } from '@/lib/mesh/pool';
 import { Panel, TokenAvatar, useTokenInfo, type TokenInfo } from '@/components/mesh/pools/shared';
 import { PriceLadder } from './PriceLadder';
+import { RangeDistribution } from './RangeDistribution';
 
 const FEE_TIERS = [
   { bps: 5, label: '0.05%', name: 'Peg / Stables', desc: 'Ultra-low fee for correlated or pegged assets' },
@@ -172,6 +173,8 @@ export function StrategyBuilder({
   const [busy, setBusy] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [activePreset, setActivePreset] = useState<string>('custom');
+  /** The LP saw the through-market warnings and wants to deploy anyway. */
+  const [acceptCross, setAcceptCross] = useState(false);
 
   const set = (k: string, v: string) => setValues(prev => ({ ...prev, [k]: v }));
 
@@ -243,9 +246,11 @@ export function StrategyBuilder({
       set(buyKey, round(marketPrice * (1 + pct / 100)));
       // Sell: fewer tokens per BCH (expensive token)
       set(sellKey, round(marketPrice * (1 - pct / 100)));
-    } else if (templateId === 'grid') {
+    } else if (templateId === 'grid' || templateId === 'range') {
       set('low', round(marketPrice * (1 + pct / 100)));
       set('high', round(marketPrice * (1 - pct / 100)));
+      // pools past the market price start on the token side
+      set('center', round(marketPrice));
     } else if (templateId === 'take-profit') {
       set('from', round(marketPrice * 0.99));
       set('to', round(marketPrice * (1 - pct / 100)));
@@ -279,6 +284,10 @@ export function StrategyBuilder({
     queryFn: () => meshApi.previewStrategy(debounced!),
     retry: false,
   });
+
+  // An override applies to the warnings the LP saw: new warnings need a new tick
+  const warningKey = preview.data?.warnings?.join('|') ?? '';
+  useEffect(() => { setAcceptCross(false); }, [warningKey]);
 
   // Every pool recomputed locally: address must match, owner must be this wallet
   const verified = useMemo(() => {
@@ -318,6 +327,9 @@ export function StrategyBuilder({
     if (input.error) return input.error;
     if (preview.isError) return (preview.error as Error).message;
     if (verified && !verified.ok) return `Refusing to deploy: ${verified.error}`;
+    if (preview.data?.warnings?.length && !acceptCross) {
+      return 'Some pools are priced through the market and would be taken by arbitrage as soon as they are funded. Change the prices, or tick “Deploy anyway” below.';
+    }
     const t = preview.data?.totals;
     const b = balances.data;
     if (t && b && !replaces) {
@@ -329,7 +341,7 @@ export function StrategyBuilder({
       }
     }
     return null;
-  }, [wallet, networkMismatch, input, preview.isError, preview.error, preview.data, verified, balances.data, health.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [wallet, networkMismatch, input, preview.isError, preview.error, preview.data, verified, balances.data, health.data, acceptCross]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Live UTXOs of the strategy being replaced */
   async function closeCurrent(id: string): Promise<ClosePool[]> {
@@ -444,7 +456,7 @@ export function StrategyBuilder({
     );
   }
 
-  const isRangeTemplate = ['spread', 'recycling-pair', 'grid', 'take-profit', 'accumulate'].includes(
+  const isRangeTemplate = ['spread', 'recycling-pair', 'grid', 'range', 'take-profit', 'accumulate'].includes(
     templateId
   );
 
@@ -838,6 +850,29 @@ export function StrategyBuilder({
               <PriceLadder levels={levels} market={marketPrice} symbol={main.symbol} />
             )}
 
+            {preview.data && ['grid', 'range', 'take-profit', 'accumulate'].includes(templateId) && (
+              <div className="mt-3">
+                <RangeDistribution pools={preview.data.pools} token={mainToken} decimals={main.decimals} symbol={main.symbol} market={marketPrice} />
+              </div>
+            )}
+
+            {preview.data?.warnings?.length ? (
+              <div className="mt-3 p-3 rounded-xl bg-rose-500/10 border border-rose-500/25 text-[11px] text-rose-200 space-y-1.5">
+                <div className="flex gap-2 font-semibold"><TriangleAlert className="w-4 h-4 shrink-0" />Priced through the market</div>
+                {preview.data.warnings.map(w => <p key={w}>{w}</p>)}
+                <label className="flex items-center gap-2 pt-1 text-rose-100 cursor-pointer">
+                  <input type="checkbox" checked={acceptCross} onChange={e => setAcceptCross(e.target.checked)} />
+                  Deploy anyway: I want these pools filled at these prices
+                </label>
+              </div>
+            ) : null}
+
+            {preview.data?.notes?.length ? (
+              <div className="mt-3 p-3 rounded-xl bg-neutral-900/60 border border-neutral-800 text-[11px] text-neutral-400 space-y-1">
+                {preview.data.notes.map(n => <p key={n}>{n}</p>)}
+              </div>
+            ) : null}
+
             {preview.isFetching && (
               <div className="flex items-center gap-2 text-xs text-neutral-400 py-2">
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
@@ -895,6 +930,12 @@ export function StrategyBuilder({
                     )}
                   </span>
                 </div>
+                {preview.data.deployBytes ? (
+                  <div className="flex justify-between text-[11px] text-neutral-500 px-1 font-mono">
+                    <span>Deploy transaction (estimate):</span>
+                    <span>~{formatNumber(preview.data.deployBytes, 0)} bytes</span>
+                  </div>
+                ) : null}
               </div>
             )}
 

@@ -20,7 +20,7 @@ describe('unit conversions', () => {
 
 describe('template params', () => {
   it('every template has a form', () => {
-    expect(TEMPLATE_FORMS.map(f => f.id)).toEqual(['fixed', 'spread', 'multi-pair', 'stable-pair', 'recycling-pair', 'grid', 'take-profit', 'accumulate']);
+    expect(TEMPLATE_FORMS.map(f => f.id)).toEqual(['fixed', 'spread', 'multi-pair', 'stable-pair', 'recycling-pair', 'grid', 'range', 'take-profit', 'accumulate']);
   });
 
   it('fixed bid / ask', () => {
@@ -49,7 +49,32 @@ describe('template params', () => {
   });
 
   it('missing fields are reported by label', () => {
-    expect(() => toServerParams('grid', { token: PUSD, low: '600', high: '400', rungs: '4', feeBps: '30' }, dec)).toThrow(/deposit is required/);
+    expect(() => toServerParams('accumulate', { token: PUSD, from: '400', to: '600', steps: '4', feeBps: '30' }, dec)).toThrow(/deposit is required/);
+    expect(() => toServerParams('range', { token: PUSD, low: '600', high: '400', feeBps: '30' }, dec)).toThrow(/price is required/);
+  });
+
+  it('grid: the market price and both deposits are sent only when given', () => {
+    const p = toServerParams('grid', { token: PUSD, low: '520', high: '480', rungs: '4', center: '500', depositBch: '0.0006', depositTokens: '2', feeBps: '30' }, dec) as any;
+    expect(p).toMatchObject({ centerSatsPerToken: '2000', depositSats: '60000', depositTokens: '200' });
+    const bare = toServerParams('grid', { token: PUSD, low: '520', high: '480', rungs: '4', depositBch: '0.0006', feeBps: '30' }, dec) as any;
+    expect(bare.centerSatsPerToken).toBeUndefined();
+    expect(bare.depositTokens).toBeUndefined();
+  });
+
+  it('range: bin step, shape and the market price', () => {
+    const p = toServerParams('range', { token: PUSD, low: '520', high: '480', center: '500', binStepBps: '50', shape: 'curve', strength: 'aggressive', depositBch: '0.01', depositTokens: '5', feeBps: '30' }, dec) as any;
+    expect(p).toMatchObject({ centerSatsPerToken: '2000', binStepBps: '50', shape: 'curve', strength: 'aggressive', depositSats: '1000000', depositTokens: '500' });
+    // spot is the server's default: not sent
+    const spot = toServerParams('range', { token: PUSD, low: '520', high: '480', center: '500', shape: 'spot', depositBch: '0.01', feeBps: '30' }, dec) as any;
+    expect(spot.shape).toBeUndefined();
+    expect(spot.binStepBps).toBe('100');
+  });
+
+  it('take-profit and accumulate can keep proceeds in Mesh', () => {
+    const p = toServerParams('take-profit', { token: PUSD, from: '480', to: '400', steps: '3', depositTokens: '3', proceeds: 'recycle', feeBps: '30' }, dec) as any;
+    expect(p.proceeds).toBe('recycle');
+    const w = toServerParams('accumulate', { token: PUSD, from: '520', to: '600', steps: '3', depositBch: '0.0003', proceeds: 'wallet', feeBps: '30' }, dec) as any;
+    expect(w.proceeds).toBeUndefined();
   });
 });
 
@@ -61,13 +86,15 @@ describe('suggestions → form → server params', () => {
     'multi-pair': { tokens: [{ token: PUSD, satsPerToken: '3233.75' }, { token: MUSD, satsPerToken: '32.3375' }], feeBps: 30 },
     'stable-pair': { tokenA: PUSD, tokenB: MUSD, rate: '100', spreadBps: 20, feeBps: 10 },
     'recycling-pair': { token: PUSD, start: 'bch', buySatsPerToken: '3217.5', sellSatsPerToken: '3282.5', feeBps: 30 },
-    grid: { token: PUSD, lowSatsPerToken: '3087.5', highSatsPerToken: '3412.5', rungs: 4, feeBps: 30 },
+    grid: { token: PUSD, lowSatsPerToken: '3087.5', highSatsPerToken: '3412.5', rungs: 4, centerSatsPerToken: '3250', feeBps: 30 },
+    range: { token: PUSD, lowSatsPerToken: '3087.5', highSatsPerToken: '3412.5', centerSatsPerToken: '3250', binStepBps: '100', shape: 'curve', strength: 'standard', feeBps: 30 },
     'take-profit': { token: PUSD, fromSatsPerToken: '3315', toSatsPerToken: '3737.5', steps: 4, feeBps: 30 },
     accumulate: { token: PUSD, fromSatsPerToken: '3185', toSatsPerToken: '2762.5', steps: 4, feeBps: 30 },
   };
   const DEPOSITS: Record<string, Record<string, string>> = {
     fixed: { deposit: '0.01' }, spread: { depositBch: '0.01', depositTokens: '5' }, 'multi-pair': { depositBch: '0.01' },
-    'stable-pair': { depositA: '5', depositB: '5' }, 'recycling-pair': { depositBch: '0.01' }, grid: { depositBch: '0.04' },
+    'stable-pair': { depositA: '5', depositB: '5' }, 'recycling-pair': { depositBch: '0.01' }, grid: { depositBch: '0.04', depositTokens: '5' },
+    range: { depositBch: '0.04', depositTokens: '5' },
     'take-profit': { depositTokens: '8' }, accumulate: { depositBch: '0.04' },
   };
   const close = (a: unknown, b: unknown) => Math.abs(Number(a) / Number(b) - 1) < 1e-3;
