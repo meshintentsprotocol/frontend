@@ -96,6 +96,7 @@ Amounts are strings of base units (sats or token units). BCH is `'0x'`; token ca
 | `GET /api/v1/pools/:address/activity?limit=&before=` | Ledger events, newest first, each with `balanceAfter` |
 | `POST /api/v1/pools/:address/sync` | Re-read the address from chain after an LP transaction (rate limited) |
 | `GET /api/v1/pools/pairs` | Per pair: pool/LP counts, TVL, 24h/7d volume and fees, best trader rate on each side, depth |
+| `GET /api/v1/pools/depth?token=&step=` | One pair's liquidity per level of the shared bin grid (`step`: 10, 25, 50 or 100 bps). Each level: `satsPerToken`, `bidSats`, `askTokens`, `pools`, `lps`; plus `activeIndex` (the level of the market mid). A pool is placed at the level of its own price before its fee; pools worth less than `minBinSats` are left out, as the router leaves them out. Pools at one level stay separate pools of separate LPs |
 | `GET /api/v1/pools/market-ref?token=` | Cauldron reference price (sats per token unit), best Mesh rates and BCH/USD |
 | `GET /api/v1/pools/activity?type=FILL&limit=` | Recent events across all pools |
 | `GET /api/v1/pools/by-outpoint/:txid/:vout` | Address of the pool that ever held an outpoint (for old links) |

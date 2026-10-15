@@ -2,8 +2,8 @@
 title: Strategies
 description: Templates with a field schema, market-based suggestions, preview against the market, one-transaction deploy and rebalance plans for MeshPoolV3 strategies.
 status: ready
-updated: 2026-10-02
-sources: BCHMesh/meshserver/src/api/routes/strategies.ts, BCHMesh/meshserver/src/strategies/templates.ts, BCHMesh/meshserver/test/integration/strategies.market.test.ts
+updated: 2026-10-16
+sources: BCHMesh/meshserver/src/api/routes/strategies.ts, BCHMesh/meshserver/src/strategies/templates.ts, BCHMesh/meshserver/src/strategies/metrics.ts, BCHMesh/meshserver/test/integration/strategies.market.test.ts
 ---
 
 A strategy is a [template](mesh/strategies/overview) expanded into [MeshPoolV3](mesh/v3/meshpool-v3) pools. **The server never signs**: your client funds every pool in one transaction, then registers it.
@@ -74,18 +74,24 @@ Field `type`s:
         "midSatsPerToken": 3250.02931831, "midSource": "cauldron", "bchUsd": 308.13, "tokenUsd": 1.0014 } },
       "params": { "token": "<pUSD category>", "lowSatsPerToken": "3087.528", "highSatsPerToken": "3412.53", "rungs": 4, "feeBps": 30 } } },
     { "status": 200, "body": { "template": "grid", "market": { "…": { "midSatsPerToken": null } }, "params": null, "reason": "no market price for … (no Cauldron pool and no Mesh quote)" } },
-    { "status": 400, "body": { "error": "unknown template 'nope' (fixed, spread, multi-pair, stable-pair, recycling-pair, grid, take-profit, accumulate)" } }
+    { "status": 200, "body": { "template": "range", "market": { "…": { "midCheck": { "recentMedian": 3000, "samples": 6, "windowSec": 1800, "divergenceBps": 833, "maxDivergenceBps": 500, "ok": false } } }, "params": null, "reason": "the market price of PUSDTEST moved 8.3% from its median of the last 30 minutes: enter the market price yourself or try again later" } },
+    { "status": 400, "body": { "error": "unknown template 'nope' (fixed, spread, multi-pair, stable-pair, recycling-pair, grid, range, take-profit, accumulate)" } }
   ]
 }
 ```
 
-The mid is the deepest Cauldron pool's price. Without one, it is the middle of the best Mesh bid and ask, or the one side that exists. Suggestions:
+The mid is the deepest Cauldron pool's price. Without one, it is the middle of the best Mesh bid and ask, or the one side that exists.
+
+**Mid check.** Each market context carries `midCheck`: the median of the mid samples of the last `windowSec` (30 minutes), how far the current mid is from it (`divergenceBps`) and `ok`. When a mid has jumped by more than `maxDivergenceBps` (5%), for example after one large trade on a thin Cauldron pool, `/suggest` returns `params: null` with a reason, so no position is centred on that price. You can still enter prices yourself.
+
+Suggestions:
 
 | Template | Suggested |
 | --- | --- |
 | fixed / spread | bid at −0.5%, ask at +0.5% |
 | recycling-pair | buy at −1%, sell at +1% |
-| grid | −5% to +5%, 4 rungs |
+| grid | −5% to +5%, 4 rungs, `centerSatsPerToken` = the mid (rungs above it start on the token side) |
+| range | −5% to +5%, 1% bins, spot, `centerSatsPerToken` = the mid |
 | take-profit / accumulate | +2% to +15% / −2% to −15%, 4 steps |
 | multi-pair | every token at −0.5% |
 | stable-pair | the peg (ratio of the two mids), 0.20% spread, 0.10% fee |
@@ -112,6 +118,13 @@ The mid is the deepest Cauldron pool's price. Without one, it is the middle of t
 ```
 
 Per slot, `side` is `buys` (BCH reserve paying for a token), `sells` (token reserve asking BCH) or `swaps` (token↔token, with `vsMidBps` comparing the value given to the value received). Fund each pool with an output to its `lockingBytecode` (raw bytecode, not a wallet "send to address") carrying `deposit`. Token pools take 1000 sats plus the tokens.
+
+The preview also returns:
+- **`crossesMarket`** on each pool, and **`warnings`** in words. A pool listed there gives a trader more than the market after its fee (a bid above the mid, an ask below it), so arbitrage would take it as soon as it is funded. Don't deploy it unless the LP means to. The rebalance and recycle plans carry the same `warnings`.
+- **`notes`**, e.g. a bin a shaped split left out because its share was below the pool minimum.
+- **`deployBytes`**: a rough size of the deploy transaction.
+
+**Shapes.** `grid`, `range`, `take-profit` and `accumulate` take `shape` (`spot` default, `curve`, `bidask`) and `strength` (`gentle`, `standard`, `aggressive`); see [Range](mesh/strategies/range).
 
 ```endpoint
 {
@@ -146,9 +159,20 @@ Per slot, `side` is `buys` (BCH reserve paying for a token), `sells` (token rese
 
 `feeApr7dPct` is an estimate: the last 7 days of fee income, annualised over the current value. It is `null` until the strategy has 24 hours of history. Owner listings (`?owner=`) also carry `idle` (`kinds`, `reasons`, `valueSats`) when part of the strategy is [idle](api/recycle).
 
-**Proceeds.** `fixed` and `spread` take `proceeds: "wallet" | "recycle"` (default `wallet`).
+**Metrics.** Each strategy also carries `metrics` (estimates, for display):
+
+| Field | Meaning |
+| --- | --- |
+| `holdValueSats` | What your own deposits would be worth today if simply held. Deposits one of the strategy's pools made into another (recycling) are not counted |
+| `vsHoldSats`, `vsHoldPct` | Value now plus everything paid out, minus `holdValueSats` |
+| `arbitrage` | Fills and the share of volume that came from arbitrage (the Mesh Balancer, or transactions built outside the server) |
+| `range`, `timeInRange` | The prices the strategy quotes, and the share of market samples since it was deployed that fell inside them |
+| `stress.rows[]` | Value at 0.5×–2× the mid against holding what it holds now: each pool the move crosses converts at its own price |
+
+**Proceeds.** `fixed`, `spread`, `take-profit` and `accumulate` take `proceeds: "wallet" | "recycle"` (default `wallet`).
 - `spread` with `recycle` puts both pools in mirror mode, so each side refills the other.
 - `fixed` with `recycle` needs `recycleSatsPerToken`: the trade-back price, above a bid or below an ask.
+- `take-profit` and `accumulate` with `recycle`: a filled step trades back one step away (buys back lower, or sells back higher).
 
 ```endpoint
 {

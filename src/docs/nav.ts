@@ -169,6 +169,7 @@ export const LOCAL_NAV: NavSection[] = [
                             { slug: 'mesh/strategies/stable-pair', title: 'Stable pair' },
                             { slug: 'mesh/strategies/recycling-pair', title: 'Recycling pair' },
                             { slug: 'mesh/strategies/grid', title: 'Grid' },
+                            { slug: 'mesh/strategies/range', title: 'Range' },
                             { slug: 'mesh/strategies/take-profit', title: 'Take-profit ladder' },
                             { slug: 'mesh/strategies/accumulate', title: 'Accumulate ladder' },
                         ],
