@@ -81,7 +81,9 @@ export function PoolsPage() {
                     { key: 'fills', header: 'Fills', align: 'right', cell: p => <span className="font-mono text-xs">{p.stats.fillCount}</span>, hideBelow: 'md' },
                     { key: 'owner', header: 'LP', cell: p => <Hash value={p.ownerPkh} to={adminUrl.lp(p.ownerPkh)} copy={false} head={6} tail={4} />, hideBelow: 'lg' },
                     { key: 'strategy', header: 'Strategy', cell: p => p.bundleId ? <Hash value={p.bundleId} to={adminUrl.strategy(p.bundleId)} copy={false} head={10} tail={3} /> : <span className="text-zinc-600 text-xs">—</span>, hideBelow: 'xl' },
-                    { key: 'status', header: 'Status', cell: p => <span className="inline-flex items-center gap-1"><PoolStatus status={p.status} />{p.dirty && <Pill tone="amber" title="UTXO set changed; history not re-read yet">sync</Pill>}</span> },
+                    { key: 'status', header: 'Status', cell: p => <span className="inline-flex items-center gap-1"><PoolStatus status={p.status} />{p.dirty && <Pill tone="amber" title="UTXO set changed; history not re-read yet">sync</Pill>}
+                      {p.throughMarket?.length ? <Pill tone="rose" title={p.throughMarket.map(t => `${t.side} by ${(t.bps / 100).toFixed(2)}%`).join(', ')}>through mkt</Pill> : null}
+                      {p.utxos.filter(u => u.valid).length > 1 && <Pill tone="zinc" title="liquidity split across several UTXOs: each is a separate input to fill through">{p.utxos.filter(u => u.valid).length} UTXOs</Pill>}</span> },
                     { key: 'last', header: 'Last fill', cell: p => <TimeAgo at={p.lastFillAt} />, hideBelow: 'xl' },
                   ]}
                 />

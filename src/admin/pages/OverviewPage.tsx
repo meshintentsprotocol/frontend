@@ -11,7 +11,7 @@ import { AssetMapList, AssetPair, Amount } from '../assets';
 import { DailyFlowChart, HourlyEventsChart, HourlyIntentChart } from '../charts';
 import { EventFeed } from '../EventFeed';
 import type { Alert, FillRow, Overview } from '../api';
-import { formatSatsCompact, formatUsd, satsToUsd } from '@/lib/mesh/format';
+import { formatNumber, formatSatsCompact, formatUsd, satsToUsd } from '@/lib/mesh/format';
 import { cn } from '@/lib/utils';
 
 const ALERT_STYLE: Record<Alert['severity'], { icon: typeof Info; cls: string }> = {
@@ -135,6 +135,18 @@ export function OverviewPage() {
                 <KpiTile label="Strategies" value={`${o.strategies.active}/${o.strategies.total}`} sub={`${o.strategies.recycled} recycled · ${o.strategies.rebalanced} rebalanced`} icon={<Layers className="w-4 h-4" />} to="/admin/strategies" />
                 <KpiTile label="LPs" value={o.pools.lpCount} sub={`vol 24h ${formatSatsCompact(o.pools.volume24hSats)}`} icon={<Users className="w-4 h-4" />} to="/admin/lps" />
               </div>
+
+              {(o.liquidity || o.market) && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <KpiTile label="Through the market" value={o.liquidity?.throughMarketPools ?? '—'} tone={o.liquidity?.throughMarketPools ? 'rose' : 'emerald'}
+                    sub={o.liquidity ? `${formatSatsCompact(o.liquidity.throughMarketValueSats)} arbitrage can take` : 'first report pending'} icon={<AlertTriangle className="w-4 h-4" />} to="/admin/liquidity" />
+                  <KpiTile label="UTXOs per pool" value={o.liquidity ? o.liquidity.utxosPerPool.toFixed(2) : '—'} tone={(o.liquidity?.utxosPerPool ?? 1) > 1.5 ? 'amber' : undefined}
+                    sub={o.liquidity ? `${o.liquidity.extraUtxos} extra · ${formatNumber(o.liquidity.extraBytes / 1000, 1)} KB to sweep` : undefined} icon={<Waves className="w-4 h-4" />} to="/admin/liquidity" />
+                  <KpiTile label="Too small to route" value={o.liquidity ? formatSatsCompact(o.liquidity.dustValueSats) : '—'} sub={o.liquidity ? `${o.liquidity.dustUtxos} pool UTXO(s)` : undefined} to="/admin/liquidity?view=dust" />
+                  <KpiTile label="Market guard" value={o.market ? (o.market.refused ? `${o.market.refused} refusing` : 'ok') : '—'} tone={o.market?.refused ? 'rose' : o.market?.sampler.stalled ? 'amber' : 'emerald'}
+                    sub={o.market ? `${o.market.tokens} tokens · sampler ${o.market.sampler.stalled ? 'stalled' : o.market.sampler.running ? 'running' : 'off'}` : undefined} icon={<Activity className="w-4 h-4" />} to="/admin/market" />
+                </div>
+              )}
 
               <div className="grid gap-5 xl:grid-cols-3">
                 <Section title="Fill flow, 14 days" icon={<Activity className="w-4 h-4 text-emerald-300" />} description="Fills per day by route, with intents created and refunded." className="xl:col-span-2">

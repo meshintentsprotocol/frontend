@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { SlidersHorizontal, Waves, Boxes, Zap, Play, Wallet, Undo2, Server, ShieldCheck, Database, Cpu } from 'lucide-react';
+import { SlidersHorizontal, Waves, Boxes, Zap, Play, Wallet, Undo2, Server, ShieldCheck, Database, Cpu, Merge, HeartPulse } from 'lucide-react';
 import { useAdmin } from '../AdminContext';
 import { useAdminAction, useOverview, useRefunds, useSystem, useEvents } from '../hooks';
 import {
@@ -71,6 +71,10 @@ export function OperationsPage() {
   const o = useOverview();
   const sys = useSystem();
   const routeEvents = useEvents({ category: 'route,system', limit: 20 });
+  const walletEvents = useEvents({ subject: 'solver-wallet', limit: 5 });
+  const consolidate = useAdminAction(() => api.consolidateSolver(), {
+    label: 'Consolidation', success: r => (r.result ? `Merged ${r.result.inputs} UTXOs into ${r.result.sats} sats (fee ${r.result.fee})` : r.message),
+  });
   const [last, setLast] = useState<SolverCycleReport | null>(null);
   const cycle = useAdminAction(() => api.runSolverCycle(), {
     label: 'Solver cycle', success: r => { setLast(r); return `Cycle: ${r.filled.length} filled, ${r.failed.length} failed, ${r.unfillable.length} no route`; },
@@ -94,7 +98,15 @@ export function OperationsPage() {
                   ['Tokens', <AssetMapList map={d.solver.tokens} empty="None" />],
                   ['UTXOs', <span className="font-mono">{d.solver.utxoCount} ({d.solver.tokenUtxos} token)</span>],
                   ['Fillable now', <span className="font-mono">{d.intents.fillableNow} intents</span>],
+                  sys.data?.liquidity ? ['Consolidation', <span className="text-xs text-zinc-400">automatic every 10 min while above {sys.data.liquidity.consolidateAboveUtxos} UTXOs</span>] : null,
                 ]} />
+                <div className="mt-4 space-y-3">
+                  <ConfirmAction label="Consolidate now" icon={<Merge className="w-3.5 h-3.5" />} pending={consolidate.isPending} disabled={!d.solver.ready}
+                    title="Merge the solver wallet's small UTXOs?"
+                    description="Every fill through a V3 pool leaves a 546-sat pad UTXO in the wallet. This merges up to 100 of the smallest BCH UTXOs into one, in a transaction to itself. Fills running at the same time pass over the UTXOs it holds."
+                    onConfirm={() => consolidate.run(undefined)} />
+                  <QueryState q={walletEvents} rows={2}>{e => e.events.length ? <EventFeed events={e.events} compact /> : <p className="text-xs text-zinc-600">No consolidations yet.</p>}</QueryState>
+                </div>
               </Section>
               <Section title="Run a solver cycle" icon={<Play className="w-4 h-4 text-emerald-300" />} description="Plans and fills every fillable intent now instead of waiting for the next scheduled cycle.">
                 <div className="space-y-3">
@@ -231,6 +243,19 @@ export function SystemPage() {
                   ['Node', `${s.node} · pid ${s.pid}`],
                 ]} />
               </Section>
+              {s.liquidity && (
+                <Section title="Liquidity & market guard" icon={<HeartPulse className="w-4 h-4 text-emerald-300" />} description="Routing limits and the guard on the price new positions are centred on.">
+                  <KeyValue rows={[
+                    ['Pools per fill', `up to ${s.liquidity.maxFillLegs}`],
+                    ['Routing minimum', `${s.liquidity.minRouteBinSats} sats per pool UTXO`],
+                    ['Bytes per pool input', `~${s.liquidity.bytesPerPoolInput} (with its outputs)`],
+                    ['Mid samples', `every ${duration(s.liquidity.midSampleSec)} · ${s.liquidity.sampler.tokens} tokens, ${s.liquidity.sampler.samples} kept`],
+                    ['Mid sampler', <Pill tone={s.liquidity.sampler.stalled ? 'amber' : s.liquidity.sampler.running ? 'emerald' : 'zinc'} dot>{s.liquidity.sampler.stalled ? 'Stalled' : s.liquidity.sampler.running ? 'Running' : 'Off'}</Pill>],
+                    ['Suggestion guard', `refuses a mid over ${(s.liquidity.midDivergenceBps / 100).toFixed(1)}% from the ${duration(s.liquidity.midGuardWindowSec)} median`],
+                    ['Solver consolidation', `above ${s.liquidity.consolidateAboveUtxos} UTXOs`],
+                  ]} />
+                </Section>
+              )}
               {s.scanner && s.solverLoop && (
                 <Section title="Loops & chain" description="What must keep running. A stall here raises an alert.">
                   <KeyValue rows={[

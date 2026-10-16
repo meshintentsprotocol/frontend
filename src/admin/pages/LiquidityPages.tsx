@@ -5,7 +5,8 @@ import {
   PageHeader, Section, QueryState, Segmented, useUrlState, DataTable, TimeAgo, Hash, adminUrl, Pill, KpiTile, KeyValue,
   AddressLink, KindBadge, MethodBadge, IntentStatusBadge, type Tone,
 } from '../kit';
-import { Amount, AssetPair, AssetMapList } from '../assets';
+import { Amount, AssetPair, AssetMapList, useAssets } from '../assets';
+import { StrategyMetricsPanel } from '@/components/mesh/strategies/StrategyMetricsPanel';
 import { EventFeed } from '../EventFeed';
 import { DailyPoolChart } from '../charts';
 import { PoolStatus, poolAssets } from './PoolPages';
@@ -99,6 +100,9 @@ function StrategyTable({ rows }: { rows: StrategySummary[] }) {
         { key: 'fees', header: 'Fees', align: 'right', cell: s => <span className="font-mono text-xs text-emerald-300">{formatSatsCompact(s.feesAllSats)}</span>, hideBelow: 'sm' },
         { key: 'fills', header: 'Fills', align: 'right', cell: s => <span className="font-mono text-xs">{s.fillCount}</span>, hideBelow: 'md' },
         { key: 'apr', header: 'APR 7d', align: 'right', cell: s => <span className="font-mono text-xs">{s.feeApr7dPct === null || s.feeApr7dPct === undefined ? '—' : `${s.feeApr7dPct.toFixed(1)}%`}</span>, hideBelow: 'lg' },
+        { key: 'hold', header: 'vs holding', align: 'right', cell: s => { const v = s.metrics?.vsHoldPct; return <span className={cn('font-mono text-xs', v === null || v === undefined ? 'text-zinc-600' : v >= 0 ? 'text-emerald-300' : 'text-rose-300')}>{v === null || v === undefined ? '—' : `${v > 0 ? '+' : ''}${v.toFixed(2)}%`}</span>; }, hideBelow: 'lg' },
+        { key: 'arb', header: 'Arb share', align: 'right', cell: s => <span className="font-mono text-xs text-zinc-400" title="share of volume from the Mesh Balancer or outside builders">{s.metrics?.arbitrage.arbitrageVolumePct === null || s.metrics?.arbitrage.arbitrageVolumePct === undefined ? '—' : `${s.metrics.arbitrage.arbitrageVolumePct}%`}</span>, hideBelow: 'xl' },
+        { key: 'range', header: 'In range', align: 'right', cell: s => <span className="font-mono text-xs text-zinc-400">{s.metrics?.timeInRange?.pct === null || s.metrics?.timeInRange?.pct === undefined ? '—' : `${s.metrics.timeInRange.pct}%`}</span>, hideBelow: 'xl' },
         { key: 'lineage', header: 'Lineage', cell: s => <Lineage s={s} />, hideBelow: 'xl' },
         { key: 'status', header: 'Status', cell: s => <PoolStatus status={s.status} /> },
         { key: 'created', header: 'Created', cell: s => <TimeAgo at={s.createdAt} />, hideBelow: 'xl' },
@@ -120,7 +124,7 @@ export function StrategiesPage() {
       <QueryState q={q} rows={8}>
         {d => (
           <>
-            <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-5 xl:grid-cols-9 gap-3">
               {Object.keys(TEMPLATE_META).map(t => {
                 const x = d.byTemplate[t];
                 return (
@@ -204,6 +208,7 @@ export function StrategyDetailPage() {
               </Section>
               <Section title="Daily activity, 30 days"><DailyPoolChart daily={d.daily} height={170} /></Section>
             </div>
+            {s.metrics && <StrategyMetricsSection s={s} pools={d.pools} />}
             <Section title="Member pools" description="The pools it registered plus the mirror pools they recycle into."><PoolTable pools={d.pools} /></Section>
             <div className="grid gap-5 xl:grid-cols-2">
               <Section title="Intent fills" description="Intents this strategy's pools helped fill."><FillTable fills={d.fills} /></Section>
@@ -213,6 +218,18 @@ export function StrategyDetailPage() {
         );
       }}
     </QueryState>
+  );
+}
+
+/** The LP's view of the position (server estimates): against holding, arbitrage share, time in range, stress table. */
+function StrategyMetricsSection({ s, pools }: { s: StrategySummary; pools: AdminPool[] }) {
+  const token = [...new Set(pools.flatMap(p => (p.v3 ? [p.v3.reserve, ...p.v3.slots.map(x => x.cat)] : [])))].find(c => c !== '0x') ?? '';
+  const { get } = useAssets([token]);
+  const info = token ? get(token) : null;
+  return (
+    <Section title="LP metrics" description="Estimates: what the LP sees on the position page.">
+      <StrategyMetricsPanel m={s.metrics!} symbol={info?.symbol ?? 'tokens'} decimals={info?.decimals ?? 0} />
+    </Section>
   );
 }
 
