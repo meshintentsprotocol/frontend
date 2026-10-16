@@ -8,7 +8,7 @@ import React, { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQueries } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { AlertTriangle, ArrowLeft, Loader2, Lock, MinusCircle, Recycle, Repeat, Shuffle, Sparkles } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Gem, Loader2, Lock, MinusCircle, Recycle, Repeat, Shuffle, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { meshApi, useIdle, useInvalidateMesh, useMeshSigner, useMeshStats, useSignerBalances, useStrategy, useStrategySuggest, useStrategyTemplates } from '@/hooks/useMesh';
 import type { Pool, PoolEvent } from '@/lib/mesh/meshApi';
@@ -26,6 +26,7 @@ import { PriceLadder } from '@/components/mesh/strategies/PriceLadder';
 import { StrategyMetricsPanel } from '@/components/mesh/strategies/StrategyMetricsPanel';
 import { strategyUrl } from '@/components/mesh/strategies/StrategyBuilder';
 import { V3PoolLabel, amountOf, useAssetInfo } from '@/components/mesh/v3/V3PoolDetail';
+import { MigrateToV4 } from '@/components/mesh/v4/MigrateToV4';
 
 export function MeshStrategyPage() {
   const { id: raw } = useParams();
@@ -203,6 +204,8 @@ const STRATEGY_OPTIONS = [
   { key: 'tidy', label: 'Tidy', icon: Sparkles },
   { key: 'withdraw', label: 'Withdraw all', icon: MinusCircle, tone: 'danger' },
 ] as const;
+/** A range moves to V4 bins (an NFT-owned position) in one signature. */
+const MOVE_TO_V4 = { key: 'v4', label: 'Move to V4', icon: Gem } as const;
 
 /** Rebalance (N → M in one tx) and withdraw everything. Owner only. */
 function StrategyActions({ strategy, pools, ownerPkh }: { strategy: NonNullable<ReturnType<typeof useStrategy>['data']>['strategy']; pools: Pool[]; ownerPkh: string }) {
@@ -211,7 +214,8 @@ function StrategyActions({ strategy, pools, ownerPkh }: { strategy: NonNullable<
   const invalidate = useInvalidateMesh();
   const templates = useStrategyTemplates();
   const balances = useSignerBalances(wallet.signer);
-  const [mode, setMode] = useState<'rebalance' | 'tidy' | 'withdraw'>('rebalance');
+  const [mode, setMode] = useState<'rebalance' | 'tidy' | 'withdraw' | 'v4'>('rebalance');
+  const options = strategy.template === 'range' && strategy.status !== 'closed' ? [...STRATEGY_OPTIONS, MOVE_TO_V4] : STRATEGY_OPTIONS;
   const [template, setTemplate] = useState(strategy.template);
   const [pending, setPending] = useState<{ label: string; built: BuiltTx; rebuild: () => Promise<BuiltTx>; after: (txid: string) => Promise<void> } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -295,7 +299,7 @@ function StrategyActions({ strategy, pools, ownerPkh }: { strategy: NonNullable<
 
   const tmpl = templates.data?.templates.find(t => t.id === template);
   return (
-    <ManageDock title="Manage your strategy" options={STRATEGY_OPTIONS} value={mode} onChange={k => { setMode(k); setError(null); }}>
+    <ManageDock title="Manage your strategy" options={options} value={mode} onChange={k => { setMode(k); setError(null); }}>
       {mode === 'rebalance' && (
         <div className="space-y-3 text-xs">
           <p className="text-zinc-400">Closes every pool of this strategy and opens the new set in one transaction. Your wallet adds any missing funds and the fee.</p>
@@ -319,6 +323,7 @@ function StrategyActions({ strategy, pools, ownerPkh }: { strategy: NonNullable<
           <Button className="w-full rounded-xl" variant="destructive" disabled={!!busy} onClick={withdrawAll}>{busy && !pending ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Review withdraw'}</Button>
         </div>
       )}
+      {mode === 'v4' && <MigrateToV4 strategy={strategy} pools={pools} />}
       {pending && (
         <div className="p-3 rounded-xl border border-white/15 bg-white/[0.03] space-y-2 text-xs">
           <div className="flex justify-between"><span className="font-semibold text-white">{pending.label}</span><span className="font-mono text-zinc-400">fee {pending.built.fee.toString()} sats</span></div>

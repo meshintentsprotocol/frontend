@@ -26,7 +26,8 @@ import { sendPoolTx, type BuiltTx } from '@/lib/mesh/poolTx';
 import { registerWithRetry } from '@/lib/mesh/pendingRegistrations';
 import { v4Levels } from '@/lib/mesh/v4/position';
 import { verifyPlan, type PlanExpect } from '@/lib/mesh/v4/verify';
-import { buildGenesis, buildSeed, findSeed } from '@/lib/mesh/v4/v4Tx';
+import { buildGenesis, findSeed } from '@/lib/mesh/v4/v4Tx';
+import { ensureSeed } from '@/lib/mesh/v4/seed';
 import { addPendingV4, binBars, positionUrl, removePendingV4, tokenPerBch } from '@/lib/mesh/v4/display';
 import type { V4Plan, V4PreviewInput, V4Shape, V4Strength } from '@/lib/mesh/v4/types';
 
@@ -137,27 +138,12 @@ export function V4DeployPanel({ params, paramsError, token, symbol, decimals, ma
     return null;
   })();
 
-  async function waitForSeed(txid: string): Promise<Utxo> {
-    for (let i = 0; i < 20; i++) {
-      const u = (await wallet.signer!.getUtxos()).find(x => x.txid === txid && x.vout === 0);
-      if (u) return u;
-      await new Promise(r => setTimeout(r, 1500));
-    }
-    throw new Error('the seed output did not show up in the wallet; try again in a moment');
-  }
-
   async function onReview() {
     if (!wallet.signer || !input) return;
     setError(null);
     try {
-      let seed = findSeed(await wallet.signer.getUtxos());
-      if (!seed) {
-        setBusy(wallet.kind === 'external' ? 'Approve a small self-payment (the position seed) in your wallet…' : 'Preparing the position seed…');
-        const s = await buildSeed(wallet.signer);
-        const txid = await sendPoolTx(wallet.signer, s, 'Mesh V4: prepare the seed output for a new position (pays yourself)');
-        seed = await waitForSeed(txid);
-        void seedQ.refetch();
-      }
+      const seed = await ensureSeed(wallet.signer, setBusy);
+      if (seed.txid !== seedQ.data?.txid) void seedQ.refetch();
       setBusy('Planning the position…');
       const plan = await meshApi.v4Preview({ ...input, seedTxid: seed.txid });
       verifyPlan(plan, expectOf(seed.txid)!);
