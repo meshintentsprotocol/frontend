@@ -18,7 +18,7 @@ import {
   POOL_MIN_SATS, TOKEN_DUST, buildPoolContract, normCategory, poolSide, poolToken,
   type PoolParams, type PoolSide,
 } from './pool';
-import type { MeshSigner } from './signer';
+import type { MeshSigner, SendOpts } from './signer';
 
 export const DEFAULT_FEE_RATE = 1.2; // sat/byte; relay minimum is 1
 const P2PKH_DUST = 546n;
@@ -260,9 +260,9 @@ export async function buildReprice(
 }
 
 /** Sign + broadcast with a clear error when a solver fill raced the LP. */
-export async function sendPoolTx(signer: MeshSigner, built: { builder: TransactionBuilder }, prompt: string): Promise<string> {
+export async function sendPoolTx(signer: MeshSigner, built: { builder: TransactionBuilder }, prompt: string, opts?: SendOpts): Promise<string> {
   try {
-    return await signer.send(built.builder, prompt);
+    return await signer.send(built.builder, prompt, opts);
   } catch (e: any) {
     const msg = String(e?.message ?? e);
     if (/missing.?inputs|txn-mempool-conflict|bad-txns-inputs-missingorspent|conflict/i.test(msg)) {

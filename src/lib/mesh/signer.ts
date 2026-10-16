@@ -37,11 +37,17 @@ export interface MeshSigner {
   p2pkhUnlocker(): Unlocker;
   /** StrategyCovenantV2.dock(ownerPk, ownerSig) unlocker for `contract`. */
   dockUnlocker(contract: Contract): Unlocker;
-  /** Sign and broadcast; resolves to the txid. */
-  send(builder: TransactionBuilder, userPrompt: string): Promise<string>;
+  /**
+   * Sign and broadcast; resolves to the txid. `raw` skips cashscript's local
+   * debug pass (its libauth VM predates the 2026 rules and refuses NFT
+   * commitments over 40 bytes, e.g. a V4 position NFT): the node validates.
+   */
+  send(builder: TransactionBuilder, userPrompt: string, opts?: SendOpts): Promise<string>;
   /** Bytes the signer adds per unsigned P2PKH input when the tx is built with placeholders. */
   unsignedInputPadding: number;
 }
+
+export interface SendOpts { raw?: boolean }
 
 const prefixOf = (network: BchNetwork) => (network === 'mainnet' ? 'bitcoincash' : 'bchtest');
 
@@ -92,7 +98,8 @@ export class LocalWifSigner implements MeshSigner {
   getUtxos(): Promise<Utxo[]> { return this.provider.getUtxos(this.address); }
   p2pkhUnlocker(): Unlocker { return this.sig.unlockP2PKH(); }
   dockUnlocker(contract: Contract): Unlocker { return contract.unlock.dock(this.publicKey, this.sig); }
-  async send(builder: TransactionBuilder): Promise<string> {
+  async send(builder: TransactionBuilder, _prompt?: string, opts?: SendOpts): Promise<string> {
+    if (opts?.raw) return this.provider.sendRawTransaction(builder.build());
     const r = await builder.send();
     return r.txid;
   }

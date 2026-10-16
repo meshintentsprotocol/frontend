@@ -166,7 +166,7 @@ export function V4DeployPanel({ params, paramsError, token, symbol, decimals, ma
       setBusy('Publishing the NFT metadata…');
       await meshApi.v4PinMetadata(plan.category).catch(() => undefined);
       setBusy(wallet.kind === 'external' ? 'Approve the transaction in your wallet…' : 'Signing and broadcasting…');
-      txid = await sendPoolTx(wallet.signer, built, `Mesh V4: open a position (${plan.bins.length} bins) and mint its NFT`);
+      txid = await sendPoolTx(wallet.signer, built, `Mesh V4: open a position (${plan.bins.length} bins) and mint its NFT`, { raw: true });
       const pairName = `BCH/${symbol}`;
       addPendingV4({ category: plan.category, genesisTxid: txid, bins: plan.register.body.bins, pairName, createdAt: Date.now() });
       setBusy('Registering with Mesh…');

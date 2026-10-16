@@ -311,3 +311,15 @@ describe('migration', () => {
     expect(built.inputs).toBe(3);
   });
 });
+
+describe('broadcast', () => {
+  it('V4 sends go raw: cashscript\'s local debug VM refuses the 82-byte position commitment', async () => {
+    provider.addUtxo(signer.address, { txid: txid(101), vout: 0, satoshis: 20_000n });
+    const nft: Utxo = { txid: txid(700), vout: 1, satoshis: 1000n, token: { category: plan.category, amount: 0n, nft: { capability: 'mutable', commitment: plan.commitmentHex } } };
+    provider.addUtxo(signer.address, nft);
+    const built = await buildTransferV4(signer, nft, new LocalWifSigner(wifOf('friend'), 'chipnet', provider).tokenAddress);
+    await expect(signer.send(built.builder)).rejects.toThrow(/commitment/i);          // the pre-2026 local check
+    const id = await signer.send(built.builder, '', { raw: true });
+    expect(id).toMatch(/^[0-9a-f]{64}$/);
+  });
+});

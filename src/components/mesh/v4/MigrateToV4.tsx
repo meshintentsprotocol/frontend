@@ -91,7 +91,7 @@ export function MigrateToV4({ strategy, pools }: { strategy: StrategySummary; po
       setBusy('Publishing the NFT metadata…');
       await meshApi.v4PinMetadata(m.v4.category).catch(() => undefined);
       setBusy(wallet.kind === 'external' ? 'Approve in your wallet…' : 'Signing and broadcasting…');
-      txid = await sendPoolTx(signer, built, `Mesh: move this V3 range to a V4 position (${m.v4.bins.length} bins, one NFT)`);
+      txid = await sendPoolTx(signer, built, `Mesh: move this V3 range to a V4 position (${m.v4.bins.length} bins, one NFT)`, { raw: true });
       const pairName = `BCH/${info.symbol}`;
       addPendingV4({ category: m.v4.category, genesisTxid: txid, bins: m.v4.register.body.bins, pairName, createdAt: Date.now() });
       setBusy('Registering the V4 position…');

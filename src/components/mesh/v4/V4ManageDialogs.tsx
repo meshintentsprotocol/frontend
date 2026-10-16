@@ -57,7 +57,7 @@ export function WithdrawV4Dialog({ open, onOpenChange, view, symbol, decimals, o
     if (!prepared || !wallet.signer) return;
     setBusy(wallet.kind === 'external' ? 'Approve in your wallet…' : 'Signing and broadcasting…');
     try {
-      const txid = await sendPoolTx(wallet.signer, prepared.built, `Mesh V4: withdraw ${prepared.plan.inputs.length - 1} bin(s) of position ${shortHex(view.category)}`);
+      const txid = await sendPoolTx(wallet.signer, prepared.built, `Mesh V4: withdraw ${prepared.plan.inputs.length - 1} bin(s) of position ${shortHex(view.category)}`, { raw: true });
       toast.success('Withdrawn', { description: `${formatSatsCompact(prepared.plan.outputs.find(o => o.role === 'bch')?.valueSatoshis ?? '0')} + ${formatUnits(tokens, decimals)} ${symbol} to your wallet · ${shortHex(txid)}` });
       invalidate();
       onOpenChange(false);
@@ -150,7 +150,7 @@ export function TransferV4Dialog({ open, onOpenChange, view, onDone }: Common) {
       setBusy('Building…');
       const built = await buildTransferV4(wallet.signer, nft, to.trim());
       setBusy(wallet.kind === 'external' ? 'Approve in your wallet…' : 'Signing and broadcasting…');
-      const txid = await sendPoolTx(wallet.signer, built, `Mesh V4: send position ${shortHex(view.category)} (its NFT) to ${shortHex(to.trim(), 12, 6)}`);
+      const txid = await sendPoolTx(wallet.signer, built, `Mesh V4: send position ${shortHex(view.category)} (its NFT) to ${shortHex(to.trim(), 12, 6)}`, { raw: true });
       toast.success('Position sent', { description: `The NFT is now held by ${shortHex(to.trim(), 12, 6)} · ${shortHex(txid)}` });
       invalidate();
       onOpenChange(false);
