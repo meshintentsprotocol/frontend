@@ -90,6 +90,7 @@ import { tokenPerBchFromSatsPerUnit } from '@/lib/mesh/pool';
 import { Panel, TokenAvatar, useTokenInfo, type TokenInfo } from '@/components/mesh/pools/shared';
 import { PriceLadder } from './PriceLadder';
 import { RangeDistribution } from './RangeDistribution';
+import { V4DeployPanel, EngineBadge } from '@/components/mesh/v4/V4DeployPanel';
 
 const FEE_TIERS = [
   { bps: 5, label: '0.05%', name: 'Peg / Stables', desc: 'Ultra-low fee for correlated or pegged assets' },
@@ -176,6 +177,10 @@ export function StrategyBuilder({
   const [activePreset, setActivePreset] = useState<string>('custom');
   /** The LP saw the through-market warnings and wants to deploy anyway. */
   const [acceptCross, setAcceptCross] = useState(false);
+  /** A new BCH↔token range deploys as V4 bins (NFT-owned) by default; V3 pools stay available. */
+  const v4Capable = templateId === 'range' && !replaces;
+  const [engine, setEngine] = useState<'v4' | 'v3'>(v4Capable ? 'v4' : 'v3');
+  const isV4 = v4Capable && engine === 'v4';
 
   const set = (k: string, v: string) => setValues(prev => ({ ...prev, [k]: v }));
 
@@ -297,7 +302,7 @@ export function StrategyBuilder({
 
   const preview = useQuery({
     queryKey: ['mesh', 'strategy-preview', debounced],
-    enabled: !!debounced,
+    enabled: !!debounced && !isV4,
     queryFn: () => meshApi.previewStrategy(debounced!),
     retry: false,
   });
@@ -844,6 +849,8 @@ export function StrategyBuilder({
 
           {form.fields
             .filter(f => f.key !== 'recyclePrice' || values.proceeds === 'recycle')
+            // a V4 bin earns its step between buy and sell: there is no separate fee
+            .filter(f => !(isV4 && f.key === 'feeBps'))
             .map(f => (
               <div key={f.key} className="space-y-1.5">
                 <div className="text-xs font-semibold text-neutral-300">
@@ -865,6 +872,37 @@ export function StrategyBuilder({
 
         {/* Right Column: Live Depth Preview & Review CTA */}
         <div className="lg:col-span-6 space-y-6 lg:sticky lg:top-20">
+          {v4Capable && (
+            <div className="flex items-center justify-between gap-3 p-1 rounded-xl bg-neutral-900/60 border border-neutral-800" role="radiogroup" aria-label="Engine">
+              {(['v4', 'v3'] as const).map(e => (
+                <button
+                  key={e}
+                  type="button"
+                  role="radio"
+                  aria-checked={engine === e}
+                  onClick={() => setEngine(e)}
+                  className={cn(
+                    'flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-semibold transition-colors',
+                    engine === e ? 'bg-neutral-800 text-white' : 'text-neutral-500 hover:text-neutral-300'
+                  )}
+                >
+                  <EngineBadge engine={e} />
+                  {e === 'v4' ? 'In-place bins, owned by an NFT' : 'Covenant pools, owned by this key'}
+                </button>
+              ))}
+            </div>
+          )}
+          {isV4 ? (
+            <V4DeployPanel
+              params={input.input?.params}
+              paramsError={input.error}
+              token={mainToken}
+              symbol={main.symbol}
+              decimals={main.decimals}
+              market={marketPrice}
+              onUseV3={() => setEngine('v3')}
+            />
+          ) : (
           <Panel
             title="Position Preview & Price Ladder"
             action={
@@ -1004,6 +1042,7 @@ export function StrategyBuilder({
               )}
             </Button>
           </Panel>
+          )}
         </div>
       </div>
 

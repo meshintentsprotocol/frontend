@@ -28,7 +28,11 @@ export function distributionBars(pools: StrategyPoolPreview[], token: string, de
 export function RangeDistribution({ pools, token, decimals, symbol, market }: {
   pools: StrategyPoolPreview[]; token: string; decimals: number; symbol: string; market: number | null;
 }) {
-  const bars = distributionBars(pools, token, decimals);
+  return <DistributionChart bars={distributionBars(pools, token, decimals)} symbol={symbol} market={market} />;
+}
+
+/** The bar chart itself: also used for V4 bins (one bar per bin at the price it trades at). */
+export function DistributionChart({ bars, symbol, market }: { bars: DistributionBar[]; symbol: string; market: number | null }) {
   if (bars.length < 2) return null;
   const bidTotal = bars.filter(b => b.side === 'bid').reduce((a, b) => a + b.bch, 0);
   const askTotal = bars.filter(b => b.side === 'ask').reduce((a, b) => a + b.bch, 0);
