@@ -228,7 +228,7 @@ function StrategyMetricsSection({ s, pools }: { s: StrategySummary; pools: Admin
   const info = token ? get(token) : null;
   return (
     <Section title="LP metrics" description="Estimates: what the LP sees on the position page.">
-      <StrategyMetricsPanel m={s.metrics!} symbol={info?.symbol ?? 'tokens'} decimals={info?.decimals ?? 0} />
+      <StrategyMetricsPanel m={s.metrics!} symbol={info?.symbol ?? 'tokens'} decimals={info?.decimals ?? 0} feesSats={s.feesAllSats} />
     </Section>
   );
 }

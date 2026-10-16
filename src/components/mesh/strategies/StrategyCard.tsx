@@ -60,6 +60,11 @@ export function StrategyCard({ s, infoOf, bchUsd, className }: {
           <div className="flex flex-col items-end gap-1 shrink-0">
             <StatusPill status={s.status} />
             {idle && <IdlePill title={idle.reasons.join(' · ')} />}
+            {(s.throughMarketPools ?? 0) > 0 && (
+              <span className="rounded-full border border-rose-400/30 bg-rose-500/10 px-2 py-0.5 text-[10px] font-semibold text-rose-200" title="Priced through the market: arbitrage takes these pools first">
+                {s.throughMarketPools} through market
+              </span>
+            )}
           </div>
         </div>
 

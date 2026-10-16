@@ -13,7 +13,7 @@ const signed = (sats: number | string) => {
 };
 const tone = (n: number) => (n > 0 ? 'text-emerald-300' : n < 0 ? 'text-rose-300' : 'text-neutral-300');
 
-export function StrategyMetricsPanel({ m, symbol, decimals }: { m: StrategyMetrics; symbol: string; decimals: number }) {
+export function StrategyMetricsPanel({ m, symbol, decimals, feesSats }: { m: StrategyMetrics; symbol: string; decimals: number; feesSats?: string }) {
   const tpb = (satsPerToken: number) => 1e8 / (satsPerToken * 10 ** decimals);
   const vsHold = Number(m.vsHoldSats);
   return (
@@ -30,7 +30,7 @@ export function StrategyMetricsPanel({ m, symbol, decimals }: { m: StrategyMetri
           <div className="px-3 py-2 text-[11px] font-semibold text-neutral-400 uppercase tracking-wider bg-black/30">If the market moved</div>
           <table className="w-full text-xs font-mono">
             <thead className="text-neutral-500">
-              <tr><th className="text-left px-3 py-1.5 font-normal">Move</th><th className="text-right px-3 font-normal">1 BCH =</th><th className="text-right px-3 font-normal">Position</th><th className="text-right px-3 font-normal">Holding it</th><th className="text-right px-3 font-normal">Difference</th></tr>
+              <tr><th className="text-left px-3 py-1.5 font-normal">Move</th><th className="text-right px-3 font-normal">1 BCH =</th><th className="text-right px-3 font-normal">Position</th><th className="text-right px-3 font-normal">Holding it</th><th className="text-right px-3 font-normal">Difference</th><th className="text-right px-3 font-normal" title="What fees and bin gaps must have earned for the position to match holding at this price">Fees needed</th></tr>
             </thead>
             <tbody>
               {m.stress.rows.map(r => (
@@ -40,11 +40,17 @@ export function StrategyMetricsPanel({ m, symbol, decimals }: { m: StrategyMetri
                   <td className="px-3 text-right text-neutral-200">{formatSatsCompact(String(r.positionSats))}</td>
                   <td className="px-3 text-right text-neutral-400">{formatSatsCompact(String(r.holdSats))}</td>
                   <td className={cn('px-3 text-right', tone(r.vsHoldSats))}>{signed(r.vsHoldSats)}</td>
+                  <td className="px-3 text-right">{(() => {
+                    const need = r.feesNeededSats ?? Math.max(0, -r.vsHoldSats);
+                    if (!need) return <span className="text-emerald-300">—</span>;
+                    const covered = feesSats !== undefined && BigInt(feesSats) >= BigInt(need);
+                    return <span className={covered ? 'text-emerald-300' : 'text-zinc-300'} title={covered ? 'Fees earned so far already cover it' : undefined}>{formatSatsCompact(String(need))}</span>;
+                  })()}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-          <p className="px-3 py-2 text-[10px] text-neutral-600">Pools the move crosses convert at their own price, as arbitrage would take them. Estimates, not a promise.</p>
+          <p className="px-3 py-2 text-[10px] text-neutral-600">Pools the move crosses convert at their own price, as arbitrage would take them. "Fees needed" is what fees and bin gaps must earn for the position to match holding at that price{feesSats !== undefined ? ` (earned so far: ${formatSatsCompact(feesSats)})` : ''}. Estimates, not a promise.</p>
         </div>
       )}
     </div>

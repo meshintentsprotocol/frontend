@@ -53,6 +53,7 @@ import {
   useMeshHealth,
   useMeshSigner,
   useSignerBalances,
+  useStrategy,
   useStrategySuggest,
   useStrategyTemplates,
 } from '@/hooks/useMesh';
@@ -258,6 +259,22 @@ export function StrategyBuilder({
       set('from', round(marketPrice * 1.01));
       set('to', round(marketPrice * (1 + pct / 100)));
     }
+  };
+
+  // Rebalancing: the strategy being replaced, so its holdings can fund the new set
+  const current = useStrategy(replaces);
+  /** Fill the deposits with what the position holds, less the new token pools' carriers and a fee margin. */
+  const applyHoldings = () => {
+    const inv = current.data?.strategy.inventory;
+    if (!inv) return;
+    const tokenPools = (preview.data?.pools ?? []).filter(p => p.deposit.token).length || 1;
+    const sats = BigInt(inv.sats) - BigInt(tokenPools) * 1000n - 3000n;
+    const toks = mainToken ? inv.tokens[mainToken] : undefined;
+    setValues(prev => ({
+      ...prev,
+      ...(form?.fields.some(f => f.key === 'depositBch') && sats > 0n ? { depositBch: formatUnits(sats.toString(), 8).replace(/,/g, '') } : {}),
+      ...(form?.fields.some(f => f.key === 'depositTokens') && toks ? { depositTokens: formatUnits(toks, main.decimals).replace(/,/g, '') } : {}),
+    }));
   };
 
   // Form → server params (exact unit conversion)
@@ -807,6 +824,22 @@ export function StrategyBuilder({
                 </button>
               )}
             </div>
+          )}
+          {suggest.data?.caution && (
+            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 text-[11px] text-amber-200 flex gap-2">
+              <TriangleAlert className="w-4 h-4 shrink-0 mt-0.5" /><span>{suggest.data.caution}</span>
+            </div>
+          )}
+          {!suggest.data?.params && suggest.data?.reason && /moved/.test(suggest.data.reason) && (
+            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/25 text-[11px] text-rose-200 flex gap-2">
+              <TriangleAlert className="w-4 h-4 shrink-0 mt-0.5" /><span>{suggest.data.reason}</span>
+            </div>
+          )}
+          {replaces && current.data?.strategy.inventory && (form.fields.some(f => f.key === 'depositBch') || form.fields.some(f => f.key === 'depositTokens')) && (
+            <button type="button" onClick={applyHoldings}
+              className="text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 underline-offset-2 hover:underline">
+              Use what the position holds ({formatSatsCompact(current.data.strategy.inventory.sats)}{mainToken && current.data.strategy.inventory.tokens[mainToken] ? ` + ${formatUnits(current.data.strategy.inventory.tokens[mainToken]!, main.decimals)} ${main.symbol}` : ''}): no top-up needed
+            </button>
           )}
 
           {form.fields

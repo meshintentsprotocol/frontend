@@ -3,15 +3,15 @@
  * action, filter tabs, and a grid of DeFi strategy cards.
  */
 import { useMemo, useState } from 'react';
-import { Layers, Moon, PlusCircle, Recycle } from 'lucide-react';
+import { AlertTriangle, Layers, Moon, PlusCircle, Recycle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useIdle } from '@/hooks/useMesh';
 import type { IdleKind, StrategySummary } from '@/lib/mesh/meshApi';
 import { formatSatsCompact, formatUsd, satsToUsd } from '@/lib/mesh/format';
 import { useTokenInfo } from '@/components/mesh/pools/shared';
-import { DefiCard } from '@/components/mesh/ui/defi';
-import { StrategyCard, strategyTokens } from './StrategyCard';
+import { DefiCard, templateName } from '@/components/mesh/ui/defi';
+import { StrategyCard, strategyTokens, strategyUrl } from './StrategyCard';
 import { RecycleDialog } from './RecycleDialog';
 import { Pager, usePagination } from '@/components/common/Pager';
 
@@ -29,6 +29,8 @@ export function MyStrategies({ owner, strategies, bchUsd, loading, onCreateNew }
     [strategies, idle.data]);
   const { get: infoOf } = useTokenInfo(cats);
 
+  // strategies with pools priced through the market (arbitrage takes them first)
+  const crossed = strategies.filter(s => s.status !== 'closed' && (s.throughMarketPools ?? 0) > 0);
   const counts = {
     open: strategies.filter(s => s.status !== 'closed').length,
     idle: strategies.filter(s => !!s.idle).length,
@@ -73,6 +75,19 @@ export function MyStrategies({ owner, strategies, bchUsd, loading, onCreateNew }
             </div>
           </div>
           <Button onClick={() => setRecycleOpen(true)} className="rounded-xl font-bold shrink-0"><Recycle className="mr-1.5 h-4 w-4" />Recycle</Button>
+        </DefiCard>
+      )}
+
+      {crossed.length > 0 && (
+        <DefiCard className="flex items-start gap-3 border-rose-400/25 bg-rose-500/[0.06]">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-rose-400/25 bg-rose-500/10 text-rose-300"><AlertTriangle className="h-4 w-4" aria-hidden /></div>
+          <div className="text-[11px] text-rose-100">
+            <div className="font-heading text-sm font-semibold text-white">
+              {crossed.reduce((a, s) => a + (s.throughMarketPools ?? 0), 0)} of your pools are priced through the market
+            </div>
+            They give traders more than the market price, so arbitrage takes them first. Open {crossed.length === 1 ? 'the strategy' : 'each strategy'} and rebalance or withdraw:{' '}
+            {crossed.map((s, i) => <span key={s.id}>{i ? ', ' : ''}<a className="underline" href={strategyUrl(s.id)}>{templateName(s.template)}</a></span>)}
+          </div>
         </DefiCard>
       )}
 
