@@ -156,6 +156,7 @@ export const LOCAL_NAV: NavSection[] = [
             {
                 title: 'V3 pools & strategies',
                 items: [
+                    { slug: 'mesh/v4/overview', title: 'V4 positions (NFT + bins)', badge: 'new' },
                     { slug: 'mesh/v3/meshpool-v3', title: 'MeshPoolV3 pools', badge: 'new' },
                     { slug: 'mesh/strategies/overview', title: 'How strategies work', badge: 'new' },
                     { slug: 'mesh/strategies/configuration-guide', title: 'Strategy configuration guide', badge: 'new' },
@@ -310,6 +311,7 @@ export const LOCAL_NAV: NavSection[] = [
                     { slug: 'api/strategies', title: 'Strategies', method: 'POST', badge: 'new' },
                     { slug: 'api/recycle', title: 'Recycle', method: 'POST', badge: 'new' },
                     { slug: 'api/positions', title: 'Positions', method: 'GET' },
+                    { slug: 'api/v4', title: 'V4 positions', method: 'POST', badge: 'new' },
                     { slug: 'api/orderbook', title: 'Orderbook', method: 'GET' },
                     { slug: 'api/rebalance', title: 'Rebalance quote', method: 'POST' },
                 ],
