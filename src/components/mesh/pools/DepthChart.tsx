@@ -2,7 +2,8 @@
  * Depth of a BCH pair on the canonical bin grid (GET /pools/depth): every LP's
  * pools at the same price level form one bin. BCH bids and token asks are
  * valued in BCH; the market level is marked. Each pool still belongs to its own
- * LP — a bin is only how the liquidity is shown.
+ * LP — a bin is only how the liquidity is shown. V4 bins (in-place, NFT-owned)
+ * sit on the same grid; their share of each level is drawn in a darker shade.
  */
 import { useState } from 'react';
 import { Bar, BarChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -11,6 +12,10 @@ import { formatNumber } from '@/lib/mesh/format';
 import { cn } from '@/lib/utils';
 
 const STEPS = [10, 25, 50, 100];
+const SERIES: Record<string, (symbol: string) => string> = {
+  bids: s => `V3 bids (buy ${s})`, v4Bids: s => `V4 bids (buy ${s})`,
+  asks: s => `V3 asks (sell ${s})`, v4Asks: s => `V4 asks (sell ${s})`,
+};
 
 export function DepthChart({ token, decimals, symbol }: { token: string; decimals: number; symbol: string }) {
   const [step, setStep] = useState(100);
@@ -18,14 +23,20 @@ export function DepthChart({ token, decimals, symbol }: { token: string; decimal
   const tpb = (satsPerToken: number) => 1e8 / (satsPerToken * 10 ** decimals);
   const rows = (depth.data?.levels ?? []).map(l => {
     const price = Number(l.satsPerToken);
+    // the server's totals include V4; split them so each engine gets its own segment
+    const v4Bids = Number(l.v4BidSats ?? 0) / 1e8;
+    const v4Asks = (Number(l.v4AskTokens ?? 0) * price) / 1e8;
     return {
       index: l.index,
       tokenPerBch: tpb(price),
-      bids: Number(l.bidSats) / 1e8,
-      asks: (Number(l.askTokens) * price) / 1e8,
-      pools: l.pools, lps: l.lps,
+      bids: Number(l.bidSats) / 1e8 - v4Bids,
+      v4Bids,
+      asks: (Number(l.askTokens) * price) / 1e8 - v4Asks,
+      v4Asks,
+      pools: l.pools, lps: l.lps, v4Bins: l.v4Bins ?? 0,
     };
   }).sort((a, b) => a.tokenPerBch - b.tokenPerBch);
+  const hasV4 = rows.some(r => r.v4Bins > 0);
   const active = depth.data?.activeIndex ?? null;
   const activeRow = active === null ? null : rows.reduce<(typeof rows)[number] | null>((a, r) => (!a || Math.abs(r.index - active) < Math.abs(a.index - active) ? r : a), null);
 
@@ -57,16 +68,26 @@ export function DepthChart({ token, decimals, symbol }: { token: string; decimal
               <Tooltip
                 cursor={{ fill: 'rgba(255,255,255,0.04)' }}
                 contentStyle={{ background: '#0c0c10', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, fontSize: 11 }}
-                labelFormatter={(v, items: any) => `1 BCH = ${formatNumber(Number(v), 4)} ${symbol} · ${items?.[0]?.payload?.lps ?? 0} LP(s), ${items?.[0]?.payload?.pools ?? 0} pool(s)`}
-                formatter={(v: number, name: string) => [`${formatNumber(v, 6)} BCH`, name === 'bids' ? `Bids (buy ${symbol})` : `Asks (sell ${symbol})`]}
+                labelFormatter={(v, items: any) => `1 BCH = ${formatNumber(Number(v), 4)} ${symbol} · ${items?.[0]?.payload?.lps ?? 0} LP(s), ${items?.[0]?.payload?.pools ?? 0} pool(s)${items?.[0]?.payload?.v4Bins ? ` incl. ${items[0].payload.v4Bins} V4 bin(s)` : ''}`}
+                formatter={(v: number, name: string) => [`${formatNumber(v, 6)} BCH`, SERIES[name] ? SERIES[name]!(symbol).replace(/^V3 b/, hasV4 ? 'V3 b' : 'B').replace(/^V3 a/, hasV4 ? 'V3 a' : 'A') : name]}
               />
               {activeRow && <ReferenceLine x={activeRow.tokenPerBch} stroke="#a1a1aa" strokeDasharray="3 3" label={{ value: 'market', fill: '#a1a1aa', fontSize: 10, position: 'top' }} />}
               <Bar dataKey="bids" stackId="d" fill="#34d399" isAnimationActive={false} />
-              <Bar dataKey="asks" stackId="d" fill="#f59e0b" isAnimationActive={false} radius={[3, 3, 0, 0]} />
+              {hasV4 && <Bar dataKey="v4Bids" stackId="d" fill="#047857" isAnimationActive={false} />}
+              <Bar dataKey="asks" stackId="d" fill="#f59e0b" isAnimationActive={false} radius={hasV4 ? undefined : [3, 3, 0, 0]} />
+              {hasV4 && <Bar dataKey="v4Asks" stackId="d" fill="#b45309" isAnimationActive={false} radius={[3, 3, 0, 0]} />}
             </BarChart>
           </ResponsiveContainer>
         )}
       </div>
+      {hasV4 && (
+        <div className="flex flex-wrap gap-3 text-[10px] font-mono text-neutral-400">
+          <span><span className="inline-block w-2 h-2 rounded-sm mr-1 bg-[#34d399]" />V3 bids</span>
+          <span><span className="inline-block w-2 h-2 rounded-sm mr-1 bg-[#047857]" />V4 bids</span>
+          <span><span className="inline-block w-2 h-2 rounded-sm mr-1 bg-[#f59e0b]" />V3 asks</span>
+          <span><span className="inline-block w-2 h-2 rounded-sm mr-1 bg-[#b45309]" />V4 asks</span>
+        </div>
+      )}
       <p className="text-[10px] text-neutral-600">Pools at the same price are grouped for display; each still belongs to its own LP. Pools worth less than {formatNumber(Number(depth.data?.minBinSats ?? 5000), 0)} sats are not shown or routed.</p>
     </div>
   );
