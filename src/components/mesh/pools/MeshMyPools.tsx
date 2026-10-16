@@ -10,6 +10,7 @@ import { EmptyState, Panel, StatTile } from './shared';
 import { PoolsTable } from './PoolsTable';
 import { V2MigrationPanel } from '@/components/mesh/v3/V2MigrationPanel';
 import { MyStrategies } from '@/components/mesh/strategies/MyStrategies';
+import { MyV4Positions } from '@/components/mesh/v4/MyV4Positions';
 import { Pager, usePagination } from '@/components/common/Pager';
 
 /** The two lists on the positions page; kept in the URL as ?view=. */
@@ -108,7 +109,10 @@ export function MeshMyPools({ view, onView, onCreateNew }: { view: PositionsView
             ))}
           </div>
           {view === 'strategies' ? (
+            <>
+            <MyV4Positions holder={wallet.signer?.tokenAddress ?? null} />
             <MyStrategies owner={wallet.pkh} strategies={myStrategies} bchUsd={bchUsd} loading={strategies.isLoading} onCreateNew={onCreateNew} />
+            </>
           ) : (
           <Panel title="Pools" action={
             <div className="flex gap-1 p-1 rounded-lg bg-black/40 border border-white/[0.06]">
