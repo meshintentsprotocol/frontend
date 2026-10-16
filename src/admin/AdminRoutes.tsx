@@ -13,6 +13,7 @@ import { TwapListPage, TwapDetailPage, TradersPage } from './pages/TwapPages';
 import { PoolsPage, PoolDetailPage } from './pages/PoolPages';
 import { StrategiesPage, StrategyDetailPage, LpsPage, LpDetailPage, IdlePage } from './pages/LiquidityPages';
 import { OperationsPage, RefundsPage, SystemPage } from './pages/OperationsPages';
+import { MarketPage, LiquidityHealthPage } from './pages/MarketPages';
 import { BalancerOverviewPage, BalancerTradesPage, BalancerTradeDetailPage, BalancerOpportunitiesPage, BalancerWalletPage, BalancerSettingsPage } from './pages/BalancerPages';
 import { AdminPage } from '@/pages/AdminPage';
 import { SwapArea } from './swap/SwapArea';
@@ -39,6 +40,8 @@ export const adminRoutes = (
     <Route path="lps" element={<LpsPage />} />
     <Route path="lps/:owner" element={<LpDetailPage />} />
     <Route path="idle" element={<IdlePage />} />
+    <Route path="liquidity" element={<LiquidityHealthPage />} />
+    <Route path="market" element={<MarketPage />} />
     <Route path="operations" element={<OperationsPage />} />
     <Route path="refunds" element={<RefundsPage />} />
     <Route path="system" element={<SystemPage />} />

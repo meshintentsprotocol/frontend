@@ -7,7 +7,7 @@
  * reads included, sends x-admin-key; errors throw AdminApiError with the
  * server's message.
  */
-import type { Pool, PoolEvent, PoolStatus, StrategySummary, IdleItem, LpSummary } from '@/lib/mesh/meshApi';
+import type { Pool, PoolEvent, PoolStatus, StrategySummary, IdleItem, LpSummary, MarketContext } from '@/lib/mesh/meshApi';
 
 export class AdminApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -102,8 +102,33 @@ export interface Overview {
   /** the Mesh Balancer bot, as last reported (2026-10-06+) */
   balancer?: { seen: boolean; online: boolean; state: BalancerState | null; enabled: boolean; dryRun: boolean; profit24hSats: string; trades24h: number; balanceSats: string | null };
   alerts: Alert[];
+  /** 2026-10-16+: the latest liquidity report's totals (null until the first report) */
+  liquidity?: LiquidityTotals | null;
+  /** 2026-10-16+: the market mid sampler; `refused` = tokens whose latest mid jumped against its median */
+  market?: { sampler: SamplerStatus; tokens: number; refused: number };
   ws: { clients: number };
 }
+
+// ── Market mids and liquidity health (2026-10-16+) ──────────────────────────
+
+export interface SamplerStatus { running: boolean; intervalSec: number; lastTickAt: number | null; stalled: boolean; tokens: number; samples: number }
+export interface MidSample { t: number; cauldron: number | null; mesh: number | null }
+export type MarketRow = MarketContext & { meshMid: number | null; cauldronVsMeshBps: number | null; throughMarketPools: number | null; lastSampleAt: number | null; series: MidSample[] };
+export interface MarketView { sampler: SamplerStatus; guard: { windowSec: number; maxDivergenceBps: number }; hours: number; tokens: MarketRow[] }
+
+export interface PoolHealth {
+  address: string; ownerPkh: string; strategy: string | null; reserve: string; accepts: string[]; mode: number; valueSats: string;
+  utxos: number; routable: number; extraUtxos: number; extraValueSats: string; dustUtxos: number; dustValueSats: string; extraBytes: number;
+  throughMarket: Array<{ asset: string; side: 'buys-above-market' | 'sells-below-market'; bps: number }>;
+}
+export interface LiquidityTotals {
+  at: number; activePools: number; mirrorPools: number;
+  utxos: number; utxosPerPool: number; multiUtxoPools: number; maxUtxosAtOnePool: number;
+  extraUtxos: number; avgExtraUtxoSats: number | null; extraBytes: number;
+  dustUtxos: number; dustValueSats: string; throughMarketPools: number; throughMarketValueSats: string;
+}
+export interface LiquidityView { latest: { totals: LiquidityTotals; pools: PoolHealth[]; minRouteBinSats: string; bytesPerPoolInput: number } | null; history: LiquidityTotals[] }
+export interface ConsolidateResult { result: { txid: string; inputs: number; sats: string; fee: string } | null; message: string }
 
 export interface EventCounts { byCategory: Record<string, number>; bySeverity: Record<string, number>; byType: Record<string, number>; total: number }
 
@@ -210,6 +235,8 @@ export interface SystemInfo {
   routing: { policy: string; meshPreferenceBps: string; protocolSurplusShareBps: string; protocolTakeCapBps: string; maxFillAttempts: number; maxFillLegs: number; v2Pools: boolean; flags: RouteFlags };
   solver: { scanIntervalMs: number; maxFillSats: string; minProfitSats: string; minProfitBps: number; maxSlippageBps: number; feePerByte: string; refund: Record<string, any> };
   idle: { staleSec: number; offMidBps: number; dustSats: string };
+  /** 2026-10-16+ */
+  liquidity?: { minRouteBinSats: string; maxFillLegs: number; bytesPerPoolInput: number; midSampleSec: number; midGuardWindowSec: number; midDivergenceBps: number; sampler: SamplerStatus; consolidateAboveUtxos: number };
   store: { intents: number; pools: number; strategies: number; events: number; eventSeq: number; cauldronTokens: number | null; wsClients: number };
   persistence: Array<{ name: string; bytes: number | null; modifiedAt: number | null }>;
 }
@@ -313,6 +340,9 @@ export function createAdminApi(baseUrl: string, getKey: () => string) {
     twaps: (q?: Query) => get<{ total: number; byStatus: Record<string, number>; orders: TwapOrder[] }>('/twap', q),
     twap: (id: string) => get<{ order: TwapOrder; events: OpsEvent[] }>(`/twap/${encodeURIComponent(id)}`),
     system: () => get<SystemInfo>('/system'),
+    market: (hours = 24) => get<MarketView>('/market', { hours }),
+    liquidity: (refresh = false) => get<LiquidityView>('/liquidity', refresh ? { refresh: 1 } : {}),
+    consolidateSolver: (minInputs = 5) => post<ConsolidateResult>('/solver/consolidate', { minInputs }),
     refunds: () => get<RefundsReport>('/refunds'),
     routes: () => get<{ routes: RouteFlags }>('/routes/status'),
     poolEvents: (address: string) => fetch(baseUrl.replace(/\/+$/, '') + `/api/v1/pools/${encodeURIComponent(address)}/activity`).then(r => r.json() as Promise<{ events: PoolEvent[] }>),
