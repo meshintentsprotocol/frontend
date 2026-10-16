@@ -35,6 +35,8 @@ Bins sit on a **shared price grid**, where level *i* is (1 + step)^*i* sats per 
 
 ## Create a position
 
+In the app: **Pool → New pool → Range**. For a BCH/token range the engine switch at the top of the preview is set to **V4 bins** (choose **V3 pools** to deploy the older way).
+
 1. **Choose the pair, the range and the step.** For example: pUSD, 1% step, from about 1,940 to 2,020 sats per pUSD unit.
 2. **Say where the market is.** Bins at or below the market price start as **BCH bids** (they wait to buy the token as the price falls). Bins above it start as **token asks** (they wait to sell as the price rises).
 3. **Choose the deposits and the shape.**
@@ -43,7 +45,15 @@ Bins sit on a **shared price grid**, where level *i* is (1 + step)^*i* sats per 
    - *Bid-ask* puts most of it at the edges.
 4. **Sign one transaction.** It creates the position NFT, funds every bin and publishes the position's metadata. Your wallet needs a coin that is "output #0" of its transaction; the app can make one with a small self-send.
 
-The app (or the API's `preview`) shows every bin before you sign: its prices, what goes into it, and the transaction size.
+The app (or the API's `preview`) shows every bin before you sign: its prices, what goes into it, and the transaction size. Before the review opens, your browser checks the plan itself: every bin's address is rebuilt from the audited contract, each bin's prices must be the grid prices of its level, the NFT must go to your wallet, and nothing may be paid anywhere else. If any check fails, the app refuses to continue.
+
+V4 bins have no separate fee: a bin buys at its level and sells one level up, so each round trip earns the bin step.
+
+## Your positions in the app
+
+- **Pool → My pools** lists every V4 position whose NFT your wallet holds, including ones you bought or received, above your V3 strategies.
+- The **position page** shows the name, the NFT, who holds it, whether the market is inside the range, and its value. It also has a strip of bins on the price grid (BCH waiting to buy, tokens waiting to sell, market marked) and every deposit, fill and withdrawal read from the chain.
+- The **depth chart** on the Pools tab shows V4 bins in a darker shade on the same price levels as V3 pools.
 
 ## Your position NFT
 
@@ -59,7 +69,19 @@ Traders don't do anything differently. Quotes and swaps route through V4 bins to
 
 Withdraw some or all bins in one transaction. The app asks the server for a **withdraw plan**, and your wallet signs only the NFT input. The bins release their BCH and tokens to you, and the NFT comes back to you unchanged. The network fee comes out of what you withdraw.
 
+On the position page: **Withdraw**, choose all bins or some, **Prepare**, then sign. The app checks the plan against your position's bins before you sign.
+
 You can also withdraw to rebuild the position at new prices: withdraw, then create a new position (or reuse the NFT's bins at new levels in a later version with a keeper).
+
+## Send the position
+
+On the position page: **Send**, enter a wallet address and confirm. The NFT moves to that wallet, and with it every bin: the new holder can withdraw everything, and you no longer can. The app only sends to ordinary wallet addresses (P2PKH), because an NFT sent to a contract address could be locked for good.
+
+## Move a V3 range to V4
+
+On a V3 range strategy's page: **Manage → Move to V4 → Preview**. One transaction docks every V3 pool and opens a V4 position with the same range, step and shape, funded from what the pools hold. The preview compares pools and UTXOs now with bins after, and shows what goes into the position, what comes back to your wallet and the network fee. Grid and ladder strategies move later.
+
+The fee is mostly the V3 side: each V3 pool docked adds about 1.1 KB (7 pools ≈ 9,400 sats at 1.2 sat/byte on chipnet).
 
 ## Costs
 
