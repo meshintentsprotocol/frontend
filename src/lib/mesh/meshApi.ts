@@ -7,6 +7,7 @@
  * MeshApiError with the server's status and message — never swallowed.
  * Pure module (base URL passed in) so live scripts can use it from node.
  */
+import type { V4ActivityEvent, V4MigratePlan, V4Plan, V4PositionView, V4PreviewInput, V4WithdrawPlan } from './v4/types';
 import type { PoolParams, PoolSide } from './pool';
 import type { V3ParamsJson } from './v3/v3Pool';
 
@@ -254,7 +255,11 @@ export interface StrategyPreview {
 }
 
 /** One level of the canonical bin grid (GET /pools/depth). */
-export interface DepthLevel { index: number; satsPerToken: string; bidSats: string; askTokens: string; pools: number; lps: number }
+export interface DepthLevel {
+  index: number; satsPerToken: string; bidSats: string; askTokens: string; pools: number; lps: number;
+  /** the V4 share of the level (in bidSats / askTokens / pools above) */
+  v4BidSats?: string; v4AskTokens?: string; v4Bins?: number;
+}
 export interface PairDepth { token: string; stepBps: number; mid: number | null; activeIndex: number | null; levels: DepthLevel[]; minBinSats: string }
 
 /** LP metrics on a strategy (estimates for display). */
@@ -497,6 +502,21 @@ export function createMeshApi(baseUrl: string, fetchImpl: typeof fetch = (...a) 
     strategy: (id: string) => call<{ strategy: StrategySummary; pools: Pool[] }>('GET', `/api/v1/strategies/${enc(id)}`),
     rebalancePlan: (id: string, body: { template?: string; params?: Record<string, unknown> }) =>
       call<RebalancePlan>('POST', `/api/v1/strategies/${enc(id)}/rebalance-plan`, body),
+    // V4 positions (NFT-owned bins; reference: /docs/api/v4)
+    v4Preview: (input: V4PreviewInput) => call<V4Plan>('POST', '/api/v1/v4/positions/preview', input),
+    /** Pin the planned registry on IPFS. 503 (no pinning key) does not throw: the https copy still serves it. */
+    v4PinMetadata: (category: string) =>
+      call<{ pinned?: boolean; cid: string; uri: string; provider?: string; error?: string }>('POST', `/api/v1/v4/positions/${enc(category)}/metadata`, {}, [503]),
+    v4Register: (body: { genesisTxid: string; bins: unknown[]; pairName?: string }) => call<V4PositionView>('POST', '/api/v1/v4/positions', body),
+    v4Positions: (q: { token?: string; limit?: number } = {}) => call<{ total: number; positions: V4PositionView[] }>('GET', `/api/v1/v4/positions${qs(q)}`),
+    /** Positions whose NFT this address holds (read from the chain). */
+    v4Held: (holder: string) => call<{ holder: string; positions: V4PositionView[] }>('GET', `/api/v1/v4/positions${qs({ holder })}`),
+    v4Position: (category: string, holder?: string) => call<V4PositionView>('GET', `/api/v1/v4/positions/${enc(category)}${qs({ holder })}`),
+    v4Activity: (category: string, limit = 100) =>
+      call<{ category: string; count: number; events: V4ActivityEvent[] }>('GET', `/api/v1/v4/positions/${enc(category)}/activity${qs({ limit })}`),
+    v4WithdrawPlan: (category: string, body: { holder: string; bins?: number[]; to?: string }) =>
+      call<V4WithdrawPlan>('POST', `/api/v1/v4/positions/${enc(category)}/withdraw-plan`, body),
+    v4MigratePlan: (body: { strategyId: string; seedTxid: string; owner?: string; name?: string }) => call<V4MigratePlan>('POST', '/api/v1/v4/migrate/plan', body),
   };
 }
 
