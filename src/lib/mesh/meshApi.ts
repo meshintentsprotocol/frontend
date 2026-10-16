@@ -199,6 +199,8 @@ export interface MarketContext {
   mesh: { bestBid: { satsPerToken: string; address: string } | null; bestAsk: { satsPerToken: string; address: string } | null };
   midSatsPerToken: number | null;
   midSource: 'cauldron' | 'mesh-mid' | 'mesh-bid' | 'mesh-ask' | null;
+  /** 2026-10-16+: cauldron = an independent market; mesh-only = Mesh pools' own prices (check before centring on it) */
+  midConfidence?: 'cauldron' | 'mesh-only' | 'none';
   /** 2026-10-16+: is the mid safe to centre a position on (vs. its recent median)? */
   midCheck?: { recentMedian: number | null; samples: number; windowSec: number; divergenceBps: number | null; maxDivergenceBps: number; ok: boolean };
   bchUsd: number | null;
@@ -210,6 +212,9 @@ export interface StrategySuggestion {
   market: Record<string, MarketContext>;
   params: Record<string, unknown> | null;
   reason?: string;
+  /** 2026-10-16+: the price comes only from Mesh pools */
+  lowConfidence?: boolean;
+  caution?: string;
 }
 
 /** A slot's price against the market mid. */
@@ -258,7 +263,7 @@ export interface StrategyMetrics {
   arbitrage: { fills: number; arbitrageFills: number; arbitrageFillPct: number | null; arbitrageVolumePct: number | null };
   range: { low: number; high: number } | null;
   timeInRange: { pct: number | null; samples: number; since: number } | null;
-  stress: { mid: number; rows: Array<{ move: number; satsPerToken: number; positionSats: number; holdSats: number; vsHoldSats: number }> } | null;
+  stress: { mid: number; rows: Array<{ move: number; satsPerToken: number; positionSats: number; holdSats: number; vsHoldSats: number; feesNeededSats?: number }> } | null;
 }
 
 export interface StrategyIdleFlag { kinds: IdleKind[]; items: string[]; reasons: string[]; valueSats: string }
@@ -281,6 +286,8 @@ export interface StrategySummary {
   idle?: StrategyIdleFlag | null;
   /** 2026-10-16+ */
   metrics?: StrategyMetrics;
+  /** 2026-10-16+: active pools priced through the market */
+  throughMarketPools?: number;
 }
 
 export interface RebalancePlan {
@@ -292,6 +299,15 @@ export interface RebalancePlan {
   needs: { sats: string; tokens: Record<string, string> };
   shortfall: Record<string, string>;
   note: string;
+}
+
+/** POST /recycle/tidy-plan: merge fragments into one UTXO per pool, return dead floors (prices unchanged). */
+export interface TidyPlan {
+  owner: string; strategy: string | null;
+  close: ClosePlan[];
+  open: Array<{ address: string; lockingBytecode: string; fundTo: string; deposit: { sats: string; token?: { category: string; amount: string } }; merged: number }>;
+  toWallet: { sats: string; tokens: Record<string, string> };
+  utxosBefore: number; utxosAfter: number; reasons: string[]; note: string;
 }
 
 export interface ClosePlan {
@@ -476,6 +492,7 @@ export function createMeshApi(baseUrl: string, fetchImpl: typeof fetch = (...a) 
     idle: (owner: string) => call<IdleReport>('GET', `/api/v1/recycle/idle${qs({ owner })}`),
     recyclePlan: (body: { owner: string; items?: string[]; spreadBps?: number; feeBps?: number }) =>
       call<RecyclePlan>('POST', '/api/v1/recycle/plan', body),
+    tidyPlan: (body: { owner: string; strategy?: string }) => call<TidyPlan>('POST', '/api/v1/recycle/tidy-plan', body),
     strategies: (owner?: string) => call<{ count: number; strategies: StrategySummary[] }>('GET', `/api/v1/strategies${qs({ owner })}`),
     strategy: (id: string) => call<{ strategy: StrategySummary; pools: Pool[] }>('GET', `/api/v1/strategies/${enc(id)}`),
     rebalancePlan: (id: string, body: { template?: string; params?: Record<string, unknown> }) =>

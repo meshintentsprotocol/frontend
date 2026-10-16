@@ -8,14 +8,14 @@ import React, { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQueries } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { AlertTriangle, ArrowLeft, Loader2, Lock, MinusCircle, Recycle, Repeat, Shuffle } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Loader2, Lock, MinusCircle, Recycle, Repeat, Shuffle, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { meshApi, useIdle, useInvalidateMesh, useMeshSigner, useMeshStats, useSignerBalances, useStrategy, useStrategySuggest, useStrategyTemplates } from '@/hooks/useMesh';
 import type { Pool, PoolEvent } from '@/lib/mesh/meshApi';
 import { formatPct, formatSatsCompact, formatUsd, satsToUsd, shortHex, timeAgo } from '@/lib/mesh/format';
 import { poolLevels } from '@/lib/mesh/v3/v3Display';
 import { v3ContractFor } from '@/lib/mesh/v3/v3Pool';
-import { buildWithdrawV3, type ClosePool } from '@/lib/mesh/v3/v3Tx';
+import { buildWithdrawV3, buildRebalanceV3, type ClosePool, type V3Deposit } from '@/lib/mesh/v3/v3Tx';
 import { sendPoolTxWithRetry, type BuiltTx } from '@/lib/mesh/poolTx';
 import { Panel, PanelTabs, ThroughMarketNote, poolUrl } from '@/components/mesh/pools/shared';
 import { DefiCard, IdlePill, InventoryBar, MarketStrip, MetricCell, RecyclePill, StatusPill, TemplateIcon, VsMid, poolVsMidBps, templateName, tokensPerBch } from '@/components/mesh/ui/defi';
@@ -145,7 +145,7 @@ export function MeshStrategyPage() {
       {mainToken && <MarketStrip ctx={ctx} symbol={mainInfo.symbol} decimals={mainInfo.decimals} loading={market.isLoading} />}
       {s.metrics && (
         <Panel title="Against holding · if the market moved">
-          <StrategyMetricsPanel m={s.metrics} symbol={mainToken ? mainInfo.symbol : 'tokens'} decimals={mainInfo.decimals} />
+          <StrategyMetricsPanel m={s.metrics} symbol={mainToken ? mainInfo.symbol : 'tokens'} decimals={mainInfo.decimals} feesSats={s.feesAllSats} />
         </Panel>
       )}
 
@@ -200,6 +200,7 @@ const STRATEGY_VIEWS = [['pools', 'Pools'], ['activity', 'Activity'], ['recyclin
 
 const STRATEGY_OPTIONS = [
   { key: 'rebalance', label: 'Rebalance', icon: Shuffle },
+  { key: 'tidy', label: 'Tidy', icon: Sparkles },
   { key: 'withdraw', label: 'Withdraw all', icon: MinusCircle, tone: 'danger' },
 ] as const;
 
@@ -210,12 +211,20 @@ function StrategyActions({ strategy, pools, ownerPkh }: { strategy: NonNullable<
   const invalidate = useInvalidateMesh();
   const templates = useStrategyTemplates();
   const balances = useSignerBalances(wallet.signer);
-  const [mode, setMode] = useState<'rebalance' | 'withdraw'>('rebalance');
+  const [mode, setMode] = useState<'rebalance' | 'tidy' | 'withdraw'>('rebalance');
   const [template, setTemplate] = useState(strategy.template);
   const [pending, setPending] = useState<{ label: string; built: BuiltTx; rebuild: () => Promise<BuiltTx>; after: (txid: string) => Promise<void> } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const isOwner = !!wallet.pkh && wallet.pkh === ownerPkh;
+  // pools with leftover UTXOs: more than one at the address, or one too small to trade
+  const leftovers = (p: Pool) => {
+    const v = p.utxos.filter(u => u.valid);
+    // a BCH pool keeps 1,000 sats; under ~5,000 usable the router leaves it out
+    return v.length > 1 || (p.v3?.reserve === '0x' && v.length === 1 && BigInt(String(v[0]!.sats)) < 6_000n);
+  };
+  const tidyCount = pools.filter(p => p.status !== 'closed' && leftovers(p)).length;
+  const tidyInfo = tidyCount ? `${tidyCount} pool(s) hold leftover UTXOs.` : null;
 
   if (!wallet.signer || !isOwner) {
     return <Panel title="Manage"><div className="flex gap-3 text-xs text-zinc-400"><Lock className="w-4 h-4 shrink-0 text-zinc-500 mt-0.5" />Connect the wallet that owns this strategy to rebalance or withdraw.</div></Panel>;
@@ -259,6 +268,29 @@ function StrategyActions({ strategy, pools, ownerPkh }: { strategy: NonNullable<
     return buildWithdrawV3(signer, close);
   }, async () => { await new Promise(r => setTimeout(r, 2_000)); await syncAll(); });
 
+  /**
+   * Tidy: merge each pool's fragments into one UTXO at the same address and return
+   * floors too small to route (server plan, transaction built and checked here).
+   */
+  const tidy = () => prepare('Tidy the strategy', async () => {
+    const plan = await meshApi.tidyPlan({ owner: ownerPkh, strategy: strategy.id });
+    const byAddr = new Map(pools.map(p => [p.address, p]));
+    const close: ClosePool[] = [];
+    for (const c of plan.close) {
+      const p = byAddr.get(c.address);
+      if (!p?.v3) throw new Error(`pool ${c.address} is not part of this strategy`);
+      const utxos = await signer.provider.getUtxos(c.address);
+      if (utxos.length) close.push({ contract: v3ContractFor(p.v3, c.address, signer.provider).contract, utxos });
+    }
+    const open: V3Deposit[] = plan.open.map(o => {
+      const p = byAddr.get(o.address)!;
+      // the deposit goes back to the very same pool: rebuild it locally and check the address
+      const { params } = v3ContractFor(p.v3!, o.address, signer.provider);
+      return { params, sats: BigInt(o.deposit.sats), tokens: BigInt(o.deposit.token?.amount ?? '0') };
+    });
+    return buildRebalanceV3(signer, close, open);
+  }, async () => { await new Promise(r => setTimeout(r, 2_000)); await syncAll(); });
+
   const rebalance = () => navigate(`/mesh?tab=create&template=${encodeURIComponent(template)}&replaces=${encodeURIComponent(strategy.id)}`);
 
   const tmpl = templates.data?.templates.find(t => t.id === template);
@@ -272,6 +304,13 @@ function StrategyActions({ strategy, pools, ownerPkh }: { strategy: NonNullable<
           </select>
           {tmpl && <p className="text-[11px] text-zinc-500">{tmpl.summary}</p>}
           <Button className="w-full rounded-xl" disabled={!!busy} onClick={rebalance}>Choose new parameters</Button>
+        </div>
+      )}
+      {mode === 'tidy' && (
+        <div className="space-y-3 text-xs">
+          <p className="text-zinc-400">Merges each pool's leftover UTXOs into one, at the same prices, and returns any too small to trade back to your wallet. One transaction; nothing is repriced.</p>
+          {tidyInfo && <p className="text-[11px] text-zinc-500">{tidyInfo}</p>}
+          <Button className="w-full rounded-xl" disabled={!!busy || !tidyCount} onClick={tidy}>{busy && !pending ? <Loader2 className="w-4 h-4 animate-spin" /> : tidyCount ? 'Review tidy' : 'Nothing to tidy'}</Button>
         </div>
       )}
       {mode === 'withdraw' && (
