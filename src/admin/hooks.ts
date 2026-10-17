@@ -32,6 +32,9 @@ export function useTwaps(q: Query) { const { api } = useAdmin(); return usePolle
 export function useTwap(id: string) { const { api } = useAdmin(); return usePolled(k('twap', id), () => api.twap(id), 1, !!id); }
 export function useMarket(hours = 24) { const { api } = useAdmin(); return usePolled(k('market', hours), () => api.market(hours), 3); }
 export function useLiquidity() { const { api } = useAdmin(); return usePolled(k('liquidity'), () => api.liquidity(), 3); }
+export function useV4Positions() { const { api } = useAdmin(); return usePolled(k('v4-positions'), () => api.v4Positions(), 2); }
+export function useV4Health() { const { api } = useAdmin(); return usePolled(k('v4-health'), () => api.v4Health(), 2); }
+export function useV4Migration() { const { api } = useAdmin(); return usePolled(k('v4-migration'), () => api.v4Migration(), 3); }
 export function useSystem() { const { api } = useAdmin(); return usePolled(k('system'), api.system, 3); }
 export function useBalancer() { const { api } = useAdmin(); return usePolled(k('balancer'), api.balancer); }
 export function useBalancerTrades(q: Query) { const { api } = useAdmin(); return usePolled(k('balancer-trades', q), () => api.balancerTrades(q)); }

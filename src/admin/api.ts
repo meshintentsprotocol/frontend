@@ -303,6 +303,24 @@ export type Query = Record<string, string | number | undefined | null>;
 
 // ── Client ───────────────────────────────────────────────────────────────────
 
+// ── V4 positions (admin read models: meshserver src/api/routes/adminV4.ts) ────
+export interface V4AdminPosition {
+  category: string; genesisTxid: string; pairName: string | null; createdBy: string; createdHeight: number;
+  registeredAt: string; variant: string; binStepBps: number; lowSatsPerUnit: number; highSatsPerUnit: number;
+  bins: number; fundedBins: number; binsWithTokens: number; sats: string; tokens: string; valueAtBidSats: string;
+  hasManager: boolean; metadataUri: string | null; metadataPinned: boolean;
+}
+export interface V4AdminPositions { count: number; totals: { sats: string; valueAtBidSats: string; bins: number; fundedBins: number }; positions: V4AdminPosition[] }
+export interface V4AdminHealth {
+  engines: { v4: { bins: number; sats: string; tokens: string; positions: number }; v3: { pools: number; sats: string } };
+  invariant: { rule: string; ok: boolean; violations: Array<{ category: string; bin: number; address: string; utxos: number }> };
+}
+export interface V4AdminMigration {
+  v4: { positions: number; bins: number; sats: string; valueAtBidSats: string };
+  v3: { pools: number; sats: string };
+  shareOfSats: { v4: number; v3: number };
+}
+
 export function createAdminApi(baseUrl: string, getKey: () => string) {
   const base = baseUrl.replace(/\/+$/, '') + '/api/v1/admin';
   const qs = (q: Query = {}) => {
@@ -342,6 +360,9 @@ export function createAdminApi(baseUrl: string, getKey: () => string) {
     system: () => get<SystemInfo>('/system'),
     market: (hours = 24) => get<MarketView>('/market', { hours }),
     liquidity: (refresh = false) => get<LiquidityView>('/liquidity', refresh ? { refresh: 1 } : {}),
+    v4Positions: () => get<V4AdminPositions>('/v4/positions'),
+    v4Health: () => get<V4AdminHealth>('/v4/health'),
+    v4Migration: () => get<V4AdminMigration>('/v4/migration'),
     consolidateSolver: (minInputs = 5) => post<ConsolidateResult>('/solver/consolidate', { minInputs }),
     refunds: () => get<RefundsReport>('/refunds'),
     routes: () => get<{ routes: RouteFlags }>('/routes/status'),

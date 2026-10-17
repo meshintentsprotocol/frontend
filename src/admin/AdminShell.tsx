@@ -9,7 +9,7 @@ import { useIsFetching } from '@tanstack/react-query';
 import {
   LayoutDashboard, Activity, ArrowDownUp, Zap, Repeat, Users, Waves, Layers, UserCircle, Recycle, SlidersHorizontal,
   Undo2, Server, KeyRound, Pause, Play, Menu, X, ShieldCheck, ShieldAlert, History, ArrowLeft, RefreshCw, Scale, ArrowLeftRight, Radar, Wallet, Settings2,
-  Globe, Fuel, Coins, LineChart, ScrollText, PiggyBank, Landmark, HeartPulse,
+  Globe, Fuel, Coins, LineChart, ScrollText, PiggyBank, Landmark, HeartPulse, Gem,
 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
@@ -44,6 +44,7 @@ const NAV: Array<{ group: string; items: NavItem[] }> = [
       { to: '/admin/lps', label: 'LPs', icon: UserCircle },
       { to: '/admin/idle', label: 'Idle & recycle', icon: Recycle },
       { to: '/admin/liquidity', label: 'Liquidity health', icon: HeartPulse, badge: o => (o.liquidity?.throughMarketPools ? { n: o.liquidity.throughMarketPools, tone: 'rose' } : null) },
+      { to: '/admin/v4', label: 'V4 positions', icon: Gem },
       { to: '/admin/market', label: 'Market & mids', icon: LineChart, badge: o => (o.market?.refused ? { n: o.market.refused, tone: 'rose' } : o.market?.sampler.stalled ? { n: 1, tone: 'amber' } : null) },
     ],
   },
