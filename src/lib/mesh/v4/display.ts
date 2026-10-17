@@ -44,3 +44,14 @@ export function addPendingV4(p: PendingV4): void { write([...read().filter(x => 
 export function removePendingV4(category: string): void { write(read().filter(x => x.category !== category)); }
 
 export const positionUrl = (category: string) => `/mesh/position/${category}`;
+
+// ── V3 → V4 lineage (per browser) ───────────────────────────────────────────
+const MIG_KEY = 'mesh.v4.migrated';
+/** Remember that a V3 strategy was moved to a V4 position (shown on its page). */
+export function recordMigration(strategyId: string, category: string): void {
+  try { const m = JSON.parse(localStorage.getItem(MIG_KEY) ?? '{}'); m[strategyId] = category; localStorage.setItem(MIG_KEY, JSON.stringify(m)); } catch { /* storage unavailable */ }
+}
+/** The V4 position a V3 strategy was moved to, if this browser recorded it. */
+export function migratedToV4(strategyId: string): string | null {
+  try { return (JSON.parse(localStorage.getItem(MIG_KEY) ?? '{}') as Record<string, string>)[strategyId] ?? null; } catch { return null; }
+}

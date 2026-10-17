@@ -27,6 +27,7 @@ import { StrategyMetricsPanel } from '@/components/mesh/strategies/StrategyMetri
 import { strategyUrl } from '@/components/mesh/strategies/StrategyBuilder';
 import { V3PoolLabel, amountOf, useAssetInfo } from '@/components/mesh/v3/V3PoolDetail';
 import { MigrateToV4 } from '@/components/mesh/v4/MigrateToV4';
+import { migratedToV4, positionUrl } from '@/lib/mesh/v4/display';
 
 export function MeshStrategyPage() {
   const { id: raw } = useParams();
@@ -126,6 +127,12 @@ export function MeshStrategyPage() {
         </div>
       )}
       {s.replaces && <div className="text-[11px] text-zinc-500">Rebalanced from <Link className="underline" to={strategyUrl(s.replaces)}>{s.replaces.slice(0, 16)}…</Link></div>}
+      {migratedToV4(s.id) && (
+        <div className="flex items-center gap-2 rounded-xl border border-violet-500/25 bg-violet-500/[0.06] p-3 text-[11px] text-violet-100">
+          <Gem className="h-4 w-4 shrink-0 text-violet-300" />
+          <span>Moved to a V4 position.</span><Link className="underline font-semibold" to={positionUrl(migratedToV4(s.id)!)}>Open it</Link>
+        </div>
+      )}
 
       <DefiCard className="space-y-4">
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">

@@ -30,7 +30,7 @@ import { v4Levels } from '@/lib/mesh/v4/position';
 import { verifyMigratePlan } from '@/lib/mesh/v4/verify';
 import { buildMigrate, type MigrateClose } from '@/lib/mesh/v4/v4Tx';
 import { ensureSeed } from '@/lib/mesh/v4/seed';
-import { addPendingV4, positionUrl, removePendingV4 } from '@/lib/mesh/v4/display';
+import { addPendingV4, positionUrl, recordMigration, removePendingV4 } from '@/lib/mesh/v4/display';
 import type { V4MigratePlan } from '@/lib/mesh/v4/types';
 import { useTokenInfo } from '@/components/mesh/pools/shared';
 
@@ -97,6 +97,7 @@ export function MigrateToV4({ strategy, pools }: { strategy: StrategySummary; po
       setBusy('Registering the V4 position…');
       await registerWithRetry(() => meshApi.v4Register({ genesisTxid: txid!, bins: m.v4.register.body.bins, pairName }));
       removePendingV4(m.v4.category);
+      recordMigration(strategy.id, m.v4.category);
       for (const pool of pools) await meshApi.sync(pool.address).catch(() => undefined);
       invalidate();
       toast.success('Moved to V4', { description: `${m.v4.bins.length} bins · NFT ${shortHex(m.v4.category)} · ${shortHex(txid)}` });
