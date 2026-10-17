@@ -1,11 +1,24 @@
 import { useState, useMemo, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
+import { cashAddressToLockingBytecode, lockingBytecodeToCashAddress } from '@bitauth/libauth';
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useWDK } from '@/context/WDKProvider';
 import { ArrowDownLeft, Check, Copy, ExternalLink } from 'lucide-react';
 import { notifyToast as toast } from '@/lib/notify-toast';
 import { cn } from '@/lib/utils';
 import { Chameleon, type ChamMood } from '@/components/wallet/Chameleon';
+
+/**
+ * The token-aware form of a BCH address (same key, prefix `z…`/`r…`): required
+ * to receive CashTokens. Plain BCH works at either form, but some exchanges and
+ * older wallets don't recognise the token-aware prefix, so we offer both.
+ */
+function toTokenAddress(cashaddr: string): string | null {
+    const decoded = cashAddressToLockingBytecode(cashaddr);
+    if (typeof decoded === 'string') return null;
+    const r = lockingBytecodeToCashAddress({ bytecode: decoded.bytecode, prefix: decoded.prefix, tokenSupport: true });
+    return typeof r === 'string' ? null : r.address;
+}
 
 // ============================================================================
 // Receive — pick a network, show its QR and address. One EVM address serves
@@ -27,6 +40,8 @@ export function ReceiveModal({ children }: { children?: React.ReactNode }) {
     const isMainnet = wdk.bchNetwork === 'mainnet';
     const [copied, setCopied] = useState(false);
     const [mood, setMood] = useState<ChamMood>('idle');
+    /** For BCH: show the plain address or the token-aware one (CashTokens). */
+    const [bchMode, setBchMode] = useState<'bch' | 'tokens'>('bch');
 
     const chains = useMemo<ReceiveChain[]>(() => ([
         wdk.bchAddress && {
@@ -58,11 +73,19 @@ export function ReceiveModal({ children }: { children?: React.ReactNode }) {
     const active = chains.find(c => c.key === selected) ?? chains[0];
     useEffect(() => { if (chains.length && !chains.some(c => c.key === selected)) setSelected(chains[0].key); }, [chains, selected]);
 
+    // For BCH, the token-aware form of the same address (receives CashTokens and BCH).
+    const bchToken = useMemo(() => (active?.key === 'bch' ? toTokenAddress(active.address) : null), [active]);
+    const tokensView = active?.key === 'bch' && bchMode === 'tokens' && !!bchToken;
+    const shownAddress = (tokensView ? bchToken! : active?.address) ?? '';
+    const shownExplorer = active?.key === 'bch'
+        ? (isMainnet ? `https://blockchair.com/bitcoin-cash/address/${shownAddress}` : `https://chipnet.imaginary.cash/address/${shownAddress}`)
+        : active?.explorerUrl;
+
     const copy = () => {
         if (!active) return;
-        navigator.clipboard.writeText(active.address);
+        navigator.clipboard.writeText(shownAddress);
         setCopied(true);
-        toast.success(`${active.label} address copied`);
+        toast.success(`${tokensView ? 'CashTokens' : active.label} address copied`);
         setMood('happy');
         setTimeout(() => { setCopied(false); setMood('idle'); }, 2000);
     };
@@ -107,28 +130,51 @@ export function ReceiveModal({ children }: { children?: React.ReactNode }) {
                             })}
                         </div>
 
+                        {/* BCH: choose plain BCH or the token-aware (CashTokens) address */}
+                        {active.key === 'bch' && bchToken && (
+                            <div className="mb-4 flex gap-1 rounded-full border border-white/[0.07] bg-white/[0.02] p-1">
+                                {([['bch', 'BCH'], ['tokens', 'CashTokens']] as const).map(([m, label]) => (
+                                    <button key={m} onClick={() => setBchMode(m)}
+                                        className={cn('flex-1 rounded-full px-3 py-1.5 text-[11px] font-semibold transition-colors',
+                                            (bchMode === m) ? 'bg-white/[0.1] text-white' : 'text-white/50 hover:text-white')}>
+                                        {label}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+
                         {/* QR */}
                         <div className="flex flex-col items-center">
                             <div className="rounded-2xl bg-white p-3 shadow-lg shadow-black/30">
-                                <QRCodeSVG value={active.address} size={184} level="M" bgColor="#ffffff" fgColor="#04110a" includeMargin={false} />
+                                <QRCodeSVG value={shownAddress} size={184} level="M" bgColor="#ffffff" fgColor="#04110a" includeMargin={false} />
                             </div>
-                            <p className="mt-3 text-center text-[11px] text-white/45">{active.sublabel}</p>
+                            <p className="mt-3 text-center text-[11px] text-white/45">
+                                {active.key === 'bch'
+                                    ? (tokensView ? `${isMainnet ? 'Mainnet' : 'Chipnet'} · token-aware address — receives CashTokens and BCH` : `${isMainnet ? 'Mainnet' : 'Chipnet'} · BCH address — works with any wallet`)
+                                    : active.sublabel}
+                            </p>
                         </div>
 
                         {/* Address + copy */}
                         <div className="lg-well mt-4 flex items-center gap-2 rounded-xl p-2.5">
-                            <span className="min-w-0 flex-1 select-all break-all font-mono text-[11px] text-white/70">{active.address}</span>
+                            <span className="min-w-0 flex-1 select-all break-all font-mono text-[11px] text-white/70">{shownAddress}</span>
                             <button onClick={copy} title="Copy address" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white/50 transition-colors hover:bg-white/[0.08] hover:text-white">
                                 {copied ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
                             </button>
-                            {active.explorerUrl && (
-                                <a href={active.explorerUrl} target="_blank" rel="noopener noreferrer" title="View on explorer" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white/50 transition-colors hover:bg-white/[0.08] hover:text-white">
+                            {shownExplorer && (
+                                <a href={shownExplorer} target="_blank" rel="noopener noreferrer" title="View on explorer" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white/50 transition-colors hover:bg-white/[0.08] hover:text-white">
                                     <ExternalLink className="h-4 w-4" />
                                 </a>
                             )}
                         </div>
 
-                        <p className="mt-3 text-center text-[10px] text-white/35">Send only {active.label} assets to this address.</p>
+                        <p className="mt-3 text-center text-[10px] text-white/35">
+                            {active.key === 'bch'
+                                ? (tokensView
+                                    ? 'This token-aware address receives CashTokens and BCH. Some exchanges don’t support it yet — use the BCH tab for those.'
+                                    : 'Plain BCH only. To receive CashTokens, switch to the CashTokens tab.')
+                                : `Send only ${active.label} assets to this address.`}
+                        </p>
                     </div>
                 )}
             </DialogContent>
