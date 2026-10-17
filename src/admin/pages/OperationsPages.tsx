@@ -12,9 +12,12 @@ import { EventFeed } from '../EventFeed';
 import { sellAsset, buyAsset, type IntentView, type RouteFlags, type SolverCycleReport } from '../api';
 import { cn } from '@/lib/utils';
 
-type RouteKey = 'meshEnabled' | 'cauldronEnabled' | 'solverEnabled';
+type RouteKey = 'meshEnabled' | 'meshV2Enabled' | 'meshV3Enabled' | 'meshV4Enabled' | 'cauldronEnabled' | 'solverEnabled';
 const ROUTES: Array<{ key: RouteKey; label: string; icon: typeof Waves; detail: string }> = [
-  { key: 'meshEnabled', label: 'Mesh pools', icon: Waves, detail: 'LP pools (MeshPoolV3). Pausing stops intents filling against Mesh liquidity.' },
+  { key: 'meshEnabled', label: 'Mesh (all versions)', icon: Waves, detail: 'Master Mesh switch. Pausing stops every Mesh version (V2, V3, V4) at once.' },
+  { key: 'meshV4Enabled', label: 'Mesh V4 bins', icon: Waves, detail: 'In-place bins (MeshBinV4), owned by position NFTs. Pause the newest engine without touching V3.' },
+  { key: 'meshV3Enabled', label: 'Mesh V3 pools', icon: Waves, detail: 'MeshPoolV3 covenant pools (ranges, grids, strategies).' },
+  { key: 'meshV2Enabled', label: 'Mesh V2 covenant', icon: Waves, detail: 'Legacy StrategyCovenantV2 pools.' },
   { key: 'cauldronEnabled', label: 'Cauldron AMM', icon: Boxes, detail: 'Cauldron pools as a source, alone or in split fills.' },
   { key: 'solverEnabled', label: 'Solver inventory', icon: Zap, detail: 'Fills from the solver wallet\'s own BCH / tokens.' },
 ];

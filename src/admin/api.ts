@@ -70,7 +70,7 @@ export const buyAsset = (i: Pick<IntentView, 'buyToken'>) => asset(i.buyToken);
 // ── Overview ─────────────────────────────────────────────────────────────────
 
 export interface Alert { severity: 'error' | 'warn' | 'info'; code: string; title: string; detail: string; link?: string }
-export interface RouteFlags { meshEnabled: boolean; solverEnabled: boolean; cauldronEnabled: boolean; lastUpdated: number; reason?: string }
+export interface RouteFlags { meshEnabled: boolean; meshV2Enabled: boolean; meshV3Enabled: boolean; meshV4Enabled: boolean; solverEnabled: boolean; cauldronEnabled: boolean; lastUpdated: number; reason?: string }
 /** A snapshot the server refreshes in the background. With `error` set, the numbers are from the last read that worked (`readAt`). */
 export interface SolverWallet { ready: boolean; address: string | null; balanceSats: string | null; utxoCount: number; tokenUtxos: number; tokens: Record<string, string>; error: string | null; readAt?: number | null; readMs?: number | null; failures?: number }
 export interface FillWindow { count: number; byMethod: Partial<Record<FillMethod, number>>; bchVolumeSats: string }
@@ -378,7 +378,7 @@ export function createAdminApi(baseUrl: string, getKey: () => string) {
     refundIntent: (id: string) => post<{ result: { status: string; txid?: string; error?: string }; intent: IntentView }>(`/intents/${encodeURIComponent(id)}/refund`),
     resyncPool: (address: string) => post<{ pool: Pool }>(`/pools/${encodeURIComponent(address)}/resync`),
     note: (text: string, subject?: string) => post<{ event: OpsEvent }>('/events/note', { text, subject }),
-    setRoutes: (flags: Partial<Pick<RouteFlags, 'meshEnabled' | 'solverEnabled' | 'cauldronEnabled'>> & { reason?: string }) => post<{ routes: RouteFlags }>('/routes/control', flags),
+    setRoutes: (flags: Partial<Pick<RouteFlags, 'meshEnabled' | 'meshV2Enabled' | 'meshV3Enabled' | 'meshV4Enabled' | 'solverEnabled' | 'cauldronEnabled'>> & { reason?: string }) => post<{ routes: RouteFlags }>('/routes/control', flags),
     runSolverCycle: () => post<SolverCycleReport & { success: boolean }>('/trigger-match'),
     // Mesh Balancer bot
     balancer: () => get<BalancerStatus>('/balancer'),
