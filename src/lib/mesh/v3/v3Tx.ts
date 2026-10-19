@@ -125,7 +125,7 @@ export async function buildRebalanceV3(
     if (have >= amount) { tokens.set(category, have - amount); continue; }
     tokens.set(category, 0n);
     const { picked, change } = selectTokens(wallet, category, amount - have);
-    for (const u of picked) ins.push({ utxo: u, unlocker: signer.p2pkhUnlocker(), p2pkh: true });
+    for (const u of picked) ins.push({ utxo: u, unlocker: signer.p2pkhUnlocker(u), p2pkh: true });
     if (change > 0n) tokens.set(category, change);
   }
   for (const [category, amount] of tokens) if (amount > 0n) outs.push({ to: signer.tokenAddress, amount: TOKEN_DUST, token: { category, amount } });

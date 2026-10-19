@@ -700,18 +700,38 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 const { TransactionBuilder, ElectrumNetworkProvider } = await getCashScript();
                 const provider = new ElectrumNetworkProvider(isMainnet ? 'mainnet' : 'chipnet');
 
-                const allUtxos = await provider.getUtxos(makerAddress);
-                if (!allUtxos.length) throw new Error('No BCH UTXOs found in external wallet \u2014 fund it first');
+                let allUtxos: any[] = [];
+                if (activeExtWallet.source === 'wizardconnect') {
+                    const { addressSet: wizAddressSet } = await import('@/lib/wallets/wizardconnect');
+                    const addrs = wizAddressSet(activeExtWallet.id);
+                    const results = await Promise.all(addrs.map(async addr => {
+                        const uList = await provider.getUtxos(addr);
+                        return uList.map((u: any) => ({ ...u, address: addr }));
+                    }));
+                    allUtxos = results.flat();
+                } else {
+                    allUtxos = (await provider.getUtxos(makerAddress)).map((u: any) => ({ ...u, address: makerAddress }));
+                }
+                if (!allUtxos.length) throw new Error('No BCH UTXOs found in external wallet — fund it first');
 
                 const isTokenSell = !!sellCategoryId && sellCategoryId !== 'BCH';
                 const estimateFee = (numIn: number, numOut: number) =>
                     BigInt(Math.ceil((numIn * 180 + numOut * 50 + 10) * 2));
                 let fee = estimateFee(1, 2);
                 const selectedUtxos: any[] = [];
-                const dummyUnlocker = await getDummyUnlocker(makerAddress);
 
                 // Build the transaction structure (outputs + UTXO selection)
                 const builder = new TransactionBuilder({ provider });
+                const addSelectedInputs = async () => {
+                    const unlockerMap = new Map<string, any>();
+                    for (const u of selectedUtxos) {
+                        const addr = u.address || makerAddress;
+                        if (!unlockerMap.has(addr)) {
+                            unlockerMap.set(addr, await getDummyUnlocker(addr));
+                        }
+                        builder.addInput(u, unlockerMap.get(addr));
+                    }
+                };
 
                 if (isTokenSell) {
                     const tokenUtxos = allUtxos.filter((u: any) => u.token?.category === sellCategoryId);
@@ -747,7 +767,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                     const tokenChange = totalTokenIn - BigInt(sellBaseUnits);
                     let satRem = totalTokenSats + bchIn - 1000n - fee;
 
-                    builder.addInputs(selectedUtxos, dummyUnlocker);
+                    await addSelectedInputs();
                     builder.addOutput({ to: data.tokenAddress, amount: 1000n, token: { category: sellCategoryId, amount: BigInt(sellBaseUnits) } });
                     if (tokenChange > 0n) {
                         const tSats = satRem > 1000n ? 1000n : satRem;
@@ -768,7 +788,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                     }
                     if (bchIn < BigInt(sellBaseUnits) + fee) throw new Error('Insufficient BCH in external wallet');
 
-                    builder.addInputs(selectedUtxos, dummyUnlocker);
+                    await addSelectedInputs();
                     builder.addOutput({ to: data.contractAddress, amount: BigInt(sellBaseUnits) });
                     const change = bchIn - BigInt(sellBaseUnits) - fee;
                     if (change >= 546n) builder.addOutput({ to: makerAddress, amount: change });

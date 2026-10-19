@@ -12,6 +12,7 @@ import { useWDK } from '@/context/WDKProvider';
 import { useExternalBCHWallet } from '@/context/ExternalBCHWalletProvider';
 import { useActiveWallet } from '@/hooks/useActiveWallet';
 import { electrumProviderFor } from '@/lib/bchElectrum';
+import { addressSet as wizAddressSet } from '@/lib/wallets/wizardconnect';
 
 export const meshApi = createMeshApi(BCH_MESH_SERVER_URL);
 
@@ -229,8 +230,13 @@ export function useMeshSigner(): MeshSignerState {
         return { signer: s, pkh: s.pkh, address: s.address, network, kind: 'local', label: 'Cham Wallet' };
       }
       if (activeExtWallet) {
+        // For WizardConnect HD wallets: provide addressSet so all addresses’ UTXOs are collected.
+        const hdAddressSet = activeExtWallet.source === 'wizardconnect'
+          ? () => Promise.resolve(wizAddressSet(activeExtWallet.id))
+          : undefined;
         const s = new ExternalWcSigner(activeExtWallet.address, network, provider,
-          (payload) => ext.signTransaction(activeExtWallet.id, payload as any));
+          (payload) => ext.signTransaction(activeExtWallet.id, payload as any),
+          hdAddressSet);
         return { signer: s, pkh: s.pkh, address: s.address, network, kind: 'external', label: activeExtWallet.label };
       }
     } catch (e: any) {

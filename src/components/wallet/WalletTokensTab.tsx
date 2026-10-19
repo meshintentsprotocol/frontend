@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useBCHWallet } from '@/context/BCHWalletProvider';
 import { useWDK } from '@/context/WDKProvider';
 import { useExternalBCHWallet, type ExternalBCHWallet } from '@/context/ExternalBCHWalletProvider';
-import { useBchAddressBalance } from '@/hooks/useBchAddressBalance';
+import { useBchWalletBalance } from '@/hooks/useBchWalletBalance';
 import { useActiveWallet } from '@/hooks/useActiveWallet';
 import { Badge } from '@/components/ui/badge';
 import { ArrowUpRight, ArrowDownRight, ArrowDownLeft, ArrowLeftRight, Copy, Check, ChevronDown, Loader2, ExternalLink } from 'lucide-react';
@@ -116,9 +116,9 @@ export function WalletTokensTab({ balanceVisible, activeTokens, loading, onClose
 
     const activeExtWallet = extBCH.wallets.find(w => w.id === activeWalletId);
     
-    // Always call hook, but it only fetches if address is not null
-    const { data: extData, isLoading: isExtLoading } = useBchAddressBalance({
-        address: activeExtWallet?.address || null,
+    // Always call hook, but it only fetches if wallet is not null
+    const { data: extData, isLoading: isExtLoading } = useBchWalletBalance({
+        wallet: activeExtWallet ?? null,
         isMainnet: wdk.bchNetwork === 'mainnet',
         refetchMs: 15_000,
     });

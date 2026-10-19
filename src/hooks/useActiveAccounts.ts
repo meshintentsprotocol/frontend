@@ -8,6 +8,7 @@
  */
 
 import { useMemo } from 'react';
+import { useWDK } from '@/context/WDKProvider';
 import { useExternalWallets } from '@/lib/wallets/registry';
 import {
     MAIN_WALLET_ID,

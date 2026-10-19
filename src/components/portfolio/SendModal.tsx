@@ -12,8 +12,9 @@ import { getEVMChainConfig } from '@/lib/evmChains';
 import { cn } from '@/lib/utils';
 import { Chameleon, type ChamMood } from '@/components/wallet/Chameleon';
 import { useActiveAccounts } from '@/hooks/useActiveAccounts';
+import { useActiveWallet } from '@/hooks/useActiveWallet';
 import { useMeshSigner } from '@/hooks/useMesh';
-import { useBchAddressBalance } from '@/hooks/useBchAddressBalance';
+import { useBchWalletBalance } from '@/hooks/useBchWalletBalance';
 import { buildAndSendBch } from '@/lib/bchSend';
 import { AppNetwork } from '@/lib/wallets/types';
 import {
@@ -62,9 +63,10 @@ export function SendModal({ children }: { children?: React.ReactNode }) {
     const flash = (m: ChamMood) => { clearTimeout(moodTimer.current); setMood(m); moodTimer.current = setTimeout(() => setMood('idle'), 1400); };
     useEffect(() => () => clearTimeout(moodTimer.current), []);
 
+    const { activeExtWallet } = useActiveWallet();
     const extBchActive = activeAccounts.bch?.source === 'external';
-    const extBchQuery = useBchAddressBalance({
-        address: extBchActive ? activeAccounts.bch?.address ?? null : null,
+    const extBchQuery = useBchWalletBalance({
+        wallet: extBchActive ? (activeExtWallet ?? null) : null,
         isMainnet,
     });
 

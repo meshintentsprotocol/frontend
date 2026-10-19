@@ -31,7 +31,7 @@ import { readPersisted } from '@/lib/persist';
 import { useSwapServerHoldings } from '@/swap-server/useHoldings';
 import { useActiveWallet } from '@/hooks/useActiveWallet';
 import { useActiveAccounts } from '@/hooks/useActiveAccounts';
-import { useBchAddressBalance } from '@/hooks/useBchAddressBalance';
+import { useBchWalletBalance } from '@/hooks/useBchWalletBalance';
 import { recordPortfolioPoint, getPortfolioHistory } from '@/lib/portfolioHistory';
 
 // Portfolio token structure
@@ -87,6 +87,7 @@ export function usePortfolio(options?: { pollingMs?: number; scope?: 'main' | 'a
     const isMainnet = bchNetwork === 'mainnet';
 
     // Active accounts per family (P4)
+    const { activeExtWallet } = useActiveWallet();
     const activeAccounts = useActiveAccounts();
     const useActive = options?.scope === 'active';
 
@@ -97,8 +98,8 @@ export function usePortfolio(options?: { pollingMs?: number; scope?: 'main' | 'a
 
     const bchOwner = bchAccount?.address || bchAddress;
     const extBchActive = bchAccount && bchAccount.kind !== 'main';
-    const extQuery = useBchAddressBalance({
-        address: extBchActive ? bchAccount.address : null,
+    const extQuery = useBchWalletBalance({
+        wallet: (extBchActive && activeExtWallet) ? activeExtWallet : null,
         isMainnet,
         refetchMs: pollingMs,
     });

@@ -3,9 +3,10 @@
  * (bought or received ones too: ownership follows the NFT), plus geneses this
  * browser broadcast that are still waiting for registration.
  */
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Gem, Loader2 } from 'lucide-react';
-import { useV4Held } from '@/hooks/useMeshV4';
+import { useV4HeldMulti } from '@/hooks/useMeshV4';
 import { formatSatsCompact, formatUnits, shortHex } from '@/lib/mesh/format';
 import { gridPriceNum } from '@/lib/mesh/v4/position';
 import { pendingV4, positionUrl, tokenPerBch } from '@/lib/mesh/v4/display';
@@ -14,13 +15,17 @@ import { TokenAvatar, useTokenInfo, type TokenInfo } from '@/components/mesh/poo
 import { DefiCard, MetricCell } from '@/components/mesh/ui/defi';
 import { EngineBadge } from './V4DeployPanel';
 
-export function MyV4Positions({ holder }: { holder: string | null }) {
-  const held = useV4Held(holder);
+export function MyV4Positions({ holder }: { holder: string | string[] | null }) {
+  const holders = useMemo(() => {
+    if (!holder) return [];
+    return Array.isArray(holder) ? holder.filter(Boolean) : [holder];
+  }, [holder]);
+  const held = useV4HeldMulti(holders);
   const positions = held.data?.positions ?? [];
   const known = new Set(positions.map(p => p.category));
   const pending = pendingV4().filter(p => !known.has(p.category));
   const { get } = useTokenInfo(positions.map(p => p.commitment.tokenCat));
-  if (!holder || (!positions.length && !pending.length && !held.isLoading)) return null;
+  if (!holders.length || (!positions.length && !pending.length && !held.isLoading)) return null;
 
   return (
     <section className="space-y-3" aria-labelledby="my-v4">

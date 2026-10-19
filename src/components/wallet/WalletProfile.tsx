@@ -21,6 +21,7 @@ import { cn } from '@/lib/utils';
 import { useWDK } from '@/context/WDKProvider';
 import { useExternalBCHWallet } from '@/context/ExternalBCHWalletProvider';
 import { useBchAddressBalance } from '@/hooks/useBchAddressBalance';
+import { useBchWalletBalance } from '@/hooks/useBchWalletBalance';
 import { useWallets, shortAddress, type ConnectedWallet } from '@/hooks/useWallets';
 import { usePendingSign } from '@/lib/wallets/signRequest';
 import { walletUi } from '@/lib/walletUi';
@@ -41,8 +42,27 @@ const KIND_LABEL: Record<ConnectedWallet['kind'], string> = {
 
 const BRAND = '#10b981';
 
-function WalletBalance({ address, isMainnet, live, hidden }: { address: string; isMainnet: boolean; live: boolean; hidden: boolean }) {
-    const { data, isLoading, isError } = useBchAddressBalance({ address, isMainnet, refetchMs: live ? 20_000 : 0 });
+function WalletBalance({ wallet, isMainnet, live, hidden }: { wallet: ConnectedWallet; isMainnet: boolean; live: boolean; hidden: boolean }) {
+    const extWallet = useMemo(() => {
+        if (wallet.kind === 'main') return null;
+        return {
+            id: wallet.id,
+            family: wallet.family,
+            source: wallet.kind,
+            address: wallet.address,
+            label: wallet.name,
+            createdAt: 0,
+        };
+    }, [wallet.id, wallet.family, wallet.kind, wallet.address, wallet.name]);
+
+    const isExt = wallet.kind !== 'main';
+    const extBal = useBchWalletBalance({ wallet: isExt ? extWallet : null, isMainnet, refetchMs: live ? 20_000 : 0 });
+    const mainBal = useBchAddressBalance({ address: !isExt ? wallet.address : null, isMainnet, refetchMs: live ? 20_000 : 0 });
+
+    const data = isExt ? extBal.data : mainBal.data;
+    const isLoading = isExt ? extBal.isLoading : mainBal.isLoading;
+    const isError = isExt ? extBal.isError : mainBal.isError;
+
     if (hidden) return <span className="text-[11px] font-semibold text-white/50">••••</span>;
     if (isLoading) return <span className="inline-block h-3 w-14 rounded bg-white/[0.07] animate-pulse" />;
     if (isError) return <span className="text-[10px] text-white/30">—</span>;
@@ -86,7 +106,7 @@ function WalletRow({ wallet, isMainnet, hidden, onPick, onEdit, isPending }: {
                                     Signing…
                                 </span>
                             )}
-                            <WalletBalance address={wallet.address} isMainnet={isMainnet} live hidden={hidden} />
+                            <WalletBalance wallet={wallet} isMainnet={isMainnet} live hidden={hidden} />
                         </div>
                     </span>
                 </span>

@@ -21,6 +21,9 @@ import {
 
 export type BchNetwork = 'chipnet' | 'mainnet';
 
+/** A Utxo optionally annotated with the address it belongs to (for HD wallets). */
+export type AnnotatedUtxo = Utxo & { address?: string };
+
 export interface MeshSigner {
   kind: 'local' | 'external';
   network: BchNetwork;
@@ -33,8 +36,13 @@ export interface MeshSigner {
   lockingBytecode: Uint8Array;
   /** hash160 of the wallet's compressed public key, hex. */
   pkh: string;
-  getUtxos(): Promise<Utxo[]>;
-  p2pkhUnlocker(): Unlocker;
+  getUtxos(): Promise<AnnotatedUtxo[]>;
+  /**
+   * Return the unlocker for a P2PKH input.
+   * For HD wallets (ExternalWcSigner) pass the annotated UTXO so the correct
+   * per-address placeholder is used; for LocalWifSigner the argument is ignored.
+   */
+  p2pkhUnlocker(utxo?: AnnotatedUtxo): Unlocker;
   /** StrategyCovenantV2.dock(ownerPk, ownerSig) unlocker for `contract`. */
   dockUnlocker(contract: Contract): Unlocker;
   /**
@@ -95,8 +103,8 @@ export class LocalWifSigner implements MeshSigner {
     this.sig = new SignatureTemplate(wif);
   }
 
-  getUtxos(): Promise<Utxo[]> { return this.provider.getUtxos(this.address); }
-  p2pkhUnlocker(): Unlocker { return this.sig.unlockP2PKH(); }
+  getUtxos(): Promise<AnnotatedUtxo[]> { return this.provider.getUtxos(this.address); }
+  p2pkhUnlocker(_utxo?: AnnotatedUtxo): Unlocker { return this.sig.unlockP2PKH(); }
   dockUnlocker(contract: Contract): Unlocker { return contract.unlock.dock(this.publicKey, this.sig); }
   async send(builder: TransactionBuilder, _prompt?: string, opts?: SendOpts): Promise<string> {
     if (opts?.raw) return this.provider.sendRawTransaction(builder.build());
@@ -118,15 +126,50 @@ export class ExternalWcSigner implements MeshSigner {
   // P2PKH unlocking bytecode (65-byte schnorr sig + 33-byte pubkey + pushes) the wallet fills in
   readonly unsignedInputPadding = 100;
 
-  constructor(readonly address: string, readonly network: BchNetwork, readonly provider: NetworkProvider, private sign: WcSignFn) {
+  /**
+   * Optional: for WizardConnect HD wallets, a function returning all used
+   * addresses on this wallet (receive + change paths). When provided,
+   * `getUtxos()` collects UTXOs from every address, annotating each with its
+   * own address so `p2pkhUnlocker(utxo)` produces the correct placeholder.
+   */
+  private readonly _addressSet?: () => Promise<string[]>;
+
+  constructor(
+    readonly address: string,
+    readonly network: BchNetwork,
+    readonly provider: NetworkProvider,
+    private sign: WcSignFn,
+    addressSet?: () => Promise<string[]>,
+  ) {
     this.pkh = pkhOfAddress(address);
     this.tokenAddress = tokenAddressOf(address, network);
     this.lockingBytecode = lockingOf(address);
+    this._addressSet = addressSet;
   }
 
-  getUtxos(): Promise<Utxo[]> { return this.provider.getUtxos(this.address); }
-  p2pkhUnlocker(): Unlocker { return placeholderP2PKHUnlocker(this.address) as unknown as Unlocker; }
+  async getUtxos(): Promise<AnnotatedUtxo[]> {
+    if (!this._addressSet) {
+      return this.provider.getUtxos(this.address);
+    }
+    const addresses = await this._addressSet();
+    // Fetch UTXOs from all addresses in parallel; tag each with its address
+    const perAddress = await Promise.all(
+      addresses.map(addr =>
+        this.provider.getUtxos(addr).then(utxos =>
+          utxos.map(u => ({ ...u, address: addr } as AnnotatedUtxo))
+        ).catch(() => [] as AnnotatedUtxo[])
+      )
+    );
+    return perAddress.flat();
+  }
+
+  p2pkhUnlocker(utxo?: AnnotatedUtxo): Unlocker {
+    const addr = utxo?.address ?? this.address;
+    return placeholderP2PKHUnlocker(addr) as unknown as Unlocker;
+  }
+
   dockUnlocker(contract: Contract): Unlocker { return contract.unlock.dock(placeholderPublicKey(), placeholderSignature()); }
+
   async send(builder: TransactionBuilder, userPrompt: string): Promise<string> {
     const wcObject = builder.generateWcTransactionObject({ broadcast: true, userPrompt });
     const payload = JSON.parse(stringify(wcObject)) as WcSignRequest;

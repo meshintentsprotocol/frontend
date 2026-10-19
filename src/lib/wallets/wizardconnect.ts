@@ -2,6 +2,7 @@
  * WizardConnect client module for BCH (Nostr relay transport, hdwalletv1 protocol).
  *
  * Phase 1: WizardConnect for BCH
+ * Phase 5: Full HD wallet — all receive and change addresses scanned and signed.
  */
 
 import { DappConnectionManager } from '@wizardconnect/dapp';
@@ -21,6 +22,15 @@ import { checkSigned, broadcast, txidOf } from './bchTx';
 import { WC2SignPayload, WC2SignResult } from '@/context/ExternalBCHWalletProvider';
 import { WalletSignError } from './signRequest';
 import { removeWallet, updateWallet } from './registry';
+import {
+    scanHdWallet,
+    buildLockingMapFromCache,
+    loadHdCache,
+    clearHdCache,
+    scheduleRescan,
+    cancelRescan,
+    type HdScanResult,
+} from './hdScan';
 
 export type WizStatus = 'connected' | 'reconnecting' | 'disconnected';
 
@@ -40,6 +50,8 @@ interface ActiveManager {
     session: WizSession | null;
     status: WizStatus;
     lockingMap: Map<string, { pathName: 'receive' | 'change' | 'defi'; index: number }>;
+    /** HD scan result — available after first scan; null before. */
+    hdScan: HdScanResult | null;
 }
 
 declare global {
@@ -187,6 +199,7 @@ export async function startPairing(network: AppNetwork): Promise<{
         session: null,
         status: 'reconnecting',
         lockingMap: new Map(),
+        hdScan: null,
     };
 
     getManagersMap().set(id, activeRecord);
@@ -195,6 +208,8 @@ export async function startPairing(network: AppNetwork): Promise<{
 
     const cancel = () => {
         isCancelled = true;
+        cancelRescan(id);
+        clearHdCache(id);
         try {
             relay.cleanup();
             manager.destroy();
@@ -208,6 +223,7 @@ export async function startPairing(network: AppNetwork): Promise<{
             if (isCancelled) return;
             try {
                 const { address, lockingBytecodeHex } = deriveReceive0(manager, network);
+                // Seed locking map with receive/0 immediately so signing works before scan completes
                 activeRecord.lockingMap.set(lockingBytecodeHex, { pathName: 'receive', index: 0 });
 
                 const rawIcon = (manager as any).walletIcon ?? (manager as any).metadata?.icon;
@@ -228,6 +244,9 @@ export async function startPairing(network: AppNetwork): Promise<{
                 activeRecord.status = 'connected';
                 emitWizEvent(id, 'connected', session);
                 resolve(session);
+
+                // Kick off the HD scan in the background (don't block pairing)
+                _startHdScan(id, activeRecord);
             } catch (err) {
                 reject(err);
             }
@@ -258,6 +277,43 @@ export async function startPairing(network: AppNetwork): Promise<{
 }
 
 /**
+ * Internal: kick off a full HD scan and update the locking map + schedule rescans.
+ */
+async function _startHdScan(id: string, record: ActiveManager): Promise<void> {
+    const { manager, network } = record;
+    try {
+        // Build provider lazily (import to avoid circular deps)
+        const { electrumProviderFor } = await import('@/lib/bchElectrum');
+        const bchNet = network === 'mainnet' ? 'mainnet' : 'chipnet';
+        const provider = electrumProviderFor(bchNet);
+
+        const cache = loadHdCache(id);
+        // Fast-path: seed locking map from cache immediately
+        if (cache) {
+            const cachedMap = buildLockingMapFromCache(manager, network, cache);
+            for (const [k, v] of cachedMap) record.lockingMap.set(k, v);
+        }
+
+        const result = await scanHdWallet(id, manager, network, provider, cache ?? undefined);
+        // Merge scanned results into the locking map (additive, never remove)
+        for (const [k, v] of result.receive.lockingMap) record.lockingMap.set(k, v);
+        for (const [k, v] of result.change.lockingMap) record.lockingMap.set(k, v);
+        record.hdScan = result;
+        emitWizEvent(id, 'hdscan', result);
+
+        scheduleRescan(id, manager, network, provider, (newResult) => {
+            if (!getManagersMap().has(id)) return;
+            for (const [k, v] of newResult.receive.lockingMap) record.lockingMap.set(k, v);
+            for (const [k, v] of newResult.change.lockingMap) record.lockingMap.set(k, v);
+            record.hdScan = newResult;
+            emitWizEvent(id, 'hdscan', newResult);
+        });
+    } catch (e) {
+        console.warn('[WizardConnect] HD scan failed for', id, e);
+    }
+}
+
+/**
  * Restore an existing WizardConnect session from storage on page load.
  */
 export function restore(id: string, network: AppNetwork): WizSession | null {
@@ -284,8 +340,16 @@ export function restore(id: string, network: AppNetwork): WizSession | null {
     }
 
     const { address, lockingBytecodeHex } = deriveReceive0(manager, network);
+    // Seed locking map with receive/0; HD scan will add the rest
     const lockingMap = new Map<string, { pathName: 'receive' | 'change' | 'defi'; index: number }>();
     lockingMap.set(lockingBytecodeHex, { pathName: 'receive', index: 0 });
+
+    // Build locking map from cache immediately for instant signing
+    const cache = loadHdCache(id);
+    if (cache) {
+        const cachedMap = buildLockingMapFromCache(manager, network, cache);
+        for (const [k, v] of cachedMap) lockingMap.set(k, v);
+    }
 
     const relay = initiateDappRelay(
         ({ client, status }: { client: any; status: any }) => {
@@ -318,9 +382,13 @@ export function restore(id: string, network: AppNetwork): WizSession | null {
         session,
         status: manager.isWalletDiscovered() ? 'connected' : 'reconnecting',
         lockingMap,
+        hdScan: null,
     };
 
     getManagersMap().set(id, activeRecord);
+
+    // Kick off HD scan in the background
+    _startHdScan(id, activeRecord);
 
     manager.on('walletready', () => {
         try {
@@ -356,6 +424,8 @@ export async function disconnect(id: string): Promise<void> {
     const record = getManagersMap().get(id);
     if (!record) return;
 
+    cancelRescan(id);
+
     try {
         await record.manager.sendDisconnect('User disconnected').catch(() => {});
         record.relay?.cleanup?.();
@@ -365,6 +435,67 @@ export async function disconnect(id: string): Promise<void> {
 
     getManagersMap().delete(id);
     getListenersMap().delete(id);
+}
+
+/**
+ * Returns all used addresses (receive + change) for a WizardConnect wallet.
+ * Falls back to just receive/0 if the HD scan hasn't completed yet.
+ */
+export function addressSet(id: string): string[] {
+    const record = getManagersMap().get(id);
+    if (!record) return [];
+
+    const { hdScan, session } = record;
+    if (!hdScan) {
+        // Scan not done yet — return just the primary address
+        return session ? [session.address] : [];
+    }
+
+    const addrs = new Set<string>();
+    // receive/0 is always included
+    if (session) addrs.add(session.address);
+    for (const a of hdScan.receive.addresses) if (a) addrs.add(a);
+    for (const a of hdScan.change.addresses) if (a) addrs.add(a);
+    return Array.from(addrs);
+}
+
+/**
+ * Returns the next unused receive address (index = lastUsedIndex + 1).
+ * Falls back to receive/0 if scan is not done.
+ */
+export function nextUnusedReceiveAddress(id: string, network: AppNetwork): string | null {
+    const record = getManagersMap().get(id);
+    if (!record) return null;
+
+    const { hdScan, manager, session } = record;
+    if (!hdScan) return session?.address ?? null;
+
+    const nextIdx = hdScan.receive.lastUsedIndex + 1;
+    try {
+        const { address } = _deriveAddress(manager, 0, nextIdx, network);
+        return address;
+    } catch {
+        return session?.address ?? null;
+    }
+}
+
+/** Internal: same as deriveReceive0 but for any path/index. */
+function _deriveAddress(
+    manager: DappConnectionManager,
+    childIndex: number,
+    addressIndex: number,
+    network: AppNetwork,
+): { address: string; lockingBytecodeHex: string } {
+    const { encodeCashAddress: eca, encodeLockingBytecodeP2pkh: elb, hash160: h160, binToHex: b2h } =
+        // re-use the already-imported functions from @bitauth/libauth
+        { encodeCashAddress, encodeLockingBytecodeP2pkh, hash160, binToHex };
+    const pk = manager.getPubkey(childIndex, BigInt(addressIndex));
+    if (!pk) throw new Error(`No pubkey at ${childIndex}/${addressIndex}`);
+    const pkh = h160(pk);
+    const prefix = network === 'mainnet' ? 'bitcoincash' : 'bchtest';
+    const { address } = eca({ prefix, type: 'p2pkh', payload: pkh });
+    const lockingBytecodeHex = b2h(elb(pkh)).toLowerCase();
+    return { address, lockingBytecodeHex };
 }
 
 /**

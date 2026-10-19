@@ -7,26 +7,36 @@
  * Phase 4: Portfolio
  */
 
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { Gem } from 'lucide-react';
 import { useActiveAccounts } from '@/hooks/useActiveAccounts';
 import { useWDK } from '@/context/WDKProvider';
 import { tokenAddressOf } from '@/lib/mesh/signer';
-import { useV4Held } from '@/hooks/useMeshV4';
+import { useV4HeldMulti } from '@/hooks/useMeshV4';
 import { MyV4Positions } from '@/components/mesh/v4/MyV4Positions';
+import { addressSet as wizAddressSet } from '@/lib/wallets/wizardconnect';
 
 export function PortfolioNfts() {
     const { bch } = useActiveAccounts();
     const { bchNetwork } = useWDK();
     const isMainnet = bchNetwork === 'mainnet';
 
-    // Token-aware address of whichever BCH wallet is active
-    const holder = bch?.address ? tokenAddressOf(bch.address, isMainnet) : null;
-    const held = useV4Held(holder);
+    // Token-aware addresses of whichever BCH wallet is active (all HD addresses for WizardConnect)
+    const holders = useMemo(() => {
+        if (!bch?.address) return [];
+        if (bch.source === 'wizardconnect' && bch.walletId) {
+            const addrs = wizAddressSet(bch.walletId);
+            return addrs.map(a => tokenAddressOf(a, isMainnet));
+        }
+        return [tokenAddressOf(bch.address, isMainnet)];
+    }, [bch?.address, bch?.source, bch?.walletId, isMainnet]);
+
+    const held = useV4HeldMulti(holders);
     const positions = held.data?.positions ?? [];
     const isLoading = held.isLoading;
 
-    if (!holder) {
+    if (!holders.length) {
         return (
             <div className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-8 text-center">
                 <Gem className="mx-auto h-6 w-6 text-zinc-600" />
@@ -55,7 +65,7 @@ export function PortfolioNfts() {
 
     return (
         <div className="space-y-8">
-            <MyV4Positions holder={holder} />
+            <MyV4Positions holder={holders} />
         </div>
     );
 }

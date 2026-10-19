@@ -20,6 +20,7 @@ import { ExternalWallet } from '@/lib/wallets/types';
 import { defaultWalletColor } from '@/lib/walletStore';
 import { WalletIcon, WalletGlyph } from '../WalletIcon';
 import { WalletLookEditor } from '../WalletLookEditor';
+import { addressSet as wizAddressSet } from '@/lib/wallets/wizardconnect';
 
 interface ConnectedCardProps {
     wallet: ExternalWallet;
@@ -92,7 +93,7 @@ export function ConnectedCard({ wallet, onDone }: ConnectedCardProps) {
             {/* Protocol notes */}
             <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3 text-[11px] text-white/50">
                 {wallet.source === 'wizardconnect' ? (
-                    <span>Cham uses this wallet&apos;s first address.</span>
+                    <span>Cham scans and uses all {wizAddressSet(wallet.id).length} addresses in this HD wallet.</span>
                 ) : wallet.source === 'walletconnect' ? (
                     <span>Only this one address is used.</span>
                 ) : (

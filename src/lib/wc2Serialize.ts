@@ -81,12 +81,21 @@ export interface WC2SignTransactionPayload {
 export async function buildWC2SourceOutputs(
     utxos: any[],
     selectedIndices: number[],
-    walletAddress: string,
+    walletAddress: string | ((utxo: any) => string),
 ): Promise<WC2SourceOutput[]> {
-    const lockingBytecode = await addrToLockingBytecode(walletAddress);
+    const getAddress = typeof walletAddress === 'function' ? walletAddress : (u: any) => (u?.address ?? walletAddress);
+    const bytecodeCache = new Map<string, string>();
+    const getBytecode = async (addr: string) => {
+        if (!bytecodeCache.has(addr)) {
+            bytecodeCache.set(addr, await addrToLockingBytecode(addr));
+        }
+        return bytecodeCache.get(addr)!;
+    };
 
-    return selectedIndices.map((idx) => {
+    return Promise.all(selectedIndices.map(async (idx) => {
         const utxo = utxos[idx];
+        const addr = getAddress(utxo);
+        const lockingBytecode = await getBytecode(addr);
         const sourceOutput: WC2SourceOutput = {
             outpointIndex: utxo.vout ?? 0,
             outpointTransactionHash: txidToHash(utxo.txid),
@@ -112,7 +121,7 @@ export async function buildWC2SourceOutputs(
         }
 
         return sourceOutput;
-    });
+    }));
 }
 
 /**

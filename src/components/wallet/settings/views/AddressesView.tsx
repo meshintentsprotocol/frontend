@@ -3,6 +3,8 @@ import { useWDK } from '@/context/WDKProvider';
 import { useBCHWallet } from '@/context/BCHWalletProvider';
 import { useExternalBCHWallet } from '@/context/ExternalBCHWalletProvider';
 import { useBchAddressBalance } from '@/hooks/useBchAddressBalance';
+import { useBchWalletBalance } from '@/hooks/useBchWalletBalance';
+import { addressSet as wizAddressSet } from '@/lib/wallets/wizardconnect';
 import { Copy, ExternalLink, KeyRound, Wallet, Check, Loader2, Plus, WifiOff, Wifi } from 'lucide-react';
 import { notifyToast as toast } from '@/lib/notify-toast';
 import { cn } from '@/lib/utils';
@@ -306,8 +308,8 @@ interface ExternalWalletCardProps {
 }
 
 function ExternalWalletCard({ wallet, isMainnet, onDisconnect }: ExternalWalletCardProps) {
-    const { data: balData, isLoading } = useBchAddressBalance({
-        address: wallet.address,
+    const { data: balData, isLoading } = useBchWalletBalance({
+        wallet,
         isMainnet,
         refetchMs: 15_000,
     });
@@ -325,6 +327,7 @@ function ExternalWalletCard({ wallet, isMainnet, onDisconnect }: ExternalWalletC
         : `https://chipnet.chaingraph.cash/address/${wallet.address}`;
 
     const sourceLabel = wallet.source === 'wizardconnect' ? 'WizardConnect' : wallet.source === 'extension' ? 'Extension' : 'WalletConnect';
+    const hdCount = wallet.source === 'wizardconnect' ? wizAddressSet(wallet.id).length : 1;
 
     return (
         <div className="relative rounded-xl bg-white/[0.02] hover:bg-white/[0.04] border border-blue-500/15 hover:border-blue-500/25 p-3 transition-all duration-200 shadow-sm hover:-translate-y-[1px] shadow-blue-500/5">
@@ -350,6 +353,11 @@ function ExternalWalletCard({ wallet, isMainnet, onDisconnect }: ExternalWalletC
                         <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded border bg-emerald-500/10 text-emerald-300 border-emerald-500/25 uppercase tracking-wider">
                             {isMainnet ? 'Mainnet' : 'Chipnet'}
                         </span>
+                        {wallet.source === 'wizardconnect' && (
+                            <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded border bg-blue-500/10 text-blue-300 border-blue-500/25">
+                                {hdCount} {hdCount === 1 ? 'address' : 'addresses'}
+                            </span>
+                        )}
                     </div>
                     <div className="text-[10px] font-mono text-white/50 truncate" title={wallet.address}>
                         {formatAddr(wallet.address)}

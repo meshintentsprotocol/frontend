@@ -27,7 +27,7 @@ import {
     Popover, PopoverContent, PopoverTrigger,
 } from '@/components/ui/popover';
 import { useActiveWallet } from '@/hooks/useActiveWallet';
-import { useBchAddressBalance } from '@/hooks/useBchAddressBalance';
+import { useBchWalletBalance } from '@/hooks/useBchWalletBalance';
 import { ActiveWalletChip } from '@/components/wallet/ActiveWalletChip';
 import { QuoteCard, QuoteRow, QuoteWarning } from './QuoteCard';
 import { useExternalBCHWallet } from '@/context/ExternalBCHWalletProvider';
@@ -160,9 +160,9 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
         seenOrderIds.current = ids;
     }, [pendingOrders]);
 
-    // An external wallet's holdings are read from chain by address; the built-in wallet's come from bchWallet.
-    const extBalance = useBchAddressBalance({
-        address: isMainActive ? null : (activeExtWallet?.address ?? null),
+    // An external wallet's holdings are read from chain; WizardConnect aggregates across all HD addresses.
+    const extBalance = useBchWalletBalance({
+        wallet: isMainActive ? null : (activeExtWallet ?? null),
         isMainnet: wdk.bchNetwork === 'mainnet',
         refetchMs: 15_000,
     });

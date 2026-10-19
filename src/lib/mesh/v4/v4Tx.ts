@@ -30,7 +30,7 @@ export async function buildSeed(signer: MeshSigner, feeRate = DEFAULT_FEE_RATE):
   const utxos = (await signer.getUtxos()).filter(plain).sort((a, b) => (b.satoshis > a.satoshis ? 1 : -1));
   const first = utxos[0];
   if (!first) throw new PoolTxError('The wallet has no BCH to make a seed output from', 'INSUFFICIENT_FUNDS');
-  return balance(signer, [{ utxo: first, unlocker: signer.p2pkhUnlocker(), p2pkh: true }], [], utxos.slice(1), feeRate,
+  return balance(signer, [{ utxo: first, unlocker: signer.p2pkhUnlocker(first), p2pkh: true }], [], utxos.slice(1), feeRate,
     { to: signer.address, at: 0, min: 1000n });
 }
 
@@ -45,12 +45,12 @@ export async function buildGenesis(signer: MeshSigner, plan: V4Plan, seed: Utxo,
   if (seed.vout !== 0 || seed.txid !== plan.category || seed.token) throw new PoolTxError('the seed must be a plain output #0 whose txid is the plan\'s category', 'INVALID_AMOUNT');
   const utxos = await signer.getUtxos();
   const outs = planOutputs(plan.outputs);
-  const ins: In[] = [{ utxo: seed, unlocker: signer.p2pkhUnlocker(), p2pkh: true }];
+  const ins: In[] = [{ utxo: seed, unlocker: signer.p2pkhUnlocker(seed), p2pkh: true }];
   const tokenCat = plan.commitment.tokenCat;
   const tokens = BigInt(plan.totals.tokens);
   if (tokens > 0n) {
     const { picked, change } = selectTokens(utxos, tokenCat, tokens);
-    for (const u of picked) ins.push({ utxo: u, unlocker: signer.p2pkhUnlocker(), p2pkh: true });
+    for (const u of picked) ins.push({ utxo: u, unlocker: signer.p2pkhUnlocker(u), p2pkh: true });
     if (change > 0n) outs.push({ to: signer.tokenAddress, amount: TOKEN_DUST, token: { category: tokenCat, amount: change } });
   }
   const others = utxos.filter(u => plain(u) && !(u.txid === seed.txid && u.vout === seed.vout));
@@ -74,7 +74,7 @@ const utxoOf = (i: { txid: string; vout: number; satoshis: string; token?: V4Tok
  */
 export function buildWithdrawV4(signer: MeshSigner, w: V4WithdrawPlan): BuiltTx {
   const ins: In[] = w.inputs.map(i => (i.role === 'nft'
-    ? { utxo: utxoOf(i), unlocker: signer.p2pkhUnlocker(), p2pkh: true }
+    ? { utxo: utxoOf(i), unlocker: signer.p2pkhUnlocker(utxoOf(i)), p2pkh: true }
     : { utxo: utxoOf(i), unlocker: fixedUnlocker(i.lockingBytecode, i.unlockingBytecode!), p2pkh: false }));
   const outs: Out[] = w.outputs.map(o => ({ to: hexToBin(o.lockingBytecode), amount: BigInt(o.valueSatoshis), ...(o.token ? { token: tokenOf(o.token) } : {}) }));
   // no wallet inputs and no change: the plan is balanced, and the holder signs only the NFT input
@@ -94,7 +94,7 @@ export async function buildTransferV4(signer: MeshSigner, nft: Utxo, to: string,
   try { lock = lockingBytecodeOf(to); } catch { throw new PoolTxError('not a valid address', 'INVALID_AMOUNT'); }
   const outs: Out[] = [{ to: lock, amount: nft.satoshis, token: { ...nft.token, category: normCategory(nft.token.category) } }];
   const others = (await signer.getUtxos()).filter(plain);
-  return balance(signer, [{ utxo: nft, unlocker: signer.p2pkhUnlocker(), p2pkh: true }], outs, others, feeRate);
+  return balance(signer, [{ utxo: nft, unlocker: signer.p2pkhUnlocker(nft), p2pkh: true }], outs, others, feeRate);
 }
 
 export interface MigrateClose { contract: Contract; utxos: Utxo[] }
@@ -106,7 +106,7 @@ export interface MigrateClose { contract: Contract; utxos: Utxo[] }
  */
 export async function buildMigrate(signer: MeshSigner, m: V4MigratePlan, seed: Utxo, close: MigrateClose[], feeRate = DEFAULT_FEE_RATE): Promise<BuiltTx> {
   if (seed.vout !== 0 || seed.txid !== m.v4.category || seed.token) throw new PoolTxError('the seed must be a plain output #0 whose txid is the plan\'s category', 'INVALID_AMOUNT');
-  const ins: In[] = [{ utxo: seed, unlocker: signer.p2pkhUnlocker(), p2pkh: true }];
+  const ins: In[] = [{ utxo: seed, unlocker: signer.p2pkhUnlocker(seed), p2pkh: true }];
   const docked = new Map<string, bigint>();
   for (const c of close) for (const u of c.utxos) {
     ins.push({ utxo: u, unlocker: signer.dockUnlocker(c.contract), p2pkh: false });

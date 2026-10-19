@@ -29,6 +29,8 @@ export interface FundingWallet {
   wif?: string;
   /** External wallet: sign and broadcast through the wallet. */
   signExternal?: (payload: WC2SignTransactionPayload) => Promise<{ signedTransactionHash: string }>;
+  /** Optional multi-address supplier for HD wallets */
+  addressSet?: () => Promise<string[]>;
 }
 
 // Same size heuristic as the single-intent funding path: 2 sat/byte,
@@ -42,7 +44,20 @@ export async function fundCovenants(wallet: FundingWallet, outputs: FundingOutpu
   if (!wallet.wif && !wallet.signExternal) throw new Error('no signer for the active wallet');
   const { TransactionBuilder, ElectrumNetworkProvider, SignatureTemplate } = await import('cashscript');
   const provider = new ElectrumNetworkProvider(wallet.network);
-  const utxos: any[] = (await provider.getUtxos(wallet.address)).filter((u: any) => !u.token?.nft);
+
+  const getUtxos = async () => {
+    if (wallet.addressSet) {
+      const addresses = await wallet.addressSet();
+      const all = await Promise.all(addresses.map(async addr => {
+        const uList = await provider.getUtxos(addr);
+        return uList.map((u: any) => ({ ...u, address: addr }));
+      }));
+      return all.flat();
+    }
+    const uList = await provider.getUtxos(wallet.address);
+    return uList.map((u: any) => ({ ...u, address: wallet.address }));
+  };
+  const utxos: any[] = (await getUtxos()).filter((u: any) => !u.token?.nft);
 
   // Tokens needed per category, and the token UTXOs that cover them.
   const needTok = new Map<string, bigint>();
@@ -72,11 +87,23 @@ export async function fundCovenants(wallet: FundingWallet, outputs: FundingOutpu
   const fee = feeFor(inputs.length, nOut());
   const change = inSats - outSats - fee;
 
-  const unlocker = wallet.wif
-    ? new SignatureTemplate(wallet.wif).unlockP2PKH()
-    : await (await import('@/lib/wc2Serialize')).getDummyUnlocker(wallet.address);
+  const { getDummyUnlocker } = await import('@/lib/wc2Serialize');
+  const dummyMap = new Map<string, any>();
   const builder = new TransactionBuilder({ provider });
-  builder.addInputs(inputs, unlocker);
+  for (const u of inputs) {
+    const inputAddr = u.address || wallet.address;
+    let inputUnlocker;
+    if (wallet.wif) {
+      inputUnlocker = new SignatureTemplate(wallet.wif).unlockP2PKH();
+    } else {
+      if (!dummyMap.has(inputAddr)) {
+        dummyMap.set(inputAddr, await getDummyUnlocker(inputAddr));
+      }
+      inputUnlocker = dummyMap.get(inputAddr);
+    }
+    builder.addInput(u, inputUnlocker);
+  }
+
   for (const o of outputs) {
     builder.addOutput(o.token
       ? { to: o.to, amount: BigInt(o.satoshis), token: { category: o.token.category, amount: BigInt(o.token.amount) } }

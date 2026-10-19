@@ -4,6 +4,7 @@ import { useBCHWallet } from '@/context/BCHWalletProvider';
 import { useExternalBCHWallet } from '@/context/ExternalBCHWalletProvider';
 import { useActiveWallet } from '@/hooks/useActiveWallet';
 import { fundCovenants, type FundingOutput } from '@/lib/fundCovenants';
+import { addressSet as wizAddressSet } from '@/lib/wallets/wizardconnect';
 
 /** Fund a server funding list in one transaction from the active BCH wallet (main or external). */
 export function useFundCovenants() {
@@ -24,10 +25,14 @@ export function useFundCovenants() {
     const address = activeExtWallet.address.includes(':')
       ? activeExtWallet.address
       : `${network === 'mainnet' ? 'bitcoincash' : 'bchtest'}:${activeExtWallet.address}`;
+    const addressSet = activeExtWallet.source === 'wizardconnect'
+      ? () => Promise.resolve(wizAddressSet(activeExtWallet.id))
+      : undefined;
     return fundCovenants({
       network,
       address,
       signExternal: payload => extBCH.signTransaction(activeExtWallet.id, payload as any),
+      addressSet,
     }, outputs, prompt);
   }, [wdk.bchNetwork, bchWallet, extBCH, activeWalletId, isMainActive, activeExtWallet]);
 }

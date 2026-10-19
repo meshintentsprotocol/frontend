@@ -91,7 +91,7 @@ export function balance(
     if (!next) {
       throw new PoolTxError(`Not enough BCH: short by ${(-changeAmt + minChange).toString()} sats (including the network fee)`, 'INSUFFICIENT_FUNDS');
     }
-    chosen.push({ utxo: next, unlocker: signer.p2pkhUnlocker(), p2pkh: true });
+    chosen.push({ utxo: next, unlocker: signer.p2pkhUnlocker(next), p2pkh: true });
   }
 }
 
@@ -150,7 +150,7 @@ export async function buildPayment(signer: MeshSigner, outs: Out[], feeRate = DE
   const ins: In[] = [];
   for (const [category, amount] of need) {
     const { picked, change } = selectTokens(utxos, category, amount);
-    for (const u of picked) ins.push({ utxo: u, unlocker: signer.p2pkhUnlocker(), p2pkh: true });
+    for (const u of picked) ins.push({ utxo: u, unlocker: signer.p2pkhUnlocker(u), p2pkh: true });
     if (change > 0n) all.push({ to: signer.tokenAddress, amount: TOKEN_DUST, token: { category, amount: change } });
   }
   return balance(signer, ins, all, utxos.filter(u => !u.token), feeRate);

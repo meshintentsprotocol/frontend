@@ -7,8 +7,9 @@ import { ArrowDownLeft, Check, Copy, ExternalLink } from 'lucide-react';
 import { notifyToast as toast } from '@/lib/notify-toast';
 import { cn } from '@/lib/utils';
 import { Chameleon, type ChamMood } from '@/components/wallet/Chameleon';
-
 import { useActiveAccounts } from '@/hooks/useActiveAccounts';
+import { nextUnusedReceiveAddress } from '@/lib/wallets/wizardconnect';
+import type { AppNetwork } from '@/lib/wallets/types';
 
 /**
  * The token-aware form of a BCH address (same key, prefix `z…`/`r…`): required
@@ -36,6 +37,8 @@ interface ReceiveChain {
     icon: string | null;
     color: string;
     explorerUrl?: string;
+    /** For WizardConnect HD wallets: informational note shown in the QR caption. */
+    hdNote?: string;
 }
 
 export function ReceiveModal({ children }: { children?: React.ReactNode }) {
@@ -47,7 +50,17 @@ export function ReceiveModal({ children }: { children?: React.ReactNode }) {
     /** For BCH: show the plain address or the token-aware one (CashTokens). */
     const [bchMode, setBchMode] = useState<'bch' | 'tokens'>('bch');
 
-    const bchAddr = activeAccounts.bch?.address || wdk.bchAddress;
+    const bchAccount = activeAccounts.bch;
+
+    // For WizardConnect HD wallets: show the next unused receive address
+    const bchNetwork: AppNetwork = isMainnet ? 'mainnet' : 'testnet';
+    const bchAddr = useMemo(() => {
+        if (bchAccount?.kind === 'wizardconnect' && bchAccount.walletId) {
+            return nextUnusedReceiveAddress(bchAccount.walletId, bchNetwork) ?? bchAccount.address ?? wdk.bchAddress;
+        }
+        return bchAccount?.address || wdk.bchAddress;
+    }, [bchAccount, bchNetwork, wdk.bchAddress]);
+
     const evmAddr = activeAccounts.evm?.address || wdk.evmAddress;
     const solAddr = activeAccounts.solana?.address || wdk.solanaAddress;
     const btcAddr = activeAccounts.btc?.address || wdk.btcAddress;
@@ -57,6 +70,8 @@ export function ReceiveModal({ children }: { children?: React.ReactNode }) {
             key: 'bch', label: 'Bitcoin Cash', walletLabel: activeAccounts.bch?.label ?? 'Cham Wallet',
             sublabel: isMainnet ? 'Mainnet · BCH, CashTokens' : 'Chipnet · BCH, CashTokens',
             address: bchAddr, icon: '/logos/bitcoin-cash-bch-logo.svg', color: '#0ac18e',
+            /** For WizardConnect wallets, the sublabel shows how many addresses are active. */
+            hdNote: bchAccount?.kind === 'wizardconnect' ? '(HD wallet — next unused receive address)' : undefined,
             explorerUrl: isMainnet ? `https://blockchair.com/bitcoin-cash/address/${bchAddr}` : `https://chipnet.imaginary.cash/address/${bchAddr}`,
         },
         evmAddr && {
@@ -158,8 +173,13 @@ export function ReceiveModal({ children }: { children?: React.ReactNode }) {
                             </div>
                             <p className="mt-3 text-center text-[11px] text-white/45">
                                 {active.key === 'bch'
-                                    ? (tokensView ? `${isMainnet ? 'Mainnet' : 'Chipnet'} · token-aware address — receives CashTokens and BCH` : `${isMainnet ? 'Mainnet' : 'Chipnet'} · BCH address — works with any wallet`)
+                                    ? (tokensView
+                                        ? `${isMainnet ? 'Mainnet' : 'Chipnet'} · token-aware address — receives CashTokens and BCH`
+                                        : `${isMainnet ? 'Mainnet' : 'Chipnet'} · BCH address — works with any wallet`)
                                     : active.sublabel}
+                                {active.key === 'bch' && active.hdNote && (
+                                    <span className="block mt-0.5 text-[10px] text-white/30">{active.hdNote}</span>
+                                )}
                             </p>
                         </div>
 

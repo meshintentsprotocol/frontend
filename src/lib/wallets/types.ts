@@ -5,6 +5,11 @@
 
 export type ChainFamily = 'bch' | 'evm' | 'solana' | 'btc';
 export type AppNetwork = 'mainnet' | 'testnet'; // the app's mode; testnet = chipnet / Sepolias / devnet / BTC testnet
+export const AppNetwork = {
+    MAINNET: 'mainnet' as const,
+    TESTNET: 'testnet' as const,
+    CHIPNET: 'testnet' as const,
+} as const;
 export type ExternalSource = 'walletconnect' | 'wizardconnect' | 'extension' | 'appkit'; // appkit: EVM / Solana / Bitcoin (P6-P8)
 
 export interface ExternalWallet {
