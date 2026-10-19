@@ -43,7 +43,7 @@ const CHAINS: ChainOption[] = [
         description: 'MetaMask, Rabby, Coinbase and mobile wallets · Ethereum, Base, Arbitrum, Optimism, Arc, BNB',
         icon: 'eth',
         accent: '#6366f1',
-        available: false,
+        available: true,
     },
     {
         family: 'solana',
@@ -51,7 +51,7 @@ const CHAINS: ChainOption[] = [
         description: 'Phantom, Solflare, Backpack and mobile wallets',
         icon: 'solana',
         accent: '#a855f7',
-        available: false,
+        available: true,
     },
     {
         family: 'btc',

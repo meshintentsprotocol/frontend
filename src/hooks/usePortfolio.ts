@@ -18,8 +18,8 @@
 
 import { useMemo, useCallback, useRef, useEffect } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
-import { useConnection } from '@solana/wallet-adapter-react';
 import { PublicKey } from '@solana/web3.js';
+import { swapServerApiFor } from '@/swap-server/api';
 import { useWDK } from '@/context/WDKProvider';
 import { getEvmConfig, USDT_BSC, USDT_SEPOLIA, USDC_SEPOLIA, USDC_BSC } from '@/lib/intentHTLC';
 import { usePrices } from '@/hooks/usePrices';
@@ -82,7 +82,6 @@ export function usePortfolio(options?: { pollingMs?: number; scope?: 'main' | 'a
     const pollingMs = options?.pollingMs ?? 0;
     const refetchInterval = pollingMs > 0 ? pollingMs : (false as const);
 
-    const { connection: solanaConnection } = useConnection();
     const { evmAddress, solanaAddress, movementAddress, bchNetwork, isInitialized: wdkConnected, bchAddress, btcAddress, btcAccount } = useWDK();
     const isMainnet = bchNetwork === 'mainnet';
 
@@ -111,13 +110,13 @@ export function usePortfolio(options?: { pollingMs?: number; scope?: 'main' | 'a
     const { prices, isLoading: pricesLoading, isFetching: pricesFetching } = usePrices();
 
     // ── EVM (Sepolia testnet / BSC mainnet) ──────────────────────────────────
-    const evmKey = ['evm-balances', evmAddress ?? '', isMainnet] as const;
+    const evmKey = ['evm-balances', currentEvmAddress ?? '', isMainnet] as const;
     const evmQuery = useQuery<EvmBalances>({
         queryKey: evmKey,
-        enabled: !!evmAddress,
+        enabled: !!currentEvmAddress,
         staleTime: 5_000,
         refetchInterval,
-        placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[1] === (evmAddress ?? '') ? prev : undefined),
+        placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[1] === (currentEvmAddress ?? '') ? prev : undefined),
         initialData: () => readPersisted<EvmBalances>([...evmKey])?.data,
         initialDataUpdatedAt: () => readPersisted([...evmKey])?.updatedAt,
         queryFn: async (): Promise<EvmBalances> => {
@@ -129,9 +128,9 @@ export function usePortfolio(options?: { pollingMs?: number; scope?: 'main' | 'a
             const balanceOf = ['function balanceOf(address) view returns (uint256)'];
 
             const [nativeWei, usdtRaw, usdcRaw] = await Promise.all([
-                provider.getBalance(evmAddress!),
-                new Contract(usdtContract, balanceOf, provider).balanceOf(evmAddress!),
-                new Contract(usdcContract, balanceOf, provider).balanceOf(evmAddress!),
+                provider.getBalance(currentEvmAddress!),
+                new Contract(usdtContract, balanceOf, provider).balanceOf(currentEvmAddress!),
+                new Contract(usdcContract, balanceOf, provider).balanceOf(currentEvmAddress!),
             ]);
 
             return {
@@ -143,32 +142,68 @@ export function usePortfolio(options?: { pollingMs?: number; scope?: 'main' | 'a
     });
 
     // ── Solana ───────────────────────────────────────────────────────────────
-    const solKey = ['sol-balances', solanaAddress ?? ''] as const;
+    const solKey = ['sol-balances', currentSolanaAddress ?? '', isMainnet] as const;
     const solQuery = useQuery<SolBalances>({
         queryKey: solKey,
-        enabled: !!solanaAddress,
+        enabled: !!currentSolanaAddress,
         staleTime: 5_000,
         refetchInterval,
-        placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[1] === (solanaAddress ?? '') ? prev : undefined),
+        placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[1] === (currentSolanaAddress ?? '') ? prev : undefined),
         initialData: () => readPersisted<SolBalances>([...solKey])?.data,
         initialDataUpdatedAt: () => readPersisted([...solKey])?.updatedAt,
         queryFn: async (): Promise<SolBalances> => {
-            const owner = new PublicKey(solanaAddress!);
-            const [lamports, parsed] = await Promise.all([
-                solanaConnection.getBalance(owner),
-                solanaConnection.getParsedTokenAccountsByOwner(owner, { programId: SOL_TOKEN_PROGRAM_ID }),
-            ]);
+            if (!currentSolanaAddress) return { sol: 0, usdc: 0, usdt: 0 };
 
-            let usdc = 0;
-            let usdt = 0;
-            for (const account of parsed.value) {
-                const info = account.account.data.parsed.info;
-                const uiAmount = info.tokenAmount.uiAmount || 0;
-                if (SOL_USDC_MINTS.includes(info.mint)) usdc += uiAmount;
-                if (info.mint === SOL_USDT_MINT) usdt += uiAmount;
+            if (isMainnet) {
+                // Route through swap server on mainnet (public RPC yields 403 to browsers)
+                try {
+                    const api = swapServerApiFor(true);
+                    const res = await api.getSolBalances(currentSolanaAddress);
+                    let sol = 0;
+                    let usdc = 0;
+                    let usdt = 0;
+                    for (const b of res.balances || []) {
+                        if (b.mint === 'native' || b.symbol === 'SOL') {
+                            sol = b.uiAmount || 0;
+                        } else if (SOL_USDC_MINTS.includes(b.mint) || b.symbol === 'USDC') {
+                            usdc += b.uiAmount || 0;
+                        } else if (b.mint === SOL_USDT_MINT || b.symbol === 'USDT') {
+                            usdt += b.uiAmount || 0;
+                        }
+                    }
+                    return { sol, usdc, usdt };
+                } catch {
+                    // Fallback to getChainBalance
+                    try {
+                        const api = swapServerApiFor(true);
+                        const b = await api.getChainBalance('solana', currentSolanaAddress);
+                        return { sol: b.gasAmount ? Number(b.gasAmount) : 0, usdc: b.usdcAmount ? Number(b.usdcAmount) : 0, usdt: 0 };
+                    } catch {
+                        return { sol: 0, usdc: 0, usdt: 0 };
+                    }
+                }
+            } else {
+                // Devnet: connect directly via Connection to VITE_SOLANA_RPC_URL or public devnet
+                const { Connection } = await import('@solana/web3.js');
+                const solRpc = import.meta.env.VITE_SOLANA_RPC_URL || 'https://api.devnet.solana.com';
+                const connection = new Connection(solRpc, 'confirmed');
+                const owner = new PublicKey(currentSolanaAddress);
+                const [lamports, parsed] = await Promise.all([
+                    connection.getBalance(owner).catch(() => 0),
+                    connection.getParsedTokenAccountsByOwner(owner, { programId: SOL_TOKEN_PROGRAM_ID }).catch(() => ({ value: [] })),
+                ]);
+
+                let usdc = 0;
+                let usdt = 0;
+                for (const account of parsed.value) {
+                    const info = account.account.data.parsed.info;
+                    const uiAmount = info.tokenAmount.uiAmount || 0;
+                    if (SOL_USDC_MINTS.includes(info.mint)) usdc += uiAmount;
+                    if (info.mint === SOL_USDT_MINT) usdt += uiAmount;
+                }
+
+                return { sol: lamports / 1e9, usdc, usdt };
             }
-
-            return { sol: lamports / 1e9, usdc, usdt };
         },
     });
 
@@ -538,16 +573,16 @@ export function usePortfolio(options?: { pollingMs?: number; scope?: 'main' | 'a
     }, [history]);
 
     const refetch = useCallback(() => {
-        evmQuery.refetch();
-        solQuery.refetch();
-        movementQuery.refetch();
-        bchQuery.refetch();
-        extQuery.refetch();
-        btcQuery.refetch();
+        if (currentEvmAddress) evmQuery.refetch();
+        if (currentSolanaAddress) solQuery.refetch();
+        if (movementAddress) movementQuery.refetch();
+        if (bchOwner) bchQuery.refetch();
+        if (extBchActive) extQuery.refetch();
+        if (currentBtcAddress) btcQuery.refetch();
         cauldronQuery.refetch();
         swapServer.refetch();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [evmQuery.refetch, solQuery.refetch, movementQuery.refetch, bchQuery.refetch, extQuery.refetch, btcQuery.refetch, cauldronQuery.refetch]);
+    }, [currentEvmAddress, currentSolanaAddress, movementAddress, bchOwner, extBchActive, currentBtcAddress, evmQuery.refetch, solQuery.refetch, movementQuery.refetch, bchQuery.refetch, extQuery.refetch, btcQuery.refetch, cauldronQuery.refetch]);
 
     const anyChainLoading = extBchActive ? (extQuery.isLoading || pricesLoading) :
         (!!currentEvmAddress && evmQuery.isLoading) ||

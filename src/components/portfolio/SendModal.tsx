@@ -20,6 +20,10 @@ import { AppNetwork } from '@/lib/wallets/types';
 import {
     getEvmSignerForChain, readBalances, sendChains, tokensForChain, type SendChain, type SendToken,
 } from './sendChains';
+import { useActiveEvmSender } from '@/lib/wallets/evmSender';
+import { useActiveSolanaSigner } from '@/lib/wallets/solanaSigner';
+import { evmSignerFor, toBase64 } from '@/swap-server/signers';
+import { Keypair } from '@solana/web3.js';
 
 // ============================================================================
 // Send — pick a network, then a token, then send. EVM is one entry per chain.
@@ -46,6 +50,14 @@ export function SendModal({ children }: { children?: React.ReactNode }) {
     const meshSigner = useMeshSigner();
     const { tokens: portfolioTokens } = usePortfolio({ scope: 'active' });
     const isMainnet = wdk.bchNetwork === 'mainnet';
+    const evmSenderResult = useActiveEvmSender(
+        wdk.evmSigner ? (c => evmSignerFor(c, wdk.evmSigner!)) : undefined,
+        activeAccounts.evm?.address || wdk.evmAddress,
+    );
+    const localKeypair = useMemo(() => {
+        try { return wdk.solanaSigner?.secretKey ? Keypair.fromSecretKey(wdk.solanaSigner.secretKey) : undefined; } catch { return undefined; }
+    }, [wdk.solanaSigner?.secretKey]);
+    const solanaSigner = useActiveSolanaSigner(localKeypair);
 
     const [isOpen, setIsOpen] = useState(false);
     const [step, setStep] = useState<Step>('chain');
@@ -165,18 +177,28 @@ export function SendModal({ children }: { children?: React.ReactNode }) {
         let hash = '';
         try {
             if (chain.family === 'evm') {
-                if (!wdk.evmSigner) throw new Error('EVM signer not available');
+                if (!evmSenderResult.sender) throw new Error(evmSenderResult.reason || 'EVM sender not available');
+                const cfg = getEVMChainConfig(chain.evmKey!, isMainnet);
+                if (!cfg) throw new Error(`Unknown EVM chain: ${chain.evmKey}`);
                 const { ethers } = await import('ethers');
-                const signer = await getEvmSignerForChain(wdk.evmSigner, chain.evmKey!, isMainnet);
                 if (!token.address) {
-                    const tx = await signer.sendTransaction({ to: recipient, value: ethers.parseEther(amount) });
-                    await tx.wait();
-                    hash = tx.hash;
+                    const sent = await evmSenderResult.sender.send(cfg.chainId, {
+                        to: recipient,
+                        data: '0x',
+                        value: ethers.parseEther(amount),
+                    });
+                    await sent.wait();
+                    hash = sent.hash;
                 } else {
-                    const erc = new ethers.Contract(token.address, ['function transfer(address,uint256) returns (bool)'], signer);
-                    const tx = await erc.transfer(recipient, ethers.parseUnits(amount, token.decimals));
-                    await tx.wait();
-                    hash = tx.hash;
+                    const ercInterface = new ethers.Interface(['function transfer(address,uint256) returns (bool)']);
+                    const data = ercInterface.encodeFunctionData('transfer', [recipient, ethers.parseUnits(amount, token.decimals)]);
+                    const sent = await evmSenderResult.sender.send(cfg.chainId, {
+                        to: token.address,
+                        data,
+                        value: 0n,
+                    });
+                    await sent.wait();
+                    hash = sent.hash;
                 }
             } else if (chain.family === 'bch') {
                 if (!meshSigner.signer) throw new Error(meshSigner.unavailable || 'BCH signer not available');
@@ -200,16 +222,68 @@ export function SendModal({ children }: { children?: React.ReactNode }) {
                     );
                 }
             } else if (chain.family === 'sol') {
-                if (!wdk.solanaSigner?.secretKey) throw new Error('Solana signer not available');
-                const { Keypair, Connection, PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL } = await import('@solana/web3.js');
-                const keypair = Keypair.fromSecretKey(wdk.solanaSigner.secretKey);
-                const connection = new Connection('https://api.devnet.solana.com', 'confirmed');
-                const tx = new Transaction().add(SystemProgram.transfer({ fromPubkey: keypair.publicKey, toPubkey: new PublicKey(recipient), lamports: Math.floor(value * LAMPORTS_PER_SOL) }));
+                if (!solanaSigner) throw new Error('Solana signer not available');
+                const { PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL, Connection } = await import('@solana/web3.js');
+                const solRpc = import.meta.env.VITE_SOLANA_RPC_URL || 'https://api.devnet.solana.com';
+                const connection = new Connection(solRpc, 'confirmed');
+
+                const fromPubkey = new PublicKey(solanaSigner.address);
+                const toPubkey = new PublicKey(recipient);
+
+                const tx = new Transaction({ feePayer: fromPubkey });
                 const { blockhash } = await connection.getLatestBlockhash();
                 tx.recentBlockhash = blockhash;
-                tx.feePayer = keypair.publicKey;
-                hash = await connection.sendTransaction(tx, [keypair]);
-                await connection.confirmTransaction(hash, 'confirmed');
+
+                const isNative = token.symbol === 'SOL' || !token.address;
+                if (isNative) {
+                    tx.add(
+                        SystemProgram.transfer({
+                            fromPubkey,
+                            toPubkey,
+                            lamports: Math.floor(value * LAMPORTS_PER_SOL),
+                        })
+                    );
+                } else {
+                    const {
+                        getAssociatedTokenAddressSync,
+                        createAssociatedTokenAccountInstruction,
+                        createTransferCheckedInstruction,
+                    } = await import('@solana/spl-token');
+
+                    const mintPubkey = new PublicKey(token.address!);
+                    const fromAta = getAssociatedTokenAddressSync(mintPubkey, fromPubkey);
+                    const toAta = getAssociatedTokenAddressSync(mintPubkey, toPubkey);
+
+                    const toAtaInfo = await connection.getAccountInfo(toAta);
+                    if (!toAtaInfo) {
+                        tx.add(
+                            createAssociatedTokenAccountInstruction(
+                                fromPubkey,
+                                toAta,
+                                toPubkey,
+                                mintPubkey
+                            )
+                        );
+                    }
+
+                    const rawAmount = BigInt(Math.floor(value * Math.pow(10, token.decimals)));
+                    tx.add(
+                        createTransferCheckedInstruction(
+                            fromAta,
+                            mintPubkey,
+                            toAta,
+                            fromPubkey,
+                            rawAmount,
+                            token.decimals
+                        )
+                    );
+                }
+
+                const base64Tx = toBase64(tx.serialize({ requireAllSignatures: false }));
+                const signed = await solanaSigner.sign(base64Tx);
+
+                hash = await connection.sendRawTransaction(signed.raw);
+                await connection.confirmTransaction(hash, 'confirmed').catch(() => {});
             } else if (chain.family === 'move') {
                 if (!wdk.movementAccount) throw new Error('Movement account not available');
                 const { Aptos, AptosConfig, Network, AccountAddress } = await import('@aptos-labs/ts-sdk');

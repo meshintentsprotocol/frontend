@@ -12,6 +12,9 @@ import { Keypair } from '@solana/web3.js';
 import { useWDK } from '@/context/WDKProvider';
 import { notifyToast } from '@/lib/notify-toast';
 import { ActivityService } from '@/lib/activity';
+import { useActiveAccounts } from '@/hooks/useActiveAccounts';
+import { createAppKitEvmSender, createLocalEvmSender, type EvmSender } from '@/lib/wallets/evmSender';
+import { useActiveSolanaSigner } from '@/lib/wallets/solanaSigner';
 import { describeError, swapServerApiFor, swapServerConfigured, type SwapServerApi } from './api';
 import { SwapServerContext, type HistoryView, type SwapOperation, type SwapServerContextValue } from './context';
 import { runSolanaSwap } from './solana';
@@ -88,23 +91,49 @@ export function SwapServerProvider({ children, api: fixedApi }: { children: Reac
     const chain = useCallback((key: string) => config?.cctp.chains.find(c => c.key === key), [config]);
 
     // ── the signing flow's view of the wallet ──
+    const accounts = useActiveAccounts();
+    const activeEvmAddress = accounts.evm?.address ?? null;
+    const activeEvmWalletKind = accounts.evm?.kind ?? 'main';
+    const activeSolanaAddress = accounts.solana?.address ?? null;
+
     const solanaSecret: Uint8Array | undefined = wdk.solanaSigner?.secretKey;
     const keypair = useMemo(() => {
         try { return solanaSecret ? Keypair.fromSecretKey(solanaSecret) : undefined; } catch { return undefined; }
     }, [solanaSecret]);
+    const solanaSigner = useActiveSolanaSigner(keypair);
     const evmWallet = wdk.evmSigner;
 
     const deps = useMemo((): BridgeDeps => ({
         api, journal,
         evmSigner: evmWallet ? c => evmSignerFor(c, evmWallet) : undefined,
+        // Phase 6: EvmSender factory — uses AppKit for external wallets, local for built-in
+        evm: activeEvmAddress ? async (c) => {
+            if (activeEvmWalletKind !== 'main' && activeEvmWalletKind !== 'appkit') {
+                // Unknown external wallet kind
+                throw new Error('External EVM wallet is not supported for signing');
+            }
+            if (activeEvmWalletKind === 'appkit') {
+                return createAppKitEvmSender(activeEvmAddress);
+            }
+            // Local WDK signer
+            if (!evmWallet) throw new Error('No EVM wallet is connected');
+            return createLocalEvmSender(cc => evmSignerFor(cc, evmWallet), activeEvmAddress);
+        } : undefined,
         // Solana goes through the server on both networks: its public mainnet RPC refuses browsers. The server
         // sends the burn and registers it in one step; the flow's own report after it is then a no-op.
-        solana: keypair ? { keypair, send: async (raw, id) => (await api.broadcastBurn(id, toBase64(raw))).burnTxHash! } : undefined,
+        solana: solanaSigner ? {
+            signer: solanaSigner,
+            keypair,
+            send: async (raw, id) => (await api.broadcastBurn(id, toBase64(raw))).burnTxHash!,
+        } : undefined,
         chainKnows: async (c, hash) => (c.kind === 'evm' ? (await evmProvider(c).getTransaction(hash)) !== null : api.chainKnowsTx(c.key, hash)),
-    }), [api, journal, evmWallet, keypair]);
+    }), [api, journal, evmWallet, keypair, solanaSigner, activeEvmAddress, activeEvmWalletKind]);
 
-    // ── history ──
-    const addresses = useMemo(() => [wdk.evmAddress, wdk.solanaAddress].filter((a): a is string => !!a), [wdk.evmAddress, wdk.solanaAddress]);
+    // ── history ── use active accounts, not built-in only
+    const addresses = useMemo(
+        () => [activeEvmAddress ?? wdk.evmAddress, activeSolanaAddress ?? wdk.solanaAddress].filter((a): a is string => !!a),
+        [activeEvmAddress, wdk.evmAddress, activeSolanaAddress, wdk.solanaAddress],
+    );
     const [operation, setOperation] = useState<Operation | null>(null);
     const opRef = useRef<Operation | null>(null);
     opRef.current = operation;
@@ -206,27 +235,28 @@ export function SwapServerProvider({ children, api: fixedApi }: { children: Reac
     }, [deps, track, refresh, refreshBalances, remember]);
 
     const bridge = useCallback(async ({ src, dst, amount }: { src: CctpChain; dst: CctpChain; amount: string }) => {
-        const sender = src.kind === 'evm' ? wdk.evmAddress : wdk.solanaAddress;
-        const recipient = dst.kind === 'evm' ? wdk.evmAddress : wdk.solanaAddress;
+        const sender = src.kind === 'evm' ? (activeEvmAddress ?? wdk.evmAddress) : (activeSolanaAddress ?? wdk.solanaAddress);
+        const recipient = dst.kind === 'evm' ? (activeEvmAddress ?? wdk.evmAddress) : (activeSolanaAddress ?? wdk.solanaAddress);
         if (!sender || !recipient) { notifyToast.error('Connect your wallet first'); return undefined; }
         return sign(
             { src: src.key, dst: dst.key, amount, steps: ['create'], step: 'create', done: [], busy: true, startedAt: Date.now() },
             async d => (await startBridge({ src, dst, amount, sender, recipient }, d)).transfer,
         );
-    }, [wdk.evmAddress, wdk.solanaAddress, sign]);
+    }, [activeEvmAddress, wdk.evmAddress, activeSolanaAddress, wdk.solanaAddress, sign]);
 
     // ── Solana swaps ──
     const swap = useCallback(async (input: { inputMint: string; outputMint: string; amount: string; slippageBps?: number; sell: SwapOperation['sell']; buy: SwapOperation['buy'] }): Promise<SolanaSwap | undefined> => {
         if (swapRef.current?.busy || opRef.current?.busy) return undefined;
-        if (!keypair || !wdk.solanaAddress) { notifyToast.error('Connect your wallet first'); return undefined; }
+        const currentSolAddress = activeSolanaAddress ?? wdk.solanaAddress;
+        if (!solanaSigner || !currentSolAddress) { notifyToast.error('Connect your wallet first'); return undefined; }
         const start: SwapOperation = { stage: 'create', busy: true, sell: input.sell, buy: input.buy };
         swapRef.current = start;
         setSwapOperation(start);
         setDialog({ open: true, id: null, kind: 'swap' });
         try {
             const result = await runSolanaSwap(
-                { inputMint: input.inputMint, outputMint: input.outputMint, amount: input.amount, taker: wdk.solanaAddress, slippageBps: input.slippageBps },
-                { api, keypair, onStage: (stage, s) => { if (s) watched.current.add(s.id); setSwapOperation(o => o && { ...o, stage, id: s?.id ?? o.id }); } },
+                { inputMint: input.inputMint, outputMint: input.outputMint, amount: input.amount, taker: currentSolAddress, slippageBps: input.slippageBps },
+                { api, signer: solanaSigner, keypair, onStage: (stage, s) => { if (s) watched.current.add(s.id); setSwapOperation(o => o && { ...o, stage, id: s?.id ?? o.id }); } },
             );
             const failed = result.status === 'FAILED' || result.status === 'EXPIRED';
             setSwapOperation(o => o && { ...o, id: result.id, busy: false, stage: failed ? 'failed' : 'done', result, error: failed ? (result.failReason ?? 'The swap did not go through') : undefined });
@@ -240,7 +270,7 @@ export function SwapServerProvider({ children, api: fixedApi }: { children: Reac
             refresh();
             void queryClient.invalidateQueries({ queryKey: [...KEY, 'sol-balances'] });
         }
-    }, [api, keypair, wdk.solanaAddress, refresh, queryClient]);
+    }, [api, solanaSigner, keypair, activeSolanaAddress, wdk.solanaAddress, refresh, queryClient]);
 
     // ── Bitcoin Cash cross-chain swaps (1Click NEAR Intents) ──
     const [bchOperation, setBchOperation] = useState<BchOperation | null>(null);
@@ -373,12 +403,12 @@ export function SwapServerProvider({ children, api: fixedApi }: { children: Reac
         configLoading: on && configQuery.isLoading,
         configError: !swapServerConfigured ? 'This build is not connected to the swap service.' : configQuery.error ? describeError(configQuery.error) : undefined,
         chain,
-        evmAddress: wdk.evmAddress, solanaAddress: wdk.solanaAddress,
+        evmAddress: activeEvmAddress ?? wdk.evmAddress, solanaAddress: activeSolanaAddress ?? wdk.solanaAddress,
         rows, rowsReceivedAt: activityQuery.data?.receivedAt ?? 0, rowsLoading: activityQuery.isLoading, openCount, activeCount, refresh,
         operation, bridge, resume, sendFee, swapOperation, swap, bchOperation, executeBchSwap, selfMint, minting, signing: signingNow,
         dialog, showDialog, hideDialog,
         historyView, setHistoryView, historyOurs, pairRouted, setPairRouted,
-    }), [api, activate, on, isMainnet, config, configQuery.isLoading, configQuery.error, chain, wdk.evmAddress, wdk.solanaAddress, rows, activityQuery.data?.receivedAt,
+    }), [api, activate, on, isMainnet, config, configQuery.isLoading, configQuery.error, chain, activeEvmAddress, wdk.evmAddress, activeSolanaAddress, wdk.solanaAddress, rows, activityQuery.data?.receivedAt,
         activityQuery.isLoading, openCount, activeCount, refresh, operation, bridge, resume, sendFee, swapOperation, swap, bchOperation, executeBchSwap, selfMint, minting, signingNow, dialog, showDialog, hideDialog, historyView, historyOurs, pairRouted]);
 
     return <SwapServerContext.Provider value={value}>{children}</SwapServerContext.Provider>;

@@ -7,11 +7,19 @@
  *
  * It lives in localStorage and is only ever a few entries; an entry is dropped once the server has the hashes.
  */
-export interface JournalEntry { burn?: string; fee?: string; at: number }
+export interface JournalRequestedInfo { nonce: number; from: string; at: number }
+export interface JournalEntry {
+    burn?: string;
+    fee?: string;
+    at: number;
+    /** Phase 6: AppKit wallets broadcast themselves; the nonce is recorded before the wallet is asked */
+    burnRequested?: JournalRequestedInfo;
+    feeRequested?: JournalRequestedInfo;
+}
 
 export interface Journal {
     get(id: string): JournalEntry | undefined;
-    set(id: string, patch: { burn?: string; fee?: string }): void;
+    set(id: string, patch: Partial<Omit<JournalEntry, 'at'>>): void;
     delete(id: string): void;
     all(): Record<string, JournalEntry>;
 }

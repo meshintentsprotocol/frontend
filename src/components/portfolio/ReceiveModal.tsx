@@ -82,9 +82,9 @@ export function ReceiveModal({ children }: { children?: React.ReactNode }) {
         },
         solAddr && {
             key: 'sol', label: 'Solana', walletLabel: activeAccounts.solana?.label ?? 'Cham Wallet',
-            sublabel: 'Devnet · SOL, SPL tokens',
+            sublabel: isMainnet ? 'Mainnet · SOL, SPL tokens' : 'Devnet · SOL, SPL tokens',
             address: solAddr, icon: '/assets/solanaLogo.png', color: '#9945ff',
-            explorerUrl: `https://solscan.io/account/${solAddr}?cluster=devnet`,
+            explorerUrl: isMainnet ? `https://solscan.io/account/${solAddr}` : `https://solscan.io/account/${solAddr}?cluster=devnet`,
         },
         btcAddr && {
             key: 'btc', label: 'Bitcoin', walletLabel: activeAccounts.btc?.label ?? 'Cham Wallet',

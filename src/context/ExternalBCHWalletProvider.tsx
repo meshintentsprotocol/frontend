@@ -58,6 +58,7 @@ import {
     type WizSession,
 } from '@/lib/wallets/wizardconnect';
 import { setWalletContext } from '@/lib/wallets/ambient';
+import { hasAppKitMarker, restoreAppKitConnections, disconnectAppKit } from '@/lib/wallets/appkitBridge';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -301,6 +302,13 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
         }
     }, [appNetwork, allWallets]);
 
+    // ── Restore persisted AppKit wallets on mount/network change ────────────
+    useEffect(() => {
+        if (hasAppKitMarker()) {
+            restoreAppKitConnections(appNetwork).catch(e => console.warn('[AppKit] restore error:', e));
+        }
+    }, [appNetwork]);
+
     // ── Session Closer Registration ─────────────────────────────────────────
     useEffect(() => {
         const unregister = registerSessionCloser(async (wallet) => {
@@ -316,6 +324,9 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
                 await disconnectWizard(wallet.id);
             } else if (wallet.source === 'extension') {
                 disconnectExtension();
+            } else if (wallet.source === 'appkit') {
+                const ns = wallet.family === 'evm' ? 'eip155' : wallet.family === 'solana' ? 'solana' : 'bip122';
+                await disconnectAppKit(ns as any);
             }
         });
         return unregister;

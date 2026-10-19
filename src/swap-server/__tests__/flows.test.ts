@@ -6,6 +6,7 @@ import { BurnNotReported, FeeNotSent, feeIsDue, flushJournal, payFee, resumeBrid
 import { createJournal } from '../journal';
 import { toBase64 } from '../signers';
 import type { BuiltTx, CctpChain, EvmBuiltTx, SwapServerConfig, Transfer } from '../types';
+import { createLocalSolanaSigner } from '@/lib/wallets/solanaSigner';
 import fixtures from './fixtures.json';
 
 /**
@@ -228,6 +229,53 @@ describe('resuming a transfer that still waits for its burn', () => {
         expect(w.hashes.burn).not.toBe(noted);
     });
 
+    it('EVM AppKit: burn was requested and the nonce advanced: refuses to sign again without user confirmation', async () => {
+        const w = world();
+        const signer = await w.deps.evmSigner!(BASE);
+        const address = await signer.getAddress();
+        w.journal.set(created.transfer.id, {
+            burnRequested: { nonce: 0, from: address, at: Date.now() },
+        });
+        const providerWithAdvancedNonce = {
+            getTransactionCount: async () => 1,
+        };
+        const walletWithAdvancedNonce = {
+            getAddress: async () => address,
+            provider: providerWithAdvancedNonce,
+        };
+        const deps: BridgeDeps = {
+            ...w.deps,
+            evmSigner: () => walletWithAdvancedNonce as any,
+        };
+
+        await expect(resumeBridge(created.transfer.id, BASE, deps)).rejects.toThrow('may already have sent');
+        expect(w.log.some(l => l.startsWith('chain:broadcast'))).toBe(false);
+    });
+
+    it('EVM AppKit: burn was requested and nonce did not advance: safe to rebuild and request again', async () => {
+        const w = world({ txs: created.txs.filter(t => t.kind === 'burn') });
+        const signer = await w.deps.evmSigner!(BASE);
+        const address = await signer.getAddress();
+        w.journal.set(created.transfer.id, {
+            burnRequested: { nonce: 0, from: address, at: Date.now() },
+        });
+        const providerWithSameNonce = {
+            getTransactionCount: async () => 0,
+            estimateGas: async () => 100_000n,
+            getFeeData: async () => ({ maxFeePerGas: 1_000_000_000n, maxPriorityFeePerGas: 1_000_000_000n }),
+            broadcastTransaction: async () => ({}),
+            waitForTransaction: async () => ({ status: 1 }),
+        };
+        const wallet = ethers.Wallet.createRandom().connect(providerWithSameNonce as unknown as ethers.Provider);
+        const deps: BridgeDeps = {
+            ...w.deps,
+            evmSigner: () => wallet,
+        };
+
+        const t = await resumeBridge(created.transfer.id, BASE, deps);
+        expect(t.status).toBe('BURN_SUBMITTED');
+    });
+
     it('Solana: an unseen burn can still land for a while, so resume waits; later it signs a new one', async () => {
         const owner = Keypair.generate(), eventKey = Keypair.generate();
         const build = () => {
@@ -304,6 +352,28 @@ describe('Solana source', () => {
     it('without a Solana wallet the flow says so', async () => {
         const w = world({ txs: [build()] });
         await expect(startBridge(solInput, w.deps)).rejects.toThrow('No Solana wallet');
+    });
+
+    it('SolanaTxSigner: a pre-signed burn keeps its second signature', async () => {
+        const w = world({ txs: [build()] });
+        const sent: Uint8Array[] = [];
+        const signer = createLocalSolanaSigner(owner);
+        const { transfer } = await startBridge(solInput, {
+            ...w.deps,
+            solana: {
+                signer,
+                send: async raw => {
+                    sent.push(raw);
+                    w.log.push(`chain:send journal=${JSON.stringify(!!w.journal.get(created.transfer.id)?.burn)}`);
+                    return 'sig-signer';
+                },
+            },
+        });
+        const parsed = Transaction.from(sent[0]);
+        expect(parsed.verifySignatures()).toBe(true);
+        expect(parsed.signatures).toHaveLength(2);
+        expect(parsed.signatures[1].publicKey.toBase58()).toBe(eventKey.publicKey.toBase58());
+        expect(transfer.burnTxHash).toBe('sig-signer');
     });
 });
 

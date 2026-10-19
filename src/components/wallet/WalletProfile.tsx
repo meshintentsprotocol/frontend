@@ -12,7 +12,7 @@
  *   actions    send, receive, add a wallet, log out
  */
 
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import {
     ArrowDownLeft, ArrowUpRight, Check, ChevronDown, Copy, Eye, EyeOff, KeyRound, Lock, LogOut, Pencil,
     Plus, RefreshCw,
@@ -38,6 +38,7 @@ const KIND_LABEL: Record<ConnectedWallet['kind'], string> = {
     walletconnect: 'WalletConnect',
     wizardconnect: 'WizardConnect',
     extension: 'Extension',
+    appkit: 'AppKit',
 };
 
 const BRAND = '#10b981';

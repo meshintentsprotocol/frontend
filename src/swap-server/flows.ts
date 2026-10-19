@@ -16,6 +16,8 @@ import { SwapServerError } from './api';
 import type { Journal } from './journal';
 import { feeTx, sendEvmTx, signSolanaTx, mintTx } from './signers';
 import type { BuiltTx, CctpChain, CctpQuote, EvmBuiltTx, SolanaBuiltTx, Transfer } from './types';
+import type { EvmSender } from '@/lib/wallets/evmSender';
+import type { SolanaTxSigner } from '@/lib/wallets/solanaSigner';
 
 export type BridgeStep = 'create' | 'approve' | 'burn' | 'fee';
 
@@ -29,7 +31,8 @@ export interface BridgeProgress {
 }
 
 export interface SolanaSender {
-    keypair: Keypair;
+    keypair?: Keypair;
+    signer?: SolanaTxSigner;
     /** Broadcast the signed burn of this transfer and return its signature. */
     send(raw: Uint8Array, transferId: string): Promise<string>;
 }
@@ -39,6 +42,8 @@ export interface BridgeDeps {
     journal: Journal;
     /** The in-app EVM wallet connected to the given chain. */
     evmSigner?: (chain: CctpChain) => ethers.Signer | Promise<ethers.Signer>;
+    /** Phase 6: unified EVM sender (AppKit or local). When set, takes priority over evmSigner. */
+    evm?: (chain: CctpChain) => Promise<EvmSender>;
     solana?: SolanaSender;
     onProgress?: (p: BridgeProgress) => void;
     /**
@@ -104,7 +109,9 @@ export async function signTransfer(transfer: Transfer, txs: BuiltTx[], src: Cctp
         if (!deps.solana) throw new Error('No Solana wallet is connected');
         const tx = txs[0] as SolanaBuiltTx;
         progress('burn', 'active');
-        const signed = signSolanaTx(tx.serializedTx, deps.solana.keypair);
+        const signed = deps.solana.signer
+            ? await deps.solana.signer.sign(tx.serializedTx)
+            : signSolanaTx(tx.serializedTx, deps.solana.keypair!);
         deps.journal.set(transfer.id, { burn: signed.signature });
         let signature: string;
         try {
@@ -121,6 +128,43 @@ export async function signTransfer(transfer: Transfer, txs: BuiltTx[], src: Cctp
         catch (e) { throw new BurnNotReported(transfer.id, signature, e); }
         deps.journal.delete(transfer.id);
         progress('burn', 'done', signature);
+        return transfer;
+    }
+
+    // Phase 6: use EvmSender when available; fall back to evmSigner for backwards compat
+    if (deps.evm) {
+        const sender = await deps.evm(src);
+        let burned = false;
+        for (const tx of txs as EvmBuiltTx[]) {
+            progress(tx.kind, 'active');
+            try {
+                const sent = await sender.send(tx.chainId!, {
+                    to: tx.to, data: tx.data, minMaxFeePerGasGwei: tx.minMaxFeePerGasGwei,
+                }, {
+                    onRequested: (r) => {
+                        // Record the nonce before the wallet is asked, for the resume rule
+                        if (tx.kind !== 'approve') {
+                            const key = tx.kind === 'burn' ? 'burnRequested' : 'feeRequested';
+                            deps.journal.set(transfer.id, { [key]: { nonce: r.nonce, from: r.from, at: Date.now() } });
+                        }
+                    },
+                    onHash: hash => { if (tx.kind !== 'approve') deps.journal.set(transfer.id, { [tx.kind]: hash }); },
+                });
+                if (tx.kind === 'burn') {
+                    burned = true;
+                    try { transfer = await report(() => deps.api.submitBurn(transfer.id, sent.hash), delay); }
+                    catch (e) { throw new BurnNotReported(transfer.id, sent.hash, e); }
+                }
+                if (tx.kind === 'fee') transfer = await report(() => deps.api.submitFee(transfer.id, sent.hash), delay);
+                await sent.wait();
+                progress(tx.kind, 'done', sent.hash);
+            } catch (e) {
+                if (e instanceof BurnNotReported) throw e;
+                if (tx.kind === 'fee' && burned) throw new FeeNotSent(transfer.id, e);
+                throw e;
+            }
+        }
+        deps.journal.delete(transfer.id);
         return transfer;
     }
 
@@ -183,6 +227,33 @@ export async function resumeBridge(transferId: string, src: CctpChain, deps: Bri
             throw new Error('The previous attempt may still confirm. Try again in a couple of minutes.');
         }
         deps.journal.delete(transferId);
+    } else if (noted?.burnRequested && !noted.burn && src.kind === 'evm') {
+        // Phase 6: AppKit wallet was asked to send but the hash never came back.
+        // Check if the nonce was consumed — if so, the wallet may have broadcast.
+        const { nonce, from } = noted.burnRequested;
+        try {
+            const provider = deps.evm
+                ? new (await import('ethers')).ethers.JsonRpcProvider(undefined, src.chainId, { staticNetwork: true })
+                : deps.evmSigner ? (await deps.evmSigner(src)).provider : null;
+            if (provider) {
+                const pending = await provider.getTransactionCount(from, 'pending');
+                if (pending > nonce) {
+                    // A transaction left this address after the request; it may be the burn.
+                    // Don't ask the wallet again. The user must paste the hash or confirm rejection.
+                    throw new Error(
+                        'Your wallet may already have sent this transfer. ' +
+                        'Check your wallet\'s transaction history for a pending or confirmed transaction. ' +
+                        'If it was not sent, reject any pending request in your wallet and try again.'
+                    );
+                }
+                // pending === nonce: nothing was sent. Safe to retry with the same nonce.
+            }
+        } catch (e) {
+            // If it's our own error message, rethrow
+            if (e instanceof Error && e.message.includes('may already have sent')) throw e;
+            // Otherwise ignore and proceed to rebuild
+        }
+        deps.journal.delete(transferId);
     }
     const fresh = await deps.api.rebuildTransfer(transferId);
     return signTransfer(fresh.transfer, fresh.txs, src, deps);
@@ -215,17 +286,31 @@ export function canSelfMint(t: Pick<Transfer, 'selfMint' | 'status' | 'updatedAt
  * Deliver an attested transfer from the user's own wallet. The destination contract accepts each attestation
  * once, so this cannot mint twice: if the bridge got there first the gas estimate fails and nothing is sent.
  */
-export async function selfMint(transferId: string, dst: CctpChain, deps: Pick<BridgeDeps, 'api' | 'evmSigner'>): Promise<{ transfer: Transfer; hash: string }> {
+export async function selfMint(transferId: string, dst: CctpChain, deps: Pick<BridgeDeps, 'api' | 'evmSigner' | 'evm'>): Promise<{ transfer: Transfer; hash: string }> {
     const t = await deps.api.getTransfer(transferId);
     if (!t.selfMint || dst.kind !== 'evm') throw new Error('This transfer cannot be delivered from the wallet right now.');
-    if (!deps.evmSigner) throw new Error('No EVM wallet is connected');
-    const signer = await deps.evmSigner(dst);
+
     let sent;
-    try { sent = await sendEvmTx(signer, mintTx(dst, t.selfMint)); }
-    catch (e) {
-        const now = await deps.api.getTransfer(transferId).catch(() => t);
-        if (now.status === 'COMPLETED' || now.status === 'COMPLETED_EXTERNAL' || now.status === 'MINT_SUBMITTED') return { transfer: now, hash: now.mintTxHash ?? '' };
-        throw e;
+    if (deps.evm) {
+        // Phase 6: use EvmSender
+        const sender = await deps.evm(dst);
+        const mintData = mintTx(dst, t.selfMint);
+        try {
+            sent = await sender.send(dst.chainId!, { to: mintData.to, data: mintData.data, minMaxFeePerGasGwei: mintData.minMaxFeePerGasGwei });
+        } catch (e) {
+            const now = await deps.api.getTransfer(transferId).catch(() => t);
+            if (now.status === 'COMPLETED' || now.status === 'COMPLETED_EXTERNAL' || now.status === 'MINT_SUBMITTED') return { transfer: now, hash: now.mintTxHash ?? '' };
+            throw e;
+        }
+    } else {
+        if (!deps.evmSigner) throw new Error('No EVM wallet is connected');
+        const signer = await deps.evmSigner(dst);
+        try { sent = await sendEvmTx(signer, mintTx(dst, t.selfMint)); }
+        catch (e) {
+            const now = await deps.api.getTransfer(transferId).catch(() => t);
+            if (now.status === 'COMPLETED' || now.status === 'COMPLETED_EXTERNAL' || now.status === 'MINT_SUBMITTED') return { transfer: now, hash: now.mintTxHash ?? '' };
+            throw e;
+        }
     }
     await sent.wait();
     return { transfer: await deps.api.getTransfer(transferId).catch(() => t), hash: sent.hash };
@@ -235,11 +320,24 @@ export async function selfMint(transferId: string, dst: CctpChain, deps: Pick<Br
 export async function payFee(transferId: string, src: CctpChain, deps: BridgeDeps): Promise<Transfer> {
     const t = await deps.api.getTransfer(transferId);
     if (!feeIsDue(t, src)) return t;
-    if (!deps.evmSigner) throw new Error('No EVM wallet is connected');
-    const signer = await deps.evmSigner(src);
     const tx = feeTx(src, t.feeRecipient!, t.protocolFee!);
     deps.onProgress?.({ steps: ['fee'], step: 'fee', state: 'active', transfer: t });
-    const sent = await sendEvmTx(signer, tx, { onHash: hash => deps.journal.set(transferId, { fee: hash }) });
+
+    let sent;
+    if (deps.evm) {
+        const sender = await deps.evm(src);
+        sent = await sender.send(src.chainId!, {
+            to: tx.to, data: tx.data, minMaxFeePerGasGwei: tx.minMaxFeePerGasGwei,
+        }, {
+            onRequested: (r) => deps.journal.set(transferId, { feeRequested: { nonce: r.nonce, from: r.from, at: Date.now() } }),
+            onHash: hash => deps.journal.set(transferId, { fee: hash }),
+        });
+    } else {
+        if (!deps.evmSigner) throw new Error('No EVM wallet is connected');
+        const signer = await deps.evmSigner(src);
+        sent = await sendEvmTx(signer, tx, { onHash: hash => deps.journal.set(transferId, { fee: hash }) });
+    }
+
     const after = await report(() => deps.api.submitFee(transferId, sent.hash), deps.retryDelayMs ?? 1500);
     await sent.wait();
     deps.journal.delete(transferId);

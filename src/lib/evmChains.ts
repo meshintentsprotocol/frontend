@@ -161,11 +161,57 @@ export const CHAIN_TO_SERVER_NAME_MAINNET: Record<string, string> = {
     optimism: 'OptimismMainnet',
 };
 
-// Set of all EVM chain keys — used for routing detection
-export const EVM_CHAIN_KEYS = new Set(['ethereum', 'bsc', 'base', 'arbitrum', 'optimism']);
+// Arc chains — not in the legacy EVM_CHAINS tables (CCTP-only), but needed for AppKit and cross-chain transfers
+export const ARC_TESTNET: EVMChainConfig = {
+    chainId:         5042002,
+    name:            'Arc Testnet',
+    rpc:             import.meta.env.VITE_ARC_TESTNET_RPC || 'https://rpc.testnet.arc.io',
+    explorer:        'https://testnet.explorer.arc.io',
+    nativeCurrency:  'ARC',
+    friVerifierHTLC: '',
+    usdtAddress:     '',
+    usdcAddress:     '',
+    deployed:        false,
+};
 
-export function isEvmChain(chain?: string): chain is 'ethereum' | 'bsc' | 'base' | 'arbitrum' | 'optimism' {
+export const ARC_MAINNET: EVMChainConfig = {
+    chainId:         5042,
+    name:            'Arc',
+    rpc:             import.meta.env.VITE_ARC_MAINNET_RPC || 'https://rpc.mainnet.arc.io',
+    explorer:        'https://explorer.arc.io',
+    nativeCurrency:  'ARC',
+    friVerifierHTLC: '',
+    usdtAddress:     '',
+    usdcAddress:     '',
+    deployed:        false,
+};
+
+// Set of all EVM chain keys — used for routing detection
+export const EVM_CHAIN_KEYS = new Set(['ethereum', 'bsc', 'base', 'arbitrum', 'optimism', 'arc']);
+
+export function isEvmChain(chain?: string): chain is 'ethereum' | 'bsc' | 'base' | 'arbitrum' | 'optimism' | 'arc' {
     return !!chain && EVM_CHAIN_KEYS.has(chain);
+}
+
+/** All EVM chain configs for the given mode, including Arc. */
+export function evmChainsFor(isMainnet: boolean): Record<string, EVMChainConfig> {
+    const base = isMainnet ? { ...EVM_CHAINS_MAINNET } : { ...EVM_CHAINS_TESTNET };
+    base.arc = isMainnet ? ARC_MAINNET : ARC_TESTNET;
+    return base;
+}
+
+/** Map chain ID → chain key, across both modes */
+export const CHAIN_ID_TO_KEY_MAP: Record<number, string> = {};
+for (const [key, cfg] of Object.entries({ ...EVM_CHAINS_TESTNET, ...EVM_CHAINS_MAINNET })) {
+    CHAIN_ID_TO_KEY_MAP[cfg.chainId] = key;
+}
+CHAIN_ID_TO_KEY_MAP[ARC_TESTNET.chainId] = 'arc';
+CHAIN_ID_TO_KEY_MAP[ARC_MAINNET.chainId] = 'arc';
+
+/** Look up a chain config by its chain ID */
+export function getEVMChainByChainId(chainId: number, isMainnet: boolean): EVMChainConfig | undefined {
+    const chains = evmChainsFor(isMainnet);
+    return Object.values(chains).find(c => c.chainId === chainId);
 }
 
 // Returns the human-readable network label shown on the swap card

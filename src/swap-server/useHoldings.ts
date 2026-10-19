@@ -108,6 +108,9 @@ export function useSwapServerHoldings(p: {
     return {
         holdings: holdingsFrom(config, usdc.data ?? [], solana.data?.balances ?? [], p),
         isFetching: usdc.isFetching || solana.isFetching,
-        refetch: () => { void usdc.refetch(); void solana.refetch(); },
+        refetch: () => {
+            if (on && !!p.evmAddress) void usdc.refetch();
+            if (on && p.isMainnet && !!p.solanaAddress && !!config?.solana.enabled) void solana.refetch();
+        },
     };
 }

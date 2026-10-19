@@ -11,6 +11,8 @@ import { SwapServerError, type SwapServerApi } from './api';
 import { signSolanaTx, toBase64 } from './signers';
 import type { SolanaSwap, SolanaToken } from './types';
 
+import type { SolanaTxSigner } from '@/lib/wallets/solanaSigner';
+
 export function jupiterToken(t: SolanaToken): Token {
     return {
         symbol: t.symbol, name: t.name, icon: t.icon ?? '', decimals: t.decimals, type: 'spl-token', chain: 'solana', address: t.mint,
@@ -38,7 +40,8 @@ export type SwapStage = 'create' | 'sign' | 'landing';
 
 export interface SwapDeps {
     api: Pick<SwapServerApi, 'createSolSwap' | 'executeSolSwap' | 'getSolSwap'>;
-    keypair: Keypair;
+    keypair?: Keypair;
+    signer?: SolanaTxSigner;
     onStage?: (stage: SwapStage, swap?: SolanaSwap) => void;
     pollMs?: number;
     /** Give up polling an unknown result after this long; the history row keeps following it. */
@@ -55,7 +58,10 @@ export async function runSolanaSwap(
     deps.onStage?.('create');
     const { swap, tx } = await deps.api.createSolSwap(input);
     deps.onStage?.('sign', swap);
-    const signed = toBase64(signSolanaTx(tx.serializedTx, deps.keypair).raw);
+    const signedTx = deps.signer
+        ? await deps.signer.sign(tx.serializedTx)
+        : signSolanaTx(tx.serializedTx, deps.keypair!);
+    const signed = toBase64(signedTx.raw);
     deps.onStage?.('landing', swap);
     try {
         return await deps.api.executeSolSwap(swap.id, signed);

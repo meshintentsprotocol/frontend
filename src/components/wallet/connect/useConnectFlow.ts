@@ -3,16 +3,21 @@
  *
  * Steps:
  * 1. 'pick'      - Start view: built-in Cham Wallet, extension, "Connect another wallet"
- * 2. 'chain'     - Chain picker (BCH -> step 3; EVM, Solana, Bitcoin disabled / "Coming soon")
+ * 2. 'chain'     - Chain picker (BCH -> step 3; EVM -> opens AppKit modal; Solana, Bitcoin -> "Coming soon")
  * 3. 'qr'        - BCH protocol selection (WizardConnect / WalletConnect) + QR + URI
  * 4. 'connected' - Connected card with name, icon, address, look editor, and Done
  *
  * Phase 2: The connect screen
+ * Phase 6: EVM via AppKit
  */
 
 import { useReducer, useCallback, useRef, useEffect } from 'react';
 import { useExternalBCHWallet } from '@/context/ExternalBCHWalletProvider';
 import { ChainFamily, ExternalWallet } from '@/lib/wallets/types';
+import { openAppKitConnect, startAppKitBridge } from '@/lib/wallets/appkitBridge';
+import { findWalletById } from '@/lib/wallets/registry';
+import { useWDK } from '@/context/WDKProvider';
+import { appNetworkOf } from '@/lib/wallets/types';
 
 export type ConnectStep = 'pick' | 'chain' | 'qr' | 'connected';
 export type BchProtocol = 'wizardconnect' | 'walletconnect';
@@ -78,6 +83,7 @@ export function connectFlowReducer(state: ConnectFlowState, action: ConnectFlowA
                 linkText: null,
                 expiresAt: undefined,
                 error: null,
+                isLoading: action.family === 'evm' || action.family === 'solana', // show spinner while AppKit loads
             };
 
         case 'SELECT_PROTOCOL':
@@ -145,6 +151,7 @@ export interface UseConnectFlowReturn extends ConnectFlowState {
 
 export function useConnectFlow(): UseConnectFlowReturn {
     const { canAddExternalWallet, startBchPairing } = useExternalBCHWallet();
+    const { bchNetwork } = useWDK();
     const [state, dispatch] = useReducer(connectFlowReducer, INITIAL_CONNECT_STATE);
 
     const attemptRef = useRef<number>(0);
@@ -206,6 +213,68 @@ export function useConnectFlow(): UseConnectFlowReturn {
         }
     }, [cancelCurrent, startBchPairing]);
 
+    /** Open AppKit for EVM connection (Phase 6) */
+    const startAppKitEvm = useCallback(async () => {
+        const currentAttempt = ++attemptRef.current;
+        const network = appNetworkOf(bchNetwork);
+
+        try {
+            // Ensure the bridge is running
+            await startAppKitBridge(network);
+
+            // Open AppKit's connect modal for EVM
+            await openAppKitConnect('eip155');
+
+            // After modal closes, check if we got a wallet
+            if (currentAttempt !== attemptRef.current) return;
+
+            // Look for the AppKit wallet in the registry
+            const appkitWallet = findWalletById('appkit-evm');
+            if (appkitWallet) {
+                dispatch({ type: 'PAIRING_SUCCESS', wallet: appkitWallet });
+            } else {
+                // Modal closed without connecting
+                dispatch({ type: 'GO_TO_CHAIN' });
+            }
+        } catch (err) {
+            if (currentAttempt === attemptRef.current) {
+                const msg = err instanceof Error ? err.message : String(err || '');
+                dispatch({ type: 'PAIRING_ERROR', error: msg || 'Could not open wallet selector' });
+            }
+        }
+    }, [bchNetwork]);
+
+    /** Open AppKit for Solana connection (Phase 7) */
+    const startAppKitSolana = useCallback(async () => {
+        const currentAttempt = ++attemptRef.current;
+        const network = appNetworkOf(bchNetwork);
+
+        try {
+            // Ensure the bridge is running
+            await startAppKitBridge(network);
+
+            // Open AppKit's connect modal for Solana
+            await openAppKitConnect('solana');
+
+            // After modal closes, check if we got a wallet
+            if (currentAttempt !== attemptRef.current) return;
+
+            // Look for the AppKit wallet in the registry
+            const appkitWallet = findWalletById('appkit-solana');
+            if (appkitWallet) {
+                dispatch({ type: 'PAIRING_SUCCESS', wallet: appkitWallet });
+            } else {
+                // Modal closed without connecting
+                dispatch({ type: 'GO_TO_CHAIN' });
+            }
+        } catch (err) {
+            if (currentAttempt === attemptRef.current) {
+                const msg = err instanceof Error ? err.message : String(err || '');
+                dispatch({ type: 'PAIRING_ERROR', error: msg || 'Could not open wallet selector' });
+            }
+        }
+    }, [bchNetwork]);
+
     const goToPick = useCallback(() => {
         cancelCurrent();
         dispatch({ type: 'GO_TO_PICK' });
@@ -221,8 +290,12 @@ export function useConnectFlow(): UseConnectFlowReturn {
         dispatch({ type: 'PICK_CHAIN', family });
         if (family === 'bch') {
             startPairingForProtocol('wizardconnect');
+        } else if (family === 'evm') {
+            startAppKitEvm();
+        } else if (family === 'solana') {
+            startAppKitSolana();
         }
-    }, [startPairingForProtocol]);
+    }, [startPairingForProtocol, startAppKitEvm, startAppKitSolana]);
 
     const selectProtocol = useCallback((protocol: BchProtocol) => {
         dispatch({ type: 'SELECT_PROTOCOL', protocol });
