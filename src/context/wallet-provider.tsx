@@ -1,3 +1,4 @@
+// OLD — retired 2026-10-19, kept until the clean-up. Not part of the live app. See devrel-agent-context/walletuidocs/connect/old-code.md.
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { AccountInfo, AptosWallet, NetworkInfo, UserResponseStatus } from '@aptos-labs/wallet-standard';
 import { waitForWallet, connectWallet, disconnectWallet, getWalletNetwork, changeWalletNetwork } from '@/lib/wallet/adapter';

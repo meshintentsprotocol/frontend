@@ -1,3 +1,4 @@
+// OLD — retired 2026-10-19, kept until the clean-up. Not part of the live app. See devrel-agent-context/walletuidocs/connect/old-code.md.
 import { createContext, useContext, useState, ReactNode } from 'react';
 import { useWallet as useAptosWallet } from '@/context/wallet-provider';
 import { useWallet as useSolanaWallet, useConnection } from "@solana/wallet-adapter-react";

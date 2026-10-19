@@ -5,7 +5,6 @@ import ReactDOM from 'react-dom/client'
 import App from './App.tsx'
 import { ThemeProvider } from '@/context/theme-provider'
 import { LanguageProvider } from '@/context/language-provider'
-import { WalletProvider } from '@/context/wallet-provider'
 import { Toaster } from './components/ui/sonner'
 import './index.css'
 import { SolanaWalletProvider } from '@/context/SolanaWalletProvider'
@@ -26,12 +25,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <QueryClientProvider client={queryClient}>
             <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
                 <LanguageProvider>
-                    <WalletProvider>
-                        <SolanaWalletProvider>
-                            <App />
-                            <Toaster />
-                        </SolanaWalletProvider>
-                    </WalletProvider>
+                    <SolanaWalletProvider>
+                        <App />
+                        <Toaster />
+                    </SolanaWalletProvider>
                 </LanguageProvider>
             </ThemeProvider>
         </QueryClientProvider>

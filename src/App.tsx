@@ -1,9 +1,6 @@
 import { lazy, Suspense } from "react"
 import { useLanguage } from "@/context/language-provider"
-import { useWallet } from "@/context/wallet-provider"
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom"
-import { SwapProvider } from "./context/SwapContext"
-import { CrossChainProvider } from "./context/CrossChainContext"
 import LandingPage from "./pages/LandingPage"
 import FeaturesPage from "./pages/FeaturesPage"
 import { Header } from "./components/common/Header"
@@ -25,7 +22,7 @@ import { TokenDetailPage } from "./pages/TokenDetailPage"
 import EcosystemPage from "./pages/EcosystemPage"
 import IntegratePage from "./pages/IntegratePage"
 import { SolanaWalletProvider } from "./context/SolanaWalletProvider"
-import { BCHWalletProvider, CashonizeProvider } from "./context/BCHWalletProvider"
+import { BCHWalletProvider } from "./context/BCHWalletProvider"
 import { BCHSwapProvider } from "./context/BCHSwapContext"
 import { SwapServerRoot } from "./swap-server/SwapServerRoot"
 import BchSwapPage from "./pages/BchSwapPage"
@@ -60,7 +57,6 @@ function ExternalRedirect({ url }: { url: string }) {
 
 function App() {
     useLanguage();
-    useWallet();
 
     return (
         <Router>
@@ -70,11 +66,8 @@ function App() {
                 <WDKProvider>
                     <ExternalBCHWalletProvider>
                         <SolanaWalletProvider>
-                            <SwapProvider>
-                                <CrossChainProvider>
-                                    <CashonizeProvider>
-                                        <BCHWalletProvider>
-                                            <BCHSwapProvider>
+                            <BCHWalletProvider>
+                                <BCHSwapProvider>
                                                 {/* Cross-chain USDC and Solana swaps through cctp-swap-server: a module of its own, next to BCHSwapProvider. */}
                                                 <SwapServerRoot>
                                                 <Routes>
@@ -267,9 +260,6 @@ function App() {
                                                 </SwapServerRoot>
                                             </BCHSwapProvider>
                                         </BCHWalletProvider>
-                                    </CashonizeProvider>
-                                </CrossChainProvider>
-                            </SwapProvider>
                         </SolanaWalletProvider>
                     </ExternalBCHWalletProvider>
                 </WDKProvider>
