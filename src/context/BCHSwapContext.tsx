@@ -11,6 +11,8 @@ import { Keypair, PublicKey, SystemProgram, Transaction } from '@solana/web3.js'
 import { BCHSwapParams, BCHSwapType, BCHOrder, isTerminalOrderStatus, splitOrders } from '@/types';
 import { useRelayerEvents, type RelayerEvent } from '@/hooks/useRelayerEvents';
 import { BCH_SOLANA_RELAYER_URL, CASHTOKEN_RELAYER_URL, CASHTOKEN_RELAYER_MAINNET_URL } from '@/lib/config';
+import { isActive, norm } from '@/lib/wallets/visibility';
+import { appNetworkOf } from '@/lib/wallets/types';
 import axios from 'axios';
 import * as anchor from '@coral-xyz/anchor';
 import { getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, getAccount } from '@solana/spl-token';
@@ -48,6 +50,25 @@ const getCashScript = async () => {
 // Constants
 // ============================================================================
 const getOrdersKey = (network: string) => `bch_orders_${network}`;
+
+/** Delete all orders belonging to a forgotten wallet address across all networks */
+export function forgetWalletOrders(address: string): void {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    const targetNorm = norm(address, 'bch');
+    for (const net of ['chipnet', 'mainnet']) {
+        try {
+            const key = getOrdersKey(net);
+            const raw = localStorage.getItem(key);
+            if (!raw) continue;
+            const orders: BCHOrder[] = JSON.parse(raw);
+            const filtered = orders.filter(o => {
+                if (!o.wallet) return true; // keep built-in/legacy orders
+                return norm(o.wallet, 'bch') !== targetNorm;
+            });
+            localStorage.setItem(key, JSON.stringify(filtered));
+        } catch { /* ignore */ }
+    }
+}
 const SOLANA_PROGRAM_ID = 'G3F8TFjuxCAkTv8zZcPLJWmeAabTx7pasgmePcJa4pEL';
 
 /**
@@ -3434,14 +3455,13 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
         }
     }, []);
 
-    // What the app lists: the active wallet's orders. Orders saved before wallets
-    // could be switched carry no wallet and stay visible under every wallet.
-    const activeOrderAddress = isMainActive ? bchWallet.address : activeExtWallet?.address;
+    // What the app lists: the active wallet's orders.
+    // Orders without a wallet tag belong to the built-in wallet.
+    const appNetwork = appNetworkOf(wdk.bchNetwork);
     const { visiblePending, visibleCompleted } = useMemo(() => {
-        const bare = (a?: string | null) => (a ? a.slice(a.indexOf(':') + 1) : '');
-        const mine = (o: BCHOrder) => !o.wallet || !activeOrderAddress || bare(o.wallet) === bare(activeOrderAddress);
+        const mine = (o: BCHOrder) => isActive({ family: 'bch', network: appNetwork, wallet: o.wallet });
         return { visiblePending: pendingOrders.filter(mine), visibleCompleted: completedOrders.filter(mine) };
-    }, [pendingOrders, completedOrders, activeOrderAddress]);
+    }, [pendingOrders, completedOrders, appNetwork, isMainActive, activeExtWallet?.address]);
 
     return (
         <BCHSwapContext.Provider

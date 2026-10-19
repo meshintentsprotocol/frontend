@@ -56,6 +56,7 @@ import {
     sign as signWizard,
     type WizSession,
 } from '@/lib/wallets/wizardconnect';
+import { setWalletContext } from '@/lib/wallets/ambient';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -191,11 +192,74 @@ function disconnectExtension() {
 // ── Provider ─────────────────────────────────────────────────────────────────
 
 export function ExternalBCHWalletProvider({ children }: { children: ReactNode }) {
-    const { bchNetwork, isInitialized } = useWDK();
+    const {
+        bchNetwork,
+        bchChipnetAddress,
+        bchMainnetAddress,
+        evmAddress,
+        solanaAddress,
+        btcAddress,
+        btcMainnetAddress,
+        btcTestnetAddress,
+        isInitialized,
+    } = useWDK();
     const appNetwork: AppNetwork = appNetworkOf(bchNetwork);
 
     const allWallets = useExternalWallets();
     const activeBchId = useActiveWalletId('bch');
+
+    // ── Keep ambient wallet context in sync for non-React services ───────────
+    useEffect(() => {
+        const builtInBch = appNetwork === 'mainnet' ? bchMainnetAddress : bchChipnetAddress;
+        const builtInBtc = appNetwork === 'mainnet' ? (btcMainnetAddress || btcAddress) : (btcTestnetAddress || btcAddress);
+
+        const bchExts = allWallets.filter(w => w.family === 'bch' && w.network === appNetwork);
+        const activeExt = allWallets.find(w => w.id === activeBchId && w.family === 'bch' && w.network === appNetwork);
+        const activeBch = (activeBchId === MAIN_WALLET_ID || !activeBchId) ? builtInBch : (activeExt?.address ?? builtInBch);
+
+        const bchConnected: string[] = [];
+        if (builtInBch) bchConnected.push(builtInBch);
+        for (const w of bchExts) {
+            if (!bchConnected.includes(w.address)) bchConnected.push(w.address);
+        }
+
+        const evmConnected = evmAddress ? [evmAddress] : [];
+        const solConnected = solanaAddress ? [solanaAddress] : [];
+        const btcConnected = builtInBtc ? [builtInBtc] : [];
+
+        setWalletContext({
+            network: appNetwork,
+            active: {
+                bch: activeBch,
+                evm: evmAddress,
+                solana: solanaAddress,
+                btc: builtInBtc,
+            },
+            builtIn: {
+                bch: builtInBch,
+                evm: evmAddress,
+                solana: solanaAddress,
+                btc: builtInBtc,
+            },
+            connectedAddresses: {
+                bch: bchConnected,
+                evm: evmConnected,
+                solana: solConnected,
+                btc: btcConnected,
+            },
+        });
+    }, [
+        appNetwork,
+        activeBchId,
+        allWallets,
+        bchChipnetAddress,
+        bchMainnetAddress,
+        evmAddress,
+        solanaAddress,
+        btcAddress,
+        btcMainnetAddress,
+        btcTestnetAddress,
+    ]);
 
     // Filter to visible BCH wallets and map to ExternalBCHWallet shape
     const bchWallets: ExternalBCHWallet[] = useMemo(() => allWallets

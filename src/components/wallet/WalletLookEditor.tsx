@@ -8,12 +8,15 @@
  */
 
 import { useEffect, useState } from 'react';
-import { Check, Lock, Unplug } from 'lucide-react';
+import { Check, Lock, Unplug, Trash2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { useWDK } from '@/context/WDKProvider';
 import { useExternalBCHWallet } from '@/context/ExternalBCHWalletProvider';
 import { useWallets, shortAddress, type ConnectedWallet } from '@/hooks/useWallets';
-import { WALLET_COLORS } from '@/lib/walletStore';
+import { WALLET_COLORS, forgetLook } from '@/lib/walletStore';
+import { ActivityService } from '@/lib/activity';
+import { forgetWalletNotifications } from '@/lib/notifications';
+import { forgetWalletOrders } from '@/context/BCHSwapContext';
 import { notifyToast as toast } from '@/lib/notify-toast';
 import { cn } from '@/lib/utils';
 import { WalletGlyph } from './WalletIcon';
@@ -73,9 +76,11 @@ export function WalletEditCard({ walletId, onClose }: { walletId: string | null;
     const ext = useExternalBCHWallet();
     const { wallets } = useWallets();
     const wallet = wallets.find(w => w.id === walletId) ?? null;
+    const [confirmForget, setConfirmForget] = useState(false);
 
     // The wallet went away (disconnected elsewhere): nothing left to edit.
     useEffect(() => { if (walletId && !wallet) onClose(); }, [walletId, wallet, onClose]);
+    useEffect(() => { setConfirmForget(false); }, [walletId]);
 
     const remove = () => {
         if (!wallet) return;
@@ -84,8 +89,23 @@ export function WalletEditCard({ walletId, onClose }: { walletId: string | null;
             toast.success('Cham Wallet locked');
         } else {
             ext.disconnectWallet(wallet.id);
-            toast.success(`${wallet.name} disconnected`);
+            toast.success(`${wallet.name} disconnected. Its history comes back if you connect it again.`);
         }
+        onClose();
+    };
+
+    const forget = () => {
+        if (!wallet) return;
+        const { id, address, family, lookKey, name } = wallet;
+        ext.disconnectWallet(id);
+        forgetLook(lookKey);
+        ActivityService.forgetWallet(address, family);
+        forgetWalletNotifications(address, family);
+        forgetWalletOrders(address);
+        try {
+            localStorage.removeItem(`wizardconnect-${id}`);
+        } catch { /* ignore */ }
+        toast.success(`${name} forgotten`);
         onClose();
     };
 
@@ -102,17 +122,56 @@ export function WalletEditCard({ walletId, onClose }: { walletId: string | null;
                             </div>
                         </div>
                         <WalletLookEditor wallet={wallet} />
-                        <div className="flex gap-2">
-                            <button type="button" onClick={remove}
-                                className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-red-500/20 bg-red-500/[0.06] text-xs font-semibold text-red-300 transition-colors hover:bg-red-500/15">
-                                {wallet.kind === 'main' ? <><Lock className="h-3.5 w-3.5" /> Lock</> : <><Unplug className="h-3.5 w-3.5" /> Disconnect</>}
-                            </button>
-                            <button type="button" onClick={onClose}
-                                className="h-11 flex-1 rounded-xl text-xs font-bold text-[#050505] transition-transform active:scale-[0.98]"
-                                style={{ background: wallet.color }}>
-                                Done
-                            </button>
-                        </div>
+                        {confirmForget ? (
+                            <div className="rounded-xl border border-red-500/30 bg-red-500/[0.08] p-3 text-xs">
+                                <p className="font-semibold text-red-300">Forget this wallet?</p>
+                                <p className="mt-1 text-[11px] text-white/60">
+                                    This disconnects the wallet and permanently deletes its activity records, notifications, and orders from this device.
+                                </p>
+                                <div className="mt-3 flex gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setConfirmForget(false)}
+                                        className="h-9 flex-1 rounded-lg border border-white/10 bg-white/5 text-xs font-semibold text-white/70 transition-colors hover:bg-white/10"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={forget}
+                                        className="h-9 flex-1 rounded-lg bg-red-500 text-xs font-semibold text-white transition-colors hover:bg-red-600"
+                                    >
+                                        Forget
+                                    </button>
+                                </div>
+                            </div>
+                        ) : (
+                            <>
+                                <div className="flex gap-2">
+                                    <button type="button" onClick={remove}
+                                        className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-red-500/20 bg-red-500/[0.06] text-xs font-semibold text-red-300 transition-colors hover:bg-red-500/15">
+                                        {wallet.kind === 'main' ? <><Lock className="h-3.5 w-3.5" /> Lock</> : <><Unplug className="h-3.5 w-3.5" /> Disconnect</>}
+                                    </button>
+                                    <button type="button" onClick={onClose}
+                                        className="h-11 flex-1 rounded-xl text-xs font-bold text-[#050505] transition-transform active:scale-[0.98]"
+                                        style={{ background: wallet.color }}>
+                                        Done
+                                    </button>
+                                </div>
+                                {wallet.kind !== 'main' && (
+                                    <div className="flex justify-center pt-1">
+                                        <button
+                                            type="button"
+                                            onClick={() => setConfirmForget(true)}
+                                            className="flex items-center gap-1 text-[11px] font-medium text-white/35 transition-colors hover:text-red-400"
+                                        >
+                                            <Trash2 className="h-3 w-3" />
+                                            Forget this wallet
+                                        </button>
+                                    </div>
+                                )}
+                            </>
+                        )}
                     </>
                 )}
             </DialogContent>

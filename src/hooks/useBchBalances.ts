@@ -50,7 +50,7 @@ export function useBchBalances(refetchMs?: number) {
         enabled,
         staleTime: 5_000,
         refetchInterval: refetchMs ?? false,
-        placeholderData: keepPreviousData,
+        placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[2] === bchAddress ? prev : undefined),
         initialData: () => readPersisted<number>([...balanceKey])?.data,
         initialDataUpdatedAt: () => readPersisted([...balanceKey])?.updatedAt,
         queryFn: async (): Promise<number> => {
@@ -70,7 +70,7 @@ export function useBchBalances(refetchMs?: number) {
         enabled,
         staleTime: 15_000,
         refetchInterval: tokenInterval,
-        placeholderData: keepPreviousData,
+        placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[2] === bchAddress ? prev : undefined),
         initialData: () => readPersisted<Record<string, string>>([...tokensKey])?.data,
         initialDataUpdatedAt: () => readPersisted([...tokensKey])?.updatedAt,
         queryFn: async (): Promise<Record<string, string>> => {

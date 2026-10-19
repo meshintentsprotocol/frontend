@@ -124,7 +124,7 @@ export function usePortfolio(options?: { pollingMs?: number; scope?: 'main' | 'a
         enabled: !!evmAddress,
         staleTime: 5_000,
         refetchInterval,
-        placeholderData: keepPreviousData,
+        placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[1] === (evmAddress ?? '') ? prev : undefined),
         initialData: () => readPersisted<EvmBalances>([...evmKey])?.data,
         initialDataUpdatedAt: () => readPersisted([...evmKey])?.updatedAt,
         queryFn: async (): Promise<EvmBalances> => {
@@ -156,7 +156,7 @@ export function usePortfolio(options?: { pollingMs?: number; scope?: 'main' | 'a
         enabled: !!solanaAddress,
         staleTime: 5_000,
         refetchInterval,
-        placeholderData: keepPreviousData,
+        placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[1] === (solanaAddress ?? '') ? prev : undefined),
         initialData: () => readPersisted<SolBalances>([...solKey])?.data,
         initialDataUpdatedAt: () => readPersisted([...solKey])?.updatedAt,
         queryFn: async (): Promise<SolBalances> => {
@@ -186,7 +186,7 @@ export function usePortfolio(options?: { pollingMs?: number; scope?: 'main' | 'a
         enabled: !!movementAddress,
         staleTime: 5_000,
         refetchInterval,
-        placeholderData: keepPreviousData,
+        placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[1] === (movementAddress ?? '') ? prev : undefined),
         initialData: () => readPersisted<MovementBalances>([...movKey])?.data,
         initialDataUpdatedAt: () => readPersisted([...movKey])?.updatedAt,
         queryFn: async (): Promise<MovementBalances> => {
@@ -230,7 +230,7 @@ export function usePortfolio(options?: { pollingMs?: number; scope?: 'main' | 'a
         enabled: !!btcAccount && !!btcAddress,
         staleTime: 5_000,
         refetchInterval,
-        placeholderData: keepPreviousData,
+        placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[1] === (btcAddress ?? '') ? prev : undefined),
         initialData: () => readPersisted<number>([...btcKey])?.data,
         initialDataUpdatedAt: () => readPersisted([...btcKey])?.updatedAt,
         queryFn: async (): Promise<number> => {

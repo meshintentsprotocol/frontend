@@ -77,7 +77,7 @@ export function useBchAddressBalance({ address, isMainnet, refetchMs }: UseBchAd
         enabled,
         staleTime: 8_000,
         refetchInterval: refetchMs && refetchMs > 0 ? refetchMs : false,
-        placeholderData: keepPreviousData,
+        placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[2] === address ? prev : undefined),
         retry: 1,
         queryFn: () => fetchAddressBalance(address!, isMainnet),
     });

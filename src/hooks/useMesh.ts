@@ -100,7 +100,8 @@ export function useStrategyTemplates() {
 export function useStrategies(owner: string | undefined | null) {
   return useQuery({
     queryKey: keys.strategies(owner ?? ''), queryFn: () => meshApi.strategies(owner ?? undefined),
-    enabled: owner !== null, refetchInterval: 20_000, placeholderData: keepPreviousData,
+    enabled: owner !== null, refetchInterval: 20_000,
+    placeholderData: (prev, prevQuery) => (prevQuery?.queryKey[2] === (owner ?? '') ? prev : undefined),
   });
 }
 

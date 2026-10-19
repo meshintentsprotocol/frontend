@@ -12,6 +12,7 @@ import { WalletOnboardingView } from './WalletOnboardingView';
 import { Chameleon } from './Chameleon';
 import { OrdersHub } from '@/components/orders/OrdersHub';
 
+import { useExternalWallets } from '@/context/ExternalBCHWalletProvider';
 import { saveAppSettings, useAppSettings } from '@/lib/appSettings';
 import { setNotifNetwork, markNotificationsSeen, readNotifications, clearNotifications } from '@/lib/notifications';
 import type { StoredNotification } from '@/lib/notifications';
@@ -45,6 +46,7 @@ function getTimeAgo(ts: number): string {
 
 function NotificationsPanel() {
     const { bchNetwork } = useWDK();
+    const externalWallets = useExternalWallets();
     const [notifications, setNotifications] = useState<StoredNotification[]>([]);
 
     useEffect(() => {
@@ -57,7 +59,7 @@ function NotificationsPanel() {
         load();
         const interval = setInterval(load, 2000);
         return () => clearInterval(interval);
-    }, [bchNetwork]);
+    }, [bchNetwork, externalWallets]);
 
     const clearAll = () => {
         clearNotifications(bchNetwork);

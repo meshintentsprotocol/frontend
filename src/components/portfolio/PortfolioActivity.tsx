@@ -6,6 +6,10 @@ import { ActivityService } from '@/lib/activity';
 import { BCHOrder } from '@/types';
 import { OrderStatusPill } from '@/components/bch-swap/OrderStatusBadge';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import { useWDK } from '@/context/WDKProvider';
+import { useActiveWalletId } from '@/lib/walletStore';
+import { isActive } from '@/lib/wallets/visibility';
+import { appNetworkOf } from '@/lib/wallets/types';
 
 const getOrdersKey = (network: string) => `bch_orders_${network}`;
 
@@ -251,6 +255,11 @@ function TxDetailDialog({ tx, onClose }: { tx: MergedActivity; onClose: () => vo
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function PortfolioActivity() {
+    const { bchNetwork } = useWDK();
+    const activeBchId = useActiveWalletId('bch');
+    const currentNetwork: 'chipnet' | 'mainnet' = bchNetwork === 'mainnet' ? 'mainnet' : 'chipnet';
+    const appNetwork = appNetworkOf(bchNetwork);
+
     const [activities, setActivities] = useState<MergedActivity[]>([]);
     const [selected, setSelected] = useState<MergedActivity | null>(null);
 
@@ -258,73 +267,83 @@ export function PortfolioActivity() {
         const loadAll = () => {
             const merged: MergedActivity[] = [];
 
-            // 1. ActivityService records (send/receive)
+            // 1. ActivityService records (send/receive) - filter by active wallet
             try {
                 const records = ActivityService.getHistory();
-                records.forEach(tx => {
-                    merged.push({
-                        id: tx.id,
-                        type: tx.type,
-                        title: tx.type === 'swap' ? `Swapped ${tx.assetIn} for ${tx.assetOut}` :
-                            tx.type === 'receive' ? `Received ${tx.asset}` :
-                                tx.type === 'send' ? `Sent ${tx.asset}` :
-                                    `Bridged ${tx.asset}`,
-                        subtitle: tx.type === 'swap' ? `${tx.amountIn} ${tx.assetIn} → ${tx.amountOut} ${tx.assetOut}` : `${tx.amount} ${tx.asset}`,
-                        valueUsd: tx.valueUsd ?? 0,
-                        timestamp: tx.timestamp,
-                        explorerUrl: tx.explorerUrl,
-                    });
-                });
-            } catch { /* non-fatal */ }
-
-            // 2. BCH swap orders — read both networks so switching network shows all history
-            const networksToRead: Array<'chipnet' | 'mainnet'> = ['chipnet', 'mainnet'];
-            networksToRead.forEach(net => {
-                try {
-                    const saved = localStorage.getItem(getOrdersKey(net));
-                    if (!saved) return;
-                    const bchOrders: BCHOrder[] = JSON.parse(saved);
-                    bchOrders.forEach(order => {
-                        const sellSym = order.sellToken?.symbol || '?';
-                        const buySym = order.buyToken?.symbol || '?';
-                        const isCross = order.swapType !== 'same-chain';
-                        const mockUsdPrice = sellSym === 'BCH' ? 250 : sellSym === 'SOL' ? 150 : sellSym === 'MOVE' ? 0.8 : 1;
-                        const statusLabel = order.status === 'filled' || order.status === 'claimed' ? '✓'
-                            : order.status === 'pending' ? '⏳'
-                            : order.status === 'claimable' ? '🎯'
-                            : order.status === 'refunded' ? '↩'
-                            : '';
-                        const titlePrefix = order.status === 'refunded'
-                            ? `${statusLabel} Refunded`
-                            : `${statusLabel} Swapped`;
+                records
+                    .filter(tx => isActive({
+                        family: tx.family || 'bch',
+                        network: tx.network || appNetwork,
+                        wallet: tx.wallet,
+                    }))
+                    .forEach(tx => {
                         merged.push({
-                            id: `bch_${net}_${order.id}`,
-                            type: isCross ? 'bridge' : 'swap',
-                            title: `${titlePrefix} ${sellSym} for ${buySym}`,
-                            subtitle: `${order.sellAmount} ${sellSym} → ${Number(order.buyAmount).toFixed(4)} ${buySym}`,
-                            valueUsd: order.sellAmount * mockUsdPrice,
-                            timestamp: order.createdAt,
-                            explorerUrl: getExplorerUrl(order, net),
-                            sellIcon: order.sellToken?.icon || TOKEN_ICONS[sellSym],
-                            buyIcon: order.buyToken?.icon || TOKEN_ICONS[buySym],
-                            network: net,
-                            status: order.status,
-                            txid: order.txid,
-                            fillTxid: order.fillTxid,
-                            intentId: order.intentId,
-                            contractAddress: order.contractAddress,
-                            destExplorerUrl: order.destExplorerUrl,
-                            expiryTime: order.expiryTime,
-                            swapType: order.swapType,
-                            direction: order.claimData?.direction,
-                            sellSymbol: sellSym,
-                            buySymbol: buySym,
-                            sellAmount: order.sellAmount,
-                            buyAmount: Number(order.buyAmount),
+                            id: tx.id,
+                            type: tx.type,
+                            title: tx.type === 'swap' ? `Swapped ${tx.assetIn} for ${tx.assetOut}` :
+                                tx.type === 'receive' ? `Received ${tx.asset}` :
+                                    tx.type === 'send' ? `Sent ${tx.asset}` :
+                                        `Bridged ${tx.asset}`,
+                            subtitle: tx.type === 'swap' ? `${tx.amountIn} ${tx.assetIn} → ${tx.amountOut} ${tx.assetOut}` : `${tx.amount} ${tx.asset}`,
+                            valueUsd: tx.valueUsd ?? 0,
+                            timestamp: tx.timestamp,
+                            explorerUrl: tx.explorerUrl,
                         });
                     });
-                } catch { /* non-fatal */ }
-            });
+            } catch { /* non-fatal */ }
+
+            // 2. BCH swap orders — read current network only and filter by active wallet
+            try {
+                const saved = localStorage.getItem(getOrdersKey(currentNetwork));
+                if (saved) {
+                    const bchOrders: BCHOrder[] = JSON.parse(saved);
+                    bchOrders
+                        .filter(order => isActive({
+                            family: 'bch',
+                            network: appNetwork,
+                            wallet: order.wallet,
+                        }))
+                        .forEach(order => {
+                            const sellSym = order.sellToken?.symbol || '?';
+                            const buySym = order.buyToken?.symbol || '?';
+                            const isCross = order.swapType !== 'same-chain';
+                            const mockUsdPrice = sellSym === 'BCH' ? 250 : sellSym === 'SOL' ? 150 : sellSym === 'MOVE' ? 0.8 : 1;
+                            const statusLabel = order.status === 'filled' || order.status === 'claimed' ? '✓'
+                                : order.status === 'pending' ? '⏳'
+                                : order.status === 'claimable' ? '🎯'
+                                : order.status === 'refunded' ? '↩'
+                                : '';
+                            const titlePrefix = order.status === 'refunded'
+                                ? `${statusLabel} Refunded`
+                                : `${statusLabel} Swapped`;
+                            merged.push({
+                                id: `bch_${currentNetwork}_${order.id}`,
+                                type: isCross ? 'bridge' : 'swap',
+                                title: `${titlePrefix} ${sellSym} for ${buySym}`,
+                                subtitle: `${order.sellAmount} ${sellSym} → ${Number(order.buyAmount).toFixed(4)} ${buySym}`,
+                                valueUsd: order.sellAmount * mockUsdPrice,
+                                timestamp: order.createdAt,
+                                explorerUrl: getExplorerUrl(order, currentNetwork),
+                                sellIcon: order.sellToken?.icon || TOKEN_ICONS[sellSym],
+                                buyIcon: order.buyToken?.icon || TOKEN_ICONS[buySym],
+                                network: currentNetwork,
+                                status: order.status,
+                                txid: order.txid,
+                                fillTxid: order.fillTxid,
+                                intentId: order.intentId,
+                                contractAddress: order.contractAddress,
+                                destExplorerUrl: order.destExplorerUrl,
+                                expiryTime: order.expiryTime,
+                                swapType: order.swapType,
+                                direction: order.claimData?.direction,
+                                sellSymbol: sellSym,
+                                buySymbol: buySym,
+                                sellAmount: order.sellAmount,
+                                buyAmount: Number(order.buyAmount),
+                            });
+                        });
+                }
+            } catch { /* non-fatal */ }
 
             // Sort by time desc and dedupe
             const seen = new Set<string>();
@@ -345,7 +364,7 @@ export function PortfolioActivity() {
             window.removeEventListener('activity_history_updated', loadAll);
             clearInterval(interval);
         };
-    }, []);
+    }, [currentNetwork, appNetwork, activeBchId]);
 
     const formatTime = (ts: number) => {
         const date = new Date(ts);
