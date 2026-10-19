@@ -201,6 +201,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
     }, []);
 
     // =========================================================================
+    // OLD — retired 2026-10-19, kept until the clean-up. Not part of the live app. See devrel-agent-context/walletuidocs/connect/old-code.md.
     // BCH → Solana: HTLC path via CashScript covenant on BCH & Anchor on Solana
     //   1. User locks BCH in CashScript HTLC covenant
     //   2. Notifies bch-solana-relayer on /swap/bch-to-sol
@@ -314,6 +315,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
     };
 
     // =========================================================================
+    // OLD — retired 2026-10-19, kept until the clean-up. Not part of the live app. See devrel-agent-context/walletuidocs/connect/old-code.md.
     // Solana → BCH: HTLC path via Anchor on Solana & CashScript on BCH
     //   1. User locks SOL/SPL in Solana Escrow PDA
     //   2. Notifies bch-solana-relayer on /swap/sol-to-bch
@@ -1028,6 +1030,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
     }, []);
 
     // =========================================================================
+    // OLD — retired 2026-10-19, kept until the clean-up. Not part of the live app. See devrel-agent-context/walletuidocs/connect/old-code.md.
     // BCH → Movement: Deploy CrossChainHTLC covenant on BCH, notify relayer
     // =========================================================================
     const executeBCHToMovement = async (params: BCHSwapParams, recipientMovAddress: string) => {
@@ -1209,6 +1212,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
     };
 
     // =========================================================================
+    // OLD — retired 2026-10-19, kept until the clean-up. Not part of the live app. See devrel-agent-context/walletuidocs/connect/old-code.md.
     // Movement → BCH: Create on-chain HTLC escrow on Movement, notify relayer
     // =========================================================================
     const executeMovementToBCH = async (params: BCHSwapParams, recipientBCHAddress: string) => {
@@ -1373,6 +1377,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
     };
 
     // =========================================================================
+    // OLD — retired 2026-10-19, kept until the clean-up. Not part of the live app. See devrel-agent-context/walletuidocs/connect/old-code.md.
     // Solana → Movement: HTLC path via Anchor on Solana & Move module on Movement
     // =========================================================================
     const executeSolanaToMovement = async (params: BCHSwapParams, recipientMovAddress: string) => {
@@ -1533,6 +1538,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
     };
 
     // =========================================================================
+    // OLD — retired 2026-10-19, kept until the clean-up. Not part of the live app. See devrel-agent-context/walletuidocs/connect/old-code.md.
     // Movement → Solana: HTLC path via Move module on Movement & Anchor on Solana
     // =========================================================================
     const executeMovementToSolana = async (params: BCHSwapParams, recipientSolAddress: string) => {
@@ -1682,6 +1688,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
 
 
     // =========================================================================
+    // OLD — retired 2026-10-19, kept until the clean-up. Not part of the live app. See devrel-agent-context/walletuidocs/connect/old-code.md.
     // ETH → BCH: Create STARK escrow on Sepolia, notify bsc-bch-server (ZK, auto-complete)
     // =========================================================================
     const executeETHToBCH = async (params: BCHSwapParams, recipientAddress: string) => {
@@ -1791,6 +1798,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
     };
 
     // =========================================================================
+    // OLD — retired 2026-10-19, kept until the clean-up. Not part of the live app. See devrel-agent-context/walletuidocs/connect/old-code.md.
     // BCH → ETH: Fund StarkVerifierFRIPhaseB P2SH32 covenant, notify bsc-bch-server (ZK, auto-complete)
     // =========================================================================
     const executeBCHToETH = async (params: BCHSwapParams, _recipientAddress: string) => {
@@ -2070,6 +2078,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
     };
 
     // =========================================================================
+    // OLD — retired 2026-10-19, kept until the clean-up. Not part of the live app. See devrel-agent-context/walletuidocs/connect/old-code.md.
     // BCH → XMR: Deploy XmrAdaptorSwap covenant on BCH
     // TODO: Plug back in when @bch-intents/sdk-xmr-swap build issue is resolved.
     //       The SDK is published on npm as @bch-intents/sdk-xmr-swap@^1.0.0
@@ -2095,6 +2104,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
     ---- END ORIGINAL ---- */
 
     // =========================================================================
+    // OLD — retired 2026-10-19, kept until the clean-up. Not part of the live app. See devrel-agent-context/walletuidocs/connect/old-code.md.
     // XMR → BCH: Request XMR Deposit Address
     // =========================================================================
     const executeXMRToBCH = async (params: BCHSwapParams, recipientBCHAddress: string) => {

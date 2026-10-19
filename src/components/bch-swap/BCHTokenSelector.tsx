@@ -53,6 +53,8 @@ export const MOVEMENT_TOKENS: Token[] = [
         type: "0x1::aptos_coin::AptosCoin",
         chain: "movement",
         address: "0x1::aptos_coin::AptosCoin",
+        comingSoon: true,
+        disabled: true,
     },
     {
         symbol: "USDC",
@@ -62,6 +64,8 @@ export const MOVEMENT_TOKENS: Token[] = [
         type: "0x1::aptos_coin::AptosCoin",
         chain: "movement",
         address: "0x1::aptos_coin::AptosCoin",
+        comingSoon: true,
+        disabled: true,
     },
     {
         symbol: "USDT",
@@ -71,6 +75,8 @@ export const MOVEMENT_TOKENS: Token[] = [
         type: "0x1::aptos_coin::AptosCoin",
         chain: "movement",
         address: "0x1::aptos_coin::AptosCoin",
+        comingSoon: true,
+        disabled: true,
     },
     {
         symbol: "WETH",
@@ -80,6 +86,8 @@ export const MOVEMENT_TOKENS: Token[] = [
         type: "0xf22bede237a07e121b56d91a491eb7bcdfd1f5907926a9e58338f964a01b17fa::asset::WETH",
         chain: "movement",
         address: "0xf22bede237a07e121b56d91a491eb7bcdfd1f5907926a9e58338f964a01b17fa::asset::WETH",
+        comingSoon: true,
+        disabled: true,
     },
 ];
 
@@ -91,6 +99,8 @@ export const XMR_TOKENS: Token[] = [
         decimals: 12,
         type: "native",
         chain: "xmr",
+        comingSoon: true,
+        disabled: true,
     },
 ];
 
@@ -286,8 +296,8 @@ const CHAIN_FILTERS: { key: ChainFilter; label: string; logo: string | null }[] 
     { key: 'polygon',   label: 'Polygon',  logo: '/logos/polygon-matic-logo.svg' },
     { key: 'avalanche', label: 'Avalanche',logo: '/logos/avalanche-avax-logo.svg' },
     { key: 'arc',       label: 'Arc',      logo: '/logos/arc.svg' },
-    { key: 'movement',  label: 'Movement', logo: '/logos/movement.svg' },
-    { key: 'xmr',       label: 'Monero',   logo: '/logos/monero.svg' },
+    { key: 'movement',  label: 'Movement (Soon)', logo: '/logos/movement.svg' },
+    { key: 'xmr',       label: 'Monero (Soon)',   logo: '/logos/monero.svg' },
 ];
 
 // Section metadata for each chain grouping
@@ -307,8 +317,8 @@ const SECTIONS: {
     { chain: 'polygon',   label: 'Polygon',          dotColor: 'bg-purple-500' },
     { chain: 'avalanche', label: 'Avalanche',        dotColor: 'bg-red-500' },
     { chain: 'arc',       label: 'Arc',              dotColor: 'bg-sky-300' },
-    { chain: 'movement',  label: 'Movement',         dotColor: 'bg-yellow-300' },
-    { chain: 'xmr',       label: 'Monero',           dotColor: 'bg-orange-400' },
+    { chain: 'movement',  label: 'Movement (Soon)',  dotColor: 'bg-yellow-300' },
+    { chain: 'xmr',       label: 'Monero (Soon)',    dotColor: 'bg-orange-400' },
 ];
 
 const CHAIN_BADGE_STYLE: Record<string, string> = {
