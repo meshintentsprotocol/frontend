@@ -11,6 +11,11 @@ import { ActivityService } from '@/lib/activity';
 import { getEVMChainConfig } from '@/lib/evmChains';
 import { cn } from '@/lib/utils';
 import { Chameleon, type ChamMood } from '@/components/wallet/Chameleon';
+import { useActiveAccounts } from '@/hooks/useActiveAccounts';
+import { useMeshSigner } from '@/hooks/useMesh';
+import { useBchAddressBalance } from '@/hooks/useBchAddressBalance';
+import { buildAndSendBch } from '@/lib/bchSend';
+import { AppNetwork } from '@/lib/wallets/types';
 import {
     getEvmSignerForChain, readBalances, sendChains, tokensForChain, type SendChain, type SendToken,
 } from './sendChains';
@@ -36,7 +41,9 @@ const fmtBal = (n: number | undefined) => (n === undefined || Number.isNaN(n) ? 
 export function SendModal({ children }: { children?: React.ReactNode }) {
     const wdk = useWDK();
     const bchWallet = useBCHWallet();
-    const { tokens: portfolioTokens } = usePortfolio();
+    const activeAccounts = useActiveAccounts();
+    const meshSigner = useMeshSigner();
+    const { tokens: portfolioTokens } = usePortfolio({ scope: 'active' });
     const isMainnet = wdk.bchNetwork === 'mainnet';
 
     const [isOpen, setIsOpen] = useState(false);
@@ -55,21 +62,54 @@ export function SendModal({ children }: { children?: React.ReactNode }) {
     const flash = (m: ChamMood) => { clearTimeout(moodTimer.current); setMood(m); moodTimer.current = setTimeout(() => setMood('idle'), 1400); };
     useEffect(() => () => clearTimeout(moodTimer.current), []);
 
+    const extBchActive = activeAccounts.bch?.source === 'external';
+    const extBchQuery = useBchAddressBalance({
+        address: extBchActive ? activeAccounts.bch?.address ?? null : null,
+        isMainnet,
+    });
+
+    const bchHeld = useMemo<{ sats: number; tokens: Record<string, bigint> }>(() => {
+        if (extBchActive && extBchQuery.data) {
+            const rawTokens: Record<string, bigint> = {};
+            for (const [k, v] of Object.entries(extBchQuery.data.tokens ?? {})) {
+                try { rawTokens[k] = BigInt(v); } catch {}
+            }
+            return {
+                sats: extBchQuery.data.sats,
+                tokens: rawTokens,
+            };
+        }
+        return {
+            sats: bchWallet.balance,
+            tokens: bchWallet.tokenBalances,
+        };
+    }, [extBchActive, extBchQuery.data, bchWallet.balance, bchWallet.tokenBalances]);
+
+    const activeAccount = useMemo(() => {
+        if (!chain) return undefined;
+        if (chain.family === 'bch') return activeAccounts.bch;
+        if (chain.family === 'evm') return activeAccounts.evm;
+        if (chain.family === 'sol') return activeAccounts.solana;
+        if (chain.family === 'btc') return activeAccounts.btc;
+        if (chain.family === 'move') return activeAccounts.movement;
+        return undefined;
+    }, [chain, activeAccounts]);
+
     const chains = useMemo(() => sendChains({
         isMainnet,
-        evmAddress: wdk.evmAddress,
-        bchConnected: bchWallet.connected,
-        solanaAddress: wdk.solanaAddress,
-        movementAddress: wdk.movementAddress,
-        btcAddress: wdk.btcAddress,
-    }), [isMainnet, wdk.evmAddress, bchWallet.connected, wdk.solanaAddress, wdk.movementAddress, wdk.btcAddress]);
+        evmAddress: activeAccounts.evm?.address || wdk.evmAddress,
+        bchConnected: !!activeAccounts.bch?.address || bchWallet.connected,
+        solanaAddress: activeAccounts.solana?.address || wdk.solanaAddress,
+        movementAddress: activeAccounts.movement?.address || wdk.movementAddress,
+        btcAddress: activeAccounts.btc?.address || wdk.btcAddress,
+    }), [isMainnet, activeAccounts, wdk.evmAddress, bchWallet.connected, wdk.solanaAddress, wdk.movementAddress, wdk.btcAddress]);
 
-    // The tokens of the chosen chain: the fixed ones, plus the CashTokens the BCH wallet actually holds.
+    // The tokens of the chosen chain: the fixed ones, plus the CashTokens the active BCH wallet actually holds.
     const tokens = useMemo<SendToken[]>(() => {
         if (!chain) return [];
         const base = tokensForChain(chain, isMainnet);
         if (chain.family === 'bch') {
-            for (const [cat, amt] of Object.entries(bchWallet.tokenBalances)) {
+            for (const [cat, amt] of Object.entries(bchHeld.tokens)) {
                 if (amt > 0n) {
                     const short = `${cat.slice(0, 6)}…${cat.slice(-4)}`;
                     base.push({ id: `bch-${cat}`, symbol: short, name: `CashToken ${short}`, icon: '/logos/bitcoin-cash-bch-logo.svg', decimals: 0, bchCategory: cat });
@@ -77,7 +117,7 @@ export function SendModal({ children }: { children?: React.ReactNode }) {
             }
         }
         return base;
-    }, [chain, isMainnet, bchWallet.tokenBalances]);
+    }, [chain, isMainnet, bchHeld.tokens]);
 
     const shownTokens = useMemo(() => {
         const q = query.trim().toLowerCase();
@@ -94,13 +134,14 @@ export function SendModal({ children }: { children?: React.ReactNode }) {
         setBalances({});
         readBalances(chain, tokens, {
             isMainnet,
-            evmAddress: wdk.evmAddress,
-            bchSats: bchWallet.balance,
+            evmAddress: activeAccounts.evm?.address || wdk.evmAddress,
+            bchSats: bchHeld.sats,
+            bchTokenBalances: bchHeld.tokens,
             portfolioBalance,
         }).then(b => { if (!cancelled) setBalances(b); }).finally(() => { if (!cancelled) setLoadingBalances(false); });
         return () => { cancelled = true; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [step, chain]);
+    }, [step, chain, bchHeld.sats, bchHeld.tokens]);
 
     const reset = () => { setStep('chain'); setChain(null); setToken(null); setQuery(''); setRecipient(''); setAmount(''); setBalances({}); };
     const back = () => {
@@ -136,12 +177,26 @@ export function SendModal({ children }: { children?: React.ReactNode }) {
                     hash = tx.hash;
                 }
             } else if (chain.family === 'bch') {
-                const wallet = wdk.bchWallet;
-                if (!wallet) throw new Error('BCH wallet not available');
-                const res = token.bchCategory
-                    ? await wallet.send([{ cashaddr: recipient, tokenId: token.bchCategory, amount: Math.round(value) }])
-                    : await wallet.send([{ cashaddr: recipient, value: Math.round(value * 1e8), unit: 'sat' }]);
-                hash = (res as any).txId ?? '';
+                if (!meshSigner.signer) throw new Error(meshSigner.unavailable || 'BCH signer not available');
+                const isMax = selectedBalance !== undefined && Math.abs(value - selectedBalance) < 1e-8;
+                if (token.bchCategory) {
+                    const baseAmount = BigInt(Math.round(value));
+                    hash = await buildAndSendBch(
+                        meshSigner.signer,
+                        recipient,
+                        { category: token.bchCategory, amount: baseAmount },
+                        `Send ${amount} ${token.symbol}`
+                    );
+                } else {
+                    const sats = BigInt(Math.round(value * 1e8));
+                    hash = await buildAndSendBch(
+                        meshSigner.signer,
+                        recipient,
+                        { sats },
+                        `Send ${amount} BCH`,
+                        { sendMax: isMax }
+                    );
+                }
             } else if (chain.family === 'sol') {
                 if (!wdk.solanaSigner?.secretKey) throw new Error('Solana signer not available');
                 const { Keypair, Connection, PublicKey, SystemProgram, Transaction, LAMPORTS_PER_SOL } = await import('@solana/web3.js');
@@ -173,11 +228,31 @@ export function SendModal({ children }: { children?: React.ReactNode }) {
                 hash = res.txId ?? res.hash ?? '';
             }
 
+            const familyMap: Record<string, string> = {
+                bch: 'bch',
+                evm: 'evm',
+                sol: 'solana',
+                move: 'movement',
+                btc: 'bitcoin',
+            };
             ActivityService.addActivity({
                 type: 'send',
+                family: (familyMap[chain.family] || 'bch') as any,
+                network: isMainnet ? AppNetwork.MAINNET : AppNetwork.CHIPNET,
+                wallet: activeAccount?.address,
+                asset: token.symbol,
+                amount: value,
                 description: `Sent ${amount} ${token.symbol} on ${chain.name}`,
-                txHash: hash, status: 'confirmed',
-                metadata: { recipient, amount, token: token.symbol, chain: chain.id },
+                txHash: hash,
+                status: 'confirmed',
+                metadata: {
+                    recipient,
+                    amount,
+                    token: token.symbol,
+                    chain: chain.id,
+                    walletLabel: activeAccount?.label,
+                    walletSource: activeAccount?.source,
+                },
             });
 
             const url = explorerTxUrl(chain, hash, isMainnet);
@@ -306,6 +381,17 @@ export function SendModal({ children }: { children?: React.ReactNode }) {
                                 </div>
                                 <span className="font-mono text-xs text-white/55">Bal: {fmtBal(selectedBalance)}</span>
                             </div>
+
+                            {activeAccount && (
+                                <div className="flex items-center gap-1.5 px-1 text-xs text-white/50">
+                                    <span>From</span>
+                                    <span className="font-semibold text-white/80">{activeAccount.label}</span>
+                                    <span>·</span>
+                                    <span className="font-mono text-white/60">
+                                        {activeAccount.address.slice(0, 8)}…{activeAccount.address.slice(-6)}
+                                    </span>
+                                </div>
+                            )}
 
                             <div className="space-y-1.5">
                                 <label className="text-xs font-medium text-white/55">Recipient address</label>

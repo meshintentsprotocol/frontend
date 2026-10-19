@@ -8,6 +8,8 @@ import { notifyToast as toast } from '@/lib/notify-toast';
 import { cn } from '@/lib/utils';
 import { Chameleon, type ChamMood } from '@/components/wallet/Chameleon';
 
+import { useActiveAccounts } from '@/hooks/useActiveAccounts';
+
 /**
  * The token-aware form of a BCH address (same key, prefix `z…`/`r…`): required
  * to receive CashTokens. Plain BCH works at either form, but some exchanges and
@@ -28,6 +30,7 @@ function toTokenAddress(cashaddr: string): string | null {
 interface ReceiveChain {
     key: string;
     label: string;
+    walletLabel?: string;
     sublabel: string;
     address: string;
     icon: string | null;
@@ -37,32 +40,42 @@ interface ReceiveChain {
 
 export function ReceiveModal({ children }: { children?: React.ReactNode }) {
     const wdk = useWDK();
+    const activeAccounts = useActiveAccounts();
     const isMainnet = wdk.bchNetwork === 'mainnet';
     const [copied, setCopied] = useState(false);
     const [mood, setMood] = useState<ChamMood>('idle');
     /** For BCH: show the plain address or the token-aware one (CashTokens). */
     const [bchMode, setBchMode] = useState<'bch' | 'tokens'>('bch');
 
+    const bchAddr = activeAccounts.bch?.address || wdk.bchAddress;
+    const evmAddr = activeAccounts.evm?.address || wdk.evmAddress;
+    const solAddr = activeAccounts.solana?.address || wdk.solanaAddress;
+    const btcAddr = activeAccounts.btc?.address || wdk.btcAddress;
+
     const chains = useMemo<ReceiveChain[]>(() => ([
-        wdk.bchAddress && {
-            key: 'bch', label: 'Bitcoin Cash', sublabel: isMainnet ? 'Mainnet · BCH, CashTokens' : 'Chipnet · BCH, CashTokens',
-            address: wdk.bchAddress, icon: '/logos/bitcoin-cash-bch-logo.svg', color: '#0ac18e',
-            explorerUrl: isMainnet ? `https://blockchair.com/bitcoin-cash/address/${wdk.bchAddress}` : `https://chipnet.imaginary.cash/address/${wdk.bchAddress}`,
+        bchAddr && {
+            key: 'bch', label: 'Bitcoin Cash', walletLabel: activeAccounts.bch?.label ?? 'Cham Wallet',
+            sublabel: isMainnet ? 'Mainnet · BCH, CashTokens' : 'Chipnet · BCH, CashTokens',
+            address: bchAddr, icon: '/logos/bitcoin-cash-bch-logo.svg', color: '#0ac18e',
+            explorerUrl: isMainnet ? `https://blockchair.com/bitcoin-cash/address/${bchAddr}` : `https://chipnet.imaginary.cash/address/${bchAddr}`,
         },
-        wdk.evmAddress && {
-            key: 'evm', label: 'EVM', sublabel: isMainnet ? 'Ethereum, Base, Arbitrum, Optimism, BNB' : 'Sepolia, Base, Arbitrum, Optimism',
-            address: wdk.evmAddress, icon: '/logos/ethereum-eth-logo.svg', color: '#627eea',
-            explorerUrl: isMainnet ? `https://etherscan.io/address/${wdk.evmAddress}` : `https://sepolia.etherscan.io/address/${wdk.evmAddress}`,
+        evmAddr && {
+            key: 'evm', label: 'EVM', walletLabel: activeAccounts.evm?.label ?? 'Cham Wallet',
+            sublabel: isMainnet ? 'Ethereum, Base, Arbitrum, Optimism, BNB' : 'Sepolia, Base, Arbitrum, Optimism',
+            address: evmAddr, icon: '/logos/ethereum-eth-logo.svg', color: '#627eea',
+            explorerUrl: isMainnet ? `https://etherscan.io/address/${evmAddr}` : `https://sepolia.etherscan.io/address/${evmAddr}`,
         },
-        wdk.solanaAddress && {
-            key: 'sol', label: 'Solana', sublabel: 'Devnet · SOL, SPL tokens',
-            address: wdk.solanaAddress, icon: '/assets/solanaLogo.png', color: '#9945ff',
-            explorerUrl: `https://solscan.io/account/${wdk.solanaAddress}?cluster=devnet`,
+        solAddr && {
+            key: 'sol', label: 'Solana', walletLabel: activeAccounts.solana?.label ?? 'Cham Wallet',
+            sublabel: 'Devnet · SOL, SPL tokens',
+            address: solAddr, icon: '/assets/solanaLogo.png', color: '#9945ff',
+            explorerUrl: `https://solscan.io/account/${solAddr}?cluster=devnet`,
         },
-        wdk.btcAddress && {
-            key: 'btc', label: 'Bitcoin', sublabel: isMainnet ? 'Mainnet' : 'Testnet', address: wdk.btcAddress, icon: '/logos/bitcoin-btc-logo.svg', color: '#f7931a',
+        btcAddr && {
+            key: 'btc', label: 'Bitcoin', walletLabel: activeAccounts.btc?.label ?? 'Cham Wallet',
+            sublabel: isMainnet ? 'Mainnet' : 'Testnet', address: btcAddr, icon: '/logos/bitcoin-btc-logo.svg', color: '#f7931a',
         },
-    ] as (ReceiveChain | false)[]).filter(Boolean) as ReceiveChain[], [wdk.bchAddress, wdk.evmAddress, wdk.solanaAddress, wdk.movementAddress, wdk.btcAddress, isMainnet]);
+    ] as (ReceiveChain | false)[]).filter(Boolean) as ReceiveChain[], [bchAddr, evmAddr, solAddr, btcAddr, activeAccounts, isMainnet]);
 
     const [selected, setSelected] = useState<string | null>(null);
     const active = chains.find(c => c.key === selected) ?? chains[0];
@@ -99,14 +112,14 @@ export function ReceiveModal({ children }: { children?: React.ReactNode }) {
             <DialogContent className="lg-panel w-[calc(100vw-24px)] max-w-md gap-0 overflow-hidden rounded-xl bg-transparent p-0">
                 <div className="flex items-start gap-3 border-b border-white/[0.07] p-4 pr-12">
                     <div className="min-w-0 flex-1">
-                        <DialogTitle className="text-base font-semibold text-white">Receive</DialogTitle>
+                        <DialogTitle className="text-base font-semibold text-white">Receive to {active?.walletLabel ?? active?.label ?? 'Wallet'}</DialogTitle>
                         <DialogDescription className="mt-0.5 text-xs text-white/50">Share an address to receive funds</DialogDescription>
                     </div>
                     <Chameleon size={56} mood={mood} tone={active?.color} className="-mt-1 shrink-0 text-white/30" />
                 </div>
 
-                {!wdk.isInitialized || !active ? (
-                    <div className="p-10 text-center text-sm text-white/50">Unlock the wallet to see your receive addresses.</div>
+                {!active ? (
+                    <div className="p-10 text-center text-sm text-white/50">Unlock or connect a wallet to see your receive addresses.</div>
                 ) : (
                     <div className="p-4">
                         {/* Chain chips */}

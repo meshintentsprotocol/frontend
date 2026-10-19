@@ -38,16 +38,16 @@ export function lockingBytecodeOf(address: string): Uint8Array {
   return r.bytecode;
 }
 
-const sum = (xs: bigint[]) => xs.reduce((a, b) => a + b, 0n);
+export const sum = (xs: bigint[]) => xs.reduce((a, b) => a + b, 0n);
 
-function makeBuilder(signer: MeshSigner, ins: In[], outs: Out[]): TransactionBuilder {
+export function makeBuilder(signer: MeshSigner, ins: In[], outs: Out[]): TransactionBuilder {
   const b = new TransactionBuilder({ provider: signer.provider });
   for (const i of ins) b.addInput(i.utxo, i.unlocker);
   for (const o of outs) b.addOutput(o as any);
   return b;
 }
 
-function measure(signer: MeshSigner, ins: In[], outs: Out[]): number {
+export function measure(signer: MeshSigner, ins: In[], outs: Out[]): number {
   const hex = makeBuilder(signer, ins, outs).build();
   return hex.length / 2 + signer.unsignedInputPadding * ins.filter(i => i.p2pkh).length;
 }

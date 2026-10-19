@@ -170,6 +170,11 @@ export async function readBalances(chain: SendChain, tokens: SendToken[], ctx: {
     }
     if (chain.family === 'bch') {
         out['bch-native'] = (ctx.bchSats ?? 0) / 1e8;
+        for (const t of tokens) {
+            if (t.bchCategory && ctx.bchTokenBalances && ctx.bchTokenBalances[t.bchCategory] !== undefined) {
+                out[t.id] = Number(ctx.bchTokenBalances[t.bchCategory]);
+            }
+        }
         return out;
     }
     // Solana, Movement and Bitcoin balances come from the portfolio the wallet already tracks.

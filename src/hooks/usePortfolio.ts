@@ -16,7 +16,7 @@
  * and send modal de-duplicate onto one set of requests and one cache.
  */
 
-import { useMemo, useCallback, useRef } from 'react';
+import { useMemo, useCallback, useRef, useEffect } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { useConnection } from '@solana/wallet-adapter-react';
 import { PublicKey } from '@solana/web3.js';
@@ -30,7 +30,9 @@ import { useTokenMetadataMany } from '@/hooks/useTokenMetadata';
 import { readPersisted } from '@/lib/persist';
 import { useSwapServerHoldings } from '@/swap-server/useHoldings';
 import { useActiveWallet } from '@/hooks/useActiveWallet';
+import { useActiveAccounts } from '@/hooks/useActiveAccounts';
 import { useBchAddressBalance } from '@/hooks/useBchAddressBalance';
+import { recordPortfolioPoint, getPortfolioHistory } from '@/lib/portfolioHistory';
 
 // Portfolio token structure
 export interface PortfolioToken {
@@ -76,29 +78,6 @@ const SOL_USDC_MINTS = [
 ];
 const SOL_USDT_MINT = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB';
 
-// Deterministic offsets so the chart shape is stable across refetches and only
-// the magnitude (totalValue) scales — prevents recharts re-animating on every
-// poll-driven refresh.
-const CHART_OFFSETS = [
-    -0.018, -0.012, -0.005, 0.003, 0.011, 0.018, 0.015, 0.009,
-    0.001, -0.007, -0.014, -0.016, -0.010, -0.003, 0.005, 0.013,
-    0.019, 0.016, 0.010, 0.004, -0.002, -0.008, -0.013, -0.015, 0,
-];
-
-const generateChartData = (currentTotal: number, anchorMs: number) => {
-    const out: { time: string; value: number }[] = [];
-    for (let i = 24; i >= 0; i--) {
-        const time = new Date(anchorMs - i * 60 * 60 * 1000);
-        const volatility = 1 + CHART_OFFSETS[24 - i];
-        out.push({
-            time: time.toISOString(),
-            value: currentTotal * volatility * (1 - i * 0.001),
-        });
-    }
-    out[out.length - 1].value = currentTotal;
-    return out;
-};
-
 export function usePortfolio(options?: { pollingMs?: number; scope?: 'main' | 'active' }) {
     const pollingMs = options?.pollingMs ?? 0;
     const refetchInterval = pollingMs > 0 ? pollingMs : (false as const);
@@ -107,13 +86,26 @@ export function usePortfolio(options?: { pollingMs?: number; scope?: 'main' | 'a
     const { evmAddress, solanaAddress, movementAddress, bchNetwork, isInitialized: wdkConnected, bchAddress, btcAddress, btcAccount } = useWDK();
     const isMainnet = bchNetwork === 'mainnet';
 
-    // An external wallet in charge: its BCH holdings replace the built-in wallet's rows.
-    const { activeExtWallet } = useActiveWallet();
-    const extActive = options?.scope === 'active' ? activeExtWallet : undefined;
-    const extQuery = useBchAddressBalance({ address: extActive?.address ?? null, isMainnet, refetchMs: pollingMs });
-    const bchOwner = extActive ? extActive.address : bchAddress;
+    // Active accounts per family (P4)
+    const activeAccounts = useActiveAccounts();
+    const useActive = options?.scope === 'active';
 
-    const chartAnchorRef = useRef<number>(Date.now());
+    const bchAccount = useActive ? activeAccounts.bch : undefined;
+    const evmAccount = useActive ? activeAccounts.evm : undefined;
+    const solanaAccount = useActive ? activeAccounts.solana : undefined;
+    const btcAccountAcc = useActive ? activeAccounts.btc : undefined;
+
+    const bchOwner = bchAccount?.address || bchAddress;
+    const extBchActive = bchAccount && bchAccount.kind !== 'main';
+    const extQuery = useBchAddressBalance({
+        address: extBchActive ? bchAccount.address : null,
+        isMainnet,
+        refetchMs: pollingMs,
+    });
+
+    const currentEvmAddress = evmAccount?.address || evmAddress;
+    const currentSolanaAddress = solanaAccount?.address || solanaAddress;
+    const currentBtcAddress = btcAccountAcc?.address || btcAddress;
 
     const { prices, isLoading: pricesLoading, isFetching: pricesFetching } = usePrices();
 
@@ -242,7 +234,7 @@ export function usePortfolio(options?: { pollingMs?: number; scope?: 'main' | 'a
 
     // ── BCH (shared query) ────────────────────────────────────────────────────
     const bchQuery = useBchBalances(pollingMs > 0 ? pollingMs : undefined);
-    const bchHeld = extActive ? extQuery.data : bchQuery.data;
+    const bchHeld = extBchActive ? extQuery.data : bchQuery.data;
 
     // ── Cauldron CashToken metadata + USD prices (for held CashTokens) ────────
     const cauldronQuery = useQuery({
@@ -266,7 +258,7 @@ export function usePortfolio(options?: { pollingMs?: number; scope?: 'main' | 'a
     // ── Compose tokens ────────────────────────────────────────────────────────
     // USDC on the swap server's chains and, in Mainnet mode, every Solana token the wallet holds.
     const swapServer = useSwapServerHoldings({
-        evmAddress, solanaAddress, isMainnet, refetchInterval,
+        evmAddress: currentEvmAddress, solanaAddress: currentSolanaAddress, isMainnet, refetchInterval,
         usdcPrice: prices['USDC']?.price || 1, usdcChange24h: prices['USDC']?.change24h,
     });
     const swapServerKey = JSON.stringify(swapServer.holdings);
@@ -276,7 +268,7 @@ export function usePortfolio(options?: { pollingMs?: number; scope?: 'main' | 'a
         const networkLabel = isMainnet ? 'BSC Mainnet' : 'Sepolia';
 
         // EVM
-        if (!extActive && evmAddress && evmQuery.data) {
+        if (currentEvmAddress && evmQuery.data) {
             const nativeSymbol = isMainnet ? 'BNB' : 'ETH';
             const nativePrice = prices[nativeSymbol]?.price ?? 0;
             list.push({
@@ -320,7 +312,7 @@ export function usePortfolio(options?: { pollingMs?: number; scope?: 'main' | 'a
         }
 
         // Solana
-        if (!extActive && solanaAddress && solQuery.data) {
+        if (currentSolanaAddress && solQuery.data) {
             const solPrice = prices['SOL']?.price ?? 0;
             list.push({
                 symbol: 'SOL',
@@ -363,7 +355,7 @@ export function usePortfolio(options?: { pollingMs?: number; scope?: 'main' | 'a
         }
 
         // Movement
-        if (!extActive && movementAddress && movementQuery.data) {
+        if (movementAddress && movementQuery.data) {
             const movePrice = prices['MOVE']?.price || prices['APT']?.price || 0.5;
             list.push({
                 symbol: 'MOVE',
@@ -473,7 +465,7 @@ export function usePortfolio(options?: { pollingMs?: number; scope?: 'main' | 'a
         }
 
         // Bitcoin
-        if (!extActive && btcAddress) {
+        if (currentBtcAddress) {
             const btcPrice = prices['BTC']?.price ?? 0;
             const btcBalance = (btcQuery.data ?? 0) / 1e8;
             list.push({
@@ -488,13 +480,13 @@ export function usePortfolio(options?: { pollingMs?: number; scope?: 'main' | 'a
             });
         }
 
-        for (const h of (extActive ? [] : JSON.parse(swapServerKey)) as PortfolioToken[]) {
+        for (const h of JSON.parse(swapServerKey) as PortfolioToken[]) {
             if (!list.some(t => t.chain === h.chain && t.symbol === h.symbol)) list.push({ ...h, swapServer: true });
         }
 
         list.sort((a, b) => b.valueUsd - a.valueUsd);
         return list;
-    }, [swapServerKey, evmAddress, solanaAddress, movementAddress, bchOwner, extActive, bchHeld, btcAddress, isMainnet, evmQuery.data, solQuery.data, movementQuery.data, btcQuery.data, cauldronQuery.data, bcmrQuery.data, prices]);
+    }, [swapServerKey, currentEvmAddress, currentSolanaAddress, movementAddress, bchOwner, bchHeld, currentBtcAddress, isMainnet, evmQuery.data, solQuery.data, movementQuery.data, btcQuery.data, cauldronQuery.data, bcmrQuery.data, prices]);
 
     // Total is the strict aggregate of the rendered token rows.
     const totalValue = useMemo(
@@ -502,10 +494,47 @@ export function usePortfolio(options?: { pollingMs?: number; scope?: 'main' | 'a
         [tokens],
     );
 
-    const chartData = useMemo(
-        () => generateChartData(totalValue, chartAnchorRef.current),
-        [totalValue],
-    );
+    // Value-weighted 24h change (P4)
+    const change24h = useMemo(() => {
+        let totalVal = 0;
+        let weightedSum = 0;
+        for (const t of tokens) {
+            if (t.valueUsd > 0 && typeof t.change24h === 'number') {
+                totalVal += t.valueUsd;
+                weightedSum += t.valueUsd * t.change24h;
+            }
+        }
+        return totalVal > 0 ? weightedSum / totalVal : undefined;
+    }, [tokens]);
+
+    // Active addresses set for real hourly portfolio snapshots
+    const activeAddresses = useMemo(() => {
+        const addrs: string[] = [];
+        if (bchOwner) addrs.push(bchOwner);
+        if (currentEvmAddress) addrs.push(currentEvmAddress);
+        if (currentSolanaAddress) addrs.push(currentSolanaAddress);
+        if (currentBtcAddress) addrs.push(currentBtcAddress);
+        return addrs;
+    }, [bchOwner, currentEvmAddress, currentSolanaAddress, currentBtcAddress]);
+
+    const activeAddressesKey = activeAddresses.join(';');
+
+    useEffect(() => {
+        if (totalValue > 0 && activeAddresses.length > 0) {
+            recordPortfolioPoint(bchNetwork, activeAddresses, totalValue);
+        }
+    }, [bchNetwork, activeAddressesKey, totalValue]);
+
+    const history = useMemo(() => {
+        return getPortfolioHistory(bchNetwork, activeAddresses);
+    }, [bchNetwork, activeAddressesKey, totalValue]);
+
+    const chartData = useMemo(() => {
+        return history.map(p => ({
+            time: new Date(p.t).toISOString(),
+            value: p.totalUsd,
+        }));
+    }, [history]);
 
     const refetch = useCallback(() => {
         evmQuery.refetch();
@@ -519,26 +548,28 @@ export function usePortfolio(options?: { pollingMs?: number; scope?: 'main' | 'a
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [evmQuery.refetch, solQuery.refetch, movementQuery.refetch, bchQuery.refetch, extQuery.refetch, btcQuery.refetch, cauldronQuery.refetch]);
 
-    const anyChainLoading = extActive ? (extQuery.isLoading || pricesLoading) :
-        (!!evmAddress && evmQuery.isLoading) ||
-        (!!solanaAddress && solQuery.isLoading) ||
+    const anyChainLoading = extBchActive ? (extQuery.isLoading || pricesLoading) :
+        (!!currentEvmAddress && evmQuery.isLoading) ||
+        (!!currentSolanaAddress && solQuery.isLoading) ||
         (!!movementAddress && movementQuery.isLoading) ||
-        (!!bchAddress && bchQuery.isLoading) ||
-        (!!btcAddress && btcQuery.isLoading) ||
+        (!!bchOwner && bchQuery.isLoading) ||
+        (!!currentBtcAddress && btcQuery.isLoading) ||
         pricesLoading;
     const loading = tokens.length === 0 && anyChainLoading;
 
     const isRefetching =
-        extActive ? (extQuery.isFetching || pricesFetching) :
+        extBchActive ? (extQuery.isFetching || pricesFetching) :
         evmQuery.isFetching || solQuery.isFetching || movementQuery.isFetching || bchQuery.isFetching || btcQuery.isFetching || pricesFetching;
 
     return {
         tokens,
         totalValue,
+        change24h,
         chartData,
+        history,
         loading,
         isRefetching,
         refetch,
-        isConnected: wdkConnected || !!extActive,
+        isConnected: wdkConnected || !!extBchActive,
     };
 }

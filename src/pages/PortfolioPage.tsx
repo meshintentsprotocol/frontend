@@ -1,9 +1,11 @@
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useWDK } from '@/context/WDKProvider';
-import { useWallets } from '@/hooks/useWallets';
+import { useWallets, shortAddress } from '@/hooks/useWallets';
+import { useActiveAccounts, type ActiveAccount } from '@/hooks/useActiveAccounts';
 import { PortfolioChart } from '@/components/portfolio/PortfolioChart';
 import { PortfolioTokens } from '@/components/portfolio/PortfolioTokens';
 import { PortfolioActivity } from '@/components/portfolio/PortfolioActivity';
+import { PortfolioNfts } from '@/components/portfolio/PortfolioNfts';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Copy, ArrowDownUp, Check, Gift, Trophy, Zap, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
 import { ConnectWalletButton } from '@/components/connect-wallet-button';
@@ -25,9 +27,9 @@ const QUICK_ICON = 'h-5 w-5 text-primary transition-transform group-hover:scale-
 const QUICK_LABEL = 'text-[11px] font-medium text-foreground';
 
 export default function PortfolioPage() {
-    const { tokens, totalValue, chartData, loading, isRefetching, isConnected } = usePortfolio({ pollingMs: 30000, scope: 'active' });
-    const wdk = useWDK();
-    const [copied, setCopied] = useState(false);
+    const { tokens, totalValue, change24h, chartData, loading, isRefetching, isConnected } = usePortfolio({ pollingMs: 30000, scope: 'active' });
+    const activeAccounts = useActiveAccounts();
+    const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
 
     // Mesh pool stats for the connected wallet (from the server's pool ledger)
     const meshWallet = useMeshSigner();
@@ -37,32 +39,21 @@ export default function PortfolioPage() {
     const accruedFeeBch = Number(meshLp.data?.lp.feesAllSats ?? 0) / 1e8;
     const liveBchPrice = meshStats.data?.bchUsd ?? null;
 
-    // Prefer WDK EVM address as the primary handle; fall back across chains
-    // An external BCH wallet in charge: the page is about that wallet, which holds BCH only.
-    const { active: activeWallet } = useWallets();
-    const externalActive = activeWallet && activeWallet.kind !== 'main' ? activeWallet : null;
-    const primaryAddress = externalActive ? externalActive.address : (wdk.evmAddress || wdk.solanaAddress || wdk.bchAddress || null);
-    const activeAddress = primaryAddress
-        ? `${primaryAddress.slice(0, 6)}...${primaryAddress.slice(-4)}`
-        : 'Not connected';
+    const accountsList = useMemo(() => {
+        return [
+            activeAccounts.bch,
+            activeAccounts.evm,
+            activeAccounts.solana,
+            activeAccounts.btc,
+        ].filter(Boolean) as ActiveAccount[];
+    }, [activeAccounts]);
 
-    const copyPrimaryAddress = () => {
-        if (!primaryAddress) return;
-        navigator.clipboard.writeText(primaryAddress);
-        setCopied(true);
+    const copyAddress = (addr: string) => {
+        navigator.clipboard.writeText(addr);
+        setCopiedAddress(addr);
         toast.success('Address copied');
-        setTimeout(() => setCopied(false), 1500);
+        setTimeout(() => setCopiedAddress(null), 1500);
     };
-
-    // Count connected chains for the network chip
-    const connectedChains = externalActive ? [
-        { color: 'bg-emerald-500', icon: '/logos/bitcoin-cash-bch-logo.svg', label: 'BCH' },
-    ] : [
-        wdk.evmAddress && { color: 'bg-blue-500', icon: '/logos/ethereum-eth-logo.svg', label: 'ETH' },
-        wdk.bchAddress && { color: 'bg-emerald-500', icon: '/logos/bitcoin-cash-bch-logo.svg', label: 'BCH' },
-        wdk.solanaAddress && { color: 'bg-purple-500', icon: '/assets/solanaLogo.png', label: 'SOL' },
-        wdk.btcAddress && { color: 'bg-orange-500', icon: '/logos/bitcoin-btc-logo.svg', label: 'BTC' },
-    ].filter(Boolean) as { color: string; icon: string | null; label: string }[];
 
     return (
         <div className="container mx-auto p-4 md:p-8 max-w-[1000px] mt-6 relative">
@@ -85,38 +76,42 @@ export default function PortfolioPage() {
                 </div>
             )}
 
-            {/* Top Identity Row */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-10">
-                <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-full bg-gradient-to-tr from-primary to-purple-500 flex items-center justify-center shadow-lg shadow-primary/20">
-                        <span className="text-white font-bold">W</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <span className="font-mono font-semibold text-xl text-foreground">{activeAddress}</span>
-                        {primaryAddress && (
-                            <button onClick={copyPrimaryAddress} className="text-muted-foreground hover:text-foreground transition-colors" title="Copy address">
-                                {copied ? <Check className="h-4 w-4 text-emerald-400" /> : <Copy className="h-4 w-4" />}
-                            </button>
-                        )}
-                    </div>
-                </div>
-
-                {/* Connected chains chip */}
-                {connectedChains.length > 0 && (
-                    <div className="flex items-center gap-2">
-                        <div className="px-3 py-1.5 rounded-xl border border-white/10 bg-white/5 text-sm font-medium flex items-center gap-2">
-                            <div className="flex -space-x-1.5">
-                                {connectedChains.map((c, i) => (
-                                    <div key={i} className={`h-5 w-5 rounded-full border-2 border-[#0A0A0A] overflow-hidden flex items-center justify-center ${c.icon ? 'bg-black' : c.color}`}>
-                                        {c.icon
-                                            ? <img src={c.icon} alt={c.label} className="w-3 h-3 object-contain" />
-                                            : <span className="text-[8px] text-white font-bold">{c.label}</span>}
-                                    </div>
-                                ))}
+            {/* Top Identity Row: one chip per active account (P4) */}
+            <div className="flex flex-wrap items-center gap-2.5 mb-8">
+                {accountsList.length > 0 ? (
+                    accountsList.map(acc => {
+                        const isCopied = copiedAddress === acc.address;
+                        return (
+                            <div
+                                key={`${acc.family}-${acc.address}`}
+                                className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-1.5 text-xs transition-colors hover:bg-white/[0.07]"
+                            >
+                                <span
+                                    className="h-2 w-2 rounded-full flex-shrink-0"
+                                    style={{ background: acc.color }}
+                                />
+                                <span className="font-bold uppercase tracking-wider text-white/50 text-[10px]">
+                                    {acc.family}
+                                </span>
+                                <span className="font-semibold text-white/80">
+                                    {acc.label}
+                                </span>
+                                <span className="font-mono text-white/45 text-[11px]">
+                                    {shortAddress(acc.address, 6, 4)}
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => copyAddress(acc.address)}
+                                    className="text-white/40 hover:text-white transition-colors ml-0.5"
+                                    title="Copy address"
+                                >
+                                    {isCopied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+                                </button>
                             </div>
-                            {connectedChains.length} {connectedChains.length === 1 ? 'chain' : 'chains'}
-                        </div>
-                    </div>
+                        );
+                    })
+                ) : (
+                    <div className="text-sm font-semibold text-white/60">Not connected</div>
                 )}
             </div>
 
@@ -143,7 +138,7 @@ export default function PortfolioPage() {
                         <PortfolioChart
                             data={chartData}
                             totalValue={totalValue}
-                            changePercentage24h={tokens[0]?.change24h || 1.04}
+                            changePercentage24h={change24h}
                         />
                     )}
 
@@ -155,6 +150,12 @@ export default function PortfolioPage() {
                                 className="px-0 py-2 border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none text-muted-foreground hover:text-foreground text-base"
                             >
                                 Tokens
+                            </TabsTrigger>
+                            <TabsTrigger
+                                value="mesh-nfts"
+                                className="px-0 py-2 border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:text-foreground data-[state=active]:bg-transparent data-[state=active]:shadow-none rounded-none text-muted-foreground hover:text-foreground text-base"
+                            >
+                                Mesh NFTs
                             </TabsTrigger>
                             <TabsTrigger
                                 value="activity"
@@ -193,6 +194,10 @@ export default function PortfolioPage() {
                                 ) : (
                                     <PortfolioTokens tokens={tokens} />
                                 )}
+                            </TabsContent>
+
+                            <TabsContent value="mesh-nfts" className="m-0">
+                                <PortfolioNfts />
                             </TabsContent>
 
                             <TabsContent value="activity" className="m-0">
@@ -264,17 +269,6 @@ export default function PortfolioPage() {
                                         {liveBchPrice ? `≈ $${(accruedFeeBch * liveBchPrice).toFixed(2)}` : 'fees earned by your pools'}
                                     </div>
                                 </div>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center justify-between rounded-2xl border border-white/[0.05] bg-black/40 p-5 text-sm backdrop-blur-md">
-                            <div className="flex flex-col">
-                                <span className="text-muted-foreground">Swaps this week</span>
-                                <span className="text-xl font-medium text-foreground mt-1">0</span>
-                            </div>
-                            <div className="flex flex-col text-right">
-                                <span className="text-muted-foreground">Volume</span>
-                                <span className="text-xl font-medium text-foreground mt-1">$0.00</span>
                             </div>
                         </div>
                     </div>
