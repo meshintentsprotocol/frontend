@@ -1,23 +1,22 @@
 /**
- * walletStore — the one place that knows which BCH wallet is active, and how
- * each wallet looks (its colour and the name the user gave it).
+ * walletStore — the one place that knows which wallet is active per chain family,
+ * and how each wallet looks (its colour and the name the user gave it).
  *
  * It is a module-level store read through useSyncExternalStore, so every
- * component sees the same value and a switch made anywhere (the header, the
- * wallet panel, the swap card) reaches the whole app at once. It also follows
- * other tabs through the `storage` event.
+ * component sees the same value and a switch made anywhere reaches the whole app.
+ * It also follows other tabs through the `storage` event.
  *
- * Wallet ids: 'main' for the built-in wallet, or an external wallet's id from
- * ExternalBCHWalletProvider. Looks are keyed by 'main' or by the wallet's
- * address, so a wallet keeps its colour when it is reconnected.
+ * Phase 0: Foundation
  */
 
 import { useSyncExternalStore } from 'react';
+import { ChainFamily } from './wallets/types';
 
 export const MAIN_WALLET_ID = 'main';
 
-const ACTIVE_KEY = 'active_bch_wallet_id';
-const LOOKS_KEY = 'bch_wallet_looks_v1';
+export const ACTIVE_KEY_V2 = 'active_wallet_ids_v2';
+export const LEGACY_ACTIVE_KEY = 'active_bch_wallet_id';
+export const LOOKS_KEY = 'bch_wallet_looks_v1';
 
 /** Colours a wallet can be given. Hex values, used through inline styles. */
 export const WALLET_COLORS = [
@@ -38,20 +37,66 @@ export interface WalletLook {
     name?: string;
 }
 
+export type ActiveWalletIds = {
+    bch: string | null;
+    evm: string | null;
+    solana: string | null;
+    btc: string | null;
+};
+
+const DEFAULT_ACTIVE_IDS: ActiveWalletIds = {
+    bch: MAIN_WALLET_ID,
+    evm: null,
+    solana: null,
+    btc: null,
+};
+
 interface State {
-    activeId: string;
+    activeIds: ActiveWalletIds;
     looks: Record<string, WalletLook>;
 }
 
 function read(): State {
-    let activeId = MAIN_WALLET_ID;
+    let activeIds: ActiveWalletIds = { ...DEFAULT_ACTIVE_IDS };
     let looks: Record<string, WalletLook> = {};
+
+    if (typeof window === 'undefined' || !window.localStorage) {
+        return { activeIds, looks };
+    }
+
     try {
-        activeId = localStorage.getItem(ACTIVE_KEY) || MAIN_WALLET_ID;
-        const raw = JSON.parse(localStorage.getItem(LOOKS_KEY) ?? '{}');
-        if (raw && typeof raw === 'object' && !Array.isArray(raw)) looks = raw;
-    } catch { /* private mode, or a damaged value: start clean */ }
-    return { activeId, looks };
+        const rawActive = localStorage.getItem(ACTIVE_KEY_V2);
+        if (rawActive) {
+            const parsed = JSON.parse(rawActive);
+            if (parsed && typeof parsed === 'object') {
+                activeIds = {
+                    bch: parsed.bch !== undefined ? parsed.bch : MAIN_WALLET_ID,
+                    evm: parsed.evm ?? null,
+                    solana: parsed.solana ?? null,
+                    btc: parsed.btc ?? null,
+                };
+            }
+        } else {
+            // Migrate from legacy active_bch_wallet_id
+            const legacyBch = localStorage.getItem(LEGACY_ACTIVE_KEY);
+            if (legacyBch) {
+                activeIds.bch = legacyBch;
+                try {
+                    localStorage.setItem(ACTIVE_KEY_V2, JSON.stringify(activeIds));
+                    localStorage.removeItem(LEGACY_ACTIVE_KEY);
+                } catch { /* non-fatal */ }
+            }
+        }
+
+        const rawLooks = JSON.parse(localStorage.getItem(LOOKS_KEY) ?? '{}');
+        if (rawLooks && typeof rawLooks === 'object' && !Array.isArray(rawLooks)) {
+            looks = rawLooks;
+        }
+    } catch {
+        /* private mode, or a damaged value: start clean */
+    }
+
+    return { activeIds, looks };
 }
 
 let state: State = read();
@@ -69,25 +114,52 @@ function subscribe(listener: () => void) {
 
 if (typeof window !== 'undefined') {
     window.addEventListener('storage', e => {
-        if (e.key === ACTIVE_KEY || e.key === LOOKS_KEY) set(read());
+        if (e.key === ACTIVE_KEY_V2 || e.key === LEGACY_ACTIVE_KEY || e.key === LOOKS_KEY) {
+            set(read());
+        }
     });
 }
 
-export function getActiveWalletId(): string {
-    return state.activeId;
+export function getActiveWalletId(family: ChainFamily = 'bch'): string | null {
+    return state.activeIds[family] ?? null;
 }
 
-export function setActiveWalletId(id: string) {
-    if (id === state.activeId) return;
-    try { localStorage.setItem(ACTIVE_KEY, id); } catch { /* non-fatal */ }
-    set({ ...state, activeId: id });
+export function getActiveWalletIds(): ActiveWalletIds {
+    return { ...state.activeIds };
+}
+
+export function setActiveWalletId(id: string | null, family: ChainFamily = 'bch') {
+    if (id === state.activeIds[family]) return;
+    const activeIds: ActiveWalletIds = { ...state.activeIds, [family]: id };
+    if (typeof window !== 'undefined' && window.localStorage) {
+        try {
+            localStorage.setItem(ACTIVE_KEY_V2, JSON.stringify(activeIds));
+        } catch { /* non-fatal */ }
+    }
+    set({ ...state, activeIds });
 }
 
 export function setWalletLook(key: string, look: WalletLook) {
     const merged = { ...state.looks[key], ...look };
     if (!merged.name) delete merged.name;
     const looks = { ...state.looks, [key]: merged };
-    try { localStorage.setItem(LOOKS_KEY, JSON.stringify(looks)); } catch { /* non-fatal */ }
+    if (typeof window !== 'undefined' && window.localStorage) {
+        try {
+            localStorage.setItem(LOOKS_KEY, JSON.stringify(looks));
+        } catch { /* non-fatal */ }
+    }
+    set({ ...state, looks });
+}
+
+export function forgetLook(key: string) {
+    if (!state.looks[key]) return;
+    const looks = { ...state.looks };
+    delete looks[key];
+    if (typeof window !== 'undefined' && window.localStorage) {
+        try {
+            localStorage.setItem(LOOKS_KEY, JSON.stringify(looks));
+        } catch { /* non-fatal */ }
+    }
     set({ ...state, looks });
 }
 
@@ -99,10 +171,28 @@ export function defaultWalletColor(key: string): string {
     return WALLET_COLORS[1 + (h % (WALLET_COLORS.length - 1))].hex;
 }
 
-export function useActiveWalletId(): string {
-    return useSyncExternalStore(subscribe, () => state.activeId, () => MAIN_WALLET_ID);
+export function useActiveWalletId(family: ChainFamily = 'bch'): string | null {
+    return useSyncExternalStore(
+        subscribe,
+        () => state.activeIds[family] ?? null,
+        () => (family === 'bch' ? MAIN_WALLET_ID : null)
+    );
 }
 
 export function useWalletLooks(): Record<string, WalletLook> {
     return useSyncExternalStore(subscribe, () => state.looks, () => state.looks);
+}
+
+/** For tests: reset state and storage */
+export function _resetWalletStoreForTest(initialActive?: Partial<ActiveWalletIds>) {
+    state = {
+        activeIds: { ...DEFAULT_ACTIVE_IDS, ...initialActive },
+        looks: {},
+    };
+    if (typeof window !== 'undefined' && window.localStorage) {
+        localStorage.removeItem(ACTIVE_KEY_V2);
+        localStorage.removeItem(LEGACY_ACTIVE_KEY);
+        localStorage.removeItem(LOOKS_KEY);
+    }
+    for (const l of listeners) l();
 }

@@ -1,15 +1,11 @@
 /**
- * ExternalBCHWalletProvider — manages WalletConnect v2 and WizardConnect
- * sessions for external BCH wallets (Cashonize, Paytaca, etc.), and the
- * Cham Wallet browser extension (window.bchIntents).
+ * ExternalBCHWalletProvider — manages WalletConnect v2, WizardConnect,
+ * and Cham Wallet browser extension sessions for BCH.
  *
- * This context is separate from WDKProvider. It manages:
- *   - Active WC2 / WizardConnect sessions, and the extension connection
- *   - Connected wallet addresses + balance polling
- *   - Session persistence (WC handles its own; we track IDs in localStorage)
+ * Backed by the central wallet registry (lib/wallets/registry.ts) and
+ * signing-request runner (lib/wallets/signRequest.ts).
  *
- * We implement the connection logic directly (learning from the SDK adapter
- * patterns) rather than importing from @bch-intents/sdk-wallet-adapter.
+ * Phase 0: Foundation
  */
 
 import {
@@ -17,12 +13,42 @@ import {
     useContext,
     useState,
     useCallback,
+    useMemo,
     useEffect,
     useRef,
     type ReactNode,
 } from 'react';
-import { useWDK, type BchNetwork } from '@/context/WDKProvider';
-import { setActiveWalletId } from '@/lib/walletStore';
+import { useWDK } from '@/context/WDKProvider';
+import {
+    MAIN_WALLET_ID,
+    setActiveWalletId,
+    useActiveWalletId,
+} from '@/lib/walletStore';
+import {
+    AppNetwork,
+    ExternalWallet,
+    appNetworkOf,
+} from '@/lib/wallets/types';
+import {
+    getAllWallets,
+    visibleWallets,
+    addWallet,
+    removeWallet,
+    clearAllWallets,
+    useVisibleWallets,
+    useExternalWallets,
+    registerSessionCloser,
+} from '@/lib/wallets/registry';
+import { resolveActive } from '@/lib/wallets/resolveActive';
+import {
+    getWCBchClient,
+    connectBch,
+    getBchChain,
+} from '@/lib/wallets/walletconnect';
+import {
+    runSignRequest,
+    WalletSignError,
+} from '@/lib/wallets/signRequest';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -31,10 +57,11 @@ export type ExternalWalletSource = 'walletconnect' | 'wizardconnect' | 'extensio
 export interface ExternalBCHWallet {
     id: string;
     source: ExternalWalletSource;
-    label: string;               // "Cashonize", "Paytaca", "Other"
-    address: string;             // bitcoincash:q... or bchtest:q...
+    label: string; // "Cashonize", "Paytaca", "Other"
+    address: string; // bitcoincash:q... or bchtest:q...
     connected: boolean;
-    sessionTopic?: string;       // WC session topic for disconnect
+    sessionTopic?: string; // WC session topic for disconnect
+    connectedAt?: number;
 }
 
 type ConnectingState = {
@@ -44,8 +71,23 @@ type ConnectingState = {
     uri: string | null;
 };
 
+export interface WC2SignPayload {
+    transaction: string; // hex-encoded unsigned tx
+    sourceOutputs: unknown[]; // libauth-stringify encoded UTXOs
+    broadcast: boolean;
+    userPrompt?: string;
+}
+
+export interface WC2SignResult {
+    signedTransaction: string; // hex of the signed tx
+    signedTransactionHash: string; // txid
+}
+
 interface ExternalBCHWalletContextType {
+    /** Visible BCH external wallets on current network (for compatibility with existing callers) */
     wallets: ExternalBCHWallet[];
+    /** All external wallets across all chains & networks */
+    allWallets: ExternalWallet[];
     isConnecting: boolean;
     connectingLabel: string | null;
     connectingUri: string | null;
@@ -61,11 +103,7 @@ interface ExternalBCHWalletContextType {
     /** Block until the WizardConnect session is approved. */
     waitForWizardConnect: () => Promise<void>;
 
-    /**
-     * Connect the Cham Wallet browser extension. Resolves once the user
-     * approved in the extension; rejects with code 'NOT_INSTALLED' when the
-     * extension is not there, and 4001 when the user declined.
-     */
+    /** Connect the Cham Wallet browser extension. */
     connectExtension: () => Promise<void>;
 
     /** Build the Cashonize web wallet deep-link for a WC URI. */
@@ -79,31 +117,8 @@ interface ExternalBCHWalletContextType {
     disconnectWallet: (id: string) => void;
     disconnectAll: () => void;
 
-    /**
-     * Request the external wallet to sign (and optionally broadcast) a raw transaction.
-     * The `payload` must be in WC2-BCH format:
-     *   - transaction: hex-encoded unsigned tx
-     *   - sourceOutputs: UTXOs in libauth-stringify format
-     *   - broadcast: true → wallet broadcasts and returns signedTransactionHash
-     *   - userPrompt: optional label shown in wallet UI
-     *
-     * Returns: { signedTransaction, signedTransactionHash } when broadcast=true
-     */
+    /** Request the external wallet to sign (and optionally broadcast) a raw transaction. */
     signTransaction: (id: string, payload: WC2SignPayload) => Promise<WC2SignResult>;
-}
-
-/** WC2-BCH bch_signTransaction request payload */
-export interface WC2SignPayload {
-    transaction: string;         // hex-encoded unsigned tx
-    sourceOutputs: unknown[];    // libauth-stringify encoded UTXOs
-    broadcast: boolean;
-    userPrompt?: string;
-}
-
-/** WC2-BCH bch_signTransaction response */
-export interface WC2SignResult {
-    signedTransaction: string;       // hex of the signed tx
-    signedTransactionHash: string;   // txid
 }
 
 const ExternalBCHWalletContext = createContext<ExternalBCHWalletContextType | null>(null);
@@ -114,63 +129,7 @@ export function useExternalBCHWallet() {
     return ctx;
 }
 
-// ── Constants ────────────────────────────────────────────────────────────────
-
-const WALLETCONNECT_PROJECT_ID = '46eab391b8e623fe273e8b3ed7d45e18';
-const BCH_NAMESPACE = 'bch';
-const STORAGE_KEY = 'ext_bch_wallets';
-
-// ── WalletConnect singleton ───────────────────────────────────────────────────
-// We store the client on `window` rather than in module scope so that Vite's
-// HMR (which re-evaluates the module on every save) cannot reset the singleton.
-// WalletConnect keeps its own internal global counter, so if our module-level
-// variable is cleared but WC's counter isn't, `SignClient.init()` would be
-// called again and WC would warn "Init() was called N times".
-//
-// Using `window.__wcBchClient` / `window.__wcBchClientPending` ensures only one
-// init ever runs for the lifetime of the page, regardless of HMR.
-declare global {
-    interface Window {
-        __wcBchClient?: any;
-        __wcBchClientPending?: Promise<any>;
-    }
-}
-
-async function getWCClient(): Promise<any> {
-    // Already resolved — return immediately (the common hot path).
-    if (window.__wcBchClient) return window.__wcBchClient;
-
-    // Init already in progress — piggy-back on the existing promise.
-    if (window.__wcBchClientPending) return window.__wcBchClientPending;
-
-    const isLocalhost = window.location.hostname === 'localhost' ||
-        window.location.hostname === '127.0.0.1';
-    const safeUrl = isLocalhost ? 'https://bchintents.com' : window.location.origin;
-
-    const mod = await import('@walletconnect/sign-client');
-    const SignClient = mod.SignClient ?? mod.default;
-
-    // Store the promise immediately before awaiting so concurrent calls share it.
-    window.__wcBchClientPending = SignClient.init({
-        projectId: WALLETCONNECT_PROJECT_ID,
-        metadata: {
-            name: 'BCH Intents Protocol',
-            description: 'Intent-based cross-chain swaps on Bitcoin Cash',
-            url: safeUrl,
-            icons: [`${window.location.origin}/assets/bchintentslogo_edited.png`],
-        },
-    }).then((client: any) => {
-        window.__wcBchClient = client;
-        delete window.__wcBchClientPending;   // clean up — resolved, not needed
-        return client;
-    });
-
-    return window.__wcBchClientPending;
-}
-
 // ── Cham Wallet extension ─────────────────────────────────────────────
-// The extension injects window.bchIntents at document_start. Reference:
-// bch-intents-wallet-extension/docs/developers/provider-api.md
 
 export const EXTENSION_WALLET_LABEL = 'Cham Extension';
 
@@ -182,10 +141,17 @@ interface BchIntentsProvider {
 }
 
 function getExtensionProvider(timeoutMs = 3000): Promise<BchIntentsProvider> {
-    const w = window as unknown as { bchIntents?: BchIntentsProvider };
+    const w = typeof window !== 'undefined' ? (window as unknown as { bchIntents?: BchIntentsProvider }) : {};
     if (w.bchIntents?.isBCHIntents) return Promise.resolve(w.bchIntents);
     return new Promise((resolve, reject) => {
-        const onReady = () => { clearTimeout(timer); resolve(w.bchIntents!); };
+        if (typeof window === 'undefined') {
+            reject(new Error('Window is undefined'));
+            return;
+        }
+        const onReady = () => {
+            clearTimeout(timer);
+            resolve((window as any).bchIntents!);
+        };
         const timer = setTimeout(() => {
             window.removeEventListener('bchIntents#initialized', onReady);
             reject(Object.assign(new Error('Cham Wallet extension is not installed.'), { code: 'NOT_INSTALLED' }));
@@ -194,31 +160,36 @@ function getExtensionProvider(timeoutMs = 3000): Promise<BchIntentsProvider> {
     });
 }
 
-function getBchChain(network: BchNetwork): string {
-    return network === 'mainnet' ? 'bch:bitcoincash' : 'bch:bchtest';
-}
-
-function loadPersistedWallets(): ExternalBCHWallet[] {
+function disconnectExtension() {
     try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        return raw ? JSON.parse(raw) : [];
-    } catch {
-        return [];
-    }
-}
-
-function persistWallets(wallets: ExternalBCHWallet[]) {
-    try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(wallets));
-    } catch { /* non-fatal */ }
+        const w = window as unknown as { bchIntents?: { disconnect?: () => void } };
+        w.bchIntents?.disconnect?.();
+    } catch { /* ignore */ }
 }
 
 // ── Provider ─────────────────────────────────────────────────────────────────
 
 export function ExternalBCHWalletProvider({ children }: { children: ReactNode }) {
-    const { bchNetwork } = useWDK();
+    const { bchNetwork, isInitialized } = useWDK();
+    const appNetwork: AppNetwork = appNetworkOf(bchNetwork);
 
-    const [wallets, setWallets] = useState<ExternalBCHWallet[]>(() => loadPersistedWallets());
+    const allWallets = useExternalWallets();
+    const networkWallets = useVisibleWallets(appNetwork);
+    const activeBchId = useActiveWalletId('bch');
+
+    // Filter to visible BCH wallets and map to ExternalBCHWallet shape
+    const bchWallets: ExternalBCHWallet[] = useMemo(() => networkWallets
+        .filter(w => w.family === 'bch')
+        .map(w => ({
+            id: w.id,
+            source: w.source as ExternalWalletSource,
+            label: w.label,
+            address: w.address,
+            connected: true,
+            sessionTopic: w.sessionTopic,
+            connectedAt: w.connectedAt,
+        })), [networkWallets]);
+
     const [connecting, setConnecting] = useState<ConnectingState>({
         active: false,
         label: null,
@@ -226,434 +197,250 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
         uri: null,
     });
 
-    // Refs for the in-flight WC client + approval
-    const wcClientRef = useRef<any>(null);
+    const pendingLabelRef = useRef<string | null>(null);
     const wcApprovalRef = useRef<(() => Promise<any>) | null>(null);
-    const wizClientRef = useRef<any>(null);
 
-    // Persist wallets on change
-    useEffect(() => { persistWallets(wallets); }, [wallets]);
-
-    // ── Background SignClient re-initialization on page load ─────────────────
-    // If we have persisted WalletConnect sessions, silently spin up a SignClient
-    // in the background so we can:
-    //   1. Attach the session_delete listener → detect remote disconnect
-    //   2. Validate which sessions are still alive → prune dead ones
+    // ── Session Closer Registration ─────────────────────────────────────────
     useEffect(() => {
-        const wcWallets = wallets.filter(w => w.source === 'walletconnect' && w.sessionTopic);
-        if (wcWallets.length === 0) return;
-
-        let cancelled = false;
-
-        (async () => {
-            let client: any;
-            try {
-                client = await getWCClient();
-            } catch {
-                // WalletConnect not installed — silently skip
-                return;
-            }
-
-            if (cancelled) return;
-
-            wcClientRef.current = client;
-
-            // Attach global disconnect listener for all known sessions
-            client.on('session_delete', ({ topic }: { topic: string }) => {
-                console.log('[ExternalBCH] Remote session_delete received for topic:', topic);
-                setWallets(prev => prev.filter(w => w.sessionTopic !== topic));
-            });
-
-            // Also listen for session expiry
-            client.on('session_expire', ({ topic }: { topic: string }) => {
-                console.log('[ExternalBCH] Session expired for topic:', topic);
-                setWallets(prev => prev.filter(w => w.sessionTopic !== topic));
-            });
-
-            // Prune sessions that no longer exist on the relay
-            // Delay by 5 seconds to give the relay time to sync on slow connections
-            setTimeout(() => {
-                if (cancelled) return;
-                const activeSessions = client.session?.getAll?.() ?? [];
-                const activeTopics = new Set<string>(activeSessions.map((s: any) => s.topic));
-
-                setWallets(prev => {
-                    const pruned = prev.filter(w => {
-                        if (w.source !== 'walletconnect' || !w.sessionTopic) return true;
-                        const alive = activeTopics.has(w.sessionTopic);
-                        if (!alive) {
-                            console.log('[ExternalBCH] Pruning dead session for wallet:', w.label, w.sessionTopic);
-                        }
-                        return alive;
+        const unregister = registerSessionCloser(async (wallet) => {
+            if (wallet.source === 'walletconnect' && wallet.sessionTopic) {
+                try {
+                    const client = await getWCBchClient();
+                    client.disconnect({
+                        topic: wallet.sessionTopic,
+                        reason: { code: 6000, message: 'User disconnected' },
                     });
-                    return pruned;
-                });
-            }, 5000);
-        })();
-
-        return () => { cancelled = true; };
-    // Only run once on mount — wallets ref is captured from initial load
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
-    // ── Cham Wallet extension ─────────────────────────────────────────
-    // The extension is the source of truth: it tells us when the user switches
-    // account or network, or disconnects this site from the wallet's settings.
-
-    useEffect(() => {
-        let cancelled = false;
-        let provider: BchIntentsProvider | null = null;
-
-        // [] → disconnected; [address] → the account this site is connected to.
-        const sync = (accounts: unknown) => {
-            const address = Array.isArray(accounts) && typeof accounts[0] === 'string' ? accounts[0] : null;
-            setWallets(prev => {
-                const current = prev.find(w => w.source === 'extension');
-                if (!address) return current ? prev.filter(w => w.source !== 'extension') : prev;
-                if (!current || current.address === address) return prev;
-                return prev.map(w => (w.source === 'extension' ? { ...w, address } : w));
-            });
-        };
-
-        getExtensionProvider().then(async p => {
-            if (cancelled) return;
-            provider = p;
-            p.on('accountsChanged', sync);
-            // Silent: a site the user connected before gets its address back, anyone else gets [].
-            sync(await p.request({ method: 'bch_accounts' }));
-        }).catch(() => {
-            // No extension in this browser: a connection remembered from before is gone.
-            if (!cancelled) sync([]);
-        });
-
-        return () => {
-            cancelled = true;
-            provider?.removeListener('accountsChanged', sync);
-        };
-    }, []);
-
-    const connectExtension = useCallback(async (): Promise<void> => {
-        setConnecting({ active: true, label: EXTENSION_WALLET_LABEL, source: 'extension', uri: null });
-        try {
-            const provider = await getExtensionProvider();
-            const [address] = await provider.request({ method: 'bch_requestAccounts' }) as string[];
-            if (!address) throw new Error('The extension did not return an address.');
-
-            const network = await provider.request({ method: 'bch_getNetwork' });
-            if (network !== bchNetwork) {
-                throw new Error(`The extension is on ${network}. Switch it to ${bchNetwork} in its settings, then connect again.`);
+                } catch { /* ignore */ }
+            } else if (wallet.source === 'extension') {
+                disconnectExtension();
             }
-
-            const newWallet: ExternalBCHWallet = {
-                id: `ext-${Date.now()}`,
-                source: 'extension',
-                label: EXTENSION_WALLET_LABEL,
-                address,
-                connected: true,
-            };
-
-            setActiveWalletId(newWallet.id);
-
-            setWallets(prev => [...prev.filter(w => w.source !== 'extension' && w.address !== address), newWallet]);
-        } finally {
-            setConnecting({ active: false, label: null, source: null, uri: null });
-        }
-    }, [bchNetwork]);
-
-    const disconnectExtension = useCallback(() => {
-        getExtensionProvider(0)
-            .then(p => p.request({ method: 'wallet_disconnect' }))
-            .catch(() => { /* no extension, or already disconnected */ });
+        });
+        return unregister;
     }, []);
 
-    // ── WalletConnect v2 ─────────────────────────────────────────────────────
+    // ── Single Active Wallet Reconcile Effect ────────────────────────────────
+    useEffect(() => {
+        const candidates = bchWallets.map(w => ({ id: w.id, connectedAt: w.connectedAt ?? 0 }));
+        const resolved = resolveActive('bch', activeBchId, candidates, isInitialized);
+        if (resolved !== activeBchId) {
+            setActiveWalletId(resolved, 'bch');
+        }
+    }, [bchWallets, isInitialized, activeBchId]);
+
+    // ── WalletConnect ────────────────────────────────────────────────────────
 
     const startWalletConnect = useCallback(async (label: string): Promise<string> => {
-        setConnecting({ active: true, label, source: 'walletconnect', uri: null });
-
-        let client: any;
-        try {
-            client = await getWCClient();
-        } catch {
-            setConnecting({ active: false, label: null, source: null, uri: null });
-            throw new Error(
-                'WalletConnect is not installed. Run: npm install @walletconnect/sign-client'
-            );
-        }
-
-        wcClientRef.current = client;
-
-        const chain = getBchChain(bchNetwork);
-
-        const { uri, approval } = await client.connect({
-            requiredNamespaces: {
-                [BCH_NAMESPACE]: {
-                    methods: ['bch_sendTransaction', 'bch_getAddresses', 'bch_signTransaction', 'bch_signMessage'],
-                    chains: [chain],
-                    events: ['accountsChanged'],
-                },
-            },
+        pendingLabelRef.current = label;
+        setConnecting({
+            active: true,
+            label,
+            source: 'walletconnect',
+            uri: null,
         });
 
-        if (!uri) {
+        try {
+            const { uri, approval } = await connectBch(appNetwork);
+            wcApprovalRef.current = approval;
+            setConnecting(s => ({ ...s, uri }));
+            return uri;
+        } catch (e) {
             setConnecting({ active: false, label: null, source: null, uri: null });
-            throw new Error('WalletConnect failed to generate a pairing URI.');
+            throw e;
         }
-
-        wcApprovalRef.current = approval;
-        setConnecting(s => ({ ...s, uri }));
-        return uri;
-    }, [bchNetwork]);
+    }, [appNetwork]);
 
     const waitForWalletConnect = useCallback(async (): Promise<void> => {
-        if (!wcApprovalRef.current) {
-            throw new Error('Call startWalletConnect() before waitForWalletConnect().');
-        }
+        const approval = wcApprovalRef.current;
+        if (!approval) throw new Error('Call startWalletConnect() first.');
 
-        const session = await wcApprovalRef.current();
-        wcApprovalRef.current = null;
+        try {
+            const session = await approval();
+            const bchNamespace = session.namespaces?.bch;
+            const accounts: string[] = bchNamespace?.accounts || [];
+            if (accounts.length === 0) {
+                throw new Error('WalletConnect session did not approve any BCH accounts.');
+            }
 
-        const accounts = session.namespaces[BCH_NAMESPACE]?.accounts ?? [];
-        if (accounts.length === 0) {
+            const rawAccount = accounts[0];
+            const address = rawAccount.split(':').slice(2).join(':');
+            const peerName = session.peer?.metadata?.name;
+            const label = peerName || pendingLabelRef.current || 'Cashonize';
+
+            const walletId = `wc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+            const newWallet: ExternalWallet = {
+                id: walletId,
+                source: 'walletconnect',
+                family: 'bch',
+                network: appNetwork,
+                label,
+                address,
+                sessionTopic: session.topic,
+                connectedAt: Date.now(),
+            };
+
+            addWallet(newWallet);
+            setActiveWalletId(newWallet.id, 'bch');
+        } finally {
             setConnecting({ active: false, label: null, source: null, uri: null });
-            throw new Error('WalletConnect session did not provide any BCH accounts.');
+            wcApprovalRef.current = null;
+            pendingLabelRef.current = null;
         }
+    }, [appNetwork]);
 
-        // CAIP-10: "bch:bitcoincash:bitcoincash:qp..." → extract address
-        const rawAccount = accounts[0];
-        const address = rawAccount.split(':').slice(2).join(':');
-
-        const peerName = session.peer?.metadata?.name;
-        let label = connecting.label || 'External Wallet';
-        if (label === 'External Wallet' && peerName) {
-            label = peerName;
-        }
-
-        const newWallet: ExternalBCHWallet = {
-            id: `wc-${Date.now()}`,
-            source: 'walletconnect',
-            label,
-            address,
-            connected: true,
-            sessionTopic: session.topic,
-        };
-
-        setActiveWalletId(newWallet.id);
-
-        setWallets(prev => [...prev.filter(w => w.address !== address), newWallet]);
-        setConnecting({ active: false, label: null, source: null, uri: null });
-
-        // Listen for disconnect
-        const client = wcClientRef.current;
-        if (client) {
-            client.on('session_delete', ({ topic }: { topic: string }) => {
-                if (topic === session.topic) {
-                    setWallets(prev => prev.filter(w => w.sessionTopic !== topic));
-                }
-            });
-        }
-    }, [connecting.label]);
-
-    // ── WizardConnect ────────────────────────────────────────────────────────
+    // ── WizardConnect (stubs until Phase 1) ──────────────────────────────────
 
     const startWizardConnect = useCallback(async (): Promise<string> => {
-        setConnecting({ active: true, label: 'Paytaca', source: 'wizardconnect', uri: null });
-
-        let DappConnectionManager: any;
-        try {
-            const mod = await import('@wizardconnect/dapp');
-            DappConnectionManager = mod.DappConnectionManager ?? (mod as any).default;
-        } catch {
-            setConnecting({ active: false, label: null, source: null, uri: null });
-            throw new Error(
-                'WizardConnect is not installed. Run: npm install @wizardconnect/dapp'
-            );
-        }
-
-        const client = new DappConnectionManager(
-            'BCH Intents Protocol',
-            `${window.location.origin}/assets/bchintentslogo_edited.png`
-        );
-
-        wizClientRef.current = client;
-
-        // Generate pairing URI
-        const uri = await client.getPairingUri?.() ?? client.uri ?? '';
-        if (!uri) {
-            setConnecting({ active: false, label: null, source: null, uri: null });
-            throw new Error('WizardConnect failed to generate a pairing URI.');
-        }
-
-        setConnecting(s => ({ ...s, uri }));
-        return uri;
+        throw new Error('WizardConnect is coming in this release.');
     }, []);
 
     const waitForWizardConnect = useCallback(async (): Promise<void> => {
-        const client = wizClientRef.current;
-        if (!client) throw new Error('Call startWizardConnect() first.');
-
-        // Wait for wallet to connect
-        const session = await client.waitForSession?.() ?? await client.connect?.();
-
-        // Extract address and pubkey from the session
-        let address = '';
-        let pubkeyHex = '';
-
-        if (session?.address) {
-            address = session.address;
-            pubkeyHex = session.pubkeyHex ?? session.publicKey ?? '';
-        } else if (client.getAddress) {
-            address = await client.getAddress();
-        }
-
-        if (!address) {
-            setConnecting({ active: false, label: null, source: null, uri: null });
-            throw new Error('WizardConnect did not return an address.');
-        }
-
-        const newWallet: ExternalBCHWallet = {
-            id: `wiz-${Date.now()}`,
-            source: 'wizardconnect',
-            label: 'Paytaca',
-            address,
-            connected: true,
-        };
-
-        setActiveWalletId(newWallet.id);
-
-        setWallets(prev => [...prev.filter(w => w.address !== address), newWallet]);
-        setConnecting({ active: false, label: null, source: null, uri: null });
+        throw new Error('WizardConnect is coming in this release.');
     }, []);
 
-    // ── Cashonize Deep Link ──────────────────────────────────────────────────
+    // ── Cham Wallet Extension ───────────────────────────────────────────────
+
+    const connectExtension = useCallback(async (): Promise<void> => {
+        setConnecting({ active: true, label: EXTENSION_WALLET_LABEL, source: 'extension', uri: null });
+
+        try {
+            const provider = await getExtensionProvider();
+            let addresses: string[] = [];
+            try {
+                addresses = (await provider.request({ method: 'bch_requestAccounts' })) as string[];
+            } catch {
+                addresses = (await provider.request({ method: 'bch_accounts' })) as string[];
+            }
+
+            if (!addresses || addresses.length === 0) {
+                throw new Error('No accounts returned from Cham Wallet extension.');
+            }
+
+            const address = addresses[0];
+            const walletId = `ext-${Date.now()}`;
+            const newWallet: ExternalWallet = {
+                id: walletId,
+                source: 'extension',
+                family: 'bch',
+                network: appNetwork,
+                label: EXTENSION_WALLET_LABEL,
+                address,
+                connectedAt: Date.now(),
+            };
+
+            addWallet(newWallet);
+            setActiveWalletId(newWallet.id, 'bch');
+        } finally {
+            setConnecting({ active: false, label: null, source: null, uri: null });
+        }
+    }, [appNetwork]);
+
+    // ── Deep Links ──────────────────────────────────────────────────────────
 
     const getCashonizeDeepLink = useCallback((wcUri: string): string => {
         return `https://cashonize.com/?uri=${encodeURIComponent(wcUri)}`;
     }, []);
 
     const getPaytacaDeepLink = useCallback((uri: string, isWizardConnect: boolean): string => {
-        return isWizardConnect 
-            ? `paytaca://wizard?uri=${encodeURIComponent(uri)}` 
+        return isWizardConnect
+            ? `paytaca://wizard?uri=${encodeURIComponent(uri)}`
             : `paytaca://wc?uri=${encodeURIComponent(uri)}`;
     }, []);
 
-    // ── Cancel / Disconnect ──────────────────────────────────────────────────
+    // ── Cancel & Disconnect ─────────────────────────────────────────────────
 
     const cancelConnecting = useCallback(() => {
         setConnecting({ active: false, label: null, source: null, uri: null });
         wcApprovalRef.current = null;
+        pendingLabelRef.current = null;
     }, []);
 
     const disconnectWallet = useCallback((id: string) => {
-        setWallets(prev => {
-            const wallet = prev.find(w => w.id === id);
-            if (wallet?.source === 'walletconnect' && wallet.sessionTopic && wcClientRef.current) {
-                try {
-                    wcClientRef.current.disconnect({
-                        topic: wallet.sessionTopic,
-                        reason: { code: 6000, message: 'User disconnected' },
-                    });
-                } catch { /* ignore */ }
-            }
-            if (wallet?.source === 'extension') disconnectExtension();
-            return prev.filter(w => w.id !== id);
-        });
-    }, [disconnectExtension]);
+        removeWallet(id);
+    }, []);
 
     const disconnectAll = useCallback(() => {
-        for (const w of wallets) {
-            if (w.source === 'extension') disconnectExtension();
-            if (w.source === 'walletconnect' && w.sessionTopic && wcClientRef.current) {
-                try {
-                    wcClientRef.current.disconnect({
-                        topic: w.sessionTopic,
-                        reason: { code: 6000, message: 'User disconnected' },
-                    });
-                } catch { /* ignore */ }
-            }
-        }
-        setWallets([]);
-    }, [wallets, disconnectExtension]);
+        clearAllWallets();
+    }, []);
 
-    // ── Transaction Signing ──────────────────────────────────────────────────
+    // ── Transaction Signing with Runner ──────────────────────────────────────
 
     const signTransaction = useCallback(async (id: string, payload: WC2SignPayload): Promise<WC2SignResult> => {
-        const wallet = wallets.find(w => w.id === id);
+        const wallet = allWallets.find(w => w.id === id);
         if (!wallet) throw new Error(`Wallet ${id} not found.`);
 
-        if (wallet.source === 'walletconnect') {
-            if (!wallet.sessionTopic || !wcClientRef.current) {
-                throw new Error('WalletConnect session is not active.');
-            }
+        if (wallet.network !== appNetwork) {
+            throw new WalletSignError('wrong-network', wallet.label);
+        }
 
-            // Send bch_signTransaction — Cashonize will show a preview dialog,
-            // the user approves, wallet signs + optionally broadcasts.
-            // Spec: https://github.com/mainnet-pat/wc2-bch-bcr
-            const response = await wcClientRef.current.request({
-                topic: wallet.sessionTopic,
-                chainId: getBchChain(bchNetwork),
-                request: {
-                    method: 'bch_signTransaction',
-                    // WalletConnect params must be JSON-serialisable.
-                    // The sourceOutputs already use the libauth-stringify format
-                    // ('<Uint8Array: 0x...>' / '<bigint: 123n>') produced by wc2Serialize.ts.
-                    params: payload,
-                },
-            }) as any;
+        return runSignRequest({
+            walletId: wallet.id,
+            walletLabel: wallet.label,
+            exec: async (signal) => {
+                if (wallet.source === 'walletconnect') {
+                    if (!wallet.sessionTopic) {
+                        throw new WalletSignError('session-gone', wallet.label);
+                    }
 
-            if (response && typeof response === 'object') {
-                const signedTransaction = response.signedTransaction ?? '';
-                const signedTransactionHash = response.signedTransactionHash ?? '';
-                if (signedTransactionHash) {
-                    return { signedTransaction, signedTransactionHash };
+                    const client = await getWCBchClient();
+                    if (signal.aborted) throw new WalletSignError('cancelled', wallet.label);
+
+                    const response = await client.request({
+                        topic: wallet.sessionTopic,
+                        chainId: getBchChain(appNetwork),
+                        request: {
+                            method: 'bch_signTransaction',
+                            params: payload,
+                        },
+                    }) as any;
+
+                    if (signal.aborted) throw new WalletSignError('cancelled', wallet.label);
+
+                    if (response && typeof response === 'object') {
+                        const signedTransaction = response.signedTransaction ?? '';
+                        const signedTransactionHash = response.signedTransactionHash ?? '';
+                        if (signedTransactionHash) {
+                            return { signedTransaction, signedTransactionHash };
+                        }
+                    }
+
+                    throw new Error('Invalid or empty response from WalletConnect bch_signTransaction.');
                 }
-            }
 
-            throw new Error('Invalid or empty response from WalletConnect bch_signTransaction.');
+                if (wallet.source === 'extension') {
+                    const provider = await getExtensionProvider();
+                    if (signal.aborted) throw new WalletSignError('cancelled', wallet.label);
 
-        } else if (wallet.source === 'wizardconnect') {
-            if (!wizClientRef.current) throw new Error('WizardConnect client is not active.');
+                    const [address] = await provider.request({ method: 'bch_accounts' }) as string[];
+                    if (address !== wallet.address) {
+                        throw new Error('The account in the Cham Wallet extension changed. Reconnect the extension and try again.');
+                    }
 
-            // WizardConnect uses a similar interface; pass the full payload
-            const response = await wizClientRef.current.signTransaction(payload) as any;
-            if (response && response.signedTransactionHash) {
-                return {
-                    signedTransaction: response.signedTransaction ?? '',
-                    signedTransactionHash: response.signedTransactionHash,
-                };
-            }
+                    const response = await provider.request({ method: 'bch_signTransaction', params: [payload] });
+                    if (signal.aborted) throw new WalletSignError('cancelled', wallet.label);
 
-            throw new Error('Invalid or empty response from WizardConnect signTransaction.');
-        }
+                    if (response?.signedTransactionHash) {
+                        return {
+                            signedTransaction: response.signedTransaction ?? '',
+                            signedTransactionHash: response.signedTransactionHash,
+                        };
+                    }
 
-        if (wallet.source === 'extension') {
-            const provider = await getExtensionProvider();
+                    throw new Error('Invalid or empty response from the extension bch_signTransaction.');
+                }
 
-            // The extension signs for the account that is active in it now.
-            const [address] = await provider.request({ method: 'bch_accounts' }) as string[];
-            if (address !== wallet.address) {
-                throw new Error('The account in the Cham Wallet extension changed. Reconnect the extension and try again.');
-            }
+                if (wallet.source === 'wizardconnect') {
+                    throw new Error('WizardConnect signing will be supported in Phase 1.');
+                }
 
-            // Same payload as WalletConnect's bch_signTransaction; the extension
-            // shows what leaves the account, signs, and broadcasts when asked to.
-            const response = await provider.request({ method: 'bch_signTransaction', params: [payload] });
-            if (response?.signedTransactionHash) {
-                return {
-                    signedTransaction: response.signedTransaction ?? '',
-                    signedTransactionHash: response.signedTransactionHash,
-                };
-            }
-
-            throw new Error('Invalid or empty response from the extension bch_signTransaction.');
-        }
-
-        throw new Error('Unsupported external wallet source.');
-    }, [wallets, bchNetwork]);
+                throw new Error('Unsupported external wallet source.');
+            },
+        });
+    }, [allWallets, appNetwork]);
 
     return (
         <ExternalBCHWalletContext.Provider value={{
-            wallets,
+            wallets: bchWallets,
+            allWallets,
             isConnecting: connecting.active,
             connectingLabel: connecting.label,
             connectingUri: connecting.uri,

@@ -1,14 +1,22 @@
-import { useMemo } from 'react';
+import { useMemo, useCallback } from 'react';
 import { useWDK } from '@/context/WDKProvider';
 import { useExternalBCHWallet, type ExternalWalletSource } from '@/context/ExternalBCHWalletProvider';
-import { useActiveWallet } from '@/hooks/useActiveWallet';
-import { MAIN_WALLET_ID, defaultWalletColor, setWalletLook, useWalletLooks } from '@/lib/walletStore';
+import {
+    MAIN_WALLET_ID,
+    defaultWalletColor,
+    setWalletLook,
+    useWalletLooks,
+    useActiveWalletId,
+    setActiveWalletId,
+} from '@/lib/walletStore';
+import { ChainFamily, appNetworkOf } from '@/lib/wallets/types';
 
 export type WalletKind = 'main' | ExternalWalletSource;
 
-/** One connected BCH wallet, built-in or external, as the UI shows it. */
+/** One connected wallet, built-in or external, as the UI shows it. */
 export interface ConnectedWallet {
     id: string;
+    family: ChainFamily;
     kind: WalletKind;
     /** Which icon to show: see components/wallet/WalletIcon.tsx. */
     iconId: string;
@@ -28,53 +36,100 @@ function iconFor(kind: WalletKind, label: string): string {
     const l = label.toLowerCase();
     if (l.includes('cashonize')) return 'cashonize';
     if (l.includes('paytaca')) return 'paytaca';
+    if (l.includes('metamask')) return 'metamask';
+    if (l.includes('phantom')) return 'phantom';
     return 'walletconnect';
 }
 
 /**
- * Every wallet the user can act with, and which one is active. The built-in
- * wallet is listed while it is unlocked; external wallets while connected.
+ * Every wallet the user can act with on the current network, and which one is active per chain.
+ * Phase 0: Foundation
  */
 export function useWallets() {
     const wdk = useWDK();
     const ext = useExternalBCHWallet();
-    const { activeWalletId, setActiveWalletId } = useActiveWallet();
+    const activeBchId = useActiveWalletId('bch');
+    const activeEvmId = useActiveWalletId('evm');
+    const activeSolanaId = useActiveWalletId('solana');
+    const activeBtcId = useActiveWalletId('btc');
     const looks = useWalletLooks();
+
+    const currentNetwork = appNetworkOf(wdk.bchNetwork);
 
     const wallets = useMemo<ConnectedWallet[]>(() => {
         const list: ConnectedWallet[] = [];
+
+        // BCH Built-in wallet (active on current network when unlocked)
         if (wdk.isInitialized && wdk.bchAddress) {
             list.push({
-                id: MAIN_WALLET_ID, kind: 'main', iconId: 'main',
+                id: MAIN_WALLET_ID,
+                family: 'bch',
+                kind: 'main',
+                iconId: 'main',
                 name: looks[MAIN_WALLET_ID]?.name || 'Cham Wallet',
                 address: wdk.bchAddress,
                 color: looks[MAIN_WALLET_ID]?.color || defaultWalletColor(MAIN_WALLET_ID),
-                active: activeWalletId === MAIN_WALLET_ID,
+                active: activeBchId === MAIN_WALLET_ID,
                 lookKey: MAIN_WALLET_ID,
             });
         }
-        for (const w of ext.wallets) {
+
+        // Visible external wallets on current network
+        const visibleExt = ext.allWallets.filter(w => w.network === currentNetwork);
+        for (const w of visibleExt) {
+            const isActive =
+                w.family === 'bch' ? activeBchId === w.id :
+                w.family === 'evm' ? activeEvmId === w.id :
+                w.family === 'solana' ? activeSolanaId === w.id :
+                activeBtcId === w.id;
+
             list.push({
-                id: w.id, kind: w.source, iconId: iconFor(w.source, w.label),
+                id: w.id,
+                family: w.family,
+                kind: w.source as ExternalWalletSource,
+                iconId: iconFor(w.source as WalletKind, w.label),
                 name: looks[w.address]?.name || w.label,
                 address: w.address,
                 color: looks[w.address]?.color || defaultWalletColor(w.address),
-                active: activeWalletId === w.id,
+                active: isActive,
                 lookKey: w.address,
             });
         }
-        return list;
-    }, [wdk.isInitialized, wdk.bchAddress, ext.wallets, activeWalletId, looks]);
 
-    const active = wallets.find(w => w.active) ?? null;
+        return list;
+    }, [
+        wdk.isInitialized,
+        wdk.bchAddress,
+        ext.allWallets,
+        currentNetwork,
+        activeBchId,
+        activeEvmId,
+        activeSolanaId,
+        activeBtcId,
+        looks,
+    ]);
+
+    const activeFor = useCallback(
+        (family: ChainFamily = 'bch'): ConnectedWallet | null => {
+            return wallets.find(w => w.family === family && w.active) ?? null;
+        },
+        [wallets]
+    );
+
+    const active = activeFor('bch');
+
+    const setActive = useCallback((id: string | null, family: ChainFamily = 'bch') => {
+        setActiveWalletId(id, family);
+    }, []);
 
     return {
         wallets,
         active,
+        activeFor,
         /** True when the user has any wallet to act with, built-in or external. */
         hasWallet: wallets.length > 0,
         hasMainWallet: wdk.isInitialized,
-        setActive: setActiveWalletId,
+        setActive,
         setColor: (w: ConnectedWallet, color: string) => setWalletLook(w.lookKey, { color }),
         rename: (w: ConnectedWallet, name: string) => setWalletLook(w.lookKey, { name: name.trim().slice(0, 24) }),
     };

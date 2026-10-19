@@ -24,7 +24,7 @@ export function useActiveSigner() {
         }
 
         if (activeExtWallet) {
-            return extWallet.signTransaction(activeWalletId, payload);
+            return extWallet.signTransaction(activeExtWallet.id, payload);
         }
 
         throw new Error('No active wallet found to sign transaction.');

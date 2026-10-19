@@ -769,7 +769,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                     `Fund ${params.sellToken.symbol} \u2192 ${params.buyToken.symbol} swap covenant`,
                 );
 
-                const result = await extBCHCtx.signTransaction(activeWalletId, payload);
+                const result = await extBCHCtx.signTransaction(activeExtWallet.id, payload);
                 fundTxId = result.signedTransactionHash;
                 console.log(`[Same-chain External] Signed & broadcast via ${activeExtWallet.label}:`, fundTxId);
                 toast.success(`Transaction signed and broadcast by ${activeExtWallet.label}!`);
@@ -1154,7 +1154,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                     `Fund MOV swap covenant`
                 );
 
-                const result = await extBCHCtx.signTransaction(activeWalletId, payload);
+                const result = await extBCHCtx.signTransaction(activeExtWallet.id, payload);
                 fundTxId = result.signedTransactionHash;
                 console.log('[BCH→MOV] HTLC funded via external wallet:', fundTxId);
                 toast.success('BCH locked in HTLC!');
@@ -1983,7 +1983,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                     `Fund ZK covenant`
                 );
 
-                const result = await extBCHCtx.signTransaction(activeWalletId, payload);
+                const result = await extBCHCtx.signTransaction(activeExtWallet.id, payload);
                 fundTxId = result.signedTransactionHash;
                 console.log('[BCH→ETH] Covenant funded via external wallet:', fundTxId);
                 toast.success('BCH locked in ZK covenant!');

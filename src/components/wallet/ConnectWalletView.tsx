@@ -73,7 +73,7 @@ export function ConnectWalletView({ onDone }: {
 
     const [step, setStep] = useState<Step>('pick-wallet');
     const [selectedWallet, setSelectedWallet] = useState<WalletOption['id'] | null>(null);
-    const [paytacaTab, setPaytacaTab] = useState<PaytacaTab>('wizard');
+    const [paytacaTab, setPaytacaTab] = useState<PaytacaTab>('wc');
     const [uri, setUri] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
     const [error, setError] = useState<string | null>(null);

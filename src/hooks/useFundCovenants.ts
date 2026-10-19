@@ -27,7 +27,7 @@ export function useFundCovenants() {
     return fundCovenants({
       network,
       address,
-      signExternal: payload => extBCH.signTransaction(activeWalletId, payload as any),
+      signExternal: payload => extBCH.signTransaction(activeExtWallet.id, payload as any),
     }, outputs, prompt);
   }, [wdk.bchNetwork, bchWallet, extBCH, activeWalletId, isMainActive, activeExtWallet]);
 }

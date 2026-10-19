@@ -22,6 +22,7 @@ import { useWDK } from '@/context/WDKProvider';
 import { useExternalBCHWallet } from '@/context/ExternalBCHWalletProvider';
 import { useBchAddressBalance } from '@/hooks/useBchAddressBalance';
 import { useWallets, shortAddress, type ConnectedWallet } from '@/hooks/useWallets';
+import { usePendingSign } from '@/lib/wallets/signRequest';
 import { walletUi } from '@/lib/walletUi';
 import { notifyToast as toast } from '@/lib/notify-toast';
 import { SendModal } from '@/components/portfolio/SendModal';
@@ -55,8 +56,8 @@ function WalletBalance({ address, isMainnet, live, hidden }: { address: string; 
 }
 
 /** One wallet in the list: pick it, copy its address, or open its edit card. */
-function WalletRow({ wallet, isMainnet, hidden, onPick, onEdit }: {
-    wallet: ConnectedWallet; isMainnet: boolean; hidden: boolean; onPick: () => void; onEdit: () => void;
+function WalletRow({ wallet, isMainnet, hidden, onPick, onEdit, isPending }: {
+    wallet: ConnectedWallet; isMainnet: boolean; hidden: boolean; onPick: () => void; onEdit: () => void; isPending?: boolean;
 }) {
     const copy = () => {
         navigator.clipboard.writeText(wallet.address);
@@ -79,7 +80,14 @@ function WalletRow({ wallet, isMainnet, hidden, onPick, onEdit }: {
                     </span>
                     <span className="mt-0.5 flex items-center justify-between gap-2">
                         <span className="truncate font-mono text-[10px] text-white/40">{shortAddress(wallet.address, 8, 6)}</span>
-                        <WalletBalance address={wallet.address} isMainnet={isMainnet} live hidden={hidden} />
+                        <div className="flex items-center gap-1.5">
+                            {isPending && (
+                                <span className="animate-pulse rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-300 bg-amber-500/10 border border-amber-500/20">
+                                    Signing…
+                                </span>
+                            )}
+                            <WalletBalance address={wallet.address} isMainnet={isMainnet} live hidden={hidden} />
+                        </div>
                     </span>
                 </span>
             </button>
@@ -124,6 +132,7 @@ export function WalletProfile({ totalValue, loading, busy, onRefresh, balanceVis
     const wdk = useWDK();
     const ext = useExternalBCHWallet();
     const { wallets, active, setActive } = useWallets();
+    const pendingSign = usePendingSign();
     const [expanded, setExpanded] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const isMainnet = wdk.bchNetwork === 'mainnet';
@@ -168,6 +177,11 @@ export function WalletProfile({ totalValue, loading, busy, onRefresh, balanceVis
 
     const pick = (id: string) => {
         if (id === active?.id) return;
+        if (pendingSign && pendingSign.walletId === active?.id) {
+            const ok = typeof window !== 'undefined' ? window.confirm(`Cancel the request open in ${pendingSign.walletLabel}?`) : true;
+            if (!ok) return;
+            pendingSign.cancel('Switched wallet');
+        }
         setActive(id);
         react('happy');
     };
@@ -319,7 +333,7 @@ export function WalletProfile({ totalValue, loading, busy, onRefresh, balanceVis
                     </div>
                     <ul className="max-h-[200px] space-y-1 overflow-y-auto lg-scroll">
                         {wallets.map(w => (
-                            <WalletRow key={w.id} wallet={w} isMainnet={isMainnet} hidden={!balanceVisible} onPick={() => pick(w.id)} onEdit={() => setEditingId(w.id)} />
+                            <WalletRow key={w.id} wallet={w} isMainnet={isMainnet} hidden={!balanceVisible} onPick={() => pick(w.id)} onEdit={() => setEditingId(w.id)} isPending={pendingSign?.walletId === w.id} />
                         ))}
                         {mainLocked && (
                             <li>

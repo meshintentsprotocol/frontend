@@ -229,7 +229,7 @@ export function useMeshSigner(): MeshSignerState {
       }
       if (activeExtWallet) {
         const s = new ExternalWcSigner(activeExtWallet.address, network, provider,
-          (payload) => ext.signTransaction(activeWalletId, payload as any));
+          (payload) => ext.signTransaction(activeExtWallet.id, payload as any));
         return { signer: s, pkh: s.pkh, address: s.address, network, kind: 'external', label: activeExtWallet.label };
       }
     } catch (e: any) {
