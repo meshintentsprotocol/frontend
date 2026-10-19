@@ -75,6 +75,8 @@ export const walletUi = {
     closeOrder: () => set({ order: null }),
 };
 
+const getUiSnapshot = () => state;
+
 export function useWalletUi(): WalletUiState {
-    return useSyncExternalStore(subscribe, () => state, () => state);
+    return useSyncExternalStore(subscribe, getUiSnapshot, getUiSnapshot);
 }

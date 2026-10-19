@@ -3,7 +3,7 @@
  * Phase 0: Foundation
  */
 
-import { useSyncExternalStore } from 'react';
+import { useSyncExternalStore, useCallback } from 'react';
 import { notifyToast } from '@/lib/notify-toast';
 import {
     ChainFamily,
@@ -181,13 +181,13 @@ function notify() {
     }
 }
 
-let visibleCache: Record<AppNetwork, ExternalWallet[] | undefined> = {
-    mainnet: undefined,
-    testnet: undefined,
-};
+const EMPTY_WALLETS: ExternalWallet[] = [];
+const getEmptyWallets = () => EMPTY_WALLETS;
+
+let visibleCache: Record<string, ExternalWallet[]> = {};
 
 function clearVisibleCache() {
-    visibleCache = { mainnet: undefined, testnet: undefined };
+    visibleCache = {};
 }
 
 function update(next: ExternalWallet[]) {
@@ -293,16 +293,13 @@ export function clearAllWallets(): void {
 
 /** Hook to observe all external wallets */
 export function useExternalWallets(): ExternalWallet[] {
-    return useSyncExternalStore(subscribe, getAllWallets, () => []);
+    return useSyncExternalStore(subscribe, getAllWallets, getEmptyWallets);
 }
 
 /** Hook to observe wallets filtered by current network */
 export function useVisibleWallets(network: AppNetwork): ExternalWallet[] {
-    return useSyncExternalStore(
-        subscribe,
-        () => visibleWallets(network),
-        () => []
-    );
+    const getSnapshot = useCallback(() => visibleWallets(network), [network]);
+    return useSyncExternalStore(subscribe, getSnapshot, getEmptyWallets);
 }
 
 /** For tests: reload or reset in-memory state */

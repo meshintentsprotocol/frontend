@@ -37,9 +37,11 @@ export function WalletGlyph({ color = '#10b981', size = 40, className }: { color
     );
 }
 
-export function WalletIcon({ id, color, size = 36, active, className }: {
+export function WalletIcon({ id, src, color, size = 36, active, className }: {
     /** 'main' | 'cashonize' | 'paytaca' | 'walletconnect' | 'bch-intents' */
     id: string;
+    /** Direct image URL from session metadata (e.g. peer icon) */
+    src?: string;
     /** Hex colour of the wallet; tints the ring. */
     color?: string;
     size?: number;
@@ -49,6 +51,8 @@ export function WalletIcon({ id, color, size = 36, active, className }: {
 }) {
     const [failed, setFailed] = useState(false);
     const radius = Math.round(size * 0.3);
+
+    const imageSrc = !failed && src ? src : `/logos/wallets/${id}.svg`;
 
     return (
         <span
@@ -62,11 +66,11 @@ export function WalletIcon({ id, color, size = 36, active, className }: {
                 <Wallet style={{ width: size * 0.48, height: size * 0.48, color: color ?? '#a1a1aa' }} />
             ) : (
                 <img
-                    src={`/logos/wallets/${id}.svg`}
+                    src={imageSrc}
                     alt=""
                     draggable={false}
                     onError={() => setFailed(true)}
-                    style={{ width: size - 4, height: size - 4, borderRadius: radius - 2 }}
+                    style={{ width: size - 4, height: size - 4, borderRadius: radius - 2, objectFit: 'contain' }}
                 />
             )}
             {active && (

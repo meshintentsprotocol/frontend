@@ -78,8 +78,10 @@ export function getPendingSign(): PendingSign | null {
     return currentPending;
 }
 
+const getNullSnapshot = () => null;
+
 export function usePendingSign(): PendingSign | null {
-    return useSyncExternalStore(subscribe, getPendingSign, () => null);
+    return useSyncExternalStore(subscribe, getPendingSign, getNullSnapshot);
 }
 
 /** Cancel any pending sign request for a specific wallet (e.g. on disconnect or account switch) */

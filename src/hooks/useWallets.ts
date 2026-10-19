@@ -20,6 +20,8 @@ export interface ConnectedWallet {
     kind: WalletKind;
     /** Which icon to show: see components/wallet/WalletIcon.tsx. */
     iconId: string;
+    /** Direct image URL from session metadata */
+    iconUrl?: string;
     /** The user's name for it, or the wallet's own label. */
     name: string;
     address: string;
@@ -88,6 +90,7 @@ export function useWallets() {
                 family: w.family,
                 kind: w.source as ExternalWalletSource,
                 iconId: iconFor(w.source as WalletKind, w.label),
+                iconUrl: w.icon,
                 name: looks[w.address]?.name || w.label,
                 address: w.address,
                 color: looks[w.address]?.color || defaultWalletColor(w.address),

@@ -9,7 +9,7 @@
  * Phase 0: Foundation
  */
 
-import { useSyncExternalStore } from 'react';
+import { useSyncExternalStore, useCallback } from 'react';
 import { ChainFamily } from './wallets/types';
 
 export const MAIN_WALLET_ID = 'main';
@@ -172,15 +172,15 @@ export function defaultWalletColor(key: string): string {
 }
 
 export function useActiveWalletId(family: ChainFamily = 'bch'): string | null {
-    return useSyncExternalStore(
-        subscribe,
-        () => state.activeIds[family] ?? null,
-        () => (family === 'bch' ? MAIN_WALLET_ID : null)
-    );
+    const getSnapshot = useCallback(() => state.activeIds[family] ?? null, [family]);
+    const getServerSnapshot = useCallback(() => (family === 'bch' ? MAIN_WALLET_ID : null), [family]);
+    return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }
 
+const getLooksSnapshot = () => state.looks;
+
 export function useWalletLooks(): Record<string, WalletLook> {
-    return useSyncExternalStore(subscribe, () => state.looks, () => state.looks);
+    return useSyncExternalStore(subscribe, getLooksSnapshot, getLooksSnapshot);
 }
 
 /** For tests: reset state and storage */

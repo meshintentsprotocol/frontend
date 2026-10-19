@@ -28,6 +28,7 @@ import {
     AppNetwork,
     ExternalWallet,
     appNetworkOf,
+    MAX_EXTERNAL_WALLETS,
 } from '@/lib/wallets/types';
 import {
     getAllWallets,
@@ -35,7 +36,6 @@ import {
     addWallet,
     removeWallet,
     clearAllWallets,
-    useVisibleWallets,
     useExternalWallets,
     registerSessionCloser,
 } from '@/lib/wallets/registry';
@@ -90,6 +90,14 @@ export interface WC2SignResult {
     signedTransactionHash: string; // txid
 }
 
+export interface BchPairingHandle {
+    qrValue: string;
+    linkText: string;
+    expiresAt?: number;
+    ready: Promise<ExternalWallet>;
+    cancel: () => void;
+}
+
 interface ExternalBCHWalletContextType {
     /** Visible BCH external wallets on current network (for compatibility with existing callers) */
     wallets: ExternalBCHWallet[];
@@ -112,6 +120,12 @@ interface ExternalBCHWalletContextType {
 
     /** Connect the Cham Wallet browser extension. */
     connectExtension: () => Promise<void>;
+
+    /** Whether more external wallets can be connected (under MAX_EXTERNAL_WALLETS limit) */
+    canAddExternalWallet: () => boolean;
+
+    /** Unified BCH pairing handle for WizardConnect or WalletConnect (P2 connect screen) */
+    startBchPairing: (protocol: 'wizardconnect' | 'walletconnect') => Promise<BchPairingHandle>;
 
     /** Build the Cashonize web wallet deep-link for a WC URI. */
     getCashonizeDeepLink: (wcUri: string) => string;
@@ -181,12 +195,11 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
     const appNetwork: AppNetwork = appNetworkOf(bchNetwork);
 
     const allWallets = useExternalWallets();
-    const networkWallets = useVisibleWallets(appNetwork);
     const activeBchId = useActiveWalletId('bch');
 
     // Filter to visible BCH wallets and map to ExternalBCHWallet shape
-    const bchWallets: ExternalBCHWallet[] = useMemo(() => networkWallets
-        .filter(w => w.family === 'bch')
+    const bchWallets: ExternalBCHWallet[] = useMemo(() => allWallets
+        .filter(w => w.family === 'bch' && w.network === appNetwork)
         .map(w => ({
             id: w.id,
             source: w.source as ExternalWalletSource,
@@ -195,7 +208,7 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
             connected: true,
             sessionTopic: w.sessionTopic,
             connectedAt: w.connectedAt,
-        })), [networkWallets]);
+        })), [allWallets, appNetwork]);
 
     const [connecting, setConnecting] = useState<ConnectingState>({
         active: false,
@@ -362,6 +375,101 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
         }
     }, []);
 
+    const canAddExternalWallet = useCallback((): boolean => {
+        return allWallets.length < MAX_EXTERNAL_WALLETS;
+    }, [allWallets.length]);
+
+    const startBchPairing = useCallback(async (protocol: 'wizardconnect' | 'walletconnect'): Promise<BchPairingHandle> => {
+        if (!canAddExternalWallet()) {
+            throw new Error(`Maximum of ${MAX_EXTERNAL_WALLETS} external wallets reached.`);
+        }
+
+        if (protocol === 'wizardconnect') {
+            const pairing = await startWizardPairing(appNetwork);
+            let isCancelled = false;
+
+            const ready = (async () => {
+                const session = await pairing.ready;
+                if (isCancelled) {
+                    throw new Error('Connection cancelled');
+                }
+                const newWallet: ExternalWallet = {
+                    id: session.id,
+                    source: 'wizardconnect',
+                    family: 'bch',
+                    network: session.network,
+                    label: session.label,
+                    icon: session.icon,
+                    address: session.address,
+                    connectedAt: Date.now(),
+                };
+                addWallet(newWallet);
+                setActiveWalletId(newWallet.id, 'bch');
+                return newWallet;
+            })();
+
+            return {
+                qrValue: pairing.qrUri,
+                linkText: pairing.uri,
+                ready,
+                cancel: () => {
+                    isCancelled = true;
+                    pairing.cancel();
+                },
+            };
+        } else {
+            const { uri, approval } = await connectBch(appNetwork);
+            let isCancelled = false;
+            const expiresAt = Date.now() + 5 * 60 * 1000;
+
+            const ready = (async () => {
+                const session = await approval();
+                if (isCancelled) {
+                    throw new Error('Connection cancelled');
+                }
+                const bchNamespace = session.namespaces?.bch;
+                const accounts: string[] = bchNamespace?.accounts || [];
+                if (accounts.length === 0) {
+                    throw new Error('WalletConnect session did not approve any BCH accounts.');
+                }
+
+                const rawAccount = accounts[0];
+                const address = rawAccount.split(':').slice(2).join(':');
+                const peerName = session.peer?.metadata?.name;
+                const label = peerName || 'Cashonize';
+                const rawIcon = session.peer?.metadata?.icons?.[0];
+                const icon = (rawIcon && (rawIcon.startsWith('https://') || rawIcon.startsWith('data:image/'))) ? rawIcon : undefined;
+
+                const walletId = `wc-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+                const newWallet: ExternalWallet = {
+                    id: walletId,
+                    source: 'walletconnect',
+                    family: 'bch',
+                    network: appNetwork,
+                    label,
+                    icon,
+                    address,
+                    sessionTopic: session.topic,
+                    connectedAt: Date.now(),
+                };
+
+                addWallet(newWallet);
+                setActiveWalletId(newWallet.id, 'bch');
+                return newWallet;
+            })();
+
+            return {
+                qrValue: uri,
+                linkText: uri,
+                expiresAt,
+                ready,
+                cancel: () => {
+                    isCancelled = true;
+                },
+            };
+        }
+    }, [appNetwork, canAddExternalWallet]);
+
     // ── Cham Wallet Extension ───────────────────────────────────────────────
 
     const connectExtension = useCallback(async (): Promise<void> => {
@@ -520,6 +628,8 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
             startWizardConnect,
             waitForWizardConnect,
             connectExtension,
+            canAddExternalWallet,
+            startBchPairing,
             getCashonizeDeepLink,
             getPaytacaDeepLink,
             cancelConnecting,
