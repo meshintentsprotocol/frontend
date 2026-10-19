@@ -73,8 +73,9 @@ export function ConnectWalletView({ onDone }: {
 
     const [step, setStep] = useState<Step>('pick-wallet');
     const [selectedWallet, setSelectedWallet] = useState<WalletOption['id'] | null>(null);
-    const [paytacaTab, setPaytacaTab] = useState<PaytacaTab>('wc');
+    const [paytacaTab, setPaytacaTab] = useState<PaytacaTab>('wizard');
     const [uri, setUri] = useState<string | null>(null);
+    const [qrUri, setQrUri] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [waiting, setWaiting] = useState(false);
@@ -107,6 +108,7 @@ export function ConnectWalletView({ onDone }: {
         setSelectedWallet(walletId);
         setError(null);
         setUri(null);
+        setQrUri(null);
 
         if (walletId === 'extension') {
             // No pairing URI: the extension opens its own approval screen.
@@ -133,9 +135,17 @@ export function ConnectWalletView({ onDone }: {
 
         try {
             const label = walletId === 'cashonize' ? 'Cashonize' : walletId === 'paytaca' ? 'Paytaca' : 'External Wallet';
-            const generatedUri = wizard ? await ext.startWizardConnect() : await ext.startWalletConnect(label);
-            if (!current()) return;
-            setUri(generatedUri);
+            if (wizard) {
+                const res = await ext.startWizardConnect();
+                if (!current()) return;
+                setUri(res.uri);
+                setQrUri(res.qrUri);
+            } else {
+                const generatedUri = await ext.startWalletConnect(label);
+                if (!current()) return;
+                setUri(generatedUri);
+                setQrUri(generatedUri);
+            }
             setWaiting(true);
         } catch (e: any) {
             if (!current()) return;
@@ -309,7 +319,7 @@ export function ConnectWalletView({ onDone }: {
                         <div className="flex flex-col items-center">
                             {uri ? (
                                 <div className="rounded-xl bg-white p-4 shadow-lg shadow-black/20 animate-in fade-in zoom-in-95 duration-300">
-                                    <QRCodeSVG value={uri} size={212} level="M" bgColor="#ffffff" fgColor="#000000" includeMargin={false} />
+                                    <QRCodeSVG value={qrUri || uri} size={212} level="M" bgColor="#ffffff" fgColor="#000000" includeMargin={false} />
                                 </div>
                             ) : error ? (
                                 <div className="flex h-[244px] w-[244px] flex-col items-center justify-center gap-3 rounded-xl border border-red-500/20 bg-red-500/[0.04] px-6 text-center">

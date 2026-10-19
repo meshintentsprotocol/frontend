@@ -49,6 +49,13 @@ import {
     runSignRequest,
     WalletSignError,
 } from '@/lib/wallets/signRequest';
+import {
+    startPairing as startWizardPairing,
+    restore as restoreWizardSession,
+    disconnect as disconnectWizard,
+    sign as signWizard,
+    type WizSession,
+} from '@/lib/wallets/wizardconnect';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -98,8 +105,8 @@ interface ExternalBCHWalletContextType {
     /** Block until the WC session is approved. */
     waitForWalletConnect: () => Promise<void>;
 
-    /** Start a WizardConnect session — returns the wiz:// URI. */
-    startWizardConnect: () => Promise<string>;
+    /** Start a WizardConnect session — returns uri and qrUri. */
+    startWizardConnect: () => Promise<{ uri: string; qrUri: string }>;
     /** Block until the WizardConnect session is approved. */
     waitForWizardConnect: () => Promise<void>;
 
@@ -199,6 +206,22 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
 
     const pendingLabelRef = useRef<string | null>(null);
     const wcApprovalRef = useRef<(() => Promise<any>) | null>(null);
+    const wizPairingRef = useRef<{ id: string; ready: Promise<WizSession>; cancel: () => void } | null>(null);
+
+    // ── Restore persisted WizardConnect wallets on mount/network change ─────
+    useEffect(() => {
+        const wizWallets = allWallets.filter(w => w.source === 'wizardconnect' && w.network === appNetwork);
+        for (const w of wizWallets) {
+            try {
+                const session = restoreWizardSession(w.id, appNetwork);
+                if (!session) {
+                    removeWallet(w.id);
+                }
+            } catch {
+                removeWallet(w.id);
+            }
+        }
+    }, [appNetwork, allWallets]);
 
     // ── Session Closer Registration ─────────────────────────────────────────
     useEffect(() => {
@@ -211,6 +234,8 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
                         reason: { code: 6000, message: 'User disconnected' },
                     });
                 } catch { /* ignore */ }
+            } else if (wallet.source === 'wizardconnect') {
+                await disconnectWizard(wallet.id);
             } else if (wallet.source === 'extension') {
                 disconnectExtension();
             }
@@ -287,14 +312,54 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
         }
     }, [appNetwork]);
 
-    // ── WizardConnect (stubs until Phase 1) ──────────────────────────────────
+    // ── WizardConnect ───────────────────────────────────────────────────────
 
-    const startWizardConnect = useCallback(async (): Promise<string> => {
-        throw new Error('WizardConnect is coming in this release.');
-    }, []);
+    const startWizardConnect = useCallback(async (): Promise<{ uri: string; qrUri: string }> => {
+        setConnecting({
+            active: true,
+            label: 'Paytaca',
+            source: 'wizardconnect',
+            uri: null,
+        });
+
+        try {
+            const pairing = await startWizardPairing(appNetwork);
+            wizPairingRef.current = {
+                id: pairing.id,
+                ready: pairing.ready,
+                cancel: pairing.cancel,
+            };
+            setConnecting(s => ({ ...s, uri: pairing.uri }));
+            return { uri: pairing.uri, qrUri: pairing.qrUri };
+        } catch (e) {
+            setConnecting({ active: false, label: null, source: null, uri: null });
+            throw e;
+        }
+    }, [appNetwork]);
 
     const waitForWizardConnect = useCallback(async (): Promise<void> => {
-        throw new Error('WizardConnect is coming in this release.');
+        const pairing = wizPairingRef.current;
+        if (!pairing) throw new Error('Call startWizardConnect() first.');
+
+        try {
+            const session = await pairing.ready;
+            const newWallet: ExternalWallet = {
+                id: session.id,
+                source: 'wizardconnect',
+                family: 'bch',
+                network: session.network,
+                label: session.label,
+                icon: session.icon,
+                address: session.address,
+                connectedAt: Date.now(),
+            };
+
+            addWallet(newWallet);
+            setActiveWalletId(newWallet.id, 'bch');
+        } finally {
+            setConnecting({ active: false, label: null, source: null, uri: null });
+            wizPairingRef.current = null;
+        }
     }, []);
 
     // ── Cham Wallet Extension ───────────────────────────────────────────────
@@ -352,9 +417,14 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
         setConnecting({ active: false, label: null, source: null, uri: null });
         wcApprovalRef.current = null;
         pendingLabelRef.current = null;
+        if (wizPairingRef.current) {
+            wizPairingRef.current.cancel();
+            wizPairingRef.current = null;
+        }
     }, []);
 
     const disconnectWallet = useCallback((id: string) => {
+        disconnectWizard(id);
         removeWallet(id);
     }, []);
 
@@ -429,7 +499,7 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
                 }
 
                 if (wallet.source === 'wizardconnect') {
-                    throw new Error('WizardConnect signing will be supported in Phase 1.');
+                    return signWizard(wallet.id, payload, signal);
                 }
 
                 throw new Error('Unsupported external wallet source.');
