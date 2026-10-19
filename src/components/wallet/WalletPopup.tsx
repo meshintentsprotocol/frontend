@@ -12,7 +12,7 @@ import { WalletOnboardingView } from './WalletOnboardingView';
 import { Chameleon } from './Chameleon';
 import { OrdersHub } from '@/components/orders/OrdersHub';
 
-import { useExternalWallets } from '@/context/ExternalBCHWalletProvider';
+import { useExternalWallets } from '@/lib/wallets/registry';
 import { saveAppSettings, useAppSettings } from '@/lib/appSettings';
 import { setNotifNetwork, markNotificationsSeen, readNotifications, clearNotifications } from '@/lib/notifications';
 import type { StoredNotification } from '@/lib/notifications';

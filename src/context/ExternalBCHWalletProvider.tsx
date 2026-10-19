@@ -39,6 +39,7 @@ import {
     useExternalWallets,
     registerSessionCloser,
 } from '@/lib/wallets/registry';
+export { useExternalWallets } from '@/lib/wallets/registry';
 import { resolveActive } from '@/lib/wallets/resolveActive';
 import {
     getWCBchClient,
