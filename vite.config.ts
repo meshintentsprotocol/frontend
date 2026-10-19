@@ -16,8 +16,23 @@ export default defineConfig({
             protocolImports: true,
         }),
     ],
+    root: path.resolve(__dirname),
+    cacheDir: path.resolve(__dirname, './node_modules/.vite'),
     define: {
         'global': 'window',
+    },
+    optimizeDeps: {
+        include: [
+            '@reown/appkit',
+            '@reown/appkit-adapter-ethers',
+            '@reown/appkit-adapter-solana',
+            '@reown/appkit/networks',
+            'viem',
+            'abitype',
+            '@noble/hashes/sha3',
+            '@noble/hashes/sha256',
+            '@noble/hashes/ripemd160',
+        ],
     },
     resolve: {
         alias: {
