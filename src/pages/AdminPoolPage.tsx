@@ -1,3 +1,4 @@
+// OLD — retired 2026-10-19, kept until the clean-up. Not part of the live app. See devrel-agent-context/walletuidocs/connect/old-code.md.
 /**
  * /adminpool — operator view of every registered Mesh pool (including closed
  * ones), from the public pool API. Read-only apart from "sync", which only

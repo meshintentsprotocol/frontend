@@ -36,7 +36,6 @@ const footerLinks = {
         { label: 'Knowledgehub', href: '/kb' },
         { label: 'Documentation', href: 'https://docs.intentsprotocol.xyz/', external: true },
         { label: 'GitHub', href: 'https://github.com/Intents-Swaps', external: true },
-        { label: 'Monitor', href: '/monitor' },
         { label: 'Terms of Service', href: '/terms' },
         { label: 'Privacy Policy', href: '/privacy' },
     ],

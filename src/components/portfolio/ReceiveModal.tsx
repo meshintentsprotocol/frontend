@@ -59,11 +59,6 @@ export function ReceiveModal({ children }: { children?: React.ReactNode }) {
             address: wdk.solanaAddress, icon: '/assets/solanaLogo.png', color: '#9945ff',
             explorerUrl: `https://solscan.io/account/${wdk.solanaAddress}?cluster=devnet`,
         },
-        wdk.movementAddress && {
-            key: 'move', label: 'Movement', sublabel: isMainnet ? 'Mainnet · MOVE, tokens' : 'Bardock Testnet · MOVE, USDC, USDT',
-            address: wdk.movementAddress, icon: '/logos/movement.svg', color: '#f7b500',
-            explorerUrl: `https://explorer.movementnetwork.xyz/account/${wdk.movementAddress}?network=testnet`,
-        },
         wdk.btcAddress && {
             key: 'btc', label: 'Bitcoin', sublabel: isMainnet ? 'Mainnet' : 'Testnet', address: wdk.btcAddress, icon: '/logos/bitcoin-btc-logo.svg', color: '#f7931a',
         },

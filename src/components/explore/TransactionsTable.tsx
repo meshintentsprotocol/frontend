@@ -4,7 +4,6 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { ChainFilter } from '@/pages/ExplorePage';
-import { useSwap } from '@/context/SwapContext';
 import { ArrowRight, ChevronLeft, ChevronRight, Clock, ExternalLink, ArrowUpDown } from 'lucide-react';
 import { BCHOrder } from '@/types';
 import axios from 'axios';
@@ -178,10 +177,6 @@ function typeBadgeColor(type: string): string {
 }
 
 export function TransactionsTable({ activeChain, refreshTrigger }: { activeChain: ChainFilter, refreshTrigger: number }) {
-    const { fetchOrderHistory } = useSwap();
-    const fetchOrderHistoryRef = useRef(fetchOrderHistory);
-    fetchOrderHistoryRef.current = fetchOrderHistory;
-
     const [transactions, setTransactions] = useState<ExplorerTx[]>([]);
     const [initialLoading, setInitialLoading] = useState(true);
     const [isRefetching, setIsRefetching] = useState(false);
@@ -267,38 +262,7 @@ export function TransactionsTable({ activeChain, refreshTrigger }: { activeChain
                 console.warn('[TransactionsTable] Failed to fetch BCHMesh intents:', e);
             }
 
-            // 2. Movement swap history
-            try {
-                const history = await fetchOrderHistoryRef.current();
-                if (isMounted && Array.isArray(history)) {
-                    const moveTxs = history.map((order: any, idx: number): ExplorerTx => {
-                        const sellSym = order.sellToken?.symbol || order.sell_token || 'MOVE';
-                        const buySym = order.buyToken?.symbol || order.buy_token || 'USDC';
-                        const usdPrice = getUsdPrice(sellSym, usd);
-                        const st = order.status === 'completed' || order.status === 'filled' || order.status === 'FILLED' ? 'Completed' : order.status || 'Pending';
-                        return {
-                            id: order.id || order.nonce || order.orderId || `move-${sellSym}-${buySym}-${order.createdAt || order.timestamp || Date.now()}-${idx}`,
-                            timestamp: order.createdAt || order.timestamp || Date.now(),
-                            sellToken: sellSym,
-                            sellIcon: order.sellToken?.icon || iconFor(sellSym),
-                            sellAmount: Number(order.sellAmount || order.sell_amount) || 0,
-                            buyToken: buySym,
-                            buyIcon: order.buyToken?.icon || iconFor(buySym),
-                            buyAmount: Number(order.buyAmount || order.buy_amount) || 0,
-                            usdValue: (Number(order.sellAmount || order.sell_amount) || 0) * usdPrice,
-                            wallet: order.maker ? `${order.maker.slice(0, 6)}...${order.maker.slice(-4)}` : 'Unknown',
-                            chain: 'Movement',
-                            txHash: order.txid || order.fulfillTxId || order.order_hash,
-                            explorerUrl: order.order_hash ? `https://explorer.movementlabs.xyz/txn/${order.order_hash}?network=testnet` : undefined,
-                            type: 'Movement Swap',
-                            status: st,
-                        };
-                    });
-                    allTxs.push(...moveTxs);
-                }
-            } catch (e) { console.warn("Failed to fetch Movement txs", e); }
-
-            // 3. BCH orders from localStorage — both networks
+            // 2. BCH orders from localStorage — both networks
             const bchNetworks: Array<'chipnet' | 'mainnet'> = ['chipnet', 'mainnet'];
             bchNetworks.forEach(net => {
                 try {

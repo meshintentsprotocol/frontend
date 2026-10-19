@@ -100,9 +100,6 @@ export function sendChains(opts: {
     if (opts.solanaAddress) {
         list.push({ id: 'sol', family: 'sol', name: 'Solana', sublabel: 'Devnet', icon: ICON.sol, color: '#9945ff', recipientHint: 'Solana address' });
     }
-    if (opts.movementAddress) {
-        list.push({ id: 'move', family: 'move', name: 'Movement', sublabel: opts.isMainnet ? 'Mainnet' : 'Bardock Testnet', icon: ICON.move, color: '#f7b500', recipientHint: '0x… (Movement)' });
-    }
     if (opts.btcAddress) {
         list.push({ id: 'btc', family: 'btc', name: 'Bitcoin', sublabel: 'Testnet', icon: ICON.btc, color: '#f7931a', recipientHint: 'tb1q… or 2N…' });
     }

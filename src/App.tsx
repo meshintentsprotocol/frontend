@@ -4,20 +4,11 @@ import { useWallet } from "@/context/wallet-provider"
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom"
 import { SwapProvider } from "./context/SwapContext"
 import { CrossChainProvider } from "./context/CrossChainContext"
-import { OraclePage } from "./pages/OraclePage"
-import SwapPage from "./pages/SwapPage"
-import OrdersPage from "./pages/OrdersPage"
 import LandingPage from "./pages/LandingPage"
 import FeaturesPage from "./pages/FeaturesPage"
 import { Header } from "./components/common/Header"
-import { ResolverPage } from "./pages/ResolverPage"
-import CrossChainPage from "./pages/CrossChainPage"
-import CrossOrders from "./pages/CrossOrders"
 import PortfolioPage from './pages/PortfolioPage';
 import { ReferralPage, PointsPage } from './pages/ReferralPointsPages';
-import ProPage from "./pages/ProPage"
-import { MonitorPage } from "./pages/MonitorPage"
-import { SolverPage } from "./pages/SolverPage"
 import { adminRoutes } from "./admin/AdminRoutes"
 import { AnalyticsTracker } from "@/components/common/AnalyticsTracker"
 import { ScrollToTop } from "@/components/common/ScrollToTop"
@@ -29,7 +20,6 @@ import { KBTagPage } from "./pages/KBTagPage"
 import { KBCategoryPage } from "./pages/KBCategoryPage"
 import { KBArticlePage } from "./pages/KBArticlePage"
 import { KBSearchPage } from "./pages/KBSearchPage"
-import { AddTokenPage } from "./pages/AddTokenPage"
 import { ExplorePage } from "./pages/ExplorePage"
 import { TokenDetailPage } from "./pages/TokenDetailPage"
 import EcosystemPage from "./pages/EcosystemPage"
@@ -40,7 +30,6 @@ import { BCHSwapProvider } from "./context/BCHSwapContext"
 import { SwapServerRoot } from "./swap-server/SwapServerRoot"
 import BchSwapPage from "./pages/BchSwapPage"
 // WalletPage removed — now served externally at https://cham-wallet-web.vercel.app
-import OverviewPage from "./pages/OverviewPage"
 import MeshPage from "./pages/MeshPage"
 import MeshPoolDetailPage, { MeshPoolOutpointRedirect } from "./pages/MeshPoolDetailPage"
 import MeshLandingPage from "./pages/MeshLandingPage"
@@ -48,7 +37,6 @@ import MeshProviderDetailPage from "./pages/MeshProviderDetailPage"
 import MeshStrategyPage from "./pages/MeshStrategyPage"
 import MeshPositionPage from "./pages/MeshPositionPage"
 import OrderbookPage from "./pages/OrderbookPage"
-import { AdminPoolPage } from "./pages/AdminPoolPage"
 import { WDKProvider } from "./context/WDKProvider"
 import { ExternalBCHWalletProvider } from "./context/ExternalBCHWalletProvider"
 import { PWAUpdatePrompt } from "./components/common/PWAUpdatePrompt"
@@ -205,26 +193,11 @@ function App() {
                                                         </div>
                                                     } />
                                                     {adminRoutes}
-                                                    <Route path="/adminpool" element={
-                                                        <div className="flex flex-col min-h-screen bg-[#050505]">
-                                                            <Header />
-                                                            <main className="flex-1 pt-20"><AdminPoolPage /></main>
-                                                        </div>
-                                                    } />
+                                                    <Route path="/adminpool" element={<Navigate to="/" replace />} />
                                                     <Route path="/resolver" element={<Navigate to="/" replace />} />
-                                                    <Route path="/monitor" element={
-                                                        <div className="flex flex-col min-h-screen">
-                                                            <Header />
-                                                            <main className="flex-1 pt-24"><MonitorPage /></main>
-                                                        </div>
-                                                    } />
+                                                    <Route path="/monitor" element={<Navigate to="/" replace />} />
                                                     <Route path="/solver" element={<Navigate to="/" replace />} />
-                                                    <Route path="/oracle" element={
-                                                        <div className="flex flex-col min-h-screen">
-                                                            <Header />
-                                                            <main className="flex-1 pt-24"><OraclePage /></main>
-                                                        </div>
-                                                    } />
+                                                    <Route path="/oracle" element={<Navigate to="/" replace />} />
                                                     <Route path="/crossswap" element={<Navigate to="/" replace />} />
                                                     <Route path="/crossorders" element={<Navigate to="/" replace />} />
                                                     <Route path="/pro" element={<Navigate to="/" replace />} />
@@ -255,15 +228,7 @@ function App() {
                                                     <Route path="/terms" element={<TermsOfService />} />
                                                     <Route path="/privacy" element={<PrivacyPolicy />} />
 
-
-                                                    <Route path="/add-token" element={
-                                                        <div className="flex flex-col min-h-screen">
-                                                            <Header />
-                                                            <main className="flex-1 container mx-auto p-8 mt-20">
-                                                                <AddTokenPage />
-                                                            </main>
-                                                        </div>
-                                                    } />
+                                                    <Route path="/add-token" element={<Navigate to="/" replace />} />
 
                                                     {/* Knowledge Base Routes */}
                                                     <Route path="/kb" element={

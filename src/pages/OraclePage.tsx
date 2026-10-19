@@ -1,3 +1,4 @@
+// OLD — retired 2026-10-19, kept until the clean-up. Not part of the live app. See devrel-agent-context/walletuidocs/connect/old-code.md.
 import { useEffect, useState, useCallback } from "react";
 import { PriceService } from "@/lib/pyth";
 import { PriceData } from "@/types";

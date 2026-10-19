@@ -62,7 +62,6 @@ const LINK_GROUPS: { title: string; links: SubLink[] }[] = [
         links: [
             { name: 'Knowledgehub', path: '/kb' },
             { name: 'Documentation', path: 'https://docs.intentsprotocol.xyz/', external: true },
-            { name: 'Monitor', path: '/monitor' },
             { name: 'Admin Analytics', path: '/admin' },
         ],
     },

@@ -7,7 +7,6 @@
 
 export { BentoSection } from './BentoSection';
 export { CrossChainSwapsCard } from './CrossChainSwapsCard';
-export { MovementSwapsCard } from './MovementSwapsCard';
 export { DutchAuctionCard } from './DutchAuctionCard';
 export { TrustlessHTLCCard } from './TrustlessHTLCCard';
 export { LightningFastCard } from './LightningFastCard';
