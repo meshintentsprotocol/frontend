@@ -1,3 +1,4 @@
+// OLD — retired 2026-10-19, kept until the clean-up. Not part of the live app. See devrel-agent-context/walletuidocs/connect/old-code.md.
 import { useState, useEffect, useCallback } from 'react';
 import { ExternalLink, RefreshCw, Wallet, ArrowRightLeft, TrendingUp, TrendingDown, AlertTriangle, CheckCircle, XCircle, Clock, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';

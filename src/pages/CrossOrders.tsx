@@ -1,4 +1,4 @@
-
+// OLD — retired 2026-10-19, kept until the clean-up. Not part of the live app. See devrel-agent-context/walletuidocs/connect/old-code.md.
 import { CROSS_CHAIN_RELAYER_URL } from '../lib/config';
 import { useState, useEffect } from 'react';
 import { useWallet } from '@/context/wallet-provider'; // Aptos

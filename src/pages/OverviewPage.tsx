@@ -1,3 +1,4 @@
+// OLD — retired 2026-10-19, kept until the clean-up. Not part of the live app. See devrel-agent-context/walletuidocs/connect/old-code.md.
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { useWDK } from '@/context/WDKProvider';
 import { useWallets } from '@/hooks/useWallets';

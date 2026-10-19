@@ -1,6 +1,4 @@
-// LEGACY — only used by ProPage/SwapPage, both unreachable ("/pro" and "/swap"
-// redirect to "/" in App.tsx). The live swap UI is BCHSwapCard
-// (components/bch-swap/), routed at "/trade".
+// OLD — retired 2026-10-19, kept until the clean-up. Not part of the live app. See devrel-agent-context/walletuidocs/connect/old-code.md.
 import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';

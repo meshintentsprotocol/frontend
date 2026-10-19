@@ -1,5 +1,4 @@
-// LEGACY — unreachable: App.tsx redirects "/pro" to "/". The live swap UI is
-// BCHSwapCard (components/bch-swap/), routed at "/trade".
+// OLD — retired 2026-10-19, kept until the clean-up. Not part of the live app. See devrel-agent-context/walletuidocs/connect/old-code.md.
 import { useState, useEffect } from 'react';
 import { TradingViewWidget, TokenPairSelector, ProOrderForm, LimitOrderForm, TOKEN_PAIRS, TokenPair } from '@/components/pro';
 import { OrderList, Order } from '@/components/intent-swap/OrderList';

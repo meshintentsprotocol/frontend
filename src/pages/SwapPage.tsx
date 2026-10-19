@@ -1,5 +1,4 @@
-// LEGACY — unreachable: App.tsx redirects "/swap" to "/". The live swap UI is
-// BCHSwapCard (components/bch-swap/), routed at "/trade".
+// OLD — retired 2026-10-19, kept until the clean-up. Not part of the live app. See devrel-agent-context/walletuidocs/connect/old-code.md.
 import { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { SwapCard } from '../components/intent-swap/forms/SwapCard';

@@ -1,4 +1,4 @@
-
+// OLD — retired 2026-10-19, kept until the clean-up. Not part of the live app. See devrel-agent-context/walletuidocs/connect/old-code.md.
 import { useState, useEffect } from 'react';
 import { useWallet } from '@/context/wallet-provider';
 import { OrderList, Order } from '../components/intent-swap/OrderList';
