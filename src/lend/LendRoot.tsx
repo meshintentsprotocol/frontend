@@ -23,7 +23,7 @@ const UNAVAILABLE: Record<string, string> = {
 };
 
 function Shell() {
-    const { demo, setDemo, realUnavailable, marketsError } = useLend();
+    const { demo, setDemo, realUnavailable, marketsError, demoProvider, refresh } = useLend();
     const { pathname } = useLocation();
     const navigate = useNavigate();
     const advanced = pathname.startsWith('/borrow/advanced');
@@ -36,7 +36,16 @@ function Shell() {
 
     return (
         <div className="mx-auto w-full max-w-[480px] px-4 pb-28 text-white">
-            {demo ? <DemoBanner onExit={realUnavailable ? undefined : () => setDemo(false)} reason={realUnavailable ? UNAVAILABLE[realUnavailable] : undefined} /> : null}
+            {demo ? (
+                <DemoBanner
+                    onExit={realUnavailable ? undefined : () => setDemo(false)}
+                    onReset={() => {
+                        demoProvider?.reset();
+                        void refresh();
+                    }}
+                    reason={realUnavailable ? UNAVAILABLE[realUnavailable] : undefined}
+                />
+            ) : null}
 
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <Segmented

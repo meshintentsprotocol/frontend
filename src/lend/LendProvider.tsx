@@ -7,10 +7,12 @@
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useWDK } from '@/context/WDKProvider';
+import { useActiveWallet } from '@/hooks/useActiveWallet';
 import { notifyLoanChange } from './notify';
 import type { LendProvider as Provider } from './provider';
 import { createDemoProvider, type DemoProvider } from './providers/demo';
 import { createLiquidiumProvider, liquidiumConfigured } from './providers/liquidium';
+import { createParyonProvider, paryonConfigured } from './providers/paryon';
 import { OPEN_PHASES, type LoanView, type Market } from './types';
 
 const DEMO_KEY = 'lend_demo_mode_v1';
@@ -19,6 +21,8 @@ const DEMO_REFRESH_MS = 2_500;
 
 interface LendValue {
     provider: Provider;
+    paryonProvider: Provider;
+    liquidiumProvider: Provider;
     /** Set in demo mode: the demo wallet and activity. */
     demoProvider: DemoProvider | null;
     demo: boolean;
@@ -32,7 +36,7 @@ interface LendValue {
     refresh: () => Promise<void>;
     market: (asset: string) => Market | undefined;
     /** The wallet's own addresses, used as the default destinations of a real loan. */
-    addresses: { btc: string | null; evm: string | null };
+    addresses: { btc: string | null; evm: string | null; bch: string | null };
     /** Active Liquidium profile ID, if registered. */
     profileId: string | null;
     profileLoading: boolean;
@@ -53,7 +57,11 @@ export function useLend(): LendValue {
 
 export function LendProvider({ children }: { children: ReactNode }) {
     const wdk = useWDK();
-    const realUnavailable: LendValue['realUnavailable'] = !liquidiumConfigured() ? 'not-configured' : wdk.bchNetwork !== 'mainnet' ? 'testnet' : null;
+    const { isMainActive, activeExtWallet } = useActiveWallet();
+    const bchAddress = (isMainActive ? wdk.bchAddress : activeExtWallet?.address) || wdk.bchAddress || null;
+
+    const realConfigured = liquidiumConfigured() || paryonConfigured();
+    const realUnavailable: LendValue['realUnavailable'] = !realConfigured ? 'not-configured' : null;
 
     const [wantDemo, setWantDemo] = useState<boolean>(() => {
         try { return localStorage.getItem(DEMO_KEY) === '1'; } catch { return false; }
@@ -65,14 +73,82 @@ export function LendProvider({ children }: { children: ReactNode }) {
     }, []);
 
     const demoProvider = useMemo(() => createDemoProvider(), []);
-    const realProvider = useMemo(() => createLiquidiumProvider(), []);
-    const provider: Provider = demo ? demoProvider : realProvider;
+    const liquidiumProvider = useMemo(() => createLiquidiumProvider(), []);
+    const paryonProvider = useMemo(() => createParyonProvider(), []);
+
+    const compositeRealProvider = useMemo<Provider>(() => {
+        return {
+            id: 'paryon',
+            listMarkets: async () => {
+                const results = await Promise.allSettled([
+                    paryonConfigured() ? paryonProvider.listMarkets() : Promise.resolve([]),
+                    liquidiumConfigured() ? liquidiumProvider.listMarkets() : Promise.resolve([]),
+                ]);
+                const all: Market[] = [];
+                for (const r of results) {
+                    if (r.status === 'fulfilled') all.push(...r.value);
+                }
+                return all;
+            },
+            quote: async (req) => {
+                if (req.borrowAsset === 'PUSD' || req.collateralAsset === 'BCH') {
+                    return paryonProvider.quote(req);
+                }
+                return liquidiumProvider.quote(req);
+            },
+            createLoan: async (req) => {
+                if (req.borrowAsset === 'PUSD' || req.collateralAsset === 'BCH') {
+                    return paryonProvider.createLoan(req);
+                }
+                return liquidiumProvider.createLoan(req);
+            },
+            getLoan: async (ref, fresh) => {
+                try {
+                    return await paryonProvider.getLoan(ref, fresh);
+                } catch {
+                    return await liquidiumProvider.getLoan(ref, fresh);
+                }
+            },
+            findLoans: async (query) => {
+                const [p, l] = await Promise.allSettled([
+                    paryonProvider.findLoans(query),
+                    liquidiumProvider.findLoans(query),
+                ]);
+                const out: LoanView[] = [];
+                if (p.status === 'fulfilled') out.push(...p.value);
+                if (l.status === 'fulfilled') out.push(...l.value);
+                return out;
+            },
+            myLoans: async (addrs) => {
+                const [p, l] = await Promise.allSettled([
+                    paryonProvider.myLoans(addrs),
+                    liquidiumProvider.myLoans(addrs),
+                ]);
+                const out: LoanView[] = [];
+                if (p.status === 'fulfilled') out.push(...p.value);
+                if (l.status === 'fulfilled') out.push(...l.value);
+                return out;
+            },
+            forgetLoan: (ref) => {
+                paryonProvider.forgetLoan(ref);
+                liquidiumProvider.forgetLoan(ref);
+            },
+            advanced: liquidiumProvider.advanced,
+            paryon: paryonProvider.paryon,
+        };
+    }, [liquidiumProvider, paryonProvider]);
+
+    const provider: Provider = demo ? demoProvider : compositeRealProvider;
 
     const [markets, setMarkets] = useState<Market[]>([]);
     const [marketsError, setMarketsError] = useState('');
     const [loans, setLoans] = useState<LoanView[]>([]);
     const [loansLoading, setLoansLoading] = useState(true);
-    const addresses = useMemo(() => ({ btc: wdk.btcAddress ?? null, evm: wdk.evmAddress ?? null }), [wdk.btcAddress, wdk.evmAddress]);
+    const addresses = useMemo(() => ({
+        btc: wdk.btcAddress ?? null,
+        evm: wdk.evmAddress ?? null,
+        bch: bchAddress ?? null,
+    }), [wdk.btcAddress, wdk.evmAddress, bchAddress]);
 
     const [profileId, setProfileId] = useState<string | null>(() => {
         try { return localStorage.getItem('liquidium_profile_id_v1') || null; } catch { return null; }
@@ -83,7 +159,7 @@ export function LendProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         let active = true;
         async function resolve() {
-            if (demo || !realProvider.advanced?.getProfileId) return;
+            if (demo || !liquidiumProvider.advanced?.getProfileId) return;
             // If the user manually logged out during this session, do not force auto-login
             if (sessionStorage.getItem('liquidium_manual_logout') === '1') return;
 
@@ -93,7 +169,7 @@ export function LendProvider({ children }: { children: ReactNode }) {
             setProfileLoading(true);
             try {
                 if (eth) {
-                    const pid = await realProvider.advanced.getProfileId(eth);
+                    const pid = await liquidiumProvider.advanced.getProfileId(eth);
                     if (active && pid) {
                         setProfileId(pid);
                         try { localStorage.setItem('liquidium_profile_id_v1', pid); } catch {}
@@ -101,7 +177,7 @@ export function LendProvider({ children }: { children: ReactNode }) {
                     }
                 }
                 if (btc) {
-                    const pid = await realProvider.advanced.getProfileId(btc);
+                    const pid = await liquidiumProvider.advanced.getProfileId(btc);
                     if (active && pid) {
                         setProfileId(pid);
                         try { localStorage.setItem('liquidium_profile_id_v1', pid); } catch {}
@@ -116,7 +192,7 @@ export function LendProvider({ children }: { children: ReactNode }) {
         }
         resolve();
         return () => { active = false; };
-    }, [demo, realProvider, wdk.evmAddress, wdk.btcAddress]);
+    }, [demo, liquidiumProvider, wdk.evmAddress, wdk.btcAddress]);
 
     const login = useCallback(async (chain: 'ETH' | 'BTC' = 'ETH') => {
         const account = chain === 'ETH' ? wdk.evmAddress : wdk.btcAddress;
@@ -126,8 +202,8 @@ export function LendProvider({ children }: { children: ReactNode }) {
         setProfileLoading(true);
         try {
             // Check if profile already exists for this wallet address
-            if (realProvider.advanced?.getProfileId) {
-                const existing = await realProvider.advanced.getProfileId(account).catch(() => null);
+            if (liquidiumProvider.advanced?.getProfileId) {
+                const existing = await liquidiumProvider.advanced.getProfileId(account).catch(() => null);
                 if (existing) {
                     setProfileId(existing);
                     try { localStorage.setItem('liquidium_profile_id_v1', existing); } catch {}
@@ -136,11 +212,11 @@ export function LendProvider({ children }: { children: ReactNode }) {
                 }
             }
 
-            if (!realProvider.advanced?.prepareCreateProfile || !realProvider.advanced?.createProfile) {
+            if (!liquidiumProvider.advanced?.prepareCreateProfile || !liquidiumProvider.advanced?.createProfile) {
                 throw new Error('Advanced profile creation is not supported by provider');
             }
 
-            const prep = await realProvider.advanced.prepareCreateProfile(account);
+            const prep = await liquidiumProvider.advanced.prepareCreateProfile(account);
             let signature = '';
             if (chain === 'ETH') {
                 if (!wdk.evmSigner?.signMessage) throw new Error('EVM signer is not available to sign profile message');
@@ -154,7 +230,7 @@ export function LendProvider({ children }: { children: ReactNode }) {
                     throw new Error('Wallet signer is not available');
                 }
             }
-            const res = await realProvider.advanced.createProfile({
+            const res = await liquidiumProvider.advanced.createProfile({
                 account,
                 chain,
                 signature,
@@ -178,7 +254,7 @@ export function LendProvider({ children }: { children: ReactNode }) {
         } finally {
             setProfileLoading(false);
         }
-    }, [realProvider, wdk.evmAddress, wdk.btcAddress, wdk.evmSigner, wdk.btcAccount]);
+    }, [liquidiumProvider, wdk.evmAddress, wdk.btcAddress, wdk.evmSigner, wdk.btcAccount]);
 
     const logout = useCallback(() => {
         setProfileId(null);
@@ -194,7 +270,7 @@ export function LendProvider({ children }: { children: ReactNode }) {
         if (!quiet) setLoansLoading(true);
         const [m, l] = await Promise.allSettled([
             provider.listMarkets(),
-            provider.myLoans([addresses.evm, addresses.btc].filter((a): a is string => !!a)),
+            provider.myLoans([addresses.bch, addresses.evm, addresses.btc].filter((a): a is string => !!a)),
         ]);
         if (gen !== generation.current) return;
         if (m.status === 'fulfilled') { setMarkets(m.value); setMarketsError(''); }
@@ -208,7 +284,7 @@ export function LendProvider({ children }: { children: ReactNode }) {
             setLoans(l.value);
         }
         setLoansLoading(false);
-    }, [provider, addresses.evm, addresses.btc]);
+    }, [provider, addresses.bch, addresses.evm, addresses.btc]);
 
     useEffect(() => {
         const gen = ++generation.current;
@@ -242,9 +318,9 @@ export function LendProvider({ children }: { children: ReactNode }) {
     }, [provider]);
 
     const value = useMemo<LendValue>(() => ({
-        provider, demoProvider: demo ? demoProvider : null, demo, setDemo, realUnavailable, markets, marketsError, loans, loansLoading, refresh,
+        provider, paryonProvider, liquidiumProvider, demoProvider: demo ? demoProvider : null, demo, setDemo, realUnavailable, markets, marketsError, loans, loansLoading, refresh,
         market: asset => markets.find(m => m.asset === asset), addresses, profileId, profileLoading, login, logout, upsert, forget,
-    }), [provider, demoProvider, demo, setDemo, realUnavailable, markets, marketsError, loans, loansLoading, refresh, addresses, profileId, profileLoading, login, logout, upsert, forget]);
+    }), [provider, paryonProvider, liquidiumProvider, demoProvider, demo, setDemo, realUnavailable, markets, marketsError, loans, loansLoading, refresh, addresses, profileId, profileLoading, login, logout, upsert, forget]);
 
     return <LendContext.Provider value={value}>{children}</LendContext.Provider>;
 }

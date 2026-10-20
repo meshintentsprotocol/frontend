@@ -27,6 +27,8 @@ export const DEMO_MARKETS: Market[] = [
     market('ETH', 'ETH', 'Ethereum', 18, 2_500, 0.006, 0.26, 2.6, '3000000000000000000'),
     market('USDC', 'ETH', 'USDC', 6, 1, 3.351, 4.68, 79.6, '100000000000'),
     market('USDT', 'ETH', 'USDT', 6, 1, 2.335, 3.907, 66.4, '100000000000'),
+    market('BCH', 'BCH', 'Bitcoin Cash', 8, 480, 0.015, 3.20, 18.5, '25000000000'),
+    market('PUSD', 'BCH', 'Paryon USD', 2, 1, 0, 3.50, 45.0, '500000000'),
 ];
 
 /** How long each stage of a demo loan lasts. Short enough to watch, long enough to read. */
@@ -64,7 +66,7 @@ function seed(now: number): DemoState {
     const hour = 3_600_000;
     return {
         seq: 1,
-        wallet: { BTC: '150000000', ETH: '3000000000000000000', USDC: '100000000000', USDT: '100000000000' },
+        wallet: { BTC: '150000000', ETH: '3000000000000000000', USDC: '100000000000', USDT: '100000000000', BCH: '500000000', PUSD: '100000' },
         supplied: { BTC: '18000000' },
         borrowed: { USDT: '2500000000' },
         loans: [
@@ -104,9 +106,30 @@ export function createDemoProvider(opts: DemoOptions = {}): DemoProvider {
         return found;
     };
 
+    const defaultState = seed(now());
     let state: DemoState;
-    try { state = JSON.parse(storage?.getItem(KEY) ?? 'null') ?? seed(now()); } catch { state = seed(now()); }
+    try {
+        const stored = JSON.parse(storage?.getItem(KEY) ?? 'null');
+        if (stored && typeof stored === 'object') {
+            state = {
+                ...defaultState,
+                ...stored,
+                wallet: { ...defaultState.wallet, ...(stored.wallet ?? {}) },
+            };
+            // Ensure any new/missing demo tokens (such as BCH & PUSD) have their default seeded balance
+            for (const [k, v] of Object.entries(defaultState.wallet)) {
+                if (state.wallet[k] === undefined || BigInt(state.wallet[k] || '0') <= 0n) {
+                    state.wallet[k] = v;
+                }
+            }
+        } else {
+            state = defaultState;
+        }
+    } catch {
+        state = defaultState;
+    }
     const save = () => { try { storage?.setItem(KEY, JSON.stringify(state)); } catch { /* demo state is expendable */ } };
+    save();
 
     function stage(l: DemoLoan): { phase: LoanPhase; operation: string; state: string; confirmations: number | null } {
         const t = now();

@@ -4,14 +4,15 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowDownToLine, ArrowLeft, ArrowUpFromLine, ChevronDown, ChevronRight, Search, SlidersHorizontal, Trash2 } from 'lucide-react';
+import { ArrowDownLeft, ArrowDownToLine, ArrowLeft, ArrowUpFromLine, ChevronDown, ChevronRight, Percent, Search, SlidersHorizontal, Trash2 } from 'lucide-react';
 import { useWDK } from '@/context/WDKProvider';
 import { notifyToast } from '@/lib/notify-toast';
 import { useLend } from '../LendProvider';
 import { activationFee, collateralForLtv, distancePct, fmt, fmtPct, fmtUsd, fromUnits, liquidationPrice, loanFigures, ltvBps, toNumber, toUnits, usdOf } from '../math';
 import { notifyLoanCreated } from '../notify';
 import { CHAIN_INFO, OPEN_PHASES, type LendQuote, type LoanPhase, type LoanView } from '../types';
-import { DepositMoreDialog, LoanCreatedDialog, RepayDialog } from '../components/dialogs';
+import { ChangeRateDialog, DepositMoreDialog, LoanCreatedDialog, RepayDialog, WithdrawCollateralDialog } from '../components/dialogs';
+import { BorrowSigningModal } from '../components/BorrowSigningModal';
 import { AmountCard, AssetIcon, AssetPicker, CopyButton, Hint, LtvSlider, Notice, Panel, PrimaryButton, Row } from '../components/parts';
 import { cn } from '@/lib/utils';
 
@@ -48,8 +49,11 @@ export function BorrowPage() {
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
     const [created, setCreated] = useState<LoanView | null>(null);
+    const [showParyonSigning, setShowParyonSigning] = useState(false);
 
     const b = market(borrowAsset), c = market(collateralAsset);
+    const isParyon = (borrowAsset === 'PUSD' || collateralAsset === 'BCH') || (b?.chain === 'BCH' && c?.chain === 'BCH');
+
     const borrow = b ? toUnits(borrowText, b.decimals) : 0n;
     const collateral = c ? toUnits(collateralText, c.decimals) : 0n;
     const fee = b ? activationFee(borrow, b.activationFeeBps) : 0n;
@@ -63,6 +67,8 @@ export function BorrowPage() {
     // The wallet's own addresses are the default for a real loan; the user can type others.
     useEffect(() => { if (!destination && addresses.evm && b?.chain === 'ETH') setDestination(addresses.evm); }, [addresses.evm, b?.chain, destination]);
     useEffect(() => { if (!refund && addresses.btc && c?.chain === 'BTC') setRefund(addresses.btc); }, [addresses.btc, c?.chain, refund]);
+    useEffect(() => { if (!destination && addresses.bch && b?.chain === 'BCH') setDestination(addresses.bch); }, [addresses.bch, b?.chain, destination]);
+    useEffect(() => { if (!refund && addresses.bch && c?.chain === 'BCH') setRefund(addresses.bch); }, [addresses.bch, c?.chain, refund]);
 
     // The provider's own check of the pair: limits, liquidity, pauses. Asked once typing settles.
     const quoteKey = `${borrowAsset}|${collateralAsset}|${borrow}|${collateral}|${bufferBps}`;
@@ -91,7 +97,7 @@ export function BorrowPage() {
         setDestination(''); setRefund('');
     };
 
-    const needsAddresses = !demo;
+    const needsAddresses = !demo && !isParyon;
     const isEvmAddress = (addr: string) => /^0x[0-9a-fA-F]{40}$/.test(addr.trim());
     const isBtcAddress = (addr: string) => /^((bc1|tb1)[a-z0-9]{25,87}|[132mn][a-km-zA-HJ-NP-Z1-9]{25,34})$/i.test(addr.trim());
     const isBtcTestnet = (addr: string) => /^(tb1|[2mn])/i.test(addr.trim());
@@ -104,6 +110,7 @@ export function BorrowPage() {
         : collateral <= 0n ? 'Enter your collateral'
         : quote?.errors.length ? quote.errors[0]
         : ltv > maxLtv ? `LTV is over ${fmtPct(maxLtv, 0)}: add collateral`
+        : isParyon && !demo && !addresses.bch ? 'Connect your BCH wallet'
         : needsAddresses && !destination.trim() ? `Enter the ${b.chain} address to receive ${b.asset}`
         : needsAddresses && b.chain === 'ETH' && !isEvmAddress(destination) ? 'Enter a valid ETH address (0x…)'
         : needsAddresses && !refund.trim() ? `Enter the ${c.chain} address your collateral returns to`
@@ -115,6 +122,10 @@ export function BorrowPage() {
 
     const submit = async () => {
         if (problem || !b || !c) return;
+        if (isParyon && !demo) {
+            setShowParyonSigning(true);
+            return;
+        }
         setBusy(true);
         setError('');
         try {
@@ -153,7 +164,12 @@ export function BorrowPage() {
             <AmountCard
                 label="Borrow" hint="What you receive. Interest accrues on it until you repay." testId="borrow" asset={borrowAsset} value={borrowText} onChange={setBorrowText}
                 onPickAsset={() => setPicker('borrow')} usd={b && borrow > 0n ? usdOf(borrow, b) : 0}
-                right={b ? <>APY: <span className="font-semibold text-white">{b.borrowApy.toFixed(2)}%</span></> : null}
+                right={b ? (
+                    <div className="flex items-center gap-2">
+                        <span>APY: <span className="font-semibold text-white">{b.borrowApy.toFixed(2)}%</span></span>
+                        {demo && balanceOf(b.asset, b.decimals) ? <span className="text-zinc-500">· {balanceOf(b.asset, b.decimals)}</span> : null}
+                    </div>
+                ) : null}
             />
             <div className="relative z-10 -my-5 flex justify-center">
                 <button type="button" onClick={flip} aria-label="Switch borrow and collateral assets" className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-zinc-950 text-zinc-200 outline-none transition hover:bg-zinc-800 focus-visible:ring-2 focus-visible:ring-emerald-400" data-testid="flip">
@@ -245,6 +261,17 @@ export function BorrowPage() {
             <AssetPicker open={picker === 'borrow'} onClose={() => setPicker(null)} markets={markets.filter(m => m.asset !== collateralAsset)} side="borrow" selected={borrowAsset} onPick={a => { setBorrowAsset(a); setDestination(''); }} />
             <AssetPicker open={picker === 'collateral'} onClose={() => setPicker(null)} markets={markets.filter(m => m.asset !== borrowAsset)} side="supply" selected={collateralAsset} onPick={a => { setCollateralAsset(a); setRefund(''); }} balances={balances} />
             <LoanCreatedDialog loan={created} onClose={() => setCreated(null)} onSendFromWallet={canSendFromWallet ? sendFromWallet : undefined} />
+            <BorrowSigningModal
+                open={showParyonSigning}
+                onClose={() => setShowParyonSigning(false)}
+                borrowCents={borrow.toString()}
+                collateralSats={collateral.toString()}
+                onSuccess={(newLoan) => {
+                    setCreated(newLoan);
+                    setBorrowText('');
+                    setCollateralText('');
+                }}
+            />
         </div>
     );
 }
@@ -362,7 +389,7 @@ export function LoanDetailPage() {
     const { loans, provider, markets, upsert, forget, demoProvider } = useLend();
     const [fetched, setFetched] = useState<LoanView | null>(null);
     const [missing, setMissing] = useState(false);
-    const [dialog, setDialog] = useState<'repay' | 'deposit' | 'created' | null>(null);
+    const [dialog, setDialog] = useState<'repay' | 'deposit' | 'withdraw' | 'rate' | 'created' | null>(null);
     const [inQuote, setInQuote] = useState(false);
     const loan = loans.find(l => l.ref === ref) ?? fetched;
 
@@ -382,6 +409,7 @@ export function LoanDetailPage() {
     const f = loanFigures(loan, markets);
     const open = OPEN_PHASES.includes(loan.phase);
     const active = loan.phase === 'active';
+    const isParyon = loan.provider === 'paryon';
     const price = f.collateralPrice;
     const liq = loan.liquidationPrice;
     const barPct = Math.min(100, (loan.ltvBps / (loan.liquidationThresholdBps || 7400)) * 100);
@@ -394,7 +422,7 @@ export function LoanDetailPage() {
             <div className="flex items-center gap-2">
                 <button type="button" onClick={() => navigate('/borrow/portfolio')} aria-label="Back" className="inline-flex h-11 w-11 items-center justify-center rounded-full outline-none hover:bg-white/10 focus-visible:ring-2 focus-visible:ring-emerald-400"><ArrowLeft className="h-5 w-5" /></button>
                 <h1 className="font-mono text-2xl font-bold tracking-wider" data-testid="loan-title">{loan.ref}</h1>
-                <CopyButton text={loan.ref} label="Copy loan ID" />
+                <CopyButton text={loan.paryon?.loanTokenId || loan.ref} label="Copy loan ID" />
                 <span className={cn('ml-auto rounded-full px-3 py-1 text-xs font-semibold', active ? 'bg-emerald-400/15 text-emerald-300' : open ? 'bg-amber-400/15 text-amber-200' : 'bg-white/10 text-zinc-300')} data-testid="loan-phase">{PHASE_LABEL[loan.phase]}</span>
             </div>
 
@@ -419,7 +447,13 @@ export function LoanDetailPage() {
                 <div className="mt-5 border-t border-white/10 pt-3">
                     <Row label="Collateral">{fmt(toNumber(f.collateral, loan.collateral.decimals), 8)} {loan.collateral.asset} <span className="text-zinc-500">{fmtUsd(f.collateralUsd)}</span></Row>
                     <Row label="Borrowed">{fmt(toNumber(f.debt, loan.borrow.decimals))} {loan.borrow.asset} <span className="text-zinc-500">{fmtUsd(f.debtUsd)}</span></Row>
+                    {isParyon && (
+                        <Row label="Collateral Ratio">{loan.paryon?.collateralRatioPct ?? (loan.ltvBps > 0 ? Math.round(1_000_000 / loan.ltvBps) : 0)}% <span className="text-zinc-500">(110% min liquidation)</span></Row>
+                    )}
                     <Row label="Borrowing APY" hint="Variable. It moves with how much of the pool is borrowed.">{loan.borrowApy.toFixed(2)}%</Row>
+                    {isParyon && loan.paryon?.nextRate != null && (
+                        <Row label="Next Period APR" hint="Takes effect next daily interest period.">{(loan.paryon.nextRate * 365 / 100000).toFixed(2)}%</Row>
+                    )}
                     <Row label="Interest accrued">{fmt(toNumber(f.interest, loan.borrow.decimals), 4)} {loan.borrow.asset}</Row>
                     <Row label={inQuote ? `Liquidation ${loan.borrow.asset}/${loan.collateral.asset}` : `Liquidation ${loan.collateral.asset}/${loan.borrow.asset}`}>
                         {liq > 0 ? (
@@ -433,6 +467,12 @@ export function LoanDetailPage() {
                     <PrimaryButton variant="outline" onClick={() => setDialog('deposit')} disabled={!active} testId="deposit-more"><ArrowDownToLine className="h-4 w-4" />Deposit more</PrimaryButton>
                     <PrimaryButton onClick={() => setDialog('repay')} disabled={!active} testId="repay-loan"><ArrowUpFromLine className="h-4 w-4" />Repay loan</PrimaryButton>
                 </div>
+                {isParyon && (
+                    <div className="mt-2.5 grid grid-cols-2 gap-3">
+                        <PrimaryButton variant="outline" onClick={() => setDialog('withdraw')} disabled={!active}><ArrowDownLeft className="h-4 w-4" />Withdraw</PrimaryButton>
+                        <PrimaryButton variant="outline" onClick={() => setDialog('rate')} disabled={!active}><Percent className="h-4 w-4" />Adjust Rate</PrimaryButton>
+                    </div>
+                )}
             </Panel>
 
             <div className="flex justify-end">
@@ -462,6 +502,8 @@ export function LoanDetailPage() {
 
             <RepayDialog loan={loan} open={dialog === 'repay'} onClose={() => setDialog(null)} />
             <DepositMoreDialog loan={loan} open={dialog === 'deposit'} onClose={() => setDialog(null)} />
+            <WithdrawCollateralDialog loan={loan} open={dialog === 'withdraw'} onClose={() => setDialog(null)} />
+            <ChangeRateDialog loan={loan} open={dialog === 'rate'} onClose={() => setDialog(null)} />
             <LoanCreatedDialog loan={dialog === 'created' ? loan : null} onClose={() => setDialog(null)} />
         </div>
     );

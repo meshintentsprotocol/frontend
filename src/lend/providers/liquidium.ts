@@ -84,7 +84,7 @@ export function createLiquidiumProvider(baseUrl: string = CCTP_SWAP_SERVER_MAINN
         },
         forgetLoan: ref => { writeRefs(readRefs().filter(r => r !== ref)); writeRefs([ref, ...readRefs(HIDDEN_KEY)], HIDDEN_KEY); },
 
-        advanced: {
+        advanced: baseUrl ? {
             portfolio: async (profileId?: string) => {
                 if (!profileId) {
                     return {
@@ -142,6 +142,6 @@ export function createLiquidiumProvider(baseUrl: string = CCTP_SWAP_SERVER_MAINN
             repay: async (asset: string) => {
                 throw new LendError(`To repay ${asset}, send funds to the repayment target address.`);
             },
-        },
+        } : undefined,
     };
 }

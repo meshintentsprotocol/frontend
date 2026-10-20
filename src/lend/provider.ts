@@ -12,8 +12,35 @@ export class LendError extends Error {
     }
 }
 
+export interface ParyonStep {
+    step: number;
+    name: string;
+    txHex: string;
+    txid: string;
+    wcPayload: any;
+}
+
+export interface ParyonPrepareBorrowResult {
+    loanTokenId: string;
+    steps: ParyonStep[];
+}
+
+export interface ParyonPrepareManageResult {
+    loanTokenId: string;
+    txHex: string;
+    txid: string;
+    wcPayload: any;
+}
+
+export interface ParyonPrepareRateResult {
+    loanTokenId: string;
+    txHex: string;
+    txid: string;
+    wcPayload: any;
+}
+
 export interface LendProvider {
-    id: 'demo' | 'liquidium';
+    id: 'demo' | 'liquidium' | 'paryon';
     listMarkets(): Promise<Market[]>;
     quote(req: QuoteRequest): Promise<LendQuote>;
     /** Creates the loan and returns it with the address to send the collateral to. */
@@ -52,5 +79,14 @@ export interface LendProvider {
         prepareWithdraw?(params: { profileId: string; poolId: string; amount: string; chain: string; receiver: string; signerWalletAddress: string }): Promise<{ message: string; expiryTimestamp: string; data: any }>;
         submitWithdraw?(params: { profileId: string; poolId: string; amount: string; chain: string; receiver: string; signerWalletAddress: string; expiryTimestamp: string; signature: string; signingChain: 'BTC' | 'ETH' }): Promise<AdvancedReceipt>;
         submitInflow?(txid: string, operation: 'deposit' | 'repayment', chain?: string): Promise<void>;
+    };
+
+    /** Native BCH Paryon borrow & loan management */
+    paryon?: {
+        prepareBorrow(params: { userAddress: string; userTokenAddress: string; borrowCents: string; collateralSats?: string; startingRate?: number; frontendFeeAddress?: string }): Promise<ParyonPrepareBorrowResult>;
+        prepareManage(params: { userAddress: string; userTokenAddress: string; loanTokenId: string; actionType: 'repay' | 'close' | 'addCollateral' | 'withdrawCollateral'; repayCents?: string; collateralDeltaSats?: string }): Promise<ParyonPrepareManageResult>;
+        prepareRate(params: { userAddress: string; userTokenAddress: string; loanTokenId: string; nextRate: number }): Promise<ParyonPrepareRateResult>;
+        submit(params: { kind: 'borrow' | 'manage' | 'rate'; loanTokenId?: string; userAddress?: string; signedTxs: string[] }): Promise<{ success: boolean; txids: string[] }>;
+        broadcast(txHex: string): Promise<{ txid: string }>;
     };
 }

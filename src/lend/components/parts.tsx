@@ -17,6 +17,7 @@ const ASSET_STYLE: Record<string, { bg: string; glyph: string }> = {
     USDT: { bg: 'bg-emerald-500', glyph: '₮' },
     ICP: { bg: 'bg-fuchsia-500', glyph: '∞' },
     BCH: { bg: 'bg-green-500', glyph: 'Ƀ' },
+    PUSD: { bg: 'bg-teal-500', glyph: 'P' },
 };
 
 export function AssetIcon({ asset, size = 28 }: { asset: string; size?: number }) {
@@ -244,10 +245,11 @@ export function DemoToggle({ on, onChange, locked }: { on: boolean; onChange: (o
     );
 }
 
-export function DemoBanner({ onExit, reason }: { onExit?: () => void; reason?: string }) {
+export function DemoBanner({ onExit, onReset, reason }: { onExit?: () => void; onReset?: () => void; reason?: string }) {
     return (
         <div role="status" className="mx-auto mb-4 flex w-fit max-w-full flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-full border border-amber-400/30 bg-amber-400/10 px-4 py-2 text-sm text-amber-200" data-testid="demo-banner">
             <span>Demo mode is on{reason ? ` · ${reason}` : ''}</span>
+            {onReset ? <button type="button" onClick={onReset} className="font-semibold text-amber-300 underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-emerald-400">Reset Demo</button> : null}
             {onExit ? <button type="button" onClick={onExit} className="font-semibold text-white underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-emerald-400">Exit</button> : null}
         </div>
     );

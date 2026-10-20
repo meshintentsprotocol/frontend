@@ -69,7 +69,7 @@ export interface LoanTarget { chain: string; address: string; amount: string; fe
 
 export interface LoanView {
     ref: string;
-    provider: 'liquidium' | 'demo';
+    provider: 'liquidium' | 'demo' | 'paryon';
     phase: LoanPhase;
     status: { operation: string; state: string; confirmations: number | null; requiredConfirmations: number | null };
     collateral: { asset: string; chain: string; decimals: number; amount: string };
@@ -84,6 +84,16 @@ export interface LoanView {
     borrowApy: number;
     createdAt: number;
     updatedAt: number;
+    paryon?: {
+        loanTokenId: string;
+        collateralRatioPct: number | null;
+        currentRate: number;
+        nextRate: number;
+        status: number;
+        txid: string;
+        vout: number;
+        beingRedeemedCents?: string;
+    };
 }
 
 // ── Advanced mode: one account that supplies and borrows across pools ──
@@ -120,6 +130,7 @@ export interface AdvancedReceipt { asset: string; amount: string; usd: number; e
 export interface ChainInfo { confirmations: number; minutes: number; networkFee: string }
 
 export const CHAIN_INFO: Record<string, ChainInfo> = {
+    BCH: { confirmations: 1, minutes: 2, networkFee: '~0.00001 BCH' },
     BTC: { confirmations: 4, minutes: 40, networkFee: '~0.000002 BTC' },
     ETH: { confirmations: 64, minutes: 15, networkFee: '~0.21 USDC' },
     ICP: { confirmations: 1, minutes: 1, networkFee: '~0.0001 ICP' },
