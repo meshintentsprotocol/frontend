@@ -19,25 +19,29 @@ import {
   buildV3Contract, slotPriceFromRate, slotPriceFromTokenPerBch, v3ArtifactHash, v3ToJson, validateV3Params, type V3Params,
 } from '@/lib/mesh/v3/v3Pool';
 import { buildDeployV3 } from '@/lib/mesh/v3/v3Tx';
-import { sendPoolTx } from '@/lib/mesh/poolTx';
+import { sendPoolTx, type BuiltTx } from '@/lib/mesh/poolTx';
 import { toBaseUnits } from '@/lib/mesh/v3/strategyForms';
+import { FEE_TIERS } from '@/lib/mesh/presets';
+import { pusdCategory } from '@/lib/pusd';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { addPending, registerWithRetry, removePending } from '@/lib/mesh/pendingRegistrations';
 import { formatSatsCompact, formatUnits, shortHex } from '@/lib/mesh/format';
 import { Panel, TokenAvatar, poolUrl, useTokenInfo, type TokenInfo } from '@/components/mesh/pools/shared';
 
-const FEE_TIERS = [5, 30, 50, 100];
 const ZERO32 = '00'.repeat(32);
 interface Row { cat: string; price: string; back: string }
 
-export function CreatePoolV3Form({ onBack }: { onBack: () => void }) {
+export function CreatePoolV3Form({ onBack, initialToken }: { onBack: () => void; initialToken?: string }) {
   const navigate = useNavigate();
   const invalidate = useInvalidateMesh();
   const wallet = useMeshSigner();
   const balances = useSignerBalances(wallet.signer);
-  const PUSD = CHIPNET_DEFAULT_TOKENS[1]!.categoryId!;
+  // the token the LP came with, else pUSD of the wallet's network
+  const DEFAULT_TOKEN = initialToken ?? pusdCategory(wallet.network === 'mainnet');
 
   const [reserve, setReserve] = useState('0x');
-  const [rows, setRows] = useState<Row[]>([{ cat: PUSD, price: '', back: '' }]);
+  const [rows, setRows] = useState<Row[]>([{ cat: DEFAULT_TOKEN, price: '', back: '' }]);
+  const [review, setReview] = useState<BuiltTx | null>(null);
   const [recycle, setRecycle] = useState(false);
   const [feeBps, setFeeBps] = useState(30);
   const [deposit, setDeposit] = useState('');
@@ -58,18 +62,28 @@ export function CreatePoolV3Form({ onBack }: { onBack: () => void }) {
   const built = useMemo((): { params?: V3Params; error?: string } => {
     if (!wallet.pkh) return { error: wallet.unavailable ?? 'Connect a wallet' };
     try {
+      const seen = new Set<string>();
       const slots = rows.map((r, k) => {
-        if (!r.cat) throw new Error(`asset ${k + 1}: choose it`);
-        if (!r.price) throw new Error(`asset ${k + 1}: enter a price`);
+        if (!r.cat) throw new Error(`Asset ${k + 1}: choose a token`);
+        if (r.cat === reserve) throw new Error(`Asset ${k + 1}: a pool can't accept the asset it gives`);
+        if (seen.has(r.cat)) throw new Error(`Asset ${k + 1}: ${sym(r.cat)} is already accepted above`);
+        seen.add(r.cat);
+        if (!r.price) throw new Error(`Asset ${k + 1}: enter a price`);
         let price; let back = { num: 0n, den: 0n };
         if (reserveIsBch && r.cat !== '0x') {
           price = slotPriceFromTokenPerBch(r.price, info(r.cat).decimals, true);
-          if (recycle) back = slotPriceFromTokenPerBch(r.back || '0', info(r.cat).decimals, false);
+          if (recycle) {
+            if (!r.back) throw new Error(`Asset ${k + 1}: enter the sell-back price`);
+            back = slotPriceFromTokenPerBch(r.back, info(r.cat).decimals, false);
+          }
         } else if (!reserveIsBch && r.cat === '0x') {
           price = slotPriceFromTokenPerBch(r.price, info(reserve).decimals, false);
-          if (recycle) back = slotPriceFromTokenPerBch(r.back || '0', info(reserve).decimals, true);
+          if (recycle) {
+            if (!r.back) throw new Error(`Asset ${k + 1}: enter the buy-back price`);
+            back = slotPriceFromTokenPerBch(r.back, info(reserve).decimals, true);
+          }
         } else {
-          if (recycle) throw new Error('recycling is available for BCH ↔ token pools');
+          if (recycle) throw new Error('Keep in Mesh works only for pools between BCH and a token: choose "To my wallet", or accept BCH');
           price = slotPriceFromRate(r.price, info(reserve).decimals, info(r.cat).decimals);
         }
         return { cat: r.cat, num: price.num, den: price.den, rNum: back.num, rDen: back.den };
@@ -104,23 +118,35 @@ export function CreatePoolV3Form({ onBack }: { onBack: () => void }) {
     return null;
   })();
 
-  async function onDeploy() {
+  /** Build the funding transaction and show it for review; nothing is signed yet. */
+  async function onReview() {
     if (!wallet.signer || !built.params || validation || !previewOk) return;
     setErr(null);
     setBusy('Building transaction…');
+    try {
+      setReview(await buildDeployV3(wallet.signer, [{ params: built.params, sats: reserveIsBch ? amount : 1000n, tokens: reserveIsBch ? 0n : amount }]));
+    } catch (e: any) {
+      setErr(e?.message ?? String(e));
+    } finally { setBusy(null); }
+  }
+
+  async function onDeploy() {
+    if (!wallet.signer || !built.params || !review) return;
+    setErr(null);
     let txid: string | null = null;
     try {
-      const tx = await buildDeployV3(wallet.signer, [{ params: built.params, sats: reserveIsBch ? amount : 1000n, tokens: reserveIsBch ? 0n : amount }]);
+      const tx = review;
       setBusy(wallet.kind === 'external' ? 'Approve the transaction in your wallet…' : 'Signing and broadcasting…');
       txid = await sendPoolTx(wallet.signer, tx, 'Create a Mesh V3 pool');
       const item = { v3: v3ToJson(built.params), txid, vout: 0, pairName: `${sym(reserve)} for ${rows.map(r => sym(r.cat)).join('/')}` };
       addPending({ txid, v3Items: [item], createdAt: Date.now() });
-      setBusy('Registering with the Mesh server…');
+      setBusy('Listing with Mesh…');
       const res = await registerWithRetry(() => meshApi.registerV3([item]));
       if (!res.success) throw new Error(res.error ?? 'registration failed');
       removePending(txid);
       invalidate();
-      toast.success('Pool live', { description: `Funded and verified on-chain · ${shortHex(txid)}` });
+      setReview(null);
+      toast.success('Pool created', { description: `Funded and checked on chain · ${shortHex(txid)}` });
       navigate(poolUrl(res.pools[0]!.address));
     } catch (e: any) {
       const msg = e?.message ?? String(e);
@@ -129,10 +155,12 @@ export function CreatePoolV3Form({ onBack }: { onBack: () => void }) {
     } finally { setBusy(null); }
   }
 
-  const tokenButton = (cat: string, onClick: () => void, allowBch: boolean) => (
+  const tokenButton = (cat: string, onClick: () => void) => (
     <button type="button" onClick={onClick} className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-white/[0.03] border border-white/10 hover:border-white/20 min-w-[130px]">
-      <span className="flex items-center gap-2 text-sm">{cat === '0x' ? <TokenAvatar info="BCH" size={20} /> : <TokenAvatar info={info(cat)} size={20} />}<span className="font-semibold text-white">{sym(cat)}</span></span>
-      <ChevronDown className="w-3.5 h-3.5 text-zinc-400" />{allowBch ? null : null}
+      {cat
+        ? <span className="flex items-center gap-2 text-sm">{cat === '0x' ? <TokenAvatar info="BCH" size={20} /> : <TokenAvatar info={info(cat)} size={20} />}<span className="font-semibold text-white">{sym(cat)}</span></span>
+        : <span className="text-sm text-zinc-400">Choose a token</span>}
+      <ChevronDown className="w-3.5 h-3.5 text-zinc-400" />
     </button>
   );
 
@@ -153,7 +181,7 @@ export function CreatePoolV3Form({ onBack }: { onBack: () => void }) {
         <div className="lg:col-span-7 space-y-6">
           <Panel title="1 · The pool gives">
             <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => { setReserve('0x'); setRows(rs => rs.map(r => ({ ...r, cat: r.cat === '0x' ? PUSD : r.cat }))); }}
+              <button type="button" onClick={() => { setReserve('0x'); setRows(rs => rs.map(r => ({ ...r, cat: r.cat === '0x' ? '' : r.cat }))); }}
                 className={cn('px-3 py-2 rounded-xl border text-sm font-semibold', reserveIsBch ? 'border-emerald-500/50 bg-emerald-500/10 text-white' : 'border-white/10 text-zinc-400')}>BCH</button>
               <button type="button" onClick={() => setPicker({ target: 'reserve' })}
                 className={cn('px-3 py-2 rounded-xl border text-sm font-semibold', !reserveIsBch ? 'border-emerald-500/50 bg-emerald-500/10 text-white' : 'border-white/10 text-zinc-400')}>
@@ -170,7 +198,7 @@ export function CreatePoolV3Form({ onBack }: { onBack: () => void }) {
               return (
                 <div key={k} className="p-3 rounded-2xl bg-white/[0.02] border border-white/[0.06] space-y-2">
                   <div className="flex items-center gap-2">
-                    {tokenButton(r.cat || PUSD, () => setPicker({ target: k }), !reserveIsBch)}
+                    {tokenButton(r.cat, () => setPicker({ target: k }))}
                     {!reserveIsBch && r.cat !== '0x' && (
                       <button type="button" onClick={() => setRows(rs => rs.map((x, i) => (i === k ? { ...x, cat: '0x' } : x)))} className="text-[11px] text-zinc-500 hover:text-white">use BCH</button>
                     )}
@@ -195,7 +223,7 @@ export function CreatePoolV3Form({ onBack }: { onBack: () => void }) {
 
           <Panel title="3 · Proceeds and fee">
             <div className="grid grid-cols-2 gap-2">
-              {[[false, 'To my wallet', 'Every fill pays you directly'], [true, 'Recycle', 'Fills flip into a pool that sells back at your price']].map(([v, t, d]) => (
+              {[[false, 'To my wallet', 'Every fill pays you directly'], [true, 'Keep in Mesh', 'What the pool receives opens a pool that trades it back at your price']].map(([v, t, d]) => (
                 <button key={String(v)} type="button" onClick={() => setRecycle(v as boolean)}
                   className={cn('p-3 rounded-2xl border text-left', recycle === v ? 'border-emerald-500/50 bg-emerald-500/[0.06]' : 'border-white/[0.08] hover:border-white/20')}>
                   <div className="text-sm font-bold text-white">{t as string}</div><div className="text-[11px] text-zinc-500 mt-0.5">{d as string}</div>
@@ -203,10 +231,10 @@ export function CreatePoolV3Form({ onBack }: { onBack: () => void }) {
               ))}
             </div>
             <div className="flex flex-wrap gap-2">
-              {FEE_TIERS.map(f => (
-                <button key={f} type="button" onClick={() => setFeeBps(f)}
-                  className={cn('px-3 py-1.5 rounded-xl text-xs font-mono font-semibold border', feeBps === f ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300' : 'border-white/10 text-zinc-400 hover:text-white')}>
-                  {(f / 100).toFixed(2)}%
+              {FEE_TIERS.map(t => (
+                <button key={t.bps} type="button" onClick={() => setFeeBps(t.bps)} title={t.name}
+                  className={cn('px-3 py-1.5 rounded-xl text-xs font-mono font-semibold border', feeBps === t.bps ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300' : 'border-white/10 text-zinc-400 hover:text-white')}>
+                  {t.label}
                 </button>
               ))}
             </div>
@@ -227,21 +255,54 @@ export function CreatePoolV3Form({ onBack }: { onBack: () => void }) {
           <div className="text-xs text-zinc-400 space-y-1">
             <div className="flex justify-between"><span>Gives</span><span className="text-zinc-200">{sym(reserve)}</span></div>
             <div className="flex justify-between"><span>Accepts</span><span className="text-zinc-200">{rows.map(r => sym(r.cat)).join(', ')}</span></div>
-            <div className="flex justify-between"><span>Proceeds</span><span className="text-zinc-200">{recycle ? 'recycled (mirror pool)' : 'your wallet'}</span></div>
-            <div className="flex justify-between"><span>Covenant</span><span className="font-mono text-zinc-300">{contract ? shortHex(contract.address, 8, 6) : '—'}</span></div>
+            <div className="flex justify-between"><span>Proceeds</span><span className="text-zinc-200">{recycle ? 'kept in Mesh (trades back)' : 'your wallet'}</span></div>
+            <div className="flex justify-between"><span>Pool address</span><span className="font-mono text-zinc-300">{contract ? shortHex(contract.address, 8, 6) : '—'}</span></div>
           </div>
           {built.params && (
             <div className={cn('flex items-center gap-2 text-[11px]', previewOk ? 'text-emerald-400' : 'text-zinc-500')}>
               {previewOk ? <ShieldCheck className="w-4 h-4" /> : preview.isFetching ? <Loader2 className="w-4 h-4 animate-spin" /> : <TriangleAlert className="w-4 h-4" />}
-              {previewOk ? 'Server computes the same covenant address' : preview.isFetching ? 'Checking with the server…' : 'Address check pending'}
+              {previewOk ? 'Mesh computes the same pool address' : preview.isFetching ? 'Checking with Mesh…' : 'Address check pending'}
             </div>
           )}
           {(validation || err) && <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 text-[11px] text-amber-200">{err ?? validation}</div>}
-          <Button className="w-full h-11 rounded-xl font-bold" disabled={!!validation || !previewOk || !!busy} onClick={onDeploy}>
-            {busy ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />{busy}</> : <><CheckCircle2 className="w-4 h-4 mr-2" />Create pool</>}
+          <Button className="w-full h-11 rounded-xl font-bold" disabled={!!validation || !previewOk || !!busy} onClick={onReview}>
+            {busy && !review ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />{busy}</> : <>Review pool</>}
           </Button>
         </Panel>
       </div>
+
+      <Dialog open={!!review} onOpenChange={o => { if (!o && !busy) setReview(null); }}>
+        <DialogContent className="max-w-md bg-[#0a0a0d] border border-neutral-800 rounded-3xl text-white">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold">Create pool</DialogTitle>
+            <DialogDescription className="text-neutral-400 text-xs">One transaction funds the pool. Solvers can trade with it as soon as Mesh lists it.</DialogDescription>
+          </DialogHeader>
+          {review && (
+            <div className="space-y-3 text-xs pt-1">
+              <div className="p-3 rounded-xl bg-neutral-900/60 border border-neutral-800 space-y-1.5">
+                <div className="flex justify-between gap-3"><span className="text-neutral-400">Gives</span><span className="font-mono">{deposit} {sym(reserve)}</span></div>
+                {rows.map((r, k) => {
+                  const l = priceLabel(r);
+                  return (
+                    <div key={k} className="flex justify-between gap-3">
+                      <span className="text-neutral-400">Accepts {sym(r.cat)}</span>
+                      <span className="font-mono text-right">{l.main} {r.price} {l.unit}{recycle && l.back ? <><br /><span className="text-amber-300/80">{l.back} {r.back}</span></> : null}</span>
+                    </div>
+                  );
+                })}
+                <div className="flex justify-between gap-3"><span className="text-neutral-400">Fee</span><span className="font-mono">{(feeBps / 100).toFixed(2)}%</span></div>
+                <div className="flex justify-between gap-3"><span className="text-neutral-400">Proceeds</span><span>{recycle ? 'Kept in Mesh' : 'To this wallet'}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-neutral-400">Network fee</span><span className="font-mono">{review.fee.toString()} sats (~{review.size} B)</span></div>
+                <div className="flex justify-between gap-3"><span className="text-neutral-400">Pool address</span><span className="font-mono">{contract ? shortHex(contract.address, 8, 6) : '—'}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-neutral-400">Withdraw</span><span className="text-emerald-400">Any time, by this wallet only</span></div>
+              </div>
+              <Button className="w-full h-12 rounded-xl font-bold bg-emerald-500 hover:bg-emerald-400 text-black" disabled={!!busy} onClick={onDeploy}>
+                {busy ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />{busy}</> : <><CheckCircle2 className="w-4 h-4 mr-2" />Sign and create</>}
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <TokenSelectModal open={!!picker} onOpenChange={o => { if (!o) setPicker(null); }} title="Choose a token"
         onSelect={(t: MeshToken) => {
