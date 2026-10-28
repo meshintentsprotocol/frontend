@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { bchPerToken, formatPrice, formatPriceInput, parsePrice, priceAtPct, satsFromTokensPerBch, signedPct, tokensPerBchFromSats, vsMarketPct } from '../price';
+import { bchPerToken, formatPrice, formatPriceEdge, formatPriceInput, parsePrice, priceAtPct, satsFromTokensPerBch, signedPct, tokensPerBchFromSats, vsMarketPct } from '../price';
 
 describe('create-flow prices', () => {
   // pUSD has 2 decimals: 1 BCH = 325.40 pUSD ⇔ 1e8 / (325.40 × 100) ≈ 3073.14 sats per base unit
@@ -34,6 +34,14 @@ describe('create-flow prices', () => {
     const p = priceAtPct(MID, 2, 2);
     expect(vsMarketPct(String(p), 2, MID)).toBeCloseTo(2, 6);
     expect(priceAtPct(MID, 2, 0)).toBeCloseTo(325.4, 6);
+  });
+
+  it('rounds range edges outward by one shown place', () => {
+    expect(formatPriceEdge(256.45034, 'down')).toBe('256.4503');
+    expect(formatPriceEdge(256.45034, 'up')).toBe('256.4504');
+    expect(formatPriceEdge(30804.123, 'up')).toBe('30804.13');
+    expect(formatPriceEdge(0.00123456789, 'down')).toBe('0.00123456');
+    expect(formatPriceEdge(0, 'up')).toBe('');
   });
 
   it('prints signed percents and prices', () => {

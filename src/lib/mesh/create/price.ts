@@ -22,6 +22,22 @@ export function formatPriceInput(tokensPerBch: number): string {
   return tokensPerBch.toFixed(d).replace(/\.?0+$/, '');
 }
 
+/**
+ * A range edge as an input string, rounded outward by one place of the shown
+ * precision: the min down, the max up. A grid-snapped edge then stays on the
+ * outside of its level, so the server (which takes every level between the
+ * edges) keeps the outermost bin instead of losing it to rounding.
+ */
+export function formatPriceEdge(tokensPerBch: number, dir: 'down' | 'up'): string {
+  if (!(tokensPerBch > 0) || !Number.isFinite(tokensPerBch)) return '';
+  const d = tokensPerBch >= 1000 ? 2 : tokensPerBch >= 1 ? 4 : 8;
+  const f = 10 ** d;
+  const x = tokensPerBch * f;
+  const n = dir === 'down' ? Math.ceil(x) - 1 : Math.floor(x) + 1;
+  if (n <= 0) return formatPriceInput(tokensPerBch);
+  return (n / f).toFixed(d).replace(/\.?0+$/, '');
+}
+
 /** Parse an input string; NaN when it isn't a positive number. */
 export function parsePrice(text: string | undefined): number {
   const t = (text ?? '').trim();
