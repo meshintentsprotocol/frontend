@@ -1,5 +1,5 @@
 /**
- * /mesh?tab=pools — "Pools & Strategies": a compact network banner, then one
+ * /mesh/pools — "Pools & Strategies": a compact network banner, then one
  * panel that routes between pairs, all pools and all strategies (?view=).
  */
 import React, { useEffect, useMemo, useState } from 'react';
@@ -175,7 +175,7 @@ export function MeshPoolsOverview({ onTab }: { onTab: (t: 'positions' | 'leaderb
   const [searchParams, setSearchParams] = useSearchParams();
   const raw = searchParams.get('view');
   const view: View = raw === 'pools' || raw === 'strategies' ? raw : 'pairs';
-  const setView = (v: View) => setSearchParams(v === 'pairs' ? { tab: 'pools' } : { tab: 'pools', view: v });
+  const setView = (v: View) => setSearchParams(v === 'pairs' ? {} : { view: v }, { replace: true });
 
   const stats = useMeshStats();
   const bchUsd = stats.data?.bchUsd;

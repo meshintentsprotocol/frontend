@@ -14,6 +14,7 @@ import { meshApi, useIdle, useInvalidateMesh, useMeshSigner, useMeshStats, useSi
 import type { Pool, PoolEvent } from '@/lib/mesh/meshApi';
 import { formatPct, formatSatsCompact, formatUsd, satsToUsd, shortHex, timeAgo } from '@/lib/mesh/format';
 import { poolLevels } from '@/lib/mesh/v3/v3Display';
+import { meshPaths } from '@/lib/mesh/routes';
 import { v3ContractFor } from '@/lib/mesh/v3/v3Pool';
 import { buildWithdrawV3, buildRebalanceV3, type ClosePool, type V3Deposit } from '@/lib/mesh/v3/v3Tx';
 import { sendPoolTxWithRetry, type BuiltTx } from '@/lib/mesh/poolTx';
@@ -53,7 +54,7 @@ export function MeshStrategyPage() {
       <div className="container mx-auto max-w-lg py-16"><Panel><div className="text-center space-y-3 py-6">
         <AlertTriangle className="w-10 h-10 text-amber-400 mx-auto" />
         <h2 className="text-xl font-bold text-white">Strategy not found</h2>
-        <Link to="/mesh?tab=positions" className="inline-flex items-center gap-2 text-xs font-semibold text-zinc-300 hover:text-white"><ArrowLeft className="w-4 h-4" />My positions</Link>
+        <Link to="/mesh/positions" className="inline-flex items-center gap-2 text-xs font-semibold text-zinc-300 hover:text-white"><ArrowLeft className="w-4 h-4" />My positions</Link>
       </div></Panel></div>
     );
   }
@@ -94,7 +95,7 @@ export function MeshStrategyPage() {
   return (
     <div className="container mx-auto pt-4 sm:pt-6 pb-28 lg:pb-6 px-4 md:px-8 max-w-[1200px] space-y-6">
       <ThroughMarketNote pools={pools} />
-      <Link to="/mesh?tab=positions" className="inline-flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300"><ArrowLeft className="w-3.5 h-3.5" />My positions</Link>
+      <Link to="/mesh/positions" className="inline-flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300"><ArrowLeft className="w-3.5 h-3.5" />My positions</Link>
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <TemplateIcon id={s.template} className="w-11 h-11" />
@@ -302,7 +303,7 @@ function StrategyActions({ strategy, pools, ownerPkh }: { strategy: NonNullable<
     return buildRebalanceV3(signer, close, open);
   }, async () => { await new Promise(r => setTimeout(r, 2_000)); await syncAll(); });
 
-  const rebalance = () => navigate(`/mesh?tab=create&template=${encodeURIComponent(template)}&replaces=${encodeURIComponent(strategy.id)}`);
+  const rebalance = () => navigate(meshPaths.create(template, { replaces: strategy.id }));
 
   const tmpl = templates.data?.templates.find(t => t.id === template);
   return (

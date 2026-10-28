@@ -43,7 +43,7 @@ export function MeshProviderDetailPage() {
           <div className="text-center space-y-3 py-6">
             <AlertTriangle className="w-10 h-10 text-amber-400 mx-auto" />
             <h2 className="text-xl font-bold text-white">{(lp.error as any)?.status === 404 ? 'No pools for this provider' : 'Could not load the provider'}</h2>
-            <Link to="/mesh?tab=leaderboard" className="inline-flex items-center gap-2 text-xs font-semibold text-zinc-300 hover:text-white"><ArrowLeft className="w-4 h-4" />Leaderboard</Link>
+            <Link to="/mesh/leaderboard" className="inline-flex items-center gap-2 text-xs font-semibold text-zinc-300 hover:text-white"><ArrowLeft className="w-4 h-4" />Leaderboard</Link>
           </div>
         </Panel>
       </div>
@@ -56,7 +56,7 @@ export function MeshProviderDetailPage() {
 
   return (
     <div className="container mx-auto py-4 sm:py-6 px-4 md:px-8 max-w-[1200px] space-y-4 sm:space-y-6">
-      <Link to="/mesh?tab=leaderboard" className="inline-flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300"><ArrowLeft className="w-3.5 h-3.5" />Leaderboard</Link>
+      <Link to="/mesh/leaderboard" className="inline-flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300"><ArrowLeft className="w-3.5 h-3.5" />Leaderboard</Link>
       <div>
         <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight flex items-center gap-3">
           Liquidity provider {wallet.pkh === s.ownerPkh && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300">you</span>}

@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, Layers, BookOpen, TrendingUp, PlusCircle, Trophy } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { meshSection } from '@/lib/mesh/routes';
 
 export interface MeshPageItem {
   name: string;
@@ -14,26 +15,26 @@ export interface MeshPageItem {
 export const MESH_PAGES: MeshPageItem[] = [
   {
     name: 'Positions',
-    path: '/mesh?tab=positions',
-    description: 'My active covenants & shared liquidity',
+    path: '/mesh/positions',
+    description: 'Your strategies, V4 positions and pools',
     icon: Layers,
   },
   {
-    name: 'Pools & Strategies',
-    path: '/mesh?tab=pools',
-    description: 'Deep liquidity depth & market pools',
+    name: 'Pools',
+    path: '/mesh/pools',
+    description: 'Every pair, pool and strategy on Mesh',
     icon: TrendingUp,
   },
   {
     name: 'Leaderboard',
-    path: '/mesh?tab=leaderboard',
-    description: 'Top LP makers ranked by volume & APY',
+    path: '/mesh/leaderboard',
+    description: 'Liquidity providers ranked by volume and fees',
     icon: Trophy,
   },
   {
     name: 'New Position',
-    path: '/mesh?tab=create',
-    description: 'Strategies and custom V3 pools',
+    path: '/mesh/new',
+    description: 'Pick a pair and a strategy',
     icon: PlusCircle,
   },
   {
@@ -49,6 +50,17 @@ export const MESH_PAGES: MeshPageItem[] = [
     icon: Sparkles,
   },
 ];
+
+/** A Mesh menu entry is active on its own route and the pages under it (a pair page under Pools, a step under New position). */
+export function isMeshPageActive(path: string, pathname: string): boolean {
+  if (!path.startsWith('/mesh/')) return pathname === path;
+  const section = meshSection(pathname);
+  if (path === '/mesh/positions') return section === 'positions';
+  if (path === '/mesh/pools') return section === 'pools';
+  if (path === '/mesh/leaderboard') return section === 'leaderboard';
+  if (path === '/mesh/new') return section === 'create';
+  return pathname === path;
+}
 
 interface MeshNavDropdownProps {
   className?: string;
@@ -95,7 +107,7 @@ export function MeshNavDropdown({ className }: MeshNavDropdownProps) {
     >
       {/* Trigger Button matching the other nav items exactly */}
       <Link
-        to="/mesh"
+        to="/mesh/positions"
         onClick={() => setIsOpen(false)}
         className={cn(
           'flex items-center text-[15px] font-semibold transition-all duration-300 py-2 relative group outline-none',
@@ -131,10 +143,7 @@ export function MeshNavDropdown({ className }: MeshNavDropdownProps) {
             <div className="rounded-2xl border border-white/10 bg-[#0C0C0E]/95 backdrop-blur-xl shadow-2xl p-1.5 flex flex-col gap-0.5">
               {MESH_PAGES.map((item) => {
                 const Icon = item.icon;
-                const isActive =
-                  currentUrl === item.path ||
-                  (item.path === '/mesh?tab=positions' && location.pathname === '/mesh' && (!location.search || currentUrl.startsWith('/mesh?tab=positions&'))) ||
-                  (item.path === location.pathname);
+                const isActive = isMeshPageActive(item.path, location.pathname);
 
                 return (
                   <Link

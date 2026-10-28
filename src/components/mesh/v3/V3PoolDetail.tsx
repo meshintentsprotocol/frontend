@@ -130,7 +130,7 @@ export function V3PoolDetail({ pool: p, bundle, onSync, syncing }: { pool: Pool;
   return (
     <div className="container mx-auto pt-4 sm:pt-6 pb-28 lg:pb-6 px-4 md:px-8 max-w-[1200px] space-y-6">
       <ThroughMarketNote pools={[p]} owner={!!wallet.pkh && wallet.pkh === p.ownerPkh} />
-      <Link to={strategyId ? strategyUrl(strategyId) : '/mesh?tab=pools'} className="inline-flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300"><ArrowLeft className="w-3.5 h-3.5" />{strategyId ? 'Strategy' : 'Pools'}</Link>
+      <Link to={strategyId ? strategyUrl(strategyId) : '/mesh/pools'} className="inline-flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300"><ArrowLeft className="w-3.5 h-3.5" />{strategyId ? 'Strategy' : 'Pools'}</Link>
 
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-3 min-w-0">

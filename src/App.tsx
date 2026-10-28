@@ -27,7 +27,11 @@ import { BCHSwapProvider } from "./context/BCHSwapContext"
 import { SwapServerRoot } from "./swap-server/SwapServerRoot"
 import BchSwapPage from "./pages/BchSwapPage"
 // WalletPage removed — now served externally at https://cham-wallet-web.vercel.app
-import MeshPage from "./pages/MeshPage"
+import { MeshLegacyRedirect } from "./pages/MeshPage"
+import MeshPositionsPage from "./pages/MeshPositionsPage"
+import MeshPoolsPage from "./pages/MeshPoolsPage"
+import MeshLeaderboardPage from "./pages/MeshLeaderboardPage"
+import MeshCreatePage from "./pages/MeshCreatePage"
 import MeshPoolDetailPage, { MeshPoolOutpointRedirect } from "./pages/MeshPoolDetailPage"
 import MeshLandingPage from "./pages/MeshLandingPage"
 import MeshProviderDetailPage from "./pages/MeshProviderDetailPage"
@@ -122,13 +126,38 @@ function App() {
                                                             <main className="flex-1 pt-24"><PortfolioPage /></main>
                                                         </div>
                                                     } />
-                                                     <Route path="/mesh" element={
+                                                     {/* /mesh?tab=… links (nav, wallet, Order Book, Overview, shared URLs) redirect to their own routes */}
+                                                     <Route path="/mesh" element={<MeshLegacyRedirect />} />
+                                                     <Route path="/mesh/positions" element={
                                                          <div className="flex flex-col min-h-screen bg-[#050505]">
                                                              <Header />
-                                                             <main className="flex-1 pt-24"><MeshPage /></main>
+                                                             <main className="flex-1 pt-24"><MeshPositionsPage /></main>
                                                          </div>
                                                      } />
-                                                     <Route path="/mesh/leaderboard" element={<Navigate to="/mesh?tab=leaderboard" replace />} />
+                                                     <Route path="/mesh/pools" element={
+                                                         <div className="flex flex-col min-h-screen bg-[#050505]">
+                                                             <Header />
+                                                             <main className="flex-1 pt-24"><MeshPoolsPage /></main>
+                                                         </div>
+                                                     } />
+                                                     <Route path="/mesh/new" element={
+                                                         <div className="flex flex-col min-h-screen bg-[#050505]">
+                                                             <Header />
+                                                             <main className="flex-1 pt-24"><MeshCreatePage /></main>
+                                                         </div>
+                                                     } />
+                                                     <Route path="/mesh/new/:strategy" element={
+                                                         <div className="flex flex-col min-h-screen bg-[#050505]">
+                                                             <Header />
+                                                             <main className="flex-1 pt-24"><MeshCreatePage /></main>
+                                                         </div>
+                                                     } />
+                                                     <Route path="/mesh/leaderboard" element={
+                                                         <div className="flex flex-col min-h-screen bg-[#050505]">
+                                                             <Header />
+                                                             <main className="flex-1 pt-24"><MeshLeaderboardPage /></main>
+                                                         </div>
+                                                     } />
                                                      <Route path="/mesh/provider/:address" element={
                                                          <div className="flex flex-col min-h-screen bg-[#050505]">
                                                              <Header />

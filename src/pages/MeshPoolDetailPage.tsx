@@ -51,7 +51,7 @@ export function MeshPoolDetailPage() {
             <AlertTriangle className="w-10 h-10 text-amber-400 mx-auto" />
             <h2 className="text-xl font-bold text-white">{notFound ? 'Pool not found' : 'Could not load the pool'}</h2>
             <p className="text-xs text-zinc-400">{notFound ? 'No registered Mesh pool has this address.' : String((pool.error as Error)?.message ?? '')}</p>
-            <Link to="/mesh?tab=pools" className="inline-flex items-center gap-2 text-xs font-semibold text-zinc-300 hover:text-white"><ArrowLeft className="w-4 h-4" />Back to pools</Link>
+            <Link to="/mesh/pools" className="inline-flex items-center gap-2 text-xs font-semibold text-zinc-300 hover:text-white"><ArrowLeft className="w-4 h-4" />Back to pools</Link>
           </div>
         </Panel>
       </div>
@@ -80,7 +80,7 @@ export function MeshPoolDetailPage() {
 
   return (
     <div className="container mx-auto py-4 sm:py-6 px-4 md:px-8 max-w-[1200px] space-y-6">
-      <Link to="/mesh?tab=pools" className="inline-flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300"><ArrowLeft className="w-3.5 h-3.5" />Pools</Link>
+      <Link to="/mesh/pools" className="inline-flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300"><ArrowLeft className="w-3.5 h-3.5" />Pools</Link>
 
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -197,7 +197,7 @@ export function MeshPoolOutpointRedirect() {
       .then(r => navigate(poolUrl(r.address), { replace: true }))
       .catch(() => setMissing(true));
   }, [txid, vout, navigate]);
-  if (missing) return <Navigate to="/mesh?tab=pools" replace />;
+  if (missing) return <Navigate to="/mesh/pools" replace />;
   return <div className="py-28 text-center text-zinc-400 text-sm"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-3" />Finding pool…</div>;
 }
 

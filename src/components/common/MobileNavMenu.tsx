@@ -5,7 +5,7 @@ import { ArrowLeftRight, ArrowUpRight, ChevronDown, Compass, Droplets, Github, M
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
 import { cn } from '@/lib/utils';
 import { useWDK } from '@/context/WDKProvider';
-import { MESH_PAGES } from '@/components/common/MeshNavDropdown';
+import { MESH_PAGES, isMeshPageActive } from '@/components/common/MeshNavDropdown';
 import { TRADE_PAGES } from '@/components/common/TradeNavDropdown';
 import { PORTFOLIO_PAGES } from '@/components/common/PortfolioNavDropdown';
 
@@ -41,7 +41,7 @@ const under = (base: string) => (pathname: string) => pathname === base || pathn
 const APP_ITEMS: AppItem[] = [
     { name: 'Trade', path: '/trade', icon: ArrowLeftRight, matches: p => p === '/trade' || p === '/twap', children: TRADE_PAGES },
     { name: 'Explore', path: '/explore', icon: Compass, matches: under('/explore') },
-    { name: 'Pool', path: '/mesh', icon: Droplets, matches: p => p.startsWith('/mesh') || p === '/orderbook', children: MESH_PAGES },
+    { name: 'Pool', path: '/mesh/positions', icon: Droplets, matches: p => p.startsWith('/mesh') || p === '/orderbook', children: MESH_PAGES },
     { name: 'Portfolio', path: '/portfolio', icon: Wallet, matches: under('/portfolio'), children: PORTFOLIO_PAGES },
 ];
 
@@ -156,11 +156,10 @@ function LinkGroup({ title, links, currentUrl, pathname, defaultOpen, onNavigate
     );
 }
 
-/** A sub-link is active on an exact URL match; /mesh with no tab counts as Positions. */
+/** A sub-link is active on an exact URL match; Mesh entries also own the pages under them. */
 function isSubLinkActive(path: string, currentUrl: string, pathname: string) {
     if (currentUrl === path) return true;
-    return path === '/mesh?tab=positions' && pathname === '/mesh'
-        && (currentUrl === '/mesh' || currentUrl.startsWith('/mesh?tab=positions&'));
+    return path.startsWith('/mesh/') && isMeshPageActive(path, pathname);
 }
 
 export function MobileNavMenu() {

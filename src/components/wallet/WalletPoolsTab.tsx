@@ -28,9 +28,9 @@ const MODES: { id: Mode; label: string; needsWallet: boolean }[] = [
 
 /** Where "Open in Mesh" lands for each list. */
 const MESH_URL: Record<Mode, string> = {
-  mine: '/mesh?tab=positions&view=pools',
-  strategies: '/mesh?tab=positions',
-  all: '/mesh?tab=pools',
+  mine: '/mesh/positions?view=pools',
+  strategies: '/mesh/positions',
+  all: '/mesh/pools',
 };
 
 const PAGE_SIZE = 5;
@@ -115,7 +115,7 @@ export function WalletPoolsTab({ onClose }: WalletPoolsTabProps) {
         <div className="py-8 text-center space-y-3">
           <Layers className="w-7 h-7 mx-auto text-zinc-600" />
           <div className="text-xs text-zinc-400">{emptyText}</div>
-          <Link to="/mesh?tab=create" onClick={onClose} className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-400 hover:text-emerald-300">
+          <Link to="/mesh/new" onClick={onClose} className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-400 hover:text-emerald-300">
             <PlusCircle className="w-3.5 h-3.5" />{mode === 'strategies' ? 'Create a strategy' : 'Create a pool'}
           </Link>
         </div>

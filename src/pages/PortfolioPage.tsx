@@ -246,7 +246,7 @@ export default function PortfolioPage() {
                                     Active Mesh Pools
                                 </div>
                                 <Link
-                                    to="/mesh?tab=positions"
+                                    to="/mesh/positions"
                                     className="text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 transition-colors"
                                 >
                                     View all →

@@ -1,5 +1,5 @@
 /**
- * /mesh?tab=leaderboard — providers ranked from pool history, next to the
+ * /mesh/leaderboard — providers ranked from pool history, next to the
  * latest pool fills. On small screens the two share one panel (?view=fills).
  */
 import React, { useState } from 'react';
@@ -21,7 +21,7 @@ const FILLS_PER_PAGE = 6;
 export function MeshLeaderboard() {
   const [searchParams, setSearchParams] = useSearchParams();
   const view = searchParams.get('view') === 'fills' ? 'fills' : 'providers';
-  const setView = (v: 'providers' | 'fills') => setSearchParams(v === 'fills' ? { tab: 'leaderboard', view: v } : { tab: 'leaderboard' });
+  const setView = (v: 'providers' | 'fills') => setSearchParams(v === 'fills' ? { view: v } : {}, { replace: true });
   const small = useSmallScreen();
   const [sort, setSort] = useState<Sort>('tvl');
   const lps = useMeshLps(sort);

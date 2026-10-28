@@ -220,7 +220,7 @@ function signed(v: string, fmt: (abs: string) => string): string {
 function Shell({ children }: { children: ReactNode }) {
   return (
     <div className="max-w-5xl mx-auto px-4 pb-16 space-y-5">
-      <Link to="/mesh?tab=positions" className="inline-flex items-center gap-1.5 text-xs text-zinc-400 hover:text-white"><ArrowLeft className="w-3.5 h-3.5" />My positions</Link>
+      <Link to="/mesh/positions" className="inline-flex items-center gap-1.5 text-xs text-zinc-400 hover:text-white"><ArrowLeft className="w-3.5 h-3.5" />My positions</Link>
       {children}
     </div>
   );

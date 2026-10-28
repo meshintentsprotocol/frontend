@@ -19,8 +19,8 @@ const footerLinks = {
         { label: 'Explore', href: '/explore' },
         { label: 'Pool', href: '/mesh' },
         { label: 'Portfolio', href: '/portfolio' },
-        { label: 'Positions', href: '/mesh?tab=positions' },
-        { label: 'Leaderboard', href: '/mesh?tab=leaderboard' },
+        { label: 'Positions', href: '/mesh/positions' },
+        { label: 'Leaderboard', href: '/mesh/leaderboard' },
         { label: 'Order Book', href: '/orderbook' },
     ],
     explore: [
