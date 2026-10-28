@@ -8,43 +8,25 @@
  *
  * Used by the strategy builder when its engine is "V4 bins" (BCH↔token ranges).
  */
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { toast } from 'sonner';
 import { ArrowRight, Gem, Info, Loader2, ShieldCheck, TriangleAlert } from 'lucide-react';
-import { binToHex } from '@bitauth/libauth';
-import type { Utxo } from 'cashscript';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Panel } from '@/components/mesh/pools/shared';
 import { DistributionChart } from '@/components/mesh/strategies/RangeDistribution';
-import { meshApi, useInvalidateMesh, useMeshSigner, useSignerBalances } from '@/hooks/useMesh';
-import { MeshApiError } from '@/lib/mesh/meshApi';
+import { useMeshSigner, useSignerBalances } from '@/hooks/useMesh';
+import { useV4Deploy } from '@/hooks/mesh/useV4Deploy';
 import { formatNumber, formatSatsCompact, formatUnits, shortHex } from '@/lib/mesh/format';
-import { sendPoolTx, type BuiltTx } from '@/lib/mesh/poolTx';
-import { registerWithRetry } from '@/lib/mesh/pendingRegistrations';
-import { v4Levels } from '@/lib/mesh/v4/position';
-import { verifyPlan, type PlanExpect } from '@/lib/mesh/v4/verify';
-import { buildGenesis, findSeed } from '@/lib/mesh/v4/v4Tx';
-import { ensureSeed } from '@/lib/mesh/v4/seed';
-import { addPendingV4, binBars, positionUrl, removePendingV4, tokenPerBch } from '@/lib/mesh/v4/display';
-import type { V4Plan, V4PreviewInput, V4Shape, V4Strength } from '@/lib/mesh/v4/types';
+import { binBars, positionUrl, tokenPerBch } from '@/lib/mesh/v4/display';
 
-/** Shown while the wallet has no seed yet: any txid works for a preview (the category changes, nothing else). */
-const PREVIEW_SEED = '00'.repeat(31) + '01';
 /** Measured on chipnet (MeshBinV4 spec §7): bytes a trade adds per bin it crosses. */
 const V4_BYTES_PER_BIN = 430;
 const V3_BYTES_PER_BIN = 1100;
-const ASK_CARRIER = 1000n;
 
-export function EngineBadge({ engine, className }: { engine: 'v4' | 'v3'; className?: string }) {
-  return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${engine === 'v4' ? 'bg-violet-500/10 border-violet-500/30 text-violet-300' : 'bg-neutral-800/60 border-neutral-700 text-neutral-400'} ${className ?? ''}`}>
-      {engine === 'v4' ? <><Gem className="w-3 h-3" />V4 bins</> : 'V3 pools'}
-    </span>
-  );
-}
+// the engine badge lives in the shared kit; re-exported for existing imports
+export { EngineBadge } from '@/components/mesh/kit/EngineBadge';
+import { EngineBadge } from '@/components/mesh/kit/EngineBadge';
 
 interface Props {
   /** The range template's server params (prices in sats per token unit), or why they can't be built. */
@@ -60,134 +42,17 @@ interface Props {
 
 export function V4DeployPanel({ params, paramsError, token, symbol, decimals, market, onUseV3 }: Props) {
   const navigate = useNavigate();
-  const invalidate = useInvalidateMesh();
   const wallet = useMeshSigner();
   const balances = useSignerBalances(wallet.signer);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [review, setReview] = useState<{ plan: V4Plan; built: BuiltTx; seed: Utxo } | null>(null);
-
-  // the range in grid levels, and the most the bins may take from the wallet
-  const req = useMemo(() => {
-    if (!params) return null;
-    const step = Number(params.binStepBps ?? 100);
-    const low = Number(params.lowSatsPerToken), high = Number(params.highSatsPerToken), center = Number(params.centerSatsPerToken);
-    if (!(low > 0 && high > low && center > 0)) return null;
-    const lv = v4Levels(low, high, center, step);
-    const depositSats = BigInt(String(params.depositSats ?? '0'));
-    const depositTokens = BigInt(String(params.depositTokens ?? '0'));
-    const askLevels = Math.max(0, lv.highIndex - Math.max(lv.marketIndex, lv.lowIndex - 1));
-    return {
-      step, ...lv, depositSats, depositTokens,
-      shape: (String(params.shape ?? 'spot') as V4Shape), strength: (params.strength as V4Strength | undefined),
-      maxSats: depositSats + BigInt(askLevels) * ASK_CARRIER,
-    };
-  }, [params]);
-
-  const seedQ = useQuery({
-    queryKey: ['mesh', 'v4-seed', wallet.signer?.address ?? ''],
-    enabled: !!wallet.signer,
-    queryFn: async () => findSeed(await wallet.signer!.getUtxos()),
-    staleTime: 30_000,
+  // plan → check every bin here → seed → genesis → pin → register (shared with the create flow)
+  const v4 = useV4Deploy({
+    wallet, balances: balances.data, params, paramsError, token, symbol,
+    onDone: category => navigate(positionUrl(category)),
   });
-
-  const input = useMemo((): V4PreviewInput | null => {
-    if (!req || !wallet.signer) return null;
-    return {
-      tokenCat: token, binStepBps: req.step, lowIndex: req.lowIndex, highIndex: req.highIndex, marketIndex: req.marketIndex,
-      depositSats: req.depositSats.toString(), depositTokens: req.depositTokens.toString(), shape: req.shape, strength: req.strength,
-      seedTxid: seedQ.data?.txid ?? PREVIEW_SEED, owner: wallet.signer.tokenAddress,
-    };
-  }, [req, wallet.signer, token, seedQ.data]);
-
-  const preview = useQuery({
-    queryKey: ['mesh', 'v4-preview', input],
-    enabled: !!input,
-    queryFn: () => meshApi.v4Preview(input!),
-    retry: false,
-  });
-
-  const expectOf = (category: string): PlanExpect | null => (req && wallet.signer ? {
-    category, tokenCat: token, ownerLock: binToHex(wallet.signer.lockingBytecode), binStepBps: req.step,
-    maxSats: req.maxSats, maxTokens: req.depositTokens, lowIndex: req.lowIndex, highIndex: req.highIndex,
-  } : null);
-
-  const verified = useMemo(() => {
-    if (!preview.data || !input) return null;
-    try {
-      verifyPlan(preview.data, expectOf(input.seedTxid)!);
-      return { ok: true as const };
-    } catch (e: any) {
-      return { ok: false as const, error: e?.message ?? String(e) };
-    }
-  }, [preview.data, input]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const notEnabled = preview.error instanceof MeshApiError && preview.error.status === 503;
-  const validation = (() => {
-    if (!wallet.signer) return wallet.unavailable ?? 'Connect a wallet';
-    if (paramsError) return paramsError;
-    if (!req) return 'Set the low, high and market prices';
-    if (notEnabled) return 'V4 positions are not enabled on this Mesh server yet.';
-    if (preview.isError) return (preview.error as Error).message;
-    if (verified && !verified.ok) return `Refusing to deploy: ${verified.error}`;
-    const b = balances.data, t = preview.data?.totals;
-    if (b && t) {
-      if (BigInt(t.sats) + 2_000n > b.sats) return 'Not enough BCH in the wallet (the bins, the NFT and the fee)';
-      if (BigInt(t.tokens) > (b.tokens[token] ?? 0n)) return `Not enough ${symbol} in the wallet`;
-    }
-    return null;
-  })();
-
-  async function onReview() {
-    if (!wallet.signer || !input) return;
-    setError(null);
-    try {
-      const seed = await ensureSeed(wallet.signer, setBusy);
-      if (seed.txid !== seedQ.data?.txid) void seedQ.refetch();
-      setBusy('Planning the position…');
-      const plan = await meshApi.v4Preview({ ...input, seedTxid: seed.txid });
-      verifyPlan(plan, expectOf(seed.txid)!);
-      setBusy('Building the transaction…');
-      const built = await buildGenesis(wallet.signer, plan, seed);
-      setReview({ plan, built, seed });
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function onConfirm() {
-    if (!review || !wallet.signer) return;
-    const { plan, built } = review;
-    let txid: string | null = null;
-    try {
-      // pin first: a 503 (no pinning key on the server) still leaves the https copy
-      setBusy('Publishing the NFT metadata…');
-      await meshApi.v4PinMetadata(plan.category).catch(() => undefined);
-      setBusy(wallet.kind === 'external' ? 'Approve the transaction in your wallet…' : 'Signing and broadcasting…');
-      txid = await sendPoolTx(wallet.signer, built, `Mesh V4: open a position (${plan.bins.length} bins) and mint its NFT`, { raw: true });
-      const pairName = `BCH/${symbol}`;
-      addPendingV4({ category: plan.category, genesisTxid: txid, bins: plan.register.body.bins, pairName, createdAt: Date.now() });
-      setBusy('Registering with Mesh…');
-      await registerWithRetry(() => meshApi.v4Register({ genesisTxid: txid!, bins: plan.register.body.bins, pairName }));
-      removePendingV4(plan.category);
-      invalidate();
-      toast.success('V4 position live', { description: `${plan.bins.length} bins · NFT ${shortHex(plan.category)} in your wallet · ${shortHex(txid)}` });
-      setReview(null);
-      navigate(positionUrl(plan.category));
-    } catch (e: any) {
-      const msg = e?.message ?? String(e);
-      toast.error(txid ? 'Funded, registration pending' : 'Transaction not sent', {
-        description: txid ? `${msg}. The NFT and the bins are on chain; the position page retries the registration.` : msg,
-        duration: 12_000,
-      });
-      setError(msg);
-      if (txid) { setReview(null); navigate(positionUrl(plan.category)); }
-    } finally {
-      setBusy(null);
-    }
-  }
+  const { req, preview, verified, notEnabled, validation, error, busy, review } = v4;
+  const onReview = v4.openReview;
+  const onConfirm = v4.confirm;
+  const setReview = (_: null) => v4.closeReview();
 
   const plan = preview.data;
   const bars = useMemo(() => (plan ? binBars(plan.bins.map(b => ({ ...b, label: `bin @ level ${b.level}` })), decimals) : []), [plan, decimals]);
@@ -245,7 +110,7 @@ export function V4DeployPanel({ params, paramsError, token, symbol, decimals, ma
         </div>
       )}
 
-      {!seedQ.data && wallet.signer && plan && (
+      {v4.needsSeed && (
         <p className="mt-2 text-[11px] text-neutral-500 flex gap-1.5"><Info className="w-3.5 h-3.5 shrink-0 mt-px" />Your wallet first pays itself once to make the output the NFT is minted from (a few hundred sats of fee).</p>
       )}
 

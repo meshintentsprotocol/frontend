@@ -12,8 +12,6 @@
  */
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { toast } from 'sonner';
 import {
   ArrowLeft,
   ArrowRight,
@@ -47,10 +45,7 @@ import {
   type MeshToken,
 } from '@/components/mesh/TokenSelectModal';
 import {
-  meshApi,
-  useInvalidateMesh,
   useMarketRef,
-  useMeshHealth,
   useMeshSigner,
   useSignerBalances,
   useStrategy,
@@ -68,21 +63,8 @@ import {
 } from '@/lib/mesh/v3/strategyForms';
 import { pusdCategory } from '@/lib/pusd';
 import { MarketStrip, RecyclePill, VsMid, TemplateIcon } from '@/components/mesh/ui/defi';
-import { v3ContractFor } from '@/lib/mesh/v3/v3Pool';
 import { poolLevels } from '@/lib/mesh/v3/v3Display';
-import {
-  buildDeployV3,
-  buildRebalanceV3,
-  type ClosePool,
-  type V3Deposit,
-} from '@/lib/mesh/v3/v3Tx';
-import { sendPoolTx, type BuiltTx } from '@/lib/mesh/poolTx';
-import type { StrategyInput, StrategyPreview } from '@/lib/mesh/meshApi';
-import {
-  addPending,
-  registerWithRetry,
-  removePending,
-} from '@/lib/mesh/pendingRegistrations';
+import type { StrategyInput } from '@/lib/mesh/meshApi';
 import {
   formatNumber,
   formatSatsCompact,
@@ -94,6 +76,7 @@ import { Panel, TokenAvatar, useTokenInfo, type TokenInfo } from '@/components/m
 import { PriceLadder } from './PriceLadder';
 import { RangeDistribution } from './RangeDistribution';
 import { V4DeployPanel, EngineBadge } from '@/components/mesh/v4/V4DeployPanel';
+import { useV3Deploy } from '@/hooks/mesh/useV3Deploy';
 import { FEE_TIERS, RANGE_PRESETS, type RangePreset } from '@/lib/mesh/presets';
 
 const PRESET_ICONS: Record<RangePreset['id'], React.ComponentType<{ className?: string }>> = {
@@ -137,15 +120,6 @@ function suggestQuery(templateId: string, v: Record<string, string>) {
   return { template: templateId, token: v.token };
 }
 
-function useDebounced<T>(value: T, ms = 400): T {
-  const [v, setV] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setV(value), ms);
-    return () => clearTimeout(t);
-  }, [value, ms]);
-  return v;
-}
-
 export function StrategyBuilder({
   templateId,
   onBack,
@@ -159,9 +133,7 @@ export function StrategyBuilder({
   initialToken?: string;
 }) {
   const navigate = useNavigate();
-  const invalidate = useInvalidateMesh();
   const wallet = useMeshSigner();
-  const health = useMeshHealth();
   const balances = useSignerBalances(wallet.signer);
   const templates = useStrategyTemplates();
   const form = formFor(templateId);
@@ -171,16 +143,7 @@ export function StrategyBuilder({
     defaults(form?.fields ?? [], wallet.network, initialToken)
   );
   const [tokenModal, setTokenModal] = useState<string | null>(null);
-  const [review, setReview] = useState<{
-    built: BuiltTx;
-    input: StrategyInput;
-    preview: StrategyPreview;
-  } | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [formError, setFormError] = useState<string | null>(null);
   const [activePreset, setActivePreset] = useState<string>('custom');
-  /** The LP saw the through-market warnings and wants to deploy anyway. */
-  const [acceptCross, setAcceptCross] = useState(false);
   /** A new BCH↔token range deploys as V4 bins (NFT-owned) by default; V3 pools stay available. */
   const v4Capable = templateId === 'range' && !replaces;
   const [engine, setEngine] = useState<'v4' | 'v3'>(v4Capable ? 'v4' : 'v3');
@@ -324,39 +287,23 @@ export function StrategyBuilder({
       return { error: e?.message ?? String(e) };
     }
   }, [form, templateId, wallet.pkh, values, decimalsKey]); // eslint-disable-line react-hooks/exhaustive-deps
-  const debounced = useDebounced(input.input);
-
-  const preview = useQuery({
-    queryKey: ['mesh', 'strategy-preview', debounced],
-    enabled: !!debounced && !isV4,
-    queryFn: () => meshApi.previewStrategy(debounced!),
-    retry: false,
+  // preview → local rebuild of every pool → build → sign → register (shared with the create flow)
+  const v3 = useV3Deploy({
+    wallet,
+    balances: balances.data,
+    input: input.input,
+    inputError: input.error,
+    replaces,
+    enabled: !isV4,
+    symbolOf: c => infoOf(c).symbol,
+    title: meta?.name ?? templateId,
+    onDone: id => navigate(strategyUrl(id)),
   });
-
-  // An override applies to the warnings the LP saw: new warnings need a new tick
-  const warningKey = preview.data?.warnings?.join('|') ?? '';
-  useEffect(() => { setAcceptCross(false); }, [warningKey]);
-
-  // Every pool recomputed locally: address must match, owner must be this wallet
-  const verified = useMemo(() => {
-    if (!preview.data || !wallet.signer || !wallet.pkh) return null;
-    try {
-      const deposits: V3Deposit[] = preview.data.pools.map(p => {
-        const { params } = v3ContractFor(p.v3, p.address, wallet.signer!.provider);
-        if (params.ownerPkh !== wallet.pkh) {
-          throw new Error(`pool ${p.role} is not owned by this wallet`);
-        }
-        return {
-          params,
-          sats: BigInt(p.deposit.sats),
-          tokens: BigInt(p.deposit.token?.amount ?? '0'),
-        };
-      });
-      return { ok: true as const, deposits };
-    } catch (e: any) {
-      return { ok: false as const, error: e?.message ?? String(e) };
-    }
-  }, [preview.data, wallet.signer, wallet.pkh]);
+  const { preview, verified, validation, acceptCross, setAcceptCross, review, busy } = v3;
+  const formError = v3.error;
+  const onReview = v3.openReview;
+  const onConfirm = v3.confirm;
+  const setReview = (_: null) => v3.closeReview();
 
   const levels = useMemo(
     () =>
@@ -365,119 +312,6 @@ export function StrategyBuilder({
         .filter(l => l.token === mainToken),
     [preview.data, mainToken, decimalsKey] // eslint-disable-line react-hooks/exhaustive-deps
   );
-
-  const networkMismatch =
-    health.data && wallet.signer && health.data.network !== wallet.network;
-  const validation = useMemo(() => {
-    if (!wallet.signer) return wallet.unavailable ?? 'Connect a wallet';
-    if (networkMismatch)
-      return `The Mesh server runs on ${health.data!.network}; switch your wallet to ${health.data!.network}`;
-    if (input.error) return input.error;
-    if (preview.isError) return (preview.error as Error).message;
-    if (verified && !verified.ok) return `Refusing to deploy: ${verified.error}`;
-    if (preview.data?.warnings?.length && !acceptCross) {
-      return 'Some pools are priced through the market and would be taken by arbitrage as soon as they are funded. Change the prices, or tick “Deploy anyway” below.';
-    }
-    const t = preview.data?.totals;
-    const b = balances.data;
-    if (t && b && !replaces) {
-      if (BigInt(t.sats) > b.sats) return 'Not enough BCH in the wallet';
-      for (const [cat, amt] of Object.entries(t.tokens)) {
-        if (BigInt(amt) > (b.tokens[cat] ?? 0n)) {
-          return `Not enough ${infoOf(cat).symbol} in the wallet`;
-        }
-      }
-    }
-    return null;
-  }, [wallet, networkMismatch, input, preview.isError, preview.error, preview.data, verified, balances.data, health.data, acceptCross]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  /** Live UTXOs of the strategy being replaced */
-  async function closeCurrent(id: string): Promise<ClosePool[]> {
-    const cur = await meshApi.strategy(id);
-    if (cur.strategy.ownerPkh !== wallet.pkh) {
-      throw new Error('You do not own the strategy being rebalanced');
-    }
-    const out: ClosePool[] = [];
-    for (const p of cur.pools) {
-      if (!p.v3) continue;
-      const utxos = await wallet.signer!.provider.getUtxos(p.address);
-      if (utxos.length) {
-        out.push({
-          contract: v3ContractFor(p.v3, p.address, wallet.signer!.provider).contract,
-          utxos,
-        });
-      }
-    }
-    return out;
-  }
-
-  async function onReview() {
-    setFormError(null);
-    if (!wallet.signer || !verified?.ok || !input.input || !preview.data) return;
-    setBusy('Building transaction…');
-    try {
-      const built = replaces
-        ? await buildRebalanceV3(
-            wallet.signer,
-            await closeCurrent(replaces),
-            verified.deposits
-          )
-        : await buildDeployV3(wallet.signer, verified.deposits);
-      setReview({ built, input: input.input, preview: preview.data });
-    } catch (e: any) {
-      setFormError(e?.message ?? String(e));
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function onConfirm() {
-    if (!review || !wallet.signer) return;
-    setBusy(
-      wallet.kind === 'external'
-        ? 'Approve the transaction in your wallet…'
-        : 'Signing and broadcasting…'
-    );
-    let txid: string | null = null;
-    try {
-      txid = await sendPoolTx(
-        wallet.signer,
-        review.built,
-        `${replaces ? 'Rebalance into' : 'Deploy'} ${meta?.name ?? templateId} (${review.preview.pools.length} Mesh pool${review.preview.pools.length > 1 ? 's' : ''})`
-      );
-      addPending({
-        txid,
-        strategy: { ...review.input, replaces },
-        createdAt: Date.now(),
-      });
-      setBusy('Listing with Mesh…');
-      const r = await registerWithRetry(() =>
-        meshApi.registerStrategy({ ...review.input, txid: txid!, replaces })
-      );
-      if (replaces) {
-        const old = await meshApi.strategy(replaces).catch(() => null);
-        for (const p of old?.pools ?? []) await meshApi.sync(p.address).catch(() => undefined);
-      }
-      removePending(txid);
-      invalidate();
-      toast.success('Strategy created', {
-        description: `${review.preview.pools.length} covenant pool(s) verified on-chain · ${shortHex(txid)}`,
-      });
-      setReview(null);
-      navigate(strategyUrl(r.strategy.id));
-    } catch (e: any) {
-      const msg = e?.message ?? String(e);
-      toast.error(txid ? 'Funded, registration pending' : 'Transaction not sent', {
-        description: txid
-          ? `${msg}. Your funds are in the pools; retry from My positions.`
-          : msg,
-        duration: 12_000,
-      });
-      setFormError(msg);
-    } finally {
-      setBusy(null);
-    }
-  }
 
   // Quick balance setter
   const setBalanceFraction = (key: string, fraction: number, isBch: boolean, tokenCat?: string) => {

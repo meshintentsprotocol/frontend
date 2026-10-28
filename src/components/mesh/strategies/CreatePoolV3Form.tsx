@@ -7,33 +7,25 @@
  */
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { toast } from 'sonner';
 import { ArrowLeft, CheckCircle2, ChevronDown, Loader2, Plus, ShieldCheck, TriangleAlert, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { TokenSelectModal, CHIPNET_DEFAULT_TOKENS, type MeshToken } from '@/components/mesh/TokenSelectModal';
-import { meshApi, useInvalidateMesh, useMeshSigner, useSignerBalances } from '@/hooks/useMesh';
-import {
-  buildV3Contract, slotPriceFromRate, slotPriceFromTokenPerBch, v3ArtifactHash, v3ToJson, validateV3Params, type V3Params,
-} from '@/lib/mesh/v3/v3Pool';
-import { buildDeployV3 } from '@/lib/mesh/v3/v3Tx';
-import { sendPoolTx, type BuiltTx } from '@/lib/mesh/poolTx';
+import { useMeshSigner, useSignerBalances } from '@/hooks/useMesh';
+import { useCustomPoolDeploy } from '@/hooks/mesh/useCustomPoolDeploy';
+import { customPoolParams, type CustomRow } from '@/lib/mesh/create/customPool';
 import { toBaseUnits } from '@/lib/mesh/v3/strategyForms';
 import { FEE_TIERS } from '@/lib/mesh/presets';
 import { pusdCategory } from '@/lib/pusd';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { addPending, registerWithRetry, removePending } from '@/lib/mesh/pendingRegistrations';
 import { formatSatsCompact, formatUnits, shortHex } from '@/lib/mesh/format';
 import { Panel, TokenAvatar, poolUrl, useTokenInfo, type TokenInfo } from '@/components/mesh/pools/shared';
 
-const ZERO32 = '00'.repeat(32);
-interface Row { cat: string; price: string; back: string }
+type Row = CustomRow;
 
 export function CreatePoolV3Form({ onBack, initialToken }: { onBack: () => void; initialToken?: string }) {
   const navigate = useNavigate();
-  const invalidate = useInvalidateMesh();
   const wallet = useMeshSigner();
   const balances = useSignerBalances(wallet.signer);
   // the token the LP came with, else pUSD of the wallet's network
@@ -41,13 +33,10 @@ export function CreatePoolV3Form({ onBack, initialToken }: { onBack: () => void;
 
   const [reserve, setReserve] = useState('0x');
   const [rows, setRows] = useState<Row[]>([{ cat: DEFAULT_TOKEN, price: '', back: '' }]);
-  const [review, setReview] = useState<BuiltTx | null>(null);
   const [recycle, setRecycle] = useState(false);
   const [feeBps, setFeeBps] = useState(30);
   const [deposit, setDeposit] = useState('');
   const [picker, setPicker] = useState<{ target: 'reserve' | number } | null>(null);
-  const [busy, setBusy] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
 
   const cats = [reserve, ...rows.map(r => r.cat)].filter(c => c && c !== '0x');
   const { get } = useTokenInfo(cats);
@@ -58,102 +47,28 @@ export function CreatePoolV3Form({ onBack, initialToken }: { onBack: () => void;
   const sym = (c: string) => (c === '0x' ? 'BCH' : info(c).symbol);
   const reserveIsBch = reserve === '0x';
 
-  // What the LP typed → V3 params
-  const built = useMemo((): { params?: V3Params; error?: string } => {
-    if (!wallet.pkh) return { error: wallet.unavailable ?? 'Connect a wallet' };
-    try {
-      const seen = new Set<string>();
-      const slots = rows.map((r, k) => {
-        if (!r.cat) throw new Error(`Asset ${k + 1}: choose a token`);
-        if (r.cat === reserve) throw new Error(`Asset ${k + 1}: a pool can't accept the asset it gives`);
-        if (seen.has(r.cat)) throw new Error(`Asset ${k + 1}: ${sym(r.cat)} is already accepted above`);
-        seen.add(r.cat);
-        if (!r.price) throw new Error(`Asset ${k + 1}: enter a price`);
-        let price; let back = { num: 0n, den: 0n };
-        if (reserveIsBch && r.cat !== '0x') {
-          price = slotPriceFromTokenPerBch(r.price, info(r.cat).decimals, true);
-          if (recycle) {
-            if (!r.back) throw new Error(`Asset ${k + 1}: enter the sell-back price`);
-            back = slotPriceFromTokenPerBch(r.back, info(r.cat).decimals, false);
-          }
-        } else if (!reserveIsBch && r.cat === '0x') {
-          price = slotPriceFromTokenPerBch(r.price, info(reserve).decimals, false);
-          if (recycle) {
-            if (!r.back) throw new Error(`Asset ${k + 1}: enter the buy-back price`);
-            back = slotPriceFromTokenPerBch(r.back, info(reserve).decimals, true);
-          }
-        } else {
-          if (recycle) throw new Error('Keep in Mesh works only for pools between BCH and a token: choose "To my wallet", or accept BCH');
-          price = slotPriceFromRate(r.price, info(reserve).decimals, info(r.cat).decimals);
-        }
-        return { cat: r.cat, num: price.num, den: price.den, rNum: back.num, rDen: back.den };
-      });
-      const p: V3Params = { ownerPkh: wallet.pkh, reserve, slots, feeBps, mode: recycle ? 2 : 0, proceedsHash: ZERO32 };
-      const bad = validateV3Params(p);
-      return bad ? { error: bad } : { params: p };
-    } catch (e: any) { return { error: e?.message ?? String(e) }; }
-  }, [wallet.pkh, reserve, rows, recycle, feeBps, cats.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const contract = useMemo(() => (built.params && wallet.signer ? buildV3Contract(built.params, wallet.signer.provider) : null), [built.params, wallet.signer]);
-  const preview = useQuery({
-    queryKey: ['mesh', 'preview-v3', built.params ? v3ToJson(built.params) : null],
-    enabled: !!built.params,
-    queryFn: () => meshApi.previewV3(v3ToJson(built.params!)),
-    retry: false,
-  });
-  const previewOk = !!preview.data && !!contract && preview.data.address === contract.address && preview.data.artifactHash === v3ArtifactHash();
+  // What the LP typed → V3 params (shared with the create flow)
+  const built = useMemo(
+    () => customPoolParams({ ownerPkh: wallet.pkh ? wallet.pkh : null, reserve, rows, recycle, feeBps, decimalsOf: c => info(c).decimals, symbolOf: sym }),
+    [wallet.pkh, reserve, rows, recycle, feeBps, cats.join(',')], // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const builtError = !wallet.pkh ? (wallet.unavailable ?? 'Connect a wallet') : built.error;
 
   const amount = useMemo(() => {
     try { return deposit ? toBaseUnits(deposit, reserveIsBch ? 8 : info(reserve).decimals) : 0n; } catch { return -1n; }
   }, [deposit, reserve]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const validation = (() => {
-    if (!wallet.signer) return wallet.unavailable ?? 'Connect a wallet';
-    if (built.error) return built.error;
-    if (amount < 0n) return 'Invalid deposit';
-    if (reserveIsBch ? amount <= 1000n : amount < 2n) return reserveIsBch ? 'Deposit more than 0.00001 BCH' : `Deposit at least 2 base units of ${sym(reserve)}`;
-    const b = balances.data;
-    if (b && (reserveIsBch ? amount > b.sats : amount > (b.tokens[reserve] ?? 0n))) return `Not enough ${sym(reserve)} in the wallet`;
-    if (preview.isError) return (preview.error as Error).message;
-    return null;
-  })();
-
-  /** Build the funding transaction and show it for review; nothing is signed yet. */
-  async function onReview() {
-    if (!wallet.signer || !built.params || validation || !previewOk) return;
-    setErr(null);
-    setBusy('Building transaction…');
-    try {
-      setReview(await buildDeployV3(wallet.signer, [{ params: built.params, sats: reserveIsBch ? amount : 1000n, tokens: reserveIsBch ? 0n : amount }]));
-    } catch (e: any) {
-      setErr(e?.message ?? String(e));
-    } finally { setBusy(null); }
-  }
-
-  async function onDeploy() {
-    if (!wallet.signer || !built.params || !review) return;
-    setErr(null);
-    let txid: string | null = null;
-    try {
-      const tx = review;
-      setBusy(wallet.kind === 'external' ? 'Approve the transaction in your wallet…' : 'Signing and broadcasting…');
-      txid = await sendPoolTx(wallet.signer, tx, 'Create a Mesh V3 pool');
-      const item = { v3: v3ToJson(built.params), txid, vout: 0, pairName: `${sym(reserve)} for ${rows.map(r => sym(r.cat)).join('/')}` };
-      addPending({ txid, v3Items: [item], createdAt: Date.now() });
-      setBusy('Listing with Mesh…');
-      const res = await registerWithRetry(() => meshApi.registerV3([item]));
-      if (!res.success) throw new Error(res.error ?? 'registration failed');
-      removePending(txid);
-      invalidate();
-      setReview(null);
-      toast.success('Pool created', { description: `Funded and checked on chain · ${shortHex(txid)}` });
-      navigate(poolUrl(res.pools[0]!.address));
-    } catch (e: any) {
-      const msg = e?.message ?? String(e);
-      toast.error(txid ? 'Funded, registration pending' : 'Transaction not sent', { description: txid ? `${msg}. Retry from My positions.` : msg });
-      setErr(msg);
-    } finally { setBusy(null); }
-  }
+  // covenant check with the server → review → sign → register (shared with the create flow)
+  const deploy = useCustomPoolDeploy({
+    wallet, balances: balances.data, params: built.params, paramsError: builtError, amount, reserveIsBch, reserve,
+    reserveSymbol: sym(reserve), pairName: `${sym(reserve)} for ${rows.map(r => sym(r.cat)).join('/')}`,
+    onDone: address => navigate(poolUrl(address)),
+  });
+  const { contract, preview, previewOk, validation, review, busy } = deploy;
+  const err = deploy.error;
+  const onReview = deploy.openReview;
+  const onDeploy = deploy.confirm;
+  const setReview = (_: null) => deploy.closeReview();
 
   const tokenButton = (cat: string, onClick: () => void) => (
     <button type="button" onClick={onClick} className="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-white/[0.03] border border-white/10 hover:border-white/20 min-w-[130px]">
