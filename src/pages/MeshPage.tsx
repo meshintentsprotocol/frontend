@@ -17,8 +17,12 @@ export function MeshPage() {
   const positionsView: PositionsView = searchParams.get('view') === 'pools' ? 'pools' : 'strategies';
   const template = searchParams.get('template') ?? undefined;
   const replaces = searchParams.get('replaces') ?? undefined;
+  // the token the LP came with ("Provide liquidity" on a pair): kept through the gallery into the builder
+  const rawToken = searchParams.get('token');
+  const token = rawToken && /^[0-9a-f]{64}$/i.test(rawToken) ? rawToken.toLowerCase() : undefined;
 
   const go = (tab: Tab, extra?: Record<string, string>) => setSearchParams({ tab, ...(extra ?? {}) });
+  const withToken = (extra: Record<string, string>) => (token ? { ...extra, token } : extra);
 
   return (
     <div className="container mx-auto py-4 sm:py-6 px-4 md:px-8 max-w-[1200px] space-y-6">
@@ -28,9 +32,9 @@ export function MeshPage() {
       {activeTab === 'pools' && <MeshPoolsOverview onTab={(tab, token) => go(tab as Tab, token ? { token } : undefined)} />}
       {activeTab === 'leaderboard' && <MeshLeaderboard />}
       {activeTab === 'create' && (
-        !template ? <StrategyGallery onPick={id => go('create', { template: id })} />
-          : template === 'custom' ? <CreatePoolV3Form onBack={() => go('create')} />
-            : <StrategyBuilder key={`${template}-${replaces ?? ''}`} templateId={template} replaces={replaces} onBack={() => go('create')} />
+        !template ? <StrategyGallery onPick={id => go('create', withToken({ template: id }))} />
+          : template === 'custom' ? <CreatePoolV3Form key={token ?? ''} initialToken={token} onBack={() => go('create', withToken({}))} />
+            : <StrategyBuilder key={`${template}-${replaces ?? ''}-${token ?? ''}`} templateId={template} replaces={replaces} initialToken={token} onBack={() => go('create', withToken({}))} />
       )}
     </div>
   );

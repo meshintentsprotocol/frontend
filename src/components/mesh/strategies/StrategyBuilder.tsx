@@ -58,9 +58,12 @@ import {
   useStrategyTemplates,
 } from '@/hooks/useMesh';
 import {
+  amountText,
   formFor,
   fromServerParams,
+  shareOf,
   toServerParams,
+  visibleFields,
   type FieldSpec,
 } from '@/lib/mesh/v3/strategyForms';
 import { pusdCategory } from '@/lib/pusd';
@@ -91,31 +94,29 @@ import { Panel, TokenAvatar, useTokenInfo, type TokenInfo } from '@/components/m
 import { PriceLadder } from './PriceLadder';
 import { RangeDistribution } from './RangeDistribution';
 import { V4DeployPanel, EngineBadge } from '@/components/mesh/v4/V4DeployPanel';
+import { FEE_TIERS, RANGE_PRESETS, type RangePreset } from '@/lib/mesh/presets';
 
-const FEE_TIERS = [
-  { bps: 5, label: '0.05%', name: 'Peg / Stables', desc: 'Ultra-low fee for correlated or pegged assets' },
-  { bps: 30, label: '0.30%', name: 'Standard', desc: 'Optimal for major pairs like BCH/pUSD' },
-  { bps: 50, label: '0.50%', name: 'Volatile', desc: 'Compensates for rapid directional price swings' },
-  { bps: 100, label: '1.00%', name: 'Exotic', desc: 'High fee capture on low-liquidity CashTokens' },
-];
-
-const RANGE_PRESETS = [
-  { id: 'tight', label: 'Tight', pct: 1.5, icon: Zap, desc: '±1.5% · Maximum fee velocity' },
-  { id: 'balanced', label: 'Balanced', pct: 5.0, icon: Scale, desc: '±5.0% · Recommended standard' },
-  { id: 'wide', label: 'Wide', pct: 15.0, icon: Flame, desc: '±15.0% · Low maintenance' },
-  { id: 'custom', label: 'Custom', pct: null, icon: SlidersHorizontal, desc: 'Granular input' },
-];
+const PRESET_ICONS: Record<RangePreset['id'], React.ComponentType<{ className?: string }>> = {
+  tight: Zap, balanced: Scale, wide: Flame, custom: SlidersHorizontal,
+};
 
 const PUSD = CHIPNET_DEFAULT_TOKENS[1]!.categoryId!;
 const MUSD = CHIPNET_DEFAULT_TOKENS[2]!.categoryId!;
+/** Sats left in the wallet by the BCH "MAX" button, for carriers and the network fee. */
+const BCH_MAX_RESERVE = 5000n;
 
 import { strategyUrl } from './StrategyCard';
 export { strategyUrl };
 
-/** Form defaults: pUSD of the wallet's network as the main token (MUSD as the second one on chipnet). */
-function defaults(fields: FieldSpec[], network: string): Record<string, string> {
+/**
+ * Form defaults: the token the LP came with (?token=), else pUSD of the
+ * wallet's network, as the main token (MUSD as the second one on chipnet).
+ */
+function defaults(fields: FieldSpec[], network: string, initialToken?: string): Record<string, string> {
   const v: Record<string, string> = {};
-  const main = network === 'mainnet' ? pusdCategory(true) : PUSD;
+  const main = initialToken && /^[0-9a-f]{64}$/i.test(initialToken)
+    ? initialToken.toLowerCase()
+    : network === 'mainnet' ? pusdCategory(true) : PUSD;
   for (const f of fields) {
     if (f.default !== undefined) v[f.key] = f.default;
     if (f.kind === 'token' && !f.optional) {
@@ -149,10 +150,13 @@ export function StrategyBuilder({
   templateId,
   onBack,
   replaces,
+  initialToken,
 }: {
   templateId: string;
   onBack: () => void;
   replaces?: string;
+  /** Token category to start on (from ?token=, e.g. "Provide liquidity" on a pair). */
+  initialToken?: string;
 }) {
   const navigate = useNavigate();
   const invalidate = useInvalidateMesh();
@@ -164,7 +168,7 @@ export function StrategyBuilder({
   const meta = templates.data?.templates.find(t => t.id === templateId);
 
   const [values, setValues] = useState<Record<string, string>>(() =>
-    defaults(form?.fields ?? [], wallet.network)
+    defaults(form?.fields ?? [], wallet.network, initialToken)
   );
   const [tokenModal, setTokenModal] = useState<string | null>(null);
   const [review, setReview] = useState<{
@@ -192,7 +196,7 @@ export function StrategyBuilder({
         .filter(Boolean) as string[],
     [form, values]
   );
-  const { get } = useTokenInfo(tokenCats);
+  const { get, loading: tokenInfoLoading } = useTokenInfo(tokenCats);
   const fallback = (cat: string) => CHIPNET_DEFAULT_TOKENS.find(t => t.categoryId === cat);
   const infoOf = (cat: string): TokenInfo => {
     const i = get(cat);
@@ -203,6 +207,14 @@ export function StrategyBuilder({
       ? { ...i, symbol: f.symbol, decimals: f.decimals, icon: f.icon ?? null, known: true }
       : i;
   };
+  /**
+   * Prices convert with each token's decimals, so nothing is converted while
+   * token metadata is still loading (a token reads as 0 decimals until then,
+   * which would put prices off by 10^decimals). A token with no metadata at
+   * all really has 0 decimals.
+   */
+  const decimalsReady = !tokenInfoLoading || tokenCats.every(c => infoOf(c).known);
+  const decimalsKey = `${decimalsReady}|` + tokenCats.map(c => `${c}:${infoOf(c).decimals}`).join(',');
   const mainToken = values.token ?? values.token1 ?? values.tokenA ?? '';
   const main = infoOf(mainToken);
   const market = useMarketRef(mainToken || undefined);
@@ -222,7 +234,7 @@ export function StrategyBuilder({
 
   const applySuggestion = (onlyEmpty: boolean) => {
     const p = suggest.data?.params;
-    if (!p) return;
+    if (!p || !decimalsReady) return;
     const next = fromServerParams(templateId, p, c => infoOf(c).decimals, values);
     setValues(prev => {
       const merged = { ...prev };
@@ -233,10 +245,23 @@ export function StrategyBuilder({
     });
   };
 
-  // Fill empty prices from the market once suggestion arrives
+  // Fill empty prices from the market once the suggestion and the token details have arrived
   useEffect(() => {
     applySuggestion(true);
-  }, [suggest.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [suggest.data, decimalsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Pick a token for a field; prices set for the previous token no longer apply, so they are cleared and refilled from the market. */
+  const setToken = (key: string, category: string) => {
+    if (values[key] === category) return;
+    const priceKeys = (form?.fields ?? []).filter(f => f.kind === 'price' && f.token === key).map(f => f.key);
+    setValues(prev => {
+      const next = { ...prev, [key]: category };
+      for (const k of priceKeys) next[k] = '';
+      if (templateId === 'stable-pair') next.rate = '';
+      return next;
+    });
+    setActivePreset('custom');
+  };
 
   // Apply Range Preset (Tight, Balanced, Wide)
   const applyPreset = (presetId: string, pct: number | null) => {
@@ -286,6 +311,7 @@ export function StrategyBuilder({
   const input = useMemo((): { input?: StrategyInput; error?: string } => {
     if (!form) return { error: `Unknown template ${templateId}` };
     if (!wallet.pkh) return { error: wallet.unavailable ?? 'Connect a wallet' };
+    if (!decimalsReady) return { error: 'Loading token details…' };
     try {
       return {
         input: {
@@ -297,7 +323,7 @@ export function StrategyBuilder({
     } catch (e: any) {
       return { error: e?.message ?? String(e) };
     }
-  }, [form, templateId, wallet.pkh, values, tokenCats.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [form, templateId, wallet.pkh, values, decimalsKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const debounced = useDebounced(input.input);
 
   const preview = useQuery({
@@ -337,8 +363,8 @@ export function StrategyBuilder({
       (preview.data?.pools ?? [])
         .flatMap(p => poolLevels(p.address, p.v3, c => infoOf(c).decimals, p.role))
         .filter(l => l.token === mainToken),
-    [preview.data, mainToken]
-  ); // eslint-disable-line react-hooks/exhaustive-deps
+    [preview.data, mainToken, decimalsKey] // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   const networkMismatch =
     health.data && wallet.signer && health.data.network !== wallet.network;
@@ -424,7 +450,7 @@ export function StrategyBuilder({
         strategy: { ...review.input, replaces },
         createdAt: Date.now(),
       });
-      setBusy('Registering with Mesh Finance…');
+      setBusy('Listing with Mesh…');
       const r = await registerWithRetry(() =>
         meshApi.registerStrategy({ ...review.input, txid: txid!, replaces })
       );
@@ -434,7 +460,7 @@ export function StrategyBuilder({
       }
       removePending(txid);
       invalidate();
-      toast.success('Strategy live on Mesh Finance', {
+      toast.success('Strategy created', {
         description: `${review.preview.pools.length} covenant pool(s) verified on-chain · ${shortHex(txid)}`,
       });
       setReview(null);
@@ -457,16 +483,11 @@ export function StrategyBuilder({
   const setBalanceFraction = (key: string, fraction: number, isBch: boolean, tokenCat?: string) => {
     const bal = balances.data;
     if (!bal) return;
+    // integer math, floored: a share can never come out above the balance
     if (isBch) {
-      // Leave 5000 sats for carrier/gas
-      const availableSats = Math.max(0, Number(bal.sats) - 5000);
-      const targetBch = (availableSats * fraction) / 1e8;
-      set(key, targetBch > 0 ? targetBch.toFixed(6) : '0');
+      set(key, amountText(shareOf(BigInt(bal.sats), fraction, BCH_MAX_RESERVE), 8));
     } else if (tokenCat) {
-      const dec = infoOf(tokenCat).decimals;
-      const tBal = bal.tokens[tokenCat] ?? 0n;
-      const target = (Number(tBal) * fraction) / 10 ** dec;
-      set(key, target > 0 ? target.toFixed(dec > 4 ? 4 : dec) : '0');
+      set(key, amountText(shareOf(bal.tokens[tokenCat] ?? 0n, fraction), infoOf(tokenCat).decimals));
     }
   };
 
@@ -596,7 +617,7 @@ export function StrategyBuilder({
     // Fee Tier Selector Chips
     if (f.key === 'feeBps') {
       return (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
           {FEE_TIERS.map(t => {
             const isSelected = v === String(t.bps);
             return (
@@ -634,8 +655,23 @@ export function StrategyBuilder({
         : f.kind === 'bps'
         ? 'bps'
         : f.kind === 'rate'
-        ? 'B'
+        ? (values.tokenB ? infoOf(values.tokenB).symbol : 'token B')
         : '';
+
+    // Rungs / steps: a stepper within the template's limits
+    if (f.kind === 'count') {
+      const lo = f.min ?? 2, hi = f.max ?? 10;
+      const n = /^\d+$/.test(v) ? Number(v) : lo;
+      const step = (d: number) => set(f.key, String(Math.min(hi, Math.max(lo, n + d))));
+      return (
+        <div className="flex items-center gap-2">
+          <Button type="button" variant="outline" size="icon" className="h-11 w-11 rounded-xl" aria-label={`Fewer ${f.label.toLowerCase()}`} disabled={n <= lo} onClick={() => step(-1)}>−</Button>
+          <span className="min-w-[3ch] text-center font-mono text-lg font-bold text-white" aria-live="polite">{n}</span>
+          <Button type="button" variant="outline" size="icon" className="h-11 w-11 rounded-xl" aria-label={`More ${f.label.toLowerCase()}`} disabled={n >= hi} onClick={() => step(1)}>+</Button>
+          <span className="text-[11px] text-neutral-500">{lo} to {hi}</span>
+        </div>
+      );
+    }
     const fieldMid = f.kind === 'price' && tokenOf?.category ? midOf(tokenOf.category) : null;
     const fieldMarket = fieldMid && tokenOf ? 1e8 / (fieldMid * 10 ** tokenOf.decimals) : null;
     const priceSats =
@@ -653,7 +689,7 @@ export function StrategyBuilder({
           <Input
             value={v}
             inputMode="decimal"
-            placeholder={f.kind === 'count' ? String(f.min ?? '') : '0.0'}
+            placeholder="0.0"
             onChange={e => set(f.key, e.target.value.replace(/[^0-9.]/g, ''))}
             className="font-mono bg-black/60 border-neutral-700/80 focus-visible:border-emerald-500/80 text-white"
           />
@@ -735,13 +771,9 @@ export function StrategyBuilder({
         >
           <ArrowLeft className="w-4 h-4" /> All Strategies
         </button>
-        <div className="flex items-center gap-2">
-          <span className="font-mono text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full border border-neutral-700 text-neutral-400">
-            Mesh Finance V3
-          </span>
-          <span className="font-mono text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full border border-emerald-500/40 text-emerald-400 bg-emerald-500/10">
-            Sovereign Covenant
-          </span>
+        <div className="flex items-center gap-2 text-[11px] text-neutral-400">
+          <EngineBadge engine={isV4 ? 'v4' : 'v3'} />
+          <span>{isV4 ? 'Owned by an NFT in your wallet' : "Owned by this wallet's key"}</span>
         </div>
       </div>
 
@@ -777,7 +809,7 @@ export function StrategyBuilder({
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {RANGE_PRESETS.map(p => {
               const isSelected = activePreset === p.id;
-              const Icon = p.icon;
+              const Icon = PRESET_ICONS[p.id];
               return (
                 <button
                   key={p.id}
@@ -847,8 +879,7 @@ export function StrategyBuilder({
             </button>
           )}
 
-          {form.fields
-            .filter(f => f.key !== 'recyclePrice' || values.proceeds === 'recycle')
+          {visibleFields(templateId, values)
             // a V4 bin earns its step between buy and sell: there is no separate fee
             .filter(f => !(isV4 && f.key === 'feeBps'))
             .map(f => (
@@ -866,7 +897,9 @@ export function StrategyBuilder({
 
           <p className="text-[11px] text-neutral-500 flex gap-1.5 pt-2 border-t border-neutral-800">
             <Info className="w-3.5 h-3.5 shrink-0 mt-px text-neutral-400" />
-            Prices are executed via native UTXO covenants at 1 sat/byte gas efficiency. Only your wallet key can withdraw.
+            {isV4
+              ? 'Solvers trade with your bins at these prices. Only the holder of the position NFT can withdraw.'
+              : 'Solvers trade with your pools at these prices. Only this wallet can withdraw.'}
           </p>
         </Panel>
 
@@ -1059,7 +1092,7 @@ export function StrategyBuilder({
             : undefined
         }
         onSelect={(t: MeshToken) => {
-          if (tokenModal && !t.isNativeBch && t.categoryId) set(tokenModal, t.categoryId);
+          if (tokenModal && !t.isNativeBch && t.categoryId) setToken(tokenModal, t.categoryId);
           setTokenModal(null);
         }}
       />
@@ -1074,10 +1107,12 @@ export function StrategyBuilder({
         <DialogContent className="max-w-md bg-[#0a0a0d] border border-neutral-800 rounded-3xl text-white">
           <DialogHeader>
             <DialogTitle className="text-lg font-bold">
-              {replaces ? 'Rebalance Strategy' : 'Deploy Strategy on Mesh Finance'}
+              {replaces ? 'Rebalance strategy' : 'Create strategy'}
             </DialogTitle>
             <DialogDescription className="text-neutral-400 text-xs">
-              One atomic Bitcoin Cash transaction funds all covenant pools. Solvers will immediately match order intents against your positions.
+              {replaces
+                ? 'One transaction closes the current pools and funds the new ones. Solvers can trade with them as soon as Mesh lists them.'
+                : 'One transaction funds every pool. Solvers can trade with them as soon as Mesh lists them.'}
             </DialogDescription>
           </DialogHeader>
 
@@ -1108,14 +1143,14 @@ export function StrategyBuilder({
 
               <div className="p-3 rounded-xl bg-neutral-900/60 border border-neutral-800 space-y-1 font-mono text-[11px]">
                 <div className="flex justify-between text-neutral-400">
-                  <span>Network Gas Fee:</span>
+                  <span>Network fee:</span>
                   <span className="text-white font-bold">
                     {review.built.fee.toString()} sats (~{review.built.size} B)
                   </span>
                 </div>
                 <div className="flex justify-between text-neutral-400">
-                  <span>Sovereign Exit:</span>
-                  <span className="text-emerald-400">Guaranteed (`dock` spend path)</span>
+                  <span>Withdraw:</span>
+                  <span className="text-emerald-400">Any time, by this wallet only</span>
                 </div>
               </div>
 
@@ -1132,7 +1167,7 @@ export function StrategyBuilder({
                 ) : (
                   <>
                     <CheckCircle2 className="w-4 h-4 mr-2" />
-                    {replaces ? 'Sign and Rebalance' : 'Sign and Deploy Strategy'}
+                    {replaces ? 'Sign and rebalance' : 'Sign and create'}
                   </>
                 )}
               </Button>
