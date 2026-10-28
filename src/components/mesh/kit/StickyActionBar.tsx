@@ -1,19 +1,22 @@
 /**
  * The step's main action. On phones and tablets it is pinned to the bottom of
  * the screen with a one-line summary ("20 bins · ±5% · Continue"); on wide
- * screens it renders where it is placed.
+ * screens it renders where it is placed (or not at all with `inline={false}`,
+ * when the page shows its own wide-screen button).
  */
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
-export function StickyActionBar({ summary, children, className }: { summary?: ReactNode; children: ReactNode; className?: string }) {
+export function StickyActionBar({ summary, children, className, inline = true }: { summary?: ReactNode; children: ReactNode; className?: string; inline?: boolean }) {
   return (
     <>
       {/* wide screens: inline */}
-      <div className={cn('hidden lg:flex items-center justify-between gap-3', className)}>
-        {summary ? <div className="min-w-0 text-xs text-zinc-400">{summary}</div> : <span />}
-        <div className="flex items-center gap-2">{children}</div>
-      </div>
+      {inline && (
+        <div className={cn('hidden lg:flex items-center justify-between gap-3', className)}>
+          {summary ? <div className="min-w-0 text-xs text-zinc-400">{summary}</div> : <span />}
+          <div className="flex items-center gap-2">{children}</div>
+        </div>
+      )}
       {/* narrow screens: pinned; the spacer keeps the last field above the bar */}
       <div className="h-20 lg:hidden" aria-hidden />
       <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/[0.08] bg-[#0c0c10]/95 backdrop-blur lg:hidden"
