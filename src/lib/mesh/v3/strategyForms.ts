@@ -79,11 +79,11 @@ export const TEMPLATE_FORMS: TemplateForm[] = [
       { key: 'side', label: 'Side', kind: 'choice', default: 'bid', choices: [{ value: 'bid', label: 'Buy the token with BCH' }, { value: 'ask', label: 'Sell the token for BCH' }] },
       { key: 'price', label: 'Your price', kind: 'price', token: 'token' },
       FEE,
-      { key: 'deposit', label: 'Deposit', kind: 'bch', help: 'BCH for a bid; for an ask, enter the token amount below instead' },
-      { key: 'depositTokens', label: 'Token deposit (ask)', kind: 'tokenAmount', token: 'token', optional: true },
+      { key: 'deposit', label: 'BCH deposit', kind: 'bch', help: 'The BCH this order buys the token with' },
+      { key: 'depositTokens', label: 'Token deposit', kind: 'tokenAmount', token: 'token', help: 'The tokens this order sells' },
       proceedsField('wallet'),
-      { key: 'recyclePrice', label: 'Trade-back price (recycle)', kind: 'price', token: 'token', optional: true,
-        help: 'With recycle: where the reverse pool trades back — fewer tokens per BCH than a bid, more than an ask' },
+      { key: 'recyclePrice', label: 'Trade-back price', kind: 'price', token: 'token',
+        help: 'Where the reverse pool trades back: fewer tokens per BCH than a buy price, more than a sell price' },
     ] },
   { id: 'spread', icon: 'ArrowLeftRight', deposit: 'BCH and the token', earns: 'The spread between your bid and ask, plus the fee',
     fields: [
@@ -101,8 +101,8 @@ export const TEMPLATE_FORMS: TemplateForm[] = [
       { key: 'price1', label: 'Price for token 1', kind: 'price', token: 'token1' },
       { key: 'token2', label: 'Token 2', kind: 'token' },
       { key: 'price2', label: 'Price for token 2', kind: 'price', token: 'token2' },
-      { key: 'token3', label: 'Token 3 (optional)', kind: 'token', optional: true },
-      { key: 'price3', label: 'Price for token 3', kind: 'price', token: 'token3', optional: true },
+      { key: 'token3', label: 'Token 3', kind: 'token', optional: true },
+      { key: 'price3', label: 'Price for token 3', kind: 'price', token: 'token3' },
       FEE,
       { key: 'depositBch', label: 'BCH reserve', kind: 'bch' },
     ] },
@@ -123,8 +123,8 @@ export const TEMPLATE_FORMS: TemplateForm[] = [
       { key: 'sell', label: 'Sell price', kind: 'price', token: 'token' },
       { key: 'start', label: 'Start with', kind: 'choice', default: 'bch', choices: [{ value: 'bch', label: 'BCH (buy first)' }, { value: 'token', label: 'The token (sell first)' }] },
       FEE,
-      { key: 'depositBch', label: 'BCH deposit', kind: 'bch', optional: true },
-      { key: 'depositTokens', label: 'Token deposit', kind: 'tokenAmount', token: 'token', optional: true },
+      { key: 'depositBch', label: 'BCH deposit', kind: 'bch', help: 'The BCH the pair starts buying with' },
+      { key: 'depositTokens', label: 'Token deposit', kind: 'tokenAmount', token: 'token', help: 'The tokens the pair starts selling' },
     ] },
   { id: 'grid', icon: 'Grid3x3', deposit: 'BCH below the market, the token above it', earns: 'Every rung buys at its level and sells one level up',
     fields: [
@@ -181,6 +181,49 @@ export const TEMPLATE_FORMS: TemplateForm[] = [
 
 export const formFor = (id: string) => TEMPLATE_FORMS.find(f => f.id === id);
 
+/**
+ * The fields to show for the current values, in order. A field that a choice
+ * makes unnecessary is left out (never shown and ignored); a field that a
+ * choice makes required loses `optional`.
+ */
+export function visibleFields(id: string, v: Record<string, string>): FieldSpec[] {
+  const form = formFor(id);
+  if (!form) return [];
+  const has = (k: string) => (v[k] ?? '').trim() !== '';
+  return form.fields.filter(f => {
+    // strength only changes Curve and Bid-Ask
+    if (f.key === 'strength') return !!v.shape && v.shape !== 'spot';
+    if (id === 'fixed') {
+      if (f.key === 'deposit') return v.side !== 'ask';
+      if (f.key === 'depositTokens') return v.side === 'ask';
+      if (f.key === 'recyclePrice') return v.proceeds === 'recycle';
+    }
+    if (id === 'recycling-pair') {
+      if (f.key === 'depositBch') return v.start !== 'token';
+      if (f.key === 'depositTokens') return v.start === 'token';
+    }
+    if (id === 'multi-pair' && f.key === 'price3') return has('token3');
+    return true;
+  });
+}
+
+/** Base units → an exact whole-unit decimal string for an input ("1.25"), floored, trailing zeros dropped. */
+export function amountText(units: bigint, decimals: number): string {
+  if (units <= 0n) return '0';
+  if (decimals === 0) return units.toString();
+  const s = units.toString().padStart(decimals + 1, '0');
+  const i = s.slice(0, -decimals);
+  const f = s.slice(-decimals).replace(/0+$/, '');
+  return f ? `${i}.${f}` : i;
+}
+
+/** A share of a balance in base units, floored (never more than the balance). */
+export function shareOf(balance: bigint, fraction: number, reserve = 0n): bigint {
+  const avail = balance > reserve ? balance - reserve : 0n;
+  const pct = BigInt(Math.max(0, Math.min(100, Math.round(fraction * 100))));
+  return (avail * pct) / 100n;
+}
+
 // ── Unit conversions ─────────────────────────────────────────────────────────
 
 const SATS_PER_BCH = 100_000_000n;
@@ -217,10 +260,20 @@ export type Decimals = (category: string) => number;
  * message when a required field is missing or invalid.
  */
 export function toServerParams(id: string, v: Record<string, string>, dec: Decimals): Record<string, unknown> {
-  const need = (k: string, label = k) => { const x = (v[k] ?? '').trim(); if (!x) throw new Error(`${label} is required`); return x; };
-  const price = (k: string, tokenKey: string) => satsPerUnitFromTokenPerBch(need(k, 'price'), dec(need(tokenKey, 'token')));
-  const sats = (k: string) => toBaseUnits(need(k, 'deposit'), 8).toString();
-  const units = (k: string, tokenKey: string) => toBaseUnits(need(k, 'token deposit'), dec(need(tokenKey, 'token'))).toString();
+  const fields = formFor(id)?.fields ?? [];
+  // errors name the field the LP sees ("Your price is required")
+  const labelOf = (k: string) => fields.find(f => f.key === k)?.label ?? k;
+  const need = (k: string, label = labelOf(k)) => { const x = (v[k] ?? '').trim(); if (!x) throw new Error(`${label} is required`); return x; };
+  const price = (k: string, tokenKey: string) => satsPerUnitFromTokenPerBch(need(k), dec(need(tokenKey)));
+  const sats = (k: string) => toBaseUnits(need(k), 8).toString();
+  const units = (k: string, tokenKey: string) => toBaseUnits(need(k), dec(need(tokenKey))).toString();
+  const count = (k: string) => {
+    const spec = fields.find(f => f.key === k);
+    const lo = spec?.min ?? 2, hi = spec?.max ?? 10;
+    const x = need(k);
+    if (!/^\d+$/.test(x) || Number(x) < lo || Number(x) > hi) throw new Error(`${labelOf(k)} must be a whole number from ${lo} to ${hi}`);
+    return Number(x);
+  };
   const opt = (k: string) => (v[k] ?? '').trim() !== '';
   const fee = Number(v.feeBps ?? 30);
   // spot is the server default: only send a shape that changes something
@@ -259,7 +312,7 @@ export function toServerParams(id: string, v: Record<string, string>, dec: Decim
     case 'grid':
       // the server's low/high are sats per token: the "lowest price" in tokens-per-BCH terms is the most tokens per BCH
       return { token: need('token'), lowSatsPerToken: price('low', 'token'), highSatsPerToken: price('high', 'token'),
-        rungs: Number(need('rungs')), feeBps: fee, ...shape(),
+        rungs: count('rungs'), feeBps: fee, ...shape(),
         ...(opt('center') ? { centerSatsPerToken: price('center', 'token') } : {}),
         ...(opt('depositBch') ? { depositSats: sats('depositBch') } : {}),
         ...(opt('depositTokens') ? { depositTokens: units('depositTokens', 'token') } : {}) };
@@ -270,11 +323,11 @@ export function toServerParams(id: string, v: Record<string, string>, dec: Decim
         ...(opt('depositTokens') ? { depositTokens: units('depositTokens', 'token') } : {}) };
     case 'take-profit':
       return { token: need('token'), fromSatsPerToken: price('from', 'token'), toSatsPerToken: price('to', 'token'),
-        steps: Number(need('steps')), feeBps: fee, depositTokens: units('depositTokens', 'token'), ...shape(),
+        steps: count('steps'), feeBps: fee, depositTokens: units('depositTokens', 'token'), ...shape(),
         ...(v.proceeds === 'recycle' ? { proceeds: 'recycle' } : {}) };
     case 'accumulate':
       return { token: need('token'), fromSatsPerToken: price('from', 'token'), toSatsPerToken: price('to', 'token'),
-        steps: Number(need('steps')), feeBps: fee, depositSats: sats('depositBch'), ...shape(),
+        steps: count('steps'), feeBps: fee, depositSats: sats('depositBch'), ...shape(),
         ...(v.proceeds === 'recycle' ? { proceeds: 'recycle' } : {}) };
     default:
       throw new Error(`unknown template ${id}`);

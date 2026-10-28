@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { TEMPLATE_FORMS, decimalOf, fromServerParams, satsPerUnitFromTokenPerBch, toBaseUnits, toServerParams, tokenPerBchText } from '../strategyForms';
+import { TEMPLATE_FORMS, amountText, decimalOf, fromServerParams, satsPerUnitFromTokenPerBch, shareOf, toBaseUnits, toServerParams, tokenPerBchText, visibleFields } from '../strategyForms';
 
 const PUSD = 'dfe50223c8d5cba8dcef8dff6d92b61deb88a8ba44947367f2b746487b56039b';
 const MUSD = 'b4863d5773c7a269b6fe3b9f7ce2ce1098ab71c0b046ef2a39058d5e30b1f353';
@@ -49,8 +49,23 @@ describe('template params', () => {
   });
 
   it('missing fields are reported by label', () => {
-    expect(() => toServerParams('accumulate', { token: PUSD, from: '400', to: '600', steps: '4', feeBps: '30' }, dec)).toThrow(/deposit is required/);
-    expect(() => toServerParams('range', { token: PUSD, low: '600', high: '400', feeBps: '30' }, dec)).toThrow(/price is required/);
+    expect(() => toServerParams('accumulate', { token: PUSD, from: '400', to: '600', steps: '4', feeBps: '30' }, dec)).toThrow(/^BCH is required/);
+    expect(() => toServerParams('range', { token: PUSD, low: '600', high: '400', feeBps: '30' }, dec)).toThrow(/^Market price is required/);
+    expect(() => toServerParams('fixed', { token: PUSD, side: 'ask', price: '480', feeBps: '30' }, dec)).toThrow(/^Token deposit is required/);
+    expect(() => toServerParams('fixed', { token: PUSD, side: 'bid', price: '480', deposit: '0.01', proceeds: 'recycle', feeBps: '30' }, dec)).toThrow(/^Trade-back price is required/);
+    expect(() => toServerParams('multi-pair', { token1: PUSD, price1: '500', token2: MUSD, price2: '502', token3: PUSD, depositBch: '0.01', feeBps: '30' }, dec)).toThrow(/^Price for token 3 is required/);
+  });
+
+  it('rungs and steps must be whole numbers from 2 to 10', () => {
+    const base = { token: PUSD, low: '520', high: '480', depositBch: '0.0006', feeBps: '30' };
+    expect(() => toServerParams('grid', { ...base, rungs: '4.5' }, dec)).toThrow(/Rungs must be a whole number from 2 to 10/);
+    expect(() => toServerParams('grid', { ...base, rungs: '11' }, dec)).toThrow(/from 2 to 10/);
+    expect((toServerParams('grid', { ...base, rungs: '10' }, dec) as any).rungs).toBe(10);
+  });
+
+  it('recycling pair starting with the token takes the token deposit', () => {
+    const p = toServerParams('recycling-pair', { token: PUSD, buy: '500', sell: '400', start: 'token', depositTokens: '3', feeBps: '30' }, dec);
+    expect(p).toMatchObject({ start: 'token', deposit: '300' });
   });
 
   it('grid: the market price and both deposits are sent only when given', () => {
@@ -75,6 +90,46 @@ describe('template params', () => {
     expect(p.proceeds).toBe('recycle');
     const w = toServerParams('accumulate', { token: PUSD, from: '520', to: '600', steps: '3', depositBch: '0.0003', proceeds: 'wallet', feeBps: '30' }, dec) as any;
     expect(w.proceeds).toBeUndefined();
+  });
+});
+
+describe('visible fields', () => {
+  const keys = (id: string, v: Record<string, string>) => visibleFields(id, v).map(f => f.key);
+
+  it('fixed: the deposit matches the side; trade-back price only when recycling', () => {
+    expect(keys('fixed', { side: 'bid', proceeds: 'wallet' })).toContain('deposit');
+    expect(keys('fixed', { side: 'bid', proceeds: 'wallet' })).not.toContain('depositTokens');
+    expect(keys('fixed', { side: 'ask', proceeds: 'wallet' })).toContain('depositTokens');
+    expect(keys('fixed', { side: 'ask', proceeds: 'wallet' })).not.toContain('deposit');
+    expect(keys('fixed', { side: 'bid', proceeds: 'wallet' })).not.toContain('recyclePrice');
+    const recycle = visibleFields('fixed', { side: 'bid', proceeds: 'recycle' }).find(f => f.key === 'recyclePrice');
+    expect(recycle?.optional).toBeFalsy();
+  });
+
+  it('recycling pair: only the deposit for the start side', () => {
+    expect(keys('recycling-pair', { start: 'bch' })).toEqual(expect.arrayContaining(['depositBch']));
+    expect(keys('recycling-pair', { start: 'bch' })).not.toContain('depositTokens');
+    expect(keys('recycling-pair', { start: 'token' })).not.toContain('depositBch');
+  });
+
+  it('multi-pair: price 3 appears with token 3; strength only for curve and bid-ask', () => {
+    expect(keys('multi-pair', {})).not.toContain('price3');
+    expect(keys('multi-pair', { token3: PUSD })).toContain('price3');
+    expect(keys('range', { shape: 'spot' })).not.toContain('strength');
+    expect(keys('range', { shape: 'curve' })).toContain('strength');
+  });
+});
+
+describe('balance shares', () => {
+  it('never more than the balance, exact text', () => {
+    expect(shareOf(999n, 1)).toBe(999n);
+    expect(shareOf(1000n, 0.25)).toBe(250n);
+    expect(shareOf(10_000n, 1, 5000n)).toBe(5000n);
+    expect(shareOf(1000n, 1, 5000n)).toBe(0n);
+    expect(amountText(123_456_789n, 8)).toBe('1.23456789');
+    expect(amountText(150n, 2)).toBe('1.5');
+    expect(amountText(7n, 0)).toBe('7');
+    expect(amountText(0n, 8)).toBe('0');
   });
 });
 
