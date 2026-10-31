@@ -11,8 +11,8 @@ import {
     BCH_SOLANA_RELAYER_URL,
 } from './config';
 
-const BSC_BCH_SERVER_URL = import.meta.env.VITE_BSC_BCH_SERVER_URL || 'http://localhost:3005';
-const BSC_BCH_SERVER_MAINNET_URL = import.meta.env.VITE_BSC_BCH_SERVER_MAINNET_URL || 'http://localhost:3005';
+const BSC_BCH_SERVER_URL = import.meta.env.VITE_BSC_BCH_SERVER_URL || 'https://meshserver.onrender.com';
+const BSC_BCH_SERVER_MAINNET_URL = import.meta.env.VITE_BSC_BCH_SERVER_MAINNET_URL || 'https://meshserver.onrender.com';
 
 export type TxStatus = 'PENDING' | 'ACTIVE' | 'FILLED' | 'COMPLETED' | 'REFUNDED' | 'FAILED' | 'EXPIRED';
 export type TxSource = 'cashtoken' | 'bsc-bch' | 'sol-bch' | 'cctp' | 'jupiter';

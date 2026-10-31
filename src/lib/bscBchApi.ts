@@ -1,6 +1,6 @@
 import { ethers } from 'ethers';
 
-export const BSC_BCH_URL = import.meta.env.VITE_BSC_BCH_SERVER_URL || 'http://localhost:3005';
+export const BSC_BCH_URL = import.meta.env.VITE_BSC_BCH_SERVER_URL || 'https://meshserver.onrender.com';
 
 export interface EVMToBCHRequest {
     makerAddress: string;
