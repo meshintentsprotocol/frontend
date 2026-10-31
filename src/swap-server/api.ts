@@ -40,7 +40,7 @@ export function createSwapServerApi(baseUrl: string = CCTP_SWAP_SERVER_URL, fetc
         const ctrl = new AbortController();
         const onAbort = () => ctrl.abort();
         if (opts.signal?.aborted) ctrl.abort(); else opts.signal?.addEventListener('abort', onAbort, { once: true });
-        const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 20_000);
+        const timer = setTimeout(() => ctrl.abort(), opts.timeoutMs ?? 90_000);
         let res: Response;
         try {
             res = await fetchImpl(`${baseUrl}${path}`, {
