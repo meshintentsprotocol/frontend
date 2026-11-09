@@ -34,7 +34,7 @@ const footerLinks = {
     ],
     resources: [
         { label: 'Knowledgehub', href: '/kb' },
-        { label: 'Documentation', href: 'https://docs.intentsprotocol.xyz/', external: true },
+        { label: 'Documentation', href: '/docs' },
         { label: 'GitHub', href: 'https://github.com/Intents-Swaps', external: true },
         { label: 'Terms of Service', href: '/terms' },
         { label: 'Privacy Policy', href: '/privacy' },
@@ -50,7 +50,7 @@ const socialLinks = [
     },
     {
         icon: BookOpen,
-        href: 'https://docs.intentsprotocol.xyz/',
+        href: '/docs',
         label: 'Docs',
         color: 'hover:text-emerald-400 hover:bg-emerald-400/10 hover:border-emerald-400/30'
     },

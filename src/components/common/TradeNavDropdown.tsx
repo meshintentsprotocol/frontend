@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeftRight, TrendingUp, Clock, Zap, Landmark } from 'lucide-react';
+import { ArrowLeftRight, TrendingUp, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface TradePageItem {
@@ -21,23 +21,15 @@ export const TRADE_PAGES: TradePageItem[] = [
   },
   {
     name: 'Limit',
-    path: '/trade?mode=limit',
+    path: '/trade?type=limit',
     description: 'Set a target price, fill when ready',
     icon: TrendingUp,
-    badge: 'Soon',
   },
   {
     name: 'TWAP',
     path: '/twap',
     description: 'Time-weighted average price execution',
     icon: Clock,
-    badge: 'Soon',
-  },
-  {
-    name: 'Borrow',
-    path: '/borrow',
-    description: 'Borrow against your BTC, or try it in demo',
-    icon: Landmark,
   },
 ];
 
@@ -120,10 +112,10 @@ export function TradeNavDropdown({ className }: TradeNavDropdownProps) {
             <div className="rounded-2xl border border-white/10 bg-[#0C0C0E]/95 backdrop-blur-xl shadow-2xl p-1.5 flex flex-col gap-0.5">
               {TRADE_PAGES.map((item) => {
                 const Icon = item.icon;
-                const isActive =
-                  location.pathname === '/trade' && item.path === '/trade' && !location.search
-                    ? true
-                    : location.pathname + location.search === item.path;
+                const isSwap = item.name === 'Swap' && location.pathname === '/trade' && !location.search.includes('type=limit') && !location.search.includes('type=twap');
+                const isLimit = item.name === 'Limit' && location.pathname === '/trade' && (location.search.includes('limit'));
+                const isTwap = item.name === 'TWAP' && (location.pathname === '/twap' || location.search.includes('twap'));
+                const isActive = isSwap || isLimit || isTwap;
 
                 return (
                   <Link

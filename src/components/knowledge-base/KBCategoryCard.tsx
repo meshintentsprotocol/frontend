@@ -1,11 +1,5 @@
 /**
- * KBCategoryCard - Premium Category Card
- * 
- * Features:
- * - Bento-style card with hover effects
- * - Gradient icon backgrounds
- * - Smooth animations on hover
- * - Article count badge
+ * KBCategoryCard - Production-grade Sharp Category Card
  */
 
 import { cn } from '@/lib/utils';
@@ -27,12 +21,16 @@ const iconMap: Record<string, any> = {
 };
 
 const gradientMap: Record<string, string> = {
-    'book-open': 'from-primary/20 to-primary/5',
-    'file-text': 'from-blue-500/20 to-blue-500/5',
-    'git-commit': 'from-purple-500/20 to-purple-500/5',
-    'alert-circle': 'from-red-500/20 to-red-500/5',
-    'lightbulb': 'from-secondary/20 to-secondary/5',
-    'newspaper': 'from-orange-500/20 to-orange-500/5',
+    'book-open': 'from-primary/15 to-transparent',
+    'file-text': 'from-blue-500/15 to-transparent',
+    'git-commit': 'from-purple-500/15 to-transparent',
+    'alert-circle': 'from-red-500/15 to-transparent',
+    'lightbulb': 'from-secondary/15 to-transparent',
+    'newspaper': 'from-orange-500/15 to-transparent',
+    'layers': 'from-emerald-500/15 to-transparent',
+    'code': 'from-cyan-500/15 to-transparent',
+    'globe': 'from-indigo-500/15 to-transparent',
+    'zap': 'from-amber-500/15 to-transparent',
 };
 
 const iconColorMap: Record<string, string> = {
@@ -42,6 +40,10 @@ const iconColorMap: Record<string, string> = {
     'alert-circle': 'text-red-500',
     'lightbulb': 'text-secondary',
     'newspaper': 'text-orange-500',
+    'layers': 'text-emerald-500',
+    'code': 'text-cyan-500',
+    'globe': 'text-indigo-500',
+    'zap': 'text-amber-500',
 };
 
 interface KBCategoryCardProps {
@@ -51,62 +53,90 @@ interface KBCategoryCardProps {
     articleCount: number;
     icon: string;
     index?: number;
+    compact?: boolean;
 }
 
-export function KBCategoryCard({ id, title, description, articleCount, icon, index = 0 }: KBCategoryCardProps) {
+export function KBCategoryCard({
+    id,
+    title,
+    description,
+    articleCount,
+    icon,
+    index = 0,
+    compact = false,
+}: KBCategoryCardProps) {
     const Icon = iconMap[icon] || FileText;
-    const gradient = gradientMap[icon] || 'from-primary/20 to-primary/5';
+    const gradient = gradientMap[icon] || 'from-primary/15 to-transparent';
     const iconColor = iconColorMap[icon] || 'text-primary';
+
+    if (compact) {
+        return (
+            <Link to={`/kb/${id}`} className="block group h-full">
+                <div className="h-full flex items-center gap-3.5 p-3.5 rounded-xl border border-zinc-200/80 dark:border-zinc-800/80 bg-card/60 dark:bg-zinc-900/60 hover:border-primary/50 hover:bg-card dark:hover:bg-zinc-900 transition-all duration-200">
+                    <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 bg-zinc-100 dark:bg-zinc-800', iconColor)}>
+                        <Icon className="w-4 h-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                        <h4 className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors truncate">
+                            {title}
+                        </h4>
+                        <p className="text-xs text-muted-foreground truncate font-mono">
+                            {articleCount} {articleCount === 1 ? 'article' : 'articles'}
+                        </p>
+                    </div>
+                    <ArrowRight className="w-3.5 h-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all flex-shrink-0" />
+                </div>
+            </Link>
+        );
+    }
 
     return (
         <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 16 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            transition={{ delay: index * 0.1 }}
+            transition={{ delay: Math.min(index * 0.05, 0.25) }}
+            className="h-full"
         >
             <Link to={`/kb/${id}`} className="block h-full group">
                 <div className={cn(
-                    "bento-card-interactive h-full min-h-[200px] flex flex-col",
-                    "grainy"
+                    'h-full min-h-[170px] flex flex-col p-5 md:p-6 rounded-xl relative overflow-hidden',
+                    'bg-card dark:bg-zinc-900/80 backdrop-blur-sm',
+                    'border border-zinc-200/80 dark:border-zinc-800/80',
+                    'hover:border-primary/50 dark:hover:border-primary/50',
+                    'hover:shadow-lg hover:shadow-primary/5',
+                    'transition-all duration-300 hover:-translate-y-0.5'
                 )}>
-                    {/* Gradient background on hover */}
+                    {/* Subtle gradient wash on hover */}
                     <div className={cn(
-                        "absolute inset-0 bg-gradient-to-br opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-3xl",
+                        'absolute inset-0 bg-gradient-to-br opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-xl pointer-events-none',
                         gradient
                     )} />
 
                     <div className="relative z-10 flex flex-col h-full">
-                        {/* Icon */}
-                        <div className={cn(
-                            "w-12 h-12 rounded-2xl flex items-center justify-center mb-4",
-                            "bg-zinc-100 dark:bg-zinc-800 group-hover:scale-110 transition-transform duration-300",
-                            iconColor
-                        )}>
-                            <Icon className="w-6 h-6" />
+                        <div className="flex items-center justify-between mb-3">
+                            <div className={cn(
+                                'w-10 h-10 rounded-lg flex items-center justify-center',
+                                'bg-zinc-100 dark:bg-zinc-800 group-hover:scale-105 transition-transform duration-200',
+                                iconColor
+                            )}>
+                                <Icon className="w-5 h-5" />
+                            </div>
+                            <span className="text-[11px] font-mono font-medium px-2 py-0.5 rounded bg-muted/60 text-muted-foreground">
+                                {articleCount} {articleCount === 1 ? 'doc' : 'docs'}
+                            </span>
                         </div>
 
-                        {/* Title */}
-                        <h3 className="text-xl font-bold mb-2 group-hover:text-primary transition-colors">
+                        <h3 className="text-base md:text-lg font-bold mb-1.5 group-hover:text-primary transition-colors">
                             {title}
                         </h3>
 
-                        {/* Description */}
-                        <p className="text-sm text-muted-foreground line-clamp-2 mb-4 flex-grow">
+                        <p className="text-xs md:text-sm text-muted-foreground line-clamp-2 mb-3 flex-grow leading-relaxed">
                             {description}
                         </p>
 
-                        {/* Footer */}
-                        <div className="flex items-center justify-between pt-4 border-t border-border/50">
-                            <span className="text-xs font-medium text-muted-foreground">
-                                {articleCount} articles
-                            </span>
-                            <span className={cn(
-                                "flex items-center gap-1 text-sm font-medium opacity-0 group-hover:opacity-100 transition-all duration-300 translate-x-2 group-hover:translate-x-0",
-                                iconColor
-                            )}>
-                                Explore <ArrowRight className="w-4 h-4" />
-                            </span>
+                        <div className="flex items-center gap-1 text-xs font-semibold text-primary opacity-0 group-hover:opacity-100 transition-opacity pt-2 border-t border-border/50">
+                            Explore track <ArrowRight className="w-3.5 h-3.5 ml-0.5 group-hover:translate-x-0.5 transition-transform" />
                         </div>
                     </div>
                 </div>

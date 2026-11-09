@@ -35,6 +35,20 @@ const features: FeatureSection[] = [
     image: '/featuresimages/limitordercashtokens.png'
   },
   {
+    id: 'borrow-and-lend',
+    title: 'Borrow & Lend',
+    description: 'Instant collateralized liquidity without selling your crypto. Non-custodial lending pools backed by Bitcoin Cash and multi-chain assets, featuring real-time LTV tracking, transparent liquidation thresholds, and competitive borrowing APYs.',
+    bgColor: 'bg-zinc-950 bg-gradient-to-br from-zinc-950 to-amber-950/20 grainy',
+    image: '/featuresimages/crosschainswap.png'
+  },
+  {
+    id: 'meshfinance-liquidity',
+    title: 'MeshFinance Liquidity Layer',
+    description: 'Single-asset concentrated liquidity powering every trading pair. Deposit pure BCH once to support multiple cross-chain routes simultaneously with automated sub-cent rebalancing and an N× capital efficiency multiplier.',
+    bgColor: 'bg-zinc-950 bg-gradient-to-tr from-zinc-950 to-purple-950/20 grainy',
+    image: '/featuresimages/chainsonintents.png'
+  },
+  {
     id: 'mobile-first',
     title: 'Mobile first',
     description: 'Designed from the ground up for mobile users. A completely responsive and app-like experience that you can use anywhere, anytime directly from your browser.',
@@ -86,7 +100,9 @@ export const FeaturesPage: React.FC = () => {
   const ref3 = useRef<HTMLDivElement>(null);
   const ref4 = useRef<HTMLDivElement>(null);
   const ref5 = useRef<HTMLDivElement>(null);
-  const refs = [ref0, ref1, ref2, ref3, ref4, ref5];
+  const ref6 = useRef<HTMLDivElement>(null);
+  const ref7 = useRef<HTMLDivElement>(null);
+  const refs = [ref0, ref1, ref2, ref3, ref4, ref5, ref6, ref7];
 
   return (
     <div className="flex flex-col min-h-screen bg-background text-foreground font-sans overflow-x-clip">

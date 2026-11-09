@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { LayoutDashboard, Star, Users } from 'lucide-react';
+import { LayoutDashboard, Star, Users, Trophy } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface PortfolioPageItem {
@@ -18,6 +18,12 @@ export const PORTFOLIO_PAGES: PortfolioPageItem[] = [
     path: '/portfolio',
     description: 'Balances, positions and activity',
     icon: LayoutDashboard,
+  },
+  {
+    name: 'Leaderboard',
+    path: '/mesh/leaderboard',
+    description: 'Liquidity providers ranked by volume and fees',
+    icon: Trophy,
   },
   {
     name: 'Points',
@@ -44,7 +50,7 @@ export function PortfolioNavDropdown({ className }: PortfolioNavDropdownProps) {
   const location = useLocation();
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const isPortfolioActive = location.pathname === '/portfolio' || location.pathname.startsWith('/portfolio/');
+  const isPortfolioActive = location.pathname === '/portfolio' || location.pathname.startsWith('/portfolio/') || location.pathname === '/mesh/leaderboard';
 
   const handleMouseEnter = () => {
     if (timeoutRef.current) {

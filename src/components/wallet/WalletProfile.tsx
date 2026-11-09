@@ -30,7 +30,8 @@ import { SendModal } from '@/components/portfolio/SendModal';
 import { ReceiveModal } from '@/components/portfolio/ReceiveModal';
 import { Chameleon, type ChamMood } from './Chameleon';
 import { NetworkSwitch } from './NetworkControl';
-import { WalletIcon } from './WalletIcon';
+import { WalletIcon, CHAIN_LOGOS, CHAIN_NAMES } from './WalletIcon';
+import type { ExternalWallet } from '@/lib/wallets/types';
 import { WalletEditCard } from './WalletLookEditor';
 
 const KIND_LABEL: Record<ConnectedWallet['kind'], string> = {
@@ -43,22 +44,29 @@ const KIND_LABEL: Record<ConnectedWallet['kind'], string> = {
 
 const BRAND = '#10b981';
 
+/** A row's BCH balance. Other chains show their chain instead: their balances live in the Tokens tab. */
 function WalletBalance({ wallet, isMainnet, live, hidden }: { wallet: ConnectedWallet; isMainnet: boolean; live: boolean; hidden: boolean }) {
-    const extWallet = useMemo(() => {
-        if (wallet.kind === 'main') return null;
+    const isBch = wallet.family === 'bch';
+    const isExt = wallet.kind !== 'main';
+    const extWallet = useMemo<ExternalWallet | null>(() => {
+        if (!isBch || !isExt) return null;
         return {
             id: wallet.id,
-            family: wallet.family,
-            source: wallet.kind,
+            family: 'bch',
+            source: wallet.kind as ExternalWallet['source'],
+            network: isMainnet ? 'mainnet' : 'testnet',
             address: wallet.address,
             label: wallet.name,
-            createdAt: 0,
+            connectedAt: 0,
         };
-    }, [wallet.id, wallet.family, wallet.kind, wallet.address, wallet.name]);
+    }, [isBch, isExt, wallet.id, wallet.kind, wallet.address, wallet.name, isMainnet]);
 
-    const isExt = wallet.kind !== 'main';
-    const extBal = useBchWalletBalance({ wallet: isExt ? extWallet : null, isMainnet, refetchMs: live ? 20_000 : 0 });
-    const mainBal = useBchAddressBalance({ address: !isExt ? wallet.address : null, isMainnet, refetchMs: live ? 20_000 : 0 });
+    const extBal = useBchWalletBalance({ wallet: extWallet, isMainnet, refetchMs: live ? 20_000 : 0 });
+    const mainBal = useBchAddressBalance({ address: isBch && !isExt ? wallet.address : null, isMainnet, refetchMs: live ? 20_000 : 0 });
+
+    if (!isBch) {
+        return <span className="text-[10px] font-semibold text-white/40">{CHAIN_NAMES[wallet.family]}</span>;
+    }
 
     const data = isExt ? extBal.data : mainBal.data;
     const isLoading = isExt ? extBal.isLoading : mainBal.isLoading;
@@ -91,7 +99,7 @@ function WalletRow({ wallet, isMainnet, hidden, onPick, onEdit, isPending }: {
             style={wallet.active ? { borderColor: `${wallet.color}55` } : undefined}
         >
             <button type="button" onClick={onPick} aria-pressed={wallet.active} className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
-                <WalletIcon id={wallet.iconId} color={wallet.color} size={36} active={wallet.active} />
+                <WalletIcon id={wallet.iconId} src={wallet.iconUrl} chain={wallet.family} color={wallet.color} size={36} active={wallet.active} />
                 <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-1.5">
                         <span className="truncate text-[13px] font-bold text-white">{wallet.name}</span>
@@ -152,7 +160,7 @@ interface WalletProfileProps {
 export function WalletProfile({ totalValue, loading, busy, onRefresh, balanceVisible, onBalanceVisibleChange }: WalletProfileProps) {
     const wdk = useWDK();
     const ext = useExternalBCHWallet();
-    const { wallets, active, setActive } = useWallets();
+    const { wallets, groups, primary: active, activeFor, setActive } = useWallets();
     const pendingSign = usePendingSign();
     const [expanded, setExpanded] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -187,7 +195,10 @@ export function WalletProfile({ totalValue, loading, busy, onRefresh, balanceVis
 
     const color = active?.color ?? BRAND;
     const mainLocked = !wdk.isInitialized && wdk.hasStoredWallet;
-    const externals = ext.wallets.length;
+    // Every external wallet, on every chain and network: log out disconnects all of them.
+    const externals = ext.allWallets.length;
+    const canLogOut = wdk.isInitialized || externals > 0;
+    const listCount = groups.reduce((n, g) => n + g.wallets.length, 0);
 
     const copyActive = () => {
         if (!active) return;
@@ -196,14 +207,16 @@ export function WalletProfile({ totalValue, loading, busy, onRefresh, balanceVis
         react('happy');
     };
 
-    const pick = (id: string) => {
-        if (id === active?.id) return;
-        if (pendingSign && pendingSign.walletId === active?.id) {
+    const pick = (w: ConnectedWallet) => {
+        const current = activeFor(w.family);
+        if (w.active) return;
+        if (pendingSign && current && pendingSign.walletId === current.id) {
             const ok = typeof window !== 'undefined' ? window.confirm(`Cancel the request open in ${pendingSign.walletLabel}?`) : true;
             if (!ok) return;
             pendingSign.cancel('Switched wallet');
         }
-        setActive(id);
+        setActive(w.id, w.family);
+        if (groups.length > 1) toast.success(`${w.name} is now your ${CHAIN_NAMES[w.family]} wallet`);
         react('happy');
     };
 
@@ -211,7 +224,7 @@ export function WalletProfile({ totalValue, loading, busy, onRefresh, balanceVis
         const hadMain = wdk.isInitialized;
         if (hadMain) wdk.disconnect();
         if (externals > 0) ext.disconnectAll();
-        toast.success(hadMain && externals === 0 ? 'Wallet locked' : 'Wallets disconnected');
+        toast.success(hadMain && externals === 0 ? 'Wallet locked' : externals === 1 && !hadMain ? 'Wallet disconnected' : 'Wallets disconnected');
         walletUi.closeWallet();
     };
 
@@ -236,7 +249,7 @@ export function WalletProfile({ totalValue, loading, busy, onRefresh, balanceVis
                                 title="Your wallets"
                                 className="flex min-w-0 items-center gap-2.5 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
                             >
-                                <WalletIcon id={active.iconId} color={active.color} size={34} active />
+                                <WalletIcon id={active.iconId} src={active.iconUrl} chain={active.family !== 'bch' ? active.family : undefined} color={active.color} size={34} active />
                                 <span className="min-w-0">
                                     <span className="flex items-center gap-1">
                                         <span className="truncate text-sm font-bold leading-tight text-white">{active.name}</span>
@@ -335,7 +348,7 @@ export function WalletProfile({ totalValue, loading, busy, onRefresh, balanceVis
                     />
                 )}
                 <Action icon={<Plus className="h-4 w-4" />} label="Add" onClick={() => walletUi.openConnect()} />
-                {active && (
+                {canLogOut && (
                     <Action
                         tone="danger"
                         icon={externals > 0 || !wdk.hasStoredWallet ? <LogOut className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
@@ -350,11 +363,23 @@ export function WalletProfile({ totalValue, loading, busy, onRefresh, balanceVis
                 <div ref={listRef} id="wallet-profile-list" className="border-t border-white/[0.07] p-2 animate-in fade-in-50 slide-in-from-top-1 duration-200">
                     <div className="flex items-center justify-between px-1.5 pb-1.5 pt-0.5">
                         <span className="text-[10px] font-semibold uppercase tracking-wider text-white/40">Wallets · {wallets.length}</span>
-                        <span className="text-[10px] text-white/35">Tap one to make it active</span>
+                        <span className="text-[10px] text-white/35">{groups.length > 1 ? 'One active per chain' : 'Tap one to make it active'}</span>
                     </div>
-                    <ul className="max-h-[200px] space-y-1 overflow-y-auto lg-scroll">
-                        {wallets.map(w => (
-                            <WalletRow key={w.id} wallet={w} isMainnet={isMainnet} hidden={!balanceVisible} onPick={() => pick(w.id)} onEdit={() => setEditingId(w.id)} isPending={pendingSign?.walletId === w.id} />
+                    <ul className={cn('space-y-1 overflow-y-auto lg-scroll', listCount > 4 ? 'max-h-[260px]' : 'max-h-[200px]')}>
+                        {groups.map(group => (
+                            <li key={group.family} className="space-y-1">
+                                {groups.length > 1 && (
+                                    <div className="flex items-center gap-1.5 px-1.5 pt-1 text-[9px] font-bold uppercase tracking-wider text-white/35">
+                                        <img src={CHAIN_LOGOS[group.family]} alt="" className="h-3 w-3" />
+                                        {CHAIN_NAMES[group.family]}
+                                    </div>
+                                )}
+                                <ul className="space-y-1">
+                                    {group.wallets.map(w => (
+                                        <WalletRow key={`${w.family}:${w.id}`} wallet={w} isMainnet={isMainnet} hidden={!balanceVisible} onPick={() => pick(w)} onEdit={() => setEditingId(w.id)} isPending={pendingSign?.walletId === w.id} />
+                                    ))}
+                                </ul>
+                            </li>
                         ))}
                         {mainLocked && (
                             <li>

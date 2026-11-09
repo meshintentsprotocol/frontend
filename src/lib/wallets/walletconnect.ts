@@ -22,6 +22,9 @@ export function getWalletConnectProjectId(): string {
         console.warn('[WalletConnect] VITE_WC_PROJECT_ID is not set; using fallback dev project id.');
         return DEFAULT_DEV_PROJECT_ID;
     }
+    // A production build without its own Reown project shares the dev id: its domain
+    // allow-list and quotas are not ours, so wallets may refuse to pair. Say so loudly.
+    console.error('[WalletConnect] VITE_WC_PROJECT_ID is not set in this production build; falling back to the dev project id. Set it to the Reown project that allow-lists this domain.');
     return DEFAULT_DEV_PROJECT_ID;
 }
 

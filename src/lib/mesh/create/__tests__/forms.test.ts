@@ -22,6 +22,7 @@ describe('form defaults', () => {
     expect(d.feeBps).toBe('30');
     expect(d.shape).toBe('spot');
     expect(formDefaults('range', 'chipnet').binStepBps).toBe('100');
+    expect(formDefaults('stable-pair', 'chipnet').feeBps).toBe('10');
   });
 });
 

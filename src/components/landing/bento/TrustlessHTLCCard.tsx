@@ -4,14 +4,16 @@
  * Features:
  * - Animated HTLC lock/unlock visualization
  * - Two chain pills (BCH ↔ SOL) connected by a glowing hash secret
- * - Purple/violet gradient mesh background
+ * - Triggered on hover (desktop) or scroll in-view (mobile)
+ * - Purple/cyan gradient mesh background
  * - "No bridges. No trust. Just math." messaging
  */
 
 import { cn } from '@/lib/utils';
 import { ShieldCheck, Lock, Unlock } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useBentoAnimationTrigger } from './useBentoAnimationTrigger';
 
 interface TrustlessHTLCCardProps {
     className?: string;
@@ -29,31 +31,51 @@ const PHASE_DURATION: Record<Phase, number> = {
 const PHASE_ORDER: Phase[] = ['locking', 'locked', 'unlocking', 'settled'];
 
 export function TrustlessHTLCCard({ className }: TrustlessHTLCCardProps) {
+    const { cardRef, isActive, isMobile, onMouseEnter, onMouseLeave } = useBentoAnimationTrigger();
     const [phase, setPhase] = useState<Phase>('locking');
+    const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const clearPhaseTimer = () => {
+        if (timerRef.current) {
+            clearTimeout(timerRef.current);
+            timerRef.current = null;
+        }
+    };
 
     useEffect(() => {
-        let timeout: ReturnType<typeof setTimeout>;
+        if (!isActive) {
+            clearPhaseTimer();
+            setPhase('locking');
+            return;
+        }
+
         const advance = (p: Phase) => {
-            timeout = setTimeout(() => {
+            timerRef.current = setTimeout(() => {
                 const idx = PHASE_ORDER.indexOf(p);
                 const next = PHASE_ORDER[(idx + 1) % PHASE_ORDER.length];
                 setPhase(next);
                 advance(next);
             }, PHASE_DURATION[p]);
         };
-        advance(phase);
-        return () => clearTimeout(timeout);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
 
-    const isSettled = phase === 'settled';
-    const isLocked = phase === 'locked' || phase === 'unlocking';
+        advance(phase);
+
+        return () => clearPhaseTimer();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isActive]);
+
+    const isSettled = isActive && phase === 'settled';
+    const isLocked = isActive && (phase === 'locked' || phase === 'unlocking');
 
     return (
         <div
+            ref={cardRef}
+            onMouseEnter={onMouseEnter}
+            onMouseLeave={onMouseLeave}
             className={cn(
-                'bento-card h-full min-h-[280px] flex flex-col',
+                'bento-card h-full min-h-[280px] flex flex-col transition-all duration-300 cursor-pointer',
                 'mesh-gradient-cyan grainy',
+                isActive && 'ring-1 ring-cyan-500/30',
                 className
             )}
         >
@@ -63,7 +85,10 @@ export function TrustlessHTLCCard({ className }: TrustlessHTLCCardProps) {
                     <h3 className="text-xl md:text-2xl font-bold mb-1">Trustless Settlement</h3>
                     <p className="text-muted-foreground text-sm">No bridges. No trust. Just math.</p>
                 </div>
-                <div className="w-10 h-10 rounded-xl bg-cyan-500/10 flex items-center justify-center">
+                <div className={cn(
+                    "w-10 h-10 rounded-xl flex items-center justify-center transition-colors duration-300",
+                    isActive ? "bg-cyan-500/20 shadow-sm shadow-cyan-500/20" : "bg-cyan-500/10"
+                )}>
                     <ShieldCheck className="w-5 h-5 text-cyan-400" />
                 </div>
             </div>
@@ -139,10 +164,14 @@ export function TrustlessHTLCCard({ className }: TrustlessHTLCCardProps) {
                             'text-[10px] font-semibold tracking-wide uppercase mt-1',
                             isSettled ? 'text-emerald-400' : 'text-cyan-400'
                         )}>
-                            {phase === 'locking' && 'Locking…'}
-                            {phase === 'locked' && 'Locked'}
-                            {phase === 'unlocking' && 'Revealing…'}
-                            {phase === 'settled' && '✓ Settled'}
+                            {!isActive
+                                ? (isMobile ? 'BCH ↔ Solana atomic' : 'Hover to simulate HTLC')
+                                : (
+                                    phase === 'locking' ? 'Locking…' :
+                                        phase === 'locked' ? 'Locked' :
+                                            phase === 'unlocking' ? 'Revealing…' :
+                                                '✓ Settled'
+                                )}
                         </span>
                     </div>
 

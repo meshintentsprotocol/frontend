@@ -169,7 +169,7 @@ export default function McpPage() {
                                     <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
                                 </Button>
                                 <Button asChild size="lg" variant="outline" className="h-14 w-full rounded-full border-white/20 bg-white/5 px-8 text-base font-bold text-white backdrop-blur-md hover:bg-white/10 sm:w-auto">
-                                    <Link to="/docs/api/mcp/overview"><BookOpen className="mr-2 h-4 w-4 text-zinc-400" />Read the docs</Link>
+                                    <Link to="/docs"><BookOpen className="mr-2 h-4 w-4 text-zinc-400" />Read the docs</Link>
                                 </Button>
                             </div>
                         </motion.div>
@@ -363,13 +363,13 @@ export default function McpPage() {
                         </div>
                         <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
                             <Button asChild className="h-12 rounded-full bg-emerald-400 px-6 font-bold text-black hover:bg-emerald-300">
-                                <Link to="/docs/api/mcp/tools">Tool reference <ArrowRight className="ml-2 h-4 w-4" /></Link>
+                                <Link to="/docs">Tool reference <ArrowRight className="ml-2 h-4 w-4" /></Link>
                             </Button>
                             <Button asChild variant="outline" className="h-12 rounded-full border-white/20 bg-white/5 px-6 font-bold text-white hover:bg-white/10">
-                                <Link to="/docs/api/mcp/self-host">Self-hosting guide</Link>
+                                <Link to="/docs">Self-hosting guide</Link>
                             </Button>
                             <Button asChild variant="outline" className="h-12 rounded-full border-white/20 bg-white/5 px-6 font-bold text-white hover:bg-white/10">
-                                <Link to="/docs/api/overview">Mesh REST API</Link>
+                                <Link to="/docs">Mesh REST API</Link>
                             </Button>
                         </div>
                     </div>

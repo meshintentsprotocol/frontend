@@ -143,11 +143,12 @@ export function bchOrderLinks(order: BCHOrder, isMainnet: boolean): OrderLink[] 
     if (source) links.push({ label: 'Source', href: source });
 
     const refunded = order.status === 'refunded';
-    const endTx = refunded ? (order.refundTxid ?? order.fillTxid) : order.status === 'cancelled' ? (order.cancelTxid ?? order.fillTxid) : order.fillTxid;
+    const closed = order.status === 'cancelled' || order.status === 'closed';
+    const endTx = refunded ? (order.refundTxid ?? order.fillTxid) : closed ? (order.cancelTxid ?? order.fillTxid) : order.fillTxid;
     // A refund or a cancel returns the funds on the chain they were locked on.
-    const endChain = refunded || order.status === 'cancelled' ? src : dst;
+    const endChain = refunded || closed ? src : dst;
     const end = isUrl(order.destExplorerUrl) ? order.destExplorerUrl : endTx ? txUrlOn(endChain, endTx, isMainnet) : undefined;
-    if (end && end !== source) links.push({ label: refunded ? 'Refund' : order.status === 'cancelled' ? 'Cancel' : 'Fill', href: end });
+    if (end && end !== source) links.push({ label: refunded ? 'Refund' : order.status === 'cancelled' ? 'Cancel' : order.status === 'closed' ? 'Close' : 'Fill', href: end });
     return links;
 }
 
@@ -167,10 +168,23 @@ const BCH_STATUS: Record<BCHOrderStatus, { label: string; tone: OrderTone; hint:
     // Not terminal either: the covenant is still funded and the solver retries.
     failed: { label: 'Retrying', tone: 'waiting', hint: 'Execution failed; the solver is retrying. Your funds are still locked in the contract.' },
     abandoned: { label: 'Not funded', tone: 'idle', hint: 'This order was created but never funded, so it was dropped. Nothing was locked.' },
+    awaiting_funding: { label: 'Funding', tone: 'progress', hint: 'Your funding transaction was sent. The order opens once the server sees it, usually within a minute.' },
+    underfunded: { label: 'Underfunded', tone: 'waiting', hint: 'The funding does not cover the order, so it cannot fill. Everything sent is refunded at expiry.' },
+    closed: { label: 'Closed', tone: 'idle', hint: 'The order was closed by a transaction outside this app (for example a cancel from another device).' },
     unknown: { label: 'Unknown', tone: 'idle', hint: 'The relayer no longer has a record of this order. Check the explorer link.' },
 };
 
-const TERMINAL: ReadonlySet<BCHOrderStatus> = new Set(['filled', 'claimed', 'cancelled', 'refunded', 'abandoned', 'unknown']);
+const TERMINAL: ReadonlySet<BCHOrderStatus> = new Set(['filled', 'claimed', 'cancelled', 'refunded', 'abandoned', 'closed', 'unknown']);
+
+/** An open limit order reads "Open"; an open market order "Filling". Other statuses as listed. */
+function bchStatusMeta(order: BCHOrder) {
+    if (order.status === 'pending' && order.swapType === 'same-chain') {
+        return order.orderType === 'limit'
+            ? { label: 'Open', tone: 'progress' as OrderTone, hint: 'Live on chain. It fills as soon as a route pays your price, until it expires.' }
+            : { label: 'Filling', tone: 'progress' as OrderTone, hint: 'Dutch auction running. The price steps down until a solver fills it.' };
+    }
+    return BCH_STATUS[order.status] ?? BCH_STATUS.pending;
+}
 
 /** Human phrasing for the relayer's skip categories. */
 export const SKIP_REASON_LABEL: Record<string, string> = {
@@ -179,6 +193,7 @@ export const SKIP_REASON_LABEL: Record<string, string> = {
     insufficient_capital: 'Waiting on solver liquidity',
     no_pool: 'No liquidity pool for this token',
     quote_error: 'Could not price this route',
+    no_route: 'No route at this price yet',
     other: 'Waiting for a solver',
 };
 
@@ -193,8 +208,9 @@ export function bchOrderTimer(order: BCHOrder, nowSec: number): { text: string; 
     if (order.orderType === 'limit' && order.expiryTime) {
         const remaining = order.expiryTime - nowSec;
         if (remaining > 0) return { text: `expires in ${formatDuration(remaining)}`, tone: 'amber' };
-        const refundEta = order.expiryTime + MTP_LAG_SECONDS - nowSec;
-        return refundEta > 0 ? { text: `refund in ~${formatDuration(refundEta)}`, tone: 'red' } : { text: 'refunding…', tone: 'red' };
+        const refundAt = order.refundableFrom && order.refundableFrom >= order.expiryTime ? order.refundableFrom : order.expiryTime + MTP_LAG_SECONDS;
+        const refundEta = refundAt - nowSec;
+        return refundEta > 0 ? { text: `expired · refund in ~${formatDuration(refundEta)}`, tone: 'red' } : { text: 'expired · refunding…', tone: 'red' };
     }
     if (order.orderType === 'market' && order.duration) {
         const elapsed = Math.max(0, Math.min(nowSec - createdSec, order.duration));
@@ -213,16 +229,34 @@ export function bchOrderClaimable(order: BCHOrder): boolean {
 
 /** True when the maker can cancel this limit order now, without waiting for its expiry. */
 export const bchOrderCancellable = (order: BCHOrder): boolean =>
-    order.swapType === 'same-chain' && order.orderType === 'limit' && order.status === 'pending';
+    order.swapType === 'same-chain' && order.orderType === 'limit' && order.status === 'pending'
+    && !(order.expiryTime && Date.now() / 1000 > order.expiryTime);
 
-/** True when the locked funds can be asked back. */
+/**
+ * True when the locked funds can be asked back. A same-chain order refunds by itself
+ * once chain time passes its deadline; the button only nudges the server, so it shows
+ * from then on and not before.
+ */
 export function bchOrderRefundable(order: BCHOrder, nowSec: number): boolean {
+    if (order.swapType === 'same-chain') {
+        if (order.status !== 'expired' && order.status !== 'underfunded' && order.status !== 'pending') return false;
+        const from = order.refundableFrom ?? (order.expiryTime ? order.expiryTime + MTP_LAG_SECONDS : undefined);
+        return !!from && nowSec >= from;
+    }
     return order.status === 'failed' || order.status === 'expired' || (order.status === 'pending' && !!order.expiryTime && nowSec > order.expiryTime);
+}
+
+/** What arrived, when the server reported it; else the order's own buy amount. */
+function bchBuyAmount(order: BCHOrder): number | string {
+    if (order.status === 'filled' && order.receivedUnits && order.buyToken) {
+        return Number(order.receivedUnits) / 10 ** (order.buyToken.decimals || 0);
+    }
+    return order.buyAmount;
 }
 
 export function fromBchOrder(order: BCHOrder, opts: { isMainnet: boolean }): OrderItem {
     const [src, dst] = chainsOfSwapType(order.swapType);
-    const meta = BCH_STATUS[order.status] ?? BCH_STATUS.pending;
+    const meta = bchStatusMeta(order);
     const same = order.swapType === 'same-chain';
     const settled = order.status === 'filled' || order.status === 'claimed';
     const open = !TERMINAL.has(order.status);
@@ -233,7 +267,7 @@ export function fromBchOrder(order: BCHOrder, opts: { isMainnet: boolean }): Ord
         open,
         createdAt: order.createdAt,
         sell: { symbol: order.sellToken?.symbol ?? '?', amount: formatAmount(order.sellAmount), icon: order.sellToken?.icon, chain: order.sellToken?.chain ?? src },
-        buy: { symbol: order.buyToken?.symbol ?? '?', amount: formatAmount(order.buyAmount), icon: order.buyToken?.icon, chain: order.buyToken?.chain ?? dst },
+        buy: { symbol: order.buyToken?.symbol ?? '?', amount: formatAmount(bchBuyAmount(order)), icon: order.buyToken?.icon, chain: order.buyToken?.chain ?? dst },
         buyApprox: !settled && order.orderType !== 'limit',
         status: bchOrderClaimable(order) && order.status !== 'claimable' ? { ...BCH_STATUS.claimable } : meta,
         route: same
@@ -365,19 +399,22 @@ export function bchOrderSteps(order: BCHOrder, opts: { isMainnet: boolean; nowSe
     const srcName = CHAIN_NAME[src] ?? src;
     const dstName = CHAIN_NAME[dst] ?? dst;
     const settled = s === 'filled' || s === 'claimed';
-    const returned = s === 'refunded' || s === 'cancelled';
+    const returned = s === 'refunded' || s === 'cancelled' || s === 'closed';
     const neverFunded = s === 'abandoned';
-    const funded = !neverFunded && (!!order.txid || s !== 'pending' || same);
+    const funding = s === 'awaiting_funding';
+    const funded = !neverFunded && !funding && (!!order.txid || s !== 'pending' || same);
     const timer = bchOrderTimer(order, opts.nowSec);
     const skip = order.lastSkipCategory ? SKIP_REASON_LABEL[order.lastSkipCategory] : undefined;
-    const got = `${formatAmount(order.buyAmount)} ${order.buyToken?.symbol ?? ''}`.trim();
+    const got = `${formatAmount(bchBuyAmount(order))} ${order.buyToken?.symbol ?? ''}`.trim();
 
     const steps: DialogStep[] = [
         { key: 'create', label: 'Order created', state: 'done' },
         {
             key: 'fund', label: same ? 'Funds locked in the covenant' : `Funds locked on ${srcName}`, link: sourceLink(links),
-            state: neverFunded ? 'failed' : funded ? 'done' : 'active',
-            note: neverFunded ? 'Never funded, so nothing was locked.' : undefined,
+            state: neverFunded ? 'failed' : s === 'underfunded' ? 'attention' : funded ? 'done' : 'active',
+            note: neverFunded ? 'Never funded, so nothing was locked.'
+                : funding ? 'Waiting for the server to see your funding transaction.'
+                : s === 'underfunded' ? BCH_STATUS.underfunded.hint : undefined,
         },
     ];
 
@@ -386,9 +423,10 @@ export function bchOrderSteps(order: BCHOrder, opts: { isMainnet: boolean; nowSe
         steps.push({
             key: 'fill',
             label: order.orderType === 'limit' ? 'Waiting for your price' : 'Dutch auction',
-            state: neverFunded ? 'pending' : settled ? 'done' : returned ? 'done' : s === 'expired' || s === 'failed' ? 'attention' : 'active',
+            state: neverFunded || funding || s === 'underfunded' ? 'pending' : settled ? 'done' : returned ? 'done' : s === 'expired' || s === 'failed' ? 'attention' : 'active',
             note: !waiting ? (returned ? 'Not filled.' : undefined)
-                : s === 'expired' ? BCH_STATUS.expired.hint
+                : funding || s === 'underfunded' ? undefined
+                : s === 'expired' ? [BCH_STATUS.expired.hint, timer?.text].filter(Boolean).join(' · ')
                 : s === 'failed' ? BCH_STATUS.failed.hint
                 : [skip, timer?.text].filter(Boolean).join(' · ') || undefined,
         });
@@ -409,14 +447,14 @@ export function bchOrderSteps(order: BCHOrder, opts: { isMainnet: boolean; nowSe
     }
 
     steps.push(returned
-        ? { key: 'end', label: s === 'cancelled' ? 'Cancelled, funds returned' : 'Refunded', state: 'done', link: endLink(links) }
+        ? { key: 'end', label: s === 'cancelled' ? 'Cancelled, funds returned' : s === 'closed' ? 'Closed outside this app' : 'Refunded', state: 'done', link: endLink(links) }
         : { key: 'end', label: settled ? (s === 'claimed' ? 'Claimed' : 'Filled') : 'Received', state: settled ? 'done' : 'pending', link: settled ? endLink(links) : undefined, note: settled ? `${got} arrived` : undefined });
     return steps;
 }
 
 /** One line under the order card's title. */
 export function bchOrderHeadline(order: BCHOrder): string {
-    return (BCH_STATUS[order.status] ?? BCH_STATUS.pending).hint;
+    return bchStatusMeta(order).hint;
 }
 
 const SLICE_STATE: Record<string, DialogStep['state']> = {

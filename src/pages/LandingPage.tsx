@@ -4,8 +4,8 @@ import { FAQ } from '@/components/landing/FAQ';
 import { BentoSection } from '@/components/landing/bento';
 import { LiveOnSection } from '@/components/landing/LiveOnSection';
 import { HeroStatsSection } from '@/components/landing/HeroStatsSection';
-import { RoadmapSection } from '@/components/landing/roadmap/RoadmapSection';
-import { KnowledgeBaseLandingSection } from '@/components/landing/KnowledgeBaseLandingSection';
+import { OneEcosystemSection } from '@/components/landing/OneEcosystemSection';
+import { TryBetaBanner } from '@/components/landing/TryBetaBanner';
 
 export default function LandingPage() {
     return (
@@ -22,13 +22,13 @@ export default function LandingPage() {
                 {/* Live On Network Banner */}
                 <LiveOnSection />
 
-                {/* The Road to 2026 */}
-                <RoadmapSection />
-
-                {/* Knowledge Base & Deep-Dive Articles */}
-                <KnowledgeBaseLandingSection />
+                {/* One Ecosystem Section (1inch-style product pillars) */}
+                <OneEcosystemSection />
 
                 <FAQ />
+
+                {/* Try Beta Banner */}
+                <TryBetaBanner />
             </main>
 
             <Footer />

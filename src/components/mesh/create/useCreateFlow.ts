@@ -23,10 +23,11 @@ import { defaultEngineCaps, enginesFor, pickEngine, type Engine } from '@/lib/me
 import { formDefaults, mainTokenOf, priceKeysFor, suggestQueryFor, tokenCatsOf, tokenValuesOf, trialDeposits } from '@/lib/mesh/create/forms';
 import { clearDraft, draftKey, loadDraft, saveDraft } from '@/lib/mesh/create/draft';
 import { depositCards, oneSidedNote, type DepositCard } from '@/lib/mesh/create/deposits';
+import { settingsCheck } from '@/lib/mesh/create/checks';
 import { amountText, fromServerParams, satsPerUnitFromTokenPerBch, shareOf, toBaseUnits, toServerParams } from '@/lib/mesh/v3/strategyForms';
 import { formatPrice, tokensPerBchFromSats } from '@/lib/mesh/create/price';
 import {
-  depthBins, sideWeights, v3RangeLayout, v4RangeLayout,
+  depthBins, sideWeights, v3PreviewBins, v3RangeLayout, v4RangeLayout,
   type ChartBin, type RangeLayout, type ShapeName, type StrengthName,
 } from '@/lib/mesh/create/layout';
 import { bchMaxReserve, linkedSats, linkedTokens } from '@/lib/mesh/create/linked';
@@ -111,6 +112,14 @@ export function useCreateFlow({ strategy, token, tokenB, replaces, simple = fals
   const decimalsOf = useCallback((c: string) => infoOf(c).decimals, [infoOf]);
   const mainToken = mainTokenOf(values);
   const main = infoOf(mainToken);
+  /** symbol of the token a form field names ('token', 'tokenA', 'token2', …) */
+  const symbolOfKey = useCallback((k: string) => infoOf(values[k] ?? '').symbol, [infoOf, values]);
+  /** "BCH/pUSD", "pUSD/MUSD", "BCH · pUSD/MUSD/TT" */
+  const pairLabel = def.pair === 'token-token'
+    ? `${symbolOfKey('tokenA')}/${symbolOfKey('tokenB')}`
+    : def.pair === 'bch-multi'
+      ? `BCH · ${tokenCats.map(c => infoOf(c).symbol).join('/')}`
+      : `BCH/${main.symbol}`;
 
   /** Pick a token for a field: its old prices no longer apply, so they clear and refill from the market. */
   const setToken = useCallback((field: string, category: string) => {
@@ -190,12 +199,14 @@ export function useCreateFlow({ strategy, token, tokenB, replaces, simple = fals
     if (!def.template) return { sides, error: 'Custom pools use their own form' };
     if (!decimalsReady) return { sides, error: 'Loading token details…' };
     if (rangeLayout?.error) return { sides, error: rangeLayout.error };
+    const check = settingsCheck(strategy, values, symbolOfKey);
+    if (check) return { sides, error: check };
     try {
       return { sides, params: toServerParams(template, trialDeposits(template, values, sides), decimalsOf) };
     } catch (e: any) {
       return { sides, error: e?.message ?? String(e) };
     }
-  }, [def.template, template, values, decimalsKey, rangeLayout]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [def.template, template, strategy, values, decimalsKey, rangeLayout, symbolOfKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // V3: the server previews the exact pools (warnings, notes) with the trial deposits
   const trialInput = useMemo((): StrategyInput | undefined => (trial.params && engine === 'v3' && def.template
@@ -256,14 +267,27 @@ export function useCreateFlow({ strategy, token, tokenB, replaces, simple = fals
   const settingsWarnings: string[] = engine === 'v3' ? layoutPreview.data?.warnings ?? [] : v4Probe.data?.warnings ?? [];
   const settingsNotes: string[] = engine === 'v3' ? layoutPreview.data?.notes ?? [] : [];
 
+  /** the V3 pools the server previewed for these settings, as chart bars (V3 strategies on one token) */
+  const previewBins = useMemo((): ChartBin[] => (engine === 'v3' && layoutPreview.data && mainToken && decimalsReady && def.pair === 'bch-token'
+    ? v3PreviewBins(layoutPreview.data.pools, mainToken, main.decimals) : []),
+  [engine, layoutPreview.data, mainToken, decimalsKey, main.decimals, def.pair]); // eslint-disable-line react-hooks/exhaustive-deps
+  /** a grid's rungs that start in BCH and in the token, from the preview */
+  const ladderCounts = useMemo(() => {
+    const pools = layoutPreview.data?.pools;
+    if (strategy !== 'grid' || !pools?.length) return null;
+    const ask = pools.filter(p => p.deposit.token).length;
+    return { bidCount: pools.length - ask, askCount: ask };
+  }, [strategy, layoutPreview.data]);
+
   // ── step 3: deposits ─────────────────────────────────────────────────────
-  const counts: { bidCount?: number; askCount?: number } = rangeLayout && !rangeLayout.error ? { bidCount: rangeLayout.bidCount, askCount: rangeLayout.askCount } : {};
+  const counts: { bidCount?: number; askCount?: number } = rangeLayout && !rangeLayout.error
+    ? { bidCount: rangeLayout.bidCount, askCount: rangeLayout.askCount }
+    : ladderCounts ?? {};
   const marketText = marketP ? formatPrice(marketP) : undefined;
-  const symbolOfKey = useCallback((k: string) => infoOf(values[k] ?? '').symbol, [infoOf, values]);
   const cards: DepositCard[] = useMemo(() => depositCards(strategy, values, { ...counts, marketText, symbol: symbolOfKey }, engine),
     [strategy, values, counts.bidCount, counts.askCount, marketText, symbolOfKey, engine]); // eslint-disable-line react-hooks/exhaustive-deps
   const oneSided = oneSidedNote(strategy, counts, main.symbol);
-  const twoSided = cards.length === 2 && strategy === 'range';
+  const twoSided = cards.length === 2 && (strategy === 'range' || strategy === 'grid');
   const [linked, setLinked] = useState(true);
   const weights = useMemo(() => sideWeights({ bidCount: counts.bidCount ?? 0, askCount: counts.askCount ?? 0 }, shape, strength),
     [counts.bidCount, counts.askCount, shape, strength]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -320,11 +344,14 @@ export function useCreateFlow({ strategy, token, tokenB, replaces, simple = fals
     if (!wallet.pkh) return { error: wallet.unavailable ?? 'Connect a wallet' };
     if (!decimalsReady) return { error: 'Loading token details…' };
     for (const c of cards) if (c.required && !(values[c.key] ?? '').trim()) return { error: `Enter the ${c.asset === 'bch' ? 'BCH' : symbolOfKey(c.asset)} to deposit` };
-    if (strategy === 'range' && cards.length && cards.every(c => !(values[c.key] ?? '').trim())) return { error: 'Enter an amount to deposit' };
+    if ((strategy === 'range' || strategy === 'grid' || strategy === 'stable-pair') && cards.length && cards.every(c => !(values[c.key] ?? '').trim())) {
+      return { error: strategy === 'stable-pair' ? `Enter ${symbolOfKey('tokenA')} or ${symbolOfKey('tokenB')} to deposit` : 'Enter an amount to deposit' };
+    }
     // both sides of a two-sided range hold something: the bins on the empty side would have nothing to trade
     if (twoSided) {
       for (const c of cards) {
-        if (!(values[c.key] ?? '').trim()) return { error: c.asset === 'bch' ? 'Enter the BCH for the bins above the price' : `Enter the ${main.symbol} for the bins below the price` };
+        const unit = strategy === 'grid' ? 'rungs' : engine === 'v4' ? 'bins' : 'pools';
+        if (!(values[c.key] ?? '').trim()) return { error: c.asset === 'bch' ? `Enter the BCH for the ${unit} above the price` : `Enter the ${main.symbol} for the ${unit} below the price` };
       }
     }
     try {
@@ -337,7 +364,7 @@ export function useCreateFlow({ strategy, token, tokenB, replaces, simple = fals
     } catch (e: any) {
       return { error: e?.message ?? String(e) };
     }
-  }, [def.template, template, strategy, wallet.pkh, wallet.unavailable, values, cards, twoSided, main.symbol, decimalsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [def.template, template, strategy, engine, wallet.pkh, wallet.unavailable, values, cards, twoSided, main.symbol, symbolOfKey, decimalsKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── deploy ───────────────────────────────────────────────────────────────
   const symbolOf = useCallback((c: string) => infoOf(c).symbol, [infoOf]);
@@ -378,8 +405,8 @@ export function useCreateFlow({ strategy, token, tokenB, replaces, simple = fals
     wallet, balances, balancesLoading: balancesQ.isLoading,
     values, set, patch, setToken, applySuggestion,
     tokenCats, infoOf, decimalsOf, decimalsReady, mainToken, main,
-    suggest, marketCtx, midOf, mainMid, marketP, marketText,
-    rangeLayout, depthChart, layoutPreview, v4Probe, trial, settingsError, settingsChecking, settingsWarnings, settingsNotes,
+    suggest, marketCtx, ctxOf, midOf, mainMid, marketP, marketText, pairLabel, symbolOfKey,
+    rangeLayout, depthChart, layoutPreview, previewBins, ladderCounts, v4Probe, trial, settingsError, settingsChecking, settingsWarnings, settingsNotes,
     cards, oneSided, twoSided, linked, setLinked, setDeposit, setFraction, decOfCard,
     input, v3, v4, deploy, canReview,
     created, resetCreated: () => setCreated(null),

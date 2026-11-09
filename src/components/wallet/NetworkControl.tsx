@@ -23,7 +23,7 @@ export function NetworkSwitch({ className }: { className?: string }) {
             <span
                 aria-hidden
                 className={cn(
-                    'absolute top-0.5 bottom-0.5 w-[calc(50%-2px)] rounded-full border transition-[left,background-color,border-color] duration-300 ease-[cubic-bezier(0.34,1.4,0.64,1)]',
+                    'absolute top-0.5 bottom-0.5 w-[calc(50%-2px)] rounded-full border transition-[left,background-color,border-color] duration-300 [transition-timing-function:cubic-bezier(0.34,1.4,0.64,1)]',
                     isMainnet ? 'left-[50%] border-emerald-400/35 bg-emerald-500/20' : 'left-0.5 border-white/[0.12] bg-white/[0.1]',
                 )}
             />

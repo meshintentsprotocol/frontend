@@ -18,7 +18,7 @@ import { Check, ShieldCheck, ExternalLink } from 'lucide-react';
 import { useWallets, shortAddress, ConnectedWallet } from '@/hooks/useWallets';
 import { ExternalWallet } from '@/lib/wallets/types';
 import { defaultWalletColor } from '@/lib/walletStore';
-import { WalletIcon, WalletGlyph } from '../WalletIcon';
+import { WalletIcon } from '../WalletIcon';
 import { WalletLookEditor } from '../WalletLookEditor';
 import { addressSet as wizAddressSet } from '@/lib/wallets/wizardconnect';
 
@@ -72,10 +72,11 @@ export function ConnectedCard({ wallet, onDone }: ConnectedCardProps) {
             {/* Wallet summary row */}
             <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] p-3">
                 <WalletIcon
+                    id={connectedWallet.iconId}
                     src={connectedWallet.iconUrl}
-                    iconId={connectedWallet.iconId}
+                    chain={wallet.family}
                     color={connectedWallet.color}
-                    className="h-10 w-10 shrink-0 text-white"
+                    size={40}
                 />
                 <div className="min-w-0 flex-1">
                     <div className="text-xs font-semibold text-white truncate">
@@ -96,6 +97,11 @@ export function ConnectedCard({ wallet, onDone }: ConnectedCardProps) {
                     <span>Cham scans and uses all {wizAddressSet(wallet.id).length} addresses in this HD wallet.</span>
                 ) : wallet.source === 'walletconnect' ? (
                     <span>Only this one address is used.</span>
+                ) : wallet.source === 'appkit' ? (
+                    <span>
+                        Cham keeps one external {chainName} wallet at a time; connecting another replaces this one.
+                        Every transaction is shown in {connectedWallet.name} for you to approve.
+                    </span>
                 ) : (
                     <span>Connected via browser extension.</span>
                 )}

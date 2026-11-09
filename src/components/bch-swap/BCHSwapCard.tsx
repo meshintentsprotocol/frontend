@@ -37,6 +37,10 @@ import { pusdToken, PUSD_MAINNET, PUSD_CHIPNET } from '@/lib/pusd';
 import { useSwapServerCard } from '@/swap-server/useSwapServerCard';
 import { SwapServerButton, SwapServerDetails } from '@/swap-server/SwapServerCardParts';
 import { walletUi } from '@/lib/walletUi';
+import { useMeshQuote } from './useMeshQuote';
+import { ExpiryPicker } from './ExpiryPicker';
+import { toBaseUnits, fromBaseUnits, ratioString, limitBuyUnits, plainDecimal } from '@/lib/units';
+import { DEFAULT_EXPIRY_SECONDS, describeDuration, formatExpiryAt } from '@/lib/expiry';
 
 // ============================================================================
 // BCH Swap Card — Uniswap-style unified swap card
@@ -64,15 +68,8 @@ export interface BCHSwapCardProps {
     transparent?: boolean;
 }
 
-/** Limit-order expiry is capped at 30 days (2592000s) — both the presets below and the custom input. */
-const EXPIRY_MAX_SECONDS = 2592000;
-
-const EXPIRY_PRESETS = [
-    { value: '3600', label: '1H' },
-    { value: '86400', label: '1D' },
-    { value: '604800', label: '7D' },
-    { value: String(EXPIRY_MAX_SECONDS), label: '30D' },
-];
+/** A limit price as a plain decimal with 8 significant digits. */
+const priceString = (n: number): string => (n > 0 && Number.isFinite(n) ? plainDecimal(Number(n.toPrecision(8))) : '');
 
 /**
  * Limit-price presets, as multiples of the reference ratio.
@@ -131,8 +128,8 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
     const [duration, setDuration] = useState(() => getDefaultAuctionDuration());
     const durationPct = ((duration - AUCTION_DURATION.min) / (AUCTION_DURATION.max - AUCTION_DURATION.min)) * 100;
     const [limitPrice, setLimitPrice] = useState<string>('');
-    const [expiryValue, setExpiryValue] = useState<string>('86400');
-    const [customExpiryValue, setCustomExpiryValue] = useState<string>('');
+    /** Seconds a limit order stays open; null while a custom entry is invalid. */
+    const [expirySeconds, setExpirySeconds] = useState<number | null>(DEFAULT_EXPIRY_SECONDS);
 
     const [xmrAddress, setXmrAddress] = useState('');
     const [xmrViewKey, setXmrViewKey] = useState('');
@@ -295,26 +292,45 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
         return 0;
     }, [sellToken, buyToken, getTokenPrice]);
 
+    const sameChain = swapType === 'same-chain' && !ssHandled;
+    const network: 'mainnet' | 'chipnet' = wdk.bchNetwork === 'mainnet' ? 'mainnet' : 'chipnet';
+
+    /** What the user typed, in base units. Null while empty or not a number. */
+    const sellUnits = useMemo(() => {
+        const u = toBaseUnits(sellAmount, sellToken.decimals || 0);
+        return u !== null && u > 0n ? u : null;
+    }, [sellAmount, sellToken.decimals]);
+
     /**
-     * The ratio a solver will actually fill at, from the relayer's own quote.
-     *
-     * This matters because the two numbers are not the same. `currentMarketRatio` is
-     * USD mid with no solver margin, and limit orders used to be seeded from it — so
-     * the default limit order sat exactly at mid, below the solver's profit floor,
-     * and could never fill. The relayer's quote already nets off its margin *and*
-     * (since the recent relayer work) the on-chain fill costs, so a price anchored
-     * here is genuinely fillable.
-     *
-     * 0 while unknown — no quote yet, cross-chain, or the relayer is unreachable.
+     * The Mesh server's quote: the route the solver takes for this order right now.
+     * It prices market swaps and is the reference for limit prices. See useMeshQuote
+     * for the debounce, the cancelling of stale answers and the 15 s refresh.
      */
-    const [fillableRatio, setFillableRatio] = useState(0);
-    const [quoteUnavailable, setQuoteUnavailable] = useState(false);
+    const meshQuote = useMeshQuote({
+        relayerUrl: network === 'mainnet' ? CASHTOKEN_RELAYER_MAINNET_URL : CASHTOKEN_RELAYER_URL,
+        network,
+        sellCategory: sellToken.categoryId || 'BCH',
+        buyCategory: buyToken.categoryId || 'BCH',
+        sellUnits,
+        enabled: sameChain,
+    });
+    const quoteUnits = meshQuote.current?.buyUnits;
+
+    /**
+     * The ratio a solver will actually fill at ("1 sell = N buy"), from the quote.
+     * USD mid has no solver margin, so a limit order seeded from it may never fill.
+     * 0 while unknown.
+     */
+    const [crossFillableRatio, setCrossFillableRatio] = useState(0);
+    const fillableRatio = sameChain
+        ? (quoteUnits && sellUnits ? Number(ratioString(quoteUnits, buyToken.decimals || 0, sellUnits, sellToken.decimals || 0)) : 0)
+        : crossFillableRatio;
+    const quoteUnavailable = sameChain && meshQuote.status === 'error';
     /**
      * Set when the mesh server priced the pair but settles intents on a different
-     * BCH network (e.g. a chipnet server asked for a mainnet quote). The quote is a
-     * real Cauldron price, but an intent created from it would never be filled.
+     * BCH network (e.g. a chipnet server asked for a mainnet quote).
      */
-    const [settlementBlocked, setSettlementBlocked] = useState<string | null>(null);
+    const settlementBlocked = sameChain ? (meshQuote.settlementBlocked ?? null) : null;
 
     const getRelayerTokenSymbol = useCallback((token: Token) => {
         if (token.chain === 'solana') {
@@ -329,90 +345,53 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
         return token.symbol;
     }, []);
 
+    // Cross-chain reference price (the BCH-Solana/Movement relayer).
     useEffect(() => {
-        if (ssHandled || !sellAmount || Number(sellAmount) <= 0) {
-            setFillableRatio(0);
-            setQuoteUnavailable(false);
-            if (ssHandled) setSettlementBlocked(null);
+        const isRelayerCross = ['bch-to-sol', 'sol-to-bch', 'bch-to-mov', 'mov-to-bch', 'sol-to-mov', 'mov-to-sol'].includes(swapType);
+        if (ssHandled || !isRelayerCross || !sellAmount || Number(sellAmount) <= 0) {
+            setCrossFillableRatio(0);
             return;
         }
         let cancelled = false;
-        const isMainnet = wdk.bchNetwork === 'mainnet';
-        const isRelayerCross = ['bch-to-sol', 'sol-to-bch', 'bch-to-mov', 'mov-to-bch', 'sol-to-mov', 'mov-to-sol'].includes(swapType);
-
-        if (swapType === 'same-chain') {
-            const relayerUrl = isMainnet ? CASHTOKEN_RELAYER_MAINNET_URL : CASHTOKEN_RELAYER_URL;
-            const sellCategoryId = sellToken.categoryId || 'BCH';
-            const buyCategoryId = buyToken.categoryId || 'BCH';
-            const sellBaseUnits = Math.floor(Number(sellAmount) * Math.pow(10, sellToken.decimals || 0));
-
-            axios.post(`${relayerUrl}/router/quote`, {
-                sellToken: sellCategoryId || 'BCH',
-                buyToken: buyCategoryId || 'BCH',
-                sellAmount: sellBaseUnits.toString(),
-                network: isMainnet ? 'mainnet' : 'chipnet',
-            }).then(res => {
-                if (cancelled) return;
-                if (res.data?.executable === false) {
-                    setSettlementBlocked(`This mesh server settles on ${res.data.settlementNetwork}, so ${isMainnet ? 'mainnet' : 'chipnet'} swaps can't be filled here. Point the app at a ${isMainnet ? 'mainnet' : 'chipnet'} mesh server to trade.`);
-                    setFillableRatio(0);
-                    setQuoteUnavailable(true);
-                    return;
-                }
-                setSettlementBlocked(null);
-                const units = Number(res.data?.buyAmount ?? 0) / Math.pow(10, buyToken.decimals || 0);
-                setFillableRatio(units > 0 ? units / Number(sellAmount) : 0);
-                setQuoteUnavailable(false);
-            }).catch(err => {
-                if (cancelled) return;
-                // A 404 "no liquidity" still reports which network the server settles on.
-                const data = err?.response?.data;
-                setSettlementBlocked(data?.executable === false
-                    ? `This mesh server settles on ${data.settlementNetwork}; ${isMainnet ? 'mainnet' : 'chipnet'} swaps can't be filled here.`
-                    : null);
-                setFillableRatio(0);
-                setQuoteUnavailable(true);
-            });
-        } else if (isRelayerCross) {
-            setSettlementBlocked(null);
-            const sellSym = getRelayerTokenSymbol(sellToken);
-            const buySym = getRelayerTokenSymbol(buyToken);
-            const sellBaseUnits = Math.floor(Number(sellAmount) * Math.pow(10, sellToken.decimals || 0));
-
+        const timer = setTimeout(() => {
             axios.post(`${BCH_SOLANA_RELAYER_URL}/quote`, {
-                sellToken: sellSym,
-                buyToken: buySym,
-                sellAmount: sellBaseUnits.toString(),
+                sellToken: getRelayerTokenSymbol(sellToken),
+                buyToken: getRelayerTokenSymbol(buyToken),
+                sellAmount: (toBaseUnits(sellAmount, sellToken.decimals || 0) ?? 0n).toString(),
             }).then(res => {
                 if (cancelled) return;
                 const units = Number(res.data?.buyAmount ?? 0) / Math.pow(10, buyToken.decimals || 0);
-                setFillableRatio(units > 0 ? units / Number(sellAmount) : 0);
-                setQuoteUnavailable(false);
-            }).catch(() => {
-                if (cancelled) return;
-                setFillableRatio(0);
-                setQuoteUnavailable(false);
-            });
-        } else {
-            setSettlementBlocked(null);
-            setFillableRatio(0);
-            setQuoteUnavailable(false);
-        }
-
-        return () => { cancelled = true; };
-    }, [swapType, sellAmount, sellToken, buyToken, wdk.bchNetwork, getRelayerTokenSymbol, ssHandled]);
+                setCrossFillableRatio(units > 0 ? units / Number(sellAmount) : 0);
+            }).catch(() => { if (!cancelled) setCrossFillableRatio(0); });
+        }, 350);
+        return () => { cancelled = true; clearTimeout(timer); };
+    }, [swapType, sellAmount, sellToken, buyToken, getRelayerTokenSymbol, ssHandled]);
 
     /** What the limit-price input and its presets are anchored to. */
     const referenceRatio = fillableRatio > 0 ? fillableRatio : currentMarketRatio;
     const referenceIsFillable = fillableRatio > 0;
 
+    /** The quote's own price, rounded down so an order at it never asks for more than the quote pays. */
+    const quotePrice = sameChain && quoteUnits && sellUnits
+        ? ratioString(quoteUnits, buyToken.decimals || 0, sellUnits, sellToken.decimals || 0)
+        : '';
     /**
-     * A limit price above the reference asks for MORE buyToken per sellToken than a
-     * solver will pay, so it will not fill until the market moves. Small tolerance so
-     * the "Fills now" preset does not immediately warn about itself.
+     * A same-chain limit order's buy amount, exact, rounded down. At the quote's own
+     * price it is the quoted amount itself (the rounded price string would lose a unit).
      */
-    const priceAboveFillable = referenceIsFillable
-        && !!limitPrice && Number(limitPrice) > referenceRatio * 1.0005;
+    const limitUnits = useMemo(() => {
+        if (!sellUnits || !limitPrice) return null;
+        if (quoteUnits && limitPrice === quotePrice) return quoteUnits;
+        return limitBuyUnits(sellUnits, sellToken.decimals || 0, limitPrice, buyToken.decimals || 0);
+    }, [sellUnits, limitPrice, quotePrice, quoteUnits, sellToken.decimals, buyToken.decimals]);
+    /**
+     * A limit price above the quote asks for more than a solver pays right now, so the
+     * order rests until the market moves. Same-chain compares exact base units.
+     */
+    const priceAboveFillable = sameChain
+        ? (!!quoteUnits && !!limitUnits && limitUnits > quoteUnits)
+        : referenceIsFillable && !!limitPrice && Number(limitPrice) > referenceRatio * 1.0005;
+    const fillsNowPrice = quotePrice || priceString(referenceRatio);
 
     /**
      * Has the user set the price themselves (typed it, or picked a preset)?
@@ -430,10 +409,10 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
     useEffect(() => { setPriceTouched(false); }, [sellToken, buyToken]);
 
     useEffect(() => {
-        if (!priceTouched && referenceRatio > 0 && orderType === 'limit') {
-            setLimitPrice(referenceRatio.toFixed(6));
+        if (!priceTouched && referenceRatio > 0 && orderType === 'limit' && fillsNowPrice) {
+            setLimitPrice(fillsNowPrice);
         }
-    }, [referenceRatio, priceTouched, orderType]);
+    }, [referenceRatio, fillsNowPrice, priceTouched, orderType]);
 
     // Market auto-fill: derive buyAmount from current USD spot or relayer quote.
     // Skipped when any limit order has an explicit limitPrice — the dedicated
@@ -442,35 +421,13 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
         if (ssHandled) return;
         if (!sellAmount || Number(sellAmount) <= 0) { setBuyAmount(''); return; }
         if (orderType === 'limit' && limitPrice && Number(limitPrice) > 0) return;
-        
-        if (swapType === 'same-chain') {
-            const isMainnet = wdk.bchNetwork === 'mainnet';
-            const relayerUrl = isMainnet ? CASHTOKEN_RELAYER_MAINNET_URL : CASHTOKEN_RELAYER_URL;
-            const sellCategoryId = sellToken.categoryId || (sellToken.chain === 'bch' && sellToken.symbol !== 'BCH' ? sellToken.categoryId : 'BCH');
-            const buyCategoryId = buyToken.categoryId || (buyToken.chain === 'bch' && buyToken.symbol !== 'BCH' ? buyToken.categoryId : 'BCH');
-            const sellBaseUnits = Math.floor(Number(sellAmount) * Math.pow(10, sellToken.decimals || 0));
 
-            axios.post(`${relayerUrl}/router/quote`, {
-                sellToken: sellCategoryId || 'BCH',
-                buyToken: buyCategoryId || 'BCH',
-                sellAmount: sellBaseUnits.toString(),
-                network: isMainnet ? 'mainnet' : 'chipnet'
-            }).then(res => {
-                const quoteBuyAmount = res.data.buyAmount;
-                const buyDecimals = buyToken.decimals || 0;
-                if (res.data.executable === false) {
-                    setBuyAmount('0'); // priced on another network — not fillable here
-                } else if (quoteBuyAmount && Number(quoteBuyAmount) > 0) {
-                    setBuyAmount((Number(quoteBuyAmount) / Math.pow(10, buyDecimals)).toFixed(6));
-                } else {
-                    setBuyAmount('0'); // Relayer says no route / unprofitable
-                }
-            }).catch(e => {
-                console.error("Failed to get quote from relayer", e);
-                setBuyAmount('0'); // Relayer unreachable/paused — don't leave a stale buyAmount on screen
-            });
+        if (swapType === 'same-chain') {
+            // From useMeshQuote: '' while the price for this exact amount is not in yet.
+            setBuyAmount(quoteUnits ? fromBaseUnits(quoteUnits, buyToken.decimals || 0) : '');
             return;
         }
+        let cancelled = false;
 
         // Cross-chain quotes
         const isMainnet = wdk.bchNetwork === 'mainnet';
@@ -488,6 +445,7 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                 buyToken: buyCat,
                 sellAmount: sellBaseUnits.toString()
             }).then(res => {
+                if (cancelled) return;
                 const quoteBuyAmount = res.data.buyAmount;
                 const buyDecimals = buyToken.decimals || 0;
                 if (quoteBuyAmount && Number(quoteBuyAmount) > 0) {
@@ -496,10 +454,11 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                     setBuyAmount('0'); // Unprofitable or no route
                 }
             }).catch(e => {
+                if (cancelled) return;
                 console.error("Failed to get cross-chain EVM quote", e);
                 setBuyAmount('0');
             });
-            return;
+            return () => { cancelled = true; };
         }
 
         // SOL ↔ BCH ↔ Movement cross-chain: hit bch-solana-relayer /quote endpoint
@@ -517,6 +476,7 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                 buyToken: buySym,
                 sellAmount: sellBaseUnits.toString()
             }).then(res => {
+                if (cancelled) return;
                 const quoteBuyAmount = res.data.buyAmount;
                 const buyDecimals = buyToken.decimals || 0;
                 if (quoteBuyAmount && Number(quoteBuyAmount) > 0) {
@@ -525,12 +485,13 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                     setBuyAmount('0');
                 }
             }).catch(e => {
+                if (cancelled) return;
                 // No solver quote → no amount. A USD-mid estimate here looked like a
                 // real quote and produced intents no relayer would fill.
                 console.warn('Relayer quote endpoint error:', e?.message);
                 setBuyAmount('0');
             });
-            return;
+            return () => { cancelled = true; };
         }
 
         // Generic fallback for any other unrecognised cross-chain pair
@@ -543,7 +504,7 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
             estimated = estimated * (1 - SOLVER_EDGE);
             setBuyAmount(estimated.toFixed(6));
         }
-    }, [sellAmount, sellToken, buyToken, getTokenPrice, orderType, limitPrice, swapType, wdk.bchNetwork, ssHandled]);
+    }, [sellAmount, sellToken, buyToken, getTokenPrice, orderType, limitPrice, swapType, wdk.bchNetwork, ssHandled, quoteUnits]);
 
     // A routed pair shows what the swap server quotes ('' until it has).
     const ssBuyAmount = ss.buyAmount;
@@ -558,9 +519,13 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
         if (orderType !== 'limit') return;
         if (!sellAmount || Number(sellAmount) <= 0) return;
         if (!limitPrice || Number(limitPrice) <= 0) return;
+        if (swapType === 'same-chain') {
+            setBuyAmount(limitUnits ? fromBaseUnits(limitUnits, buyToken.decimals || 0) : '');
+            return;
+        }
         const buyAmt = Number(sellAmount) * Number(limitPrice);
         setBuyAmount(buyAmt.toFixed(6));
-    }, [limitPrice, sellAmount, orderType, swapType]);
+    }, [limitPrice, sellAmount, orderType, swapType, limitUnits, buyToken.decimals]);
 
     const flipTokens = () => {
         setFlipping(true);
@@ -632,6 +597,10 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
         if (!sellAmount || Number(sellAmount) <= 0) return false;
         if (!buyAmount || Number(buyAmount) <= 0) return false;
         if (swapType === 'same-chain' && settlementBlocked) return false;
+        // A same-chain swap goes out at the quote for exactly this amount, never a stale one.
+        if (sameChain && orderType === 'market' && !quoteUnits) return false;
+        if (sameChain && orderType === 'limit' && (!limitUnits || limitUnits <= 0n)) return false;
+        if (orderType === 'limit' && expirySeconds === null) return false;
         if (needsBCHWallet && !bchConnected) return false;
         if (needsSolanaWallet && !solanaConnected) return false;
         if (needsEthWallet && !ethConnected) return false;
@@ -639,20 +608,7 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
         if (swapType === 'bch-to-xmr' && (!xmrAddress || !xmrViewKey || !xmrSpendKey)) return false;
         if (swapType === 'xmr-to-bch' && !bchConnected) return false;
         return true;
-    }, [sellAmount, buyAmount, settlementBlocked, needsBCHWallet, bchConnected, needsSolanaWallet, solanaConnected, needsEthWallet, ethConnected, needsMovementWallet, movementConnected, swapType, xmrAddress, xmrViewKey, xmrSpendKey, ssHandled, ss.canSubmit]);
-
-    const parseCustomExpiry = (val: string): number => {
-        const str = val.trim().toLowerCase();
-        const match = str.match(/^([\d.]+)\s*(m|h|d|min|mins|hr|hrs|day|days)?$/);
-        if (!match) return 3600; // fallback 1 hour
-        const num = parseFloat(match[1]);
-        if (isNaN(num)) return 3600;
-        const unit = match[2];
-        const seconds = unit?.startsWith('h') ? num * 3600
-            : unit?.startsWith('d') ? num * 86400
-            : num * 60; // default to minutes
-        return Math.min(EXPIRY_MAX_SECONDS, Math.max(60, Math.floor(seconds)));
-    };
+    }, [sellAmount, buyAmount, settlementBlocked, needsBCHWallet, bchConnected, needsSolanaWallet, solanaConnected, needsEthWallet, ethConnected, needsMovementWallet, movementConnected, swapType, xmrAddress, xmrViewKey, xmrSpendKey, ssHandled, ss.canSubmit, sameChain, orderType, quoteUnits, limitUnits, expirySeconds]);
 
     const handleSwap = async () => {
         if (!canSubmit) return;
@@ -666,10 +622,14 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
             sellAmount: Number(sellAmount), buyAmount: Number(buyAmount),
             swapType, orderType,
             duration: orderType === 'market' ? duration : undefined,
-            expiryTime: orderType === 'limit'
-                ? (expiryValue === 'custom' ? Math.floor(Date.now() / 1000) + parseCustomExpiry(customExpiryValue)
-                  : Math.floor(Date.now() / 1000) + Math.min(EXPIRY_MAX_SECONDS, parseInt(expiryValue)))
-                : undefined,
+            expirySeconds: orderType === 'limit' ? (expirySeconds ?? undefined) : undefined,
+            expiryTime: orderType === 'limit' && expirySeconds ? Math.floor(Date.now() / 1000) + expirySeconds : undefined,
+            // Exact base units for same-chain orders: the quote's own amount for a swap,
+            // the limit price's amount (rounded down) for a limit order.
+            sellUnits: sameChain && sellUnits ? sellUnits.toString() : undefined,
+            buyUnits: !sameChain ? undefined
+                : orderType === 'limit' ? limitUnits?.toString()
+                : quoteUnits?.toString(),
             xmr: swapType === 'bch-to-xmr'
                 ? { viewKey: xmrViewKey, spendKey: xmrSpendKey } : undefined,
         };
@@ -787,6 +747,16 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
             return <Button className="w-full h-14 text-base font-semibold rounded-2xl bg-red-500/15 text-red-300 hover:bg-red-500/15" disabled>Insufficient {sellToken.symbol} balance</Button>;
         }
         if (ss.active) return <SwapServerButton state={ss} onClick={handleSwap} />;
+        const muted = 'w-full h-14 text-base font-semibold rounded-2xl bg-white/[0.04] text-white/40 hover:bg-white/[0.04]';
+        if (sameChain && !isLoading && meshQuote.loading && (orderType === 'market' || !limitPrice)) {
+            return <Button className={muted} disabled><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Fetching price…</Button>;
+        }
+        if (sameChain && !isLoading && orderType === 'market' && meshQuote.status === 'error' && !quoteUnits) {
+            return <Button className={muted} disabled>{meshQuote.error ?? 'No price right now'}</Button>;
+        }
+        if (orderType === 'limit' && expirySeconds === null) {
+            return <Button className={muted} disabled>Choose when the order expires</Button>;
+        }
         return (
             <Button
                 className="w-full h-14 text-base font-semibold bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 rounded-2xl shadow-lg shadow-emerald-500/20 disabled:from-white/[0.04] disabled:to-white/[0.04] disabled:text-white/40 disabled:shadow-none transition-all"
@@ -804,9 +774,7 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
         );
     };
 
-    const expiryLabel = expiryValue === 'custom'
-        ? (customExpiryValue.trim() || '1h')
-        : (EXPIRY_PRESETS.find(p => p.value === expiryValue)?.label ?? '1D');
+    const expiryLabel = expirySeconds ? describeDuration(expirySeconds) : '—';
 
     const formatAddress = (addr: string) => {
         if (addr.length <= 16) return addr;
@@ -953,115 +921,90 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
 
             {/* ─── Limit price card (limit mode only) ─── */}
             {orderType === 'limit' && (
-                <div className="mx-4 mb-3 p-4 rounded-2xl bg-white/[0.03] border border-white/[0.06] space-y-3 animate-in fade-in-50 slide-in-from-top-1 duration-200">
-                    <div className="flex items-center justify-between">
+                <div className="mx-4 mb-3 p-4 rounded-2xl bg-white/[0.03] border border-white/[0.06] space-y-3 animate-in fade-in-50 slide-in-from-top-1 duration-200" data-limit-card>
+                    <div className="flex items-center justify-between gap-2">
                         <span className="text-sm text-white/50">When 1 {sellToken.symbol} is worth</span>
-                        {/* Show the price a solver will actually fill at when we have it,
-                            and say which number is on screen. USD mid was previously shown
-                            as "mkt" and used as the default, which is why the default limit
-                            order could never fill. */}
+                        {/* The price a solver fills at right now, when there is a quote; else USD mid, labelled as such. */}
                         {referenceIsFillable ? (
-                            <span className="text-xs text-emerald-400/70 font-mono" title="Best price a solver will fill at right now, from the relayer's quote">
-                                fills at {referenceRatio.toFixed(6)} {buyToken.symbol}
+                            <span className="text-xs text-emerald-400/70 font-mono truncate" title="Best price a solver fills at right now, from the Mesh server's quote">
+                                fills at {fillsNowPrice} {buyToken.symbol}
                             </span>
-                        ) : currentMarketRatio > 0 && (
-                            <span className="text-xs text-white/30 font-mono" title="Indicative USD mid — a solver needs a margin on top, so an order at this price may not fill">
-                                mkt {currentMarketRatio.toFixed(6)} {buyToken.symbol}
+                        ) : currentMarketRatio > 0 ? (
+                            <span className="text-xs text-white/30 font-mono truncate" title="Indicative USD mid. A solver needs a route at least this good, so an order here may not fill">
+                                mkt {priceString(currentMarketRatio)} {buyToken.symbol}
                             </span>
-                        )}
+                        ) : sameChain && meshQuote.loading ? (
+                            <span className="text-xs text-white/30">fetching price…</span>
+                        ) : null}
                     </div>
                     <div className="flex items-baseline gap-2">
                         <Input
-                            type="number"
+                            type="text"
                             placeholder="0.00"
                             value={limitPrice}
-                            onChange={e => { setLimitPrice(e.target.value); setPriceTouched(true); }}
+                            onChange={e => {
+                                const v = e.target.value.replace(',', '.');
+                                if (!/^\d*\.?\d*$/.test(v)) return;   // digits and one point only
+                                setLimitPrice(v);
+                                setPriceTouched(true);
+                            }}
                             inputMode="decimal"
-                            className="border-none bg-transparent text-xl sm:text-2xl font-bold p-0 h-auto focus-visible:ring-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none flex-1 min-w-0"
+                            autoComplete="off"
+                            aria-label={`Limit price in ${buyToken.symbol} per ${sellToken.symbol}`}
+                            className="border-none bg-transparent text-xl sm:text-2xl font-bold p-0 h-auto focus-visible:ring-0 flex-1 min-w-0"
                         />
                         <span className="text-sm font-semibold text-white/70 shrink-0">{buyToken.symbol}</span>
                     </div>
                     <div className="flex flex-wrap gap-1.5">
-                        {PRICE_PRESETS.map(preset => (
-                            <button
-                                key={preset.label}
-                                disabled={referenceRatio <= 0}
-                                onClick={() => {
-                                    if (referenceRatio <= 0) return;
-                                    setLimitPrice((referenceRatio * preset.mult).toFixed(6));
-                                    // A preset is a deliberate choice; stop re-seeding over it.
-                                    setPriceTouched(true);
-                                }}
-                                title={preset.mult === 1
-                                    ? 'Price this to fill at the current best solver quote'
-                                    : `Ask ${Math.round((preset.mult - 1) * 100)}% above the fillable price — rests until the market moves`}
-                                className="px-2.5 py-1 rounded-full text-xs font-semibold bg-white/[0.04] hover:bg-emerald-500/15 hover:text-emerald-300 text-white/60 border border-white/[0.06] hover:border-emerald-500/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                            >
-                                {preset.label}
-                            </button>
-                        ))}
+                        {PRICE_PRESETS.map(preset => {
+                            const base = Number(fillsNowPrice);
+                            const target = preset.mult === 1 ? fillsNowPrice : priceString(base * preset.mult);
+                            const active = !!limitPrice && limitPrice === target;
+                            return (
+                                <button
+                                    key={preset.label}
+                                    type="button"
+                                    disabled={!(base > 0)}
+                                    onClick={() => {
+                                        if (!(base > 0)) return;
+                                        setLimitPrice(target);
+                                        // A preset is a deliberate choice; stop re-seeding over it.
+                                        setPriceTouched(true);
+                                    }}
+                                    title={preset.mult === 1
+                                        ? 'Price this at the current best quote, so it fills on the next solver cycle'
+                                        : `Ask ${Math.round((preset.mult - 1) * 100)}% more than the current quote. It rests until the market gets there`}
+                                    className={cn(
+                                        'px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
+                                        active
+                                            ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                                            : 'bg-white/[0.04] hover:bg-emerald-500/15 hover:text-emerald-300 text-white/60 border-white/[0.06] hover:border-emerald-500/30',
+                                    )}
+                                >
+                                    {preset.label}
+                                </button>
+                            );
+                        })}
                     </div>
 
-                    {/* The order is still submittable — the maker may well intend to rest
-                        above the market — but silently creating an unfillable order is
-                        what made limit orders look broken. */}
+                    {/* Still submittable: resting above the market is a normal limit order. */}
                     {priceAboveFillable && (
                         <div className="flex items-start gap-2 text-xs text-amber-400/90 bg-amber-500/[0.07] border border-amber-500/20 rounded-lg px-2.5 py-2">
                             <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
                             <span>
-                                Above the fillable price ({referenceRatio.toFixed(6)} {buyToken.symbol}).
-                                This will rest until the market moves rather than filling now.
+                                Above the current price ({fillsNowPrice} {buyToken.symbol}).
+                                The order stays open and fills if the market reaches your price before it expires.
                             </span>
                         </div>
                     )}
                     {quoteUnavailable && (
                         <div className="flex items-start gap-2 text-xs text-white/40 bg-white/[0.03] border border-white/[0.06] rounded-lg px-2.5 py-2">
                             <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
-                            <span>Solver quote unavailable — the price shown is indicative USD mid, not a fillable quote.</span>
+                            <span>{meshQuote.error ?? 'No quote right now'}. You can still place the order; it fills once a route pays your price.</span>
                         </div>
                     )}
-                    <div className="flex flex-col gap-2 pt-2 border-t border-white/[0.04]">
-                        <div className="flex flex-wrap items-center gap-y-2 justify-between">
-                            <span className="text-sm text-white/50 shrink-0">Expires in</span>
-                            <div className="flex flex-wrap gap-1 justify-end">
-                                {EXPIRY_PRESETS.map(p => (
-                                    <button
-                                        key={p.value}
-                                        onClick={() => setExpiryValue(p.value)}
-                                        className={cn(
-                                            'px-2.5 py-0.5 rounded-md text-xs font-semibold transition-colors',
-                                            expiryValue === p.value
-                                                ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
-                                                : 'text-white/50 hover:text-white border border-transparent'
-                                        )}
-                                    >
-                                        {p.label}
-                                    </button>
-                                ))}
-                                <button
-                                    onClick={() => setExpiryValue('custom')}
-                                    className={cn(
-                                        'px-2.5 py-0.5 rounded-md text-xs font-semibold transition-colors',
-                                        expiryValue === 'custom'
-                                            ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
-                                            : 'text-white/50 hover:text-white border border-transparent'
-                                    )}
-                                >
-                                    Custom
-                                </button>
-                            </div>
-                        </div>
-                        {expiryValue === 'custom' && (
-                            <div className="flex justify-end">
-                                <Input
-                                    type="text"
-                                    placeholder="e.g. 5m, 4.5h, 2d (max 30d)"
-                                    value={customExpiryValue}
-                                    onChange={e => setCustomExpiryValue(e.target.value)}
-                                    className="h-7 w-36 text-right text-xs bg-black/40 border-white/10 focus-visible:ring-1 focus-visible:ring-emerald-500/50"
-                                />
-                            </div>
-                        )}
+                    <div className="pt-2 border-t border-white/[0.04]">
+                        <ExpiryPicker value={expirySeconds} onChange={setExpirySeconds} />
                     </div>
                 </div>
             )}
@@ -1237,20 +1180,34 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                                 <QuoteRow
                                     label="Rate"
                                     value={Number(buyAmount) > 0 ? `1 ${sellToken.symbol} ≈ ${(Number(buyAmount) / Number(sellAmount)).toLocaleString(undefined, { maximumFractionDigits: 6 })} ${buyToken.symbol}` : '…'}
-                                    hint={referenceIsFillable ? 'solver quote' : undefined}
+                                    hint={sameChain ? (meshQuote.loading ? 'updating…' : quoteUnits ? 'live quote' : undefined) : referenceIsFillable ? 'solver quote' : undefined}
                                 />
+                            )}
+                            {sameChain && orderType === 'market' && meshQuote.current?.route?.name && (
+                                <QuoteRow label="Route" value={meshQuote.current.route.name} />
                             )}
                             <QuoteRow
                                 label="You receive"
                                 strong
-                                value={Number(buyAmount) > 0 ? `${orderType === 'limit' ? '' : '≈ '}${Number(buyAmount).toLocaleString(undefined, { maximumFractionDigits: 6 })} ${buyToken.symbol}` : 'No quote'}
+                                value={Number(buyAmount) > 0 ? `${orderType === 'limit' ? 'at least ' : '≈ '}${Number(buyAmount).toLocaleString(undefined, { maximumFractionDigits: 8 })} ${buyToken.symbol}`
+                                    : sameChain && meshQuote.loading ? 'Fetching…' : sameChain && meshQuote.error ? meshQuote.error : 'No quote'}
                             />
+                            {sameChain && orderType === 'market' && quoteUnits && (
+                                <QuoteRow
+                                    label="Minimum"
+                                    value={`${Number(fromBaseUnits((quoteUnits * 98n) / 100n, buyToken.decimals || 0)).toLocaleString(undefined, { maximumFractionDigits: 8 })} ${buyToken.symbol}`}
+                                    hint="where the auction ends"
+                                />
+                            )}
+                            {orderType === 'limit' && expirySeconds && (
+                                <QuoteRow label="Expires" value={formatExpiryAt(Math.floor(Date.now() / 1000) + expirySeconds)} hint="refunded automatically if not filled" />
+                            )}
                             {orderType === 'market' && <QuoteRow label="Auction" value={formatAuctionDuration(duration)} hint="price walks down until a solver fills" />}
                             {userAddress && swapType === 'same-chain' && (
                                 <QuoteRow label="To" value={<span className="font-mono text-xs" title={userAddress}>{formatAddress(userAddress.includes(':') ? userAddress.split(':')[1] : userAddress)}</span>} hint="your wallet" />
                             )}
                             {swapType !== 'same-chain' && <QuoteWarning>Cross-chain: it relies on a solver or relayer filling the other side.</QuoteWarning>}
-                            {orderType === 'limit' && quoteUnavailable && <QuoteWarning>No solver quote right now, so the price shown is indicative.</QuoteWarning>}
+                            {orderType === 'limit' && quoteUnavailable && <QuoteWarning>No quote right now. The order still fills once a route pays your price.</QuoteWarning>}
                         </QuoteCard>
                     )}
 

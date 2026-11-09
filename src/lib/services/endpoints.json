@@ -1,0 +1,181 @@
+{
+  "$comment": "Every backend and outside dependency the frontend calls, one entry per setting. Read by the admin Services page (src/admin/pages/ServicesPage.tsx) and by the stack script (devrel-agent-context/deployscritps/stack). Probe logic: ./probe.js. check: {path, equals|includes|present} against the health JSON.",
+  "endpoints": [
+    {
+      "id": "mesh-testnet", "group": "testnet", "kind": "service", "service": "mesh:testnet",
+      "label": "Mesh server", "purpose": "Market data, pools, positions, TWAP, prices, admin console",
+      "var": "VITE_MESH_SERVER_URL", "fallbackVars": ["VITE_MESH_API_URL"], "fallback": "http://localhost:3001",
+      "probe": "health", "path": "/health", "readyPath": "/health/ready",
+      "check": { "path": "network", "equals": "chipnet" }
+    },
+    {
+      "id": "mesh-quotes-testnet", "group": "testnet", "kind": "service", "service": "mesh:testnet",
+      "label": "Swap quotes & intents", "purpose": "Same-chain quotes, limit/market orders, live order updates",
+      "var": "VITE_CASHTOKEN_RELAYER_URL", "fallbackVars": ["VITE_MESH_SERVER_URL"], "fallback": "http://localhost:3001",
+      "probe": "health", "path": "/health", "readyPath": "/health/ready",
+      "check": { "path": "network", "equals": "chipnet" }
+    },
+    {
+      "id": "relayer-testnet", "group": "testnet", "kind": "service", "service": "mesh:testnet",
+      "label": "Intent relayer", "purpose": "Older intent pages (same server as the Mesh server)",
+      "var": "VITE_RELAYER_URL", "fallbackVars": ["VITE_MESH_SERVER_URL"], "fallback": "http://localhost:3001",
+      "probe": "health", "path": "/health",
+      "check": { "path": "network", "equals": "chipnet" }
+    },
+    {
+      "id": "cctp-testnet", "group": "testnet", "kind": "service", "service": "cctp:testnet",
+      "label": "Swap server (testnet)", "purpose": "Cross-chain USDC (Circle CCTP) on testnets",
+      "var": "VITE_CCTP_SWAP_SERVER_URL", "fallback": "http://localhost:3012",
+      "probe": "health", "path": "/health",
+      "check": { "path": "network", "equals": "testnet" }
+    },
+    {
+      "id": "evm-testnet", "group": "testnet", "kind": "service", "service": "evm",
+      "label": "EVM ↔ BCH server", "purpose": "BSC/EVM ↔ BCH swaps on testnet",
+      "var": "VITE_EVM_RELAYER_URL", "fallback": "http://localhost:3005",
+      "probe": "health", "path": "/health",
+      "check": { "path": "bch", "equals": "chipnet" }
+    },
+    {
+      "id": "bsc-bch-testnet", "group": "testnet", "kind": "service", "service": "evm",
+      "label": "EVM ↔ BCH API", "purpose": "EVM ↔ BCH order lookups and refunds (testnet)",
+      "var": "VITE_BSC_BCH_SERVER_URL", "fallback": "http://localhost:3005",
+      "probe": "health", "path": "/health",
+      "check": { "path": "bch", "equals": "chipnet" }
+    },
+    {
+      "id": "solzk-testnet", "timeoutMs": 20000, "group": "testnet", "kind": "service", "service": "solzk",
+      "label": "Solana ↔ BCH ZK server", "purpose": "SOL ↔ BCH and CashToken ↔ SOL swaps (devnet / chipnet)",
+      "var": "VITE_SOL_BCH_ZK_SERVER_URL", "fallback": "http://localhost:3007",
+      "probe": "health", "path": "/health",
+      "check": { "path": "networks.testnet.solana.cluster", "present": true }
+    },
+    {
+      "id": "bch-sol-relayer", "group": "testnet", "kind": "service", "service": "remote",
+      "label": "BCH ↔ Solana/Movement relayer", "purpose": "HTLC swaps BCH ↔ Solana / Movement",
+      "var": "VITE_BCH_SOLANA_RELAYER_URL", "fallback": "http://localhost:3004",
+      "probe": "health", "path": "/health",
+      "check": { "path": "chains", "includes": "chipnet" }
+    },
+    {
+      "id": "cross-chain-relayer", "group": "testnet", "kind": "service", "service": "remote",
+      "label": "Cross-chain relayer", "purpose": "Cross-chain intent relayer (Railway)",
+      "var": "VITE_CROSS_CHAIN_RELAYER_URL", "fallback": "https://cross-chain-relayer-production-a93e.up.railway.app",
+      "probe": "health", "path": "/health",
+      "check": { "path": "chains.bch", "equals": "chipnet" }
+    },
+
+    {
+      "id": "mesh-mainnet", "group": "mainnet", "kind": "service", "service": "mesh:mainnet",
+      "label": "Mesh server (mainnet)", "purpose": "Mainnet quotes, orders and live order updates",
+      "var": "VITE_CASHTOKEN_RELAYER_MAINNET_URL", "fallbackVars": ["VITE_MESH_SERVER_URL"], "fallback": "http://localhost:3001",
+      "probe": "health", "path": "/health", "readyPath": "/health/ready",
+      "check": { "path": "network", "equals": "mainnet" }
+    },
+    {
+      "id": "cctp-mainnet", "group": "mainnet", "kind": "service", "service": "cctp:mainnet", "optional": true,
+      "label": "Swap server (mainnet)", "purpose": "Mainnet USDC (CCTP), Solana/Jupiter, BCH 1Click, lending",
+      "unsetNote": "Not set: Mainnet mode uses the testnet swap server (Solana swaps only)",
+      "var": "VITE_CCTP_SWAP_SERVER_MAINNET_URL", "fallback": "",
+      "probe": "health", "path": "/health",
+      "check": { "path": "network", "equals": "mainnet" }
+    },
+    {
+      "id": "evm-mainnet", "group": "mainnet", "kind": "service", "service": "evm",
+      "label": "EVM ↔ BCH server (mainnet)", "purpose": "EVM ↔ BCH swaps on mainnet (MAINNET_ENABLED on the server)",
+      "var": "VITE_EVM_RELAYER_MAINNET_URL", "fallback": "http://localhost:3005",
+      "probe": "health", "path": "/health",
+      "check": { "path": "mainnet.bch", "equals": "mainnet" }, "detailPath": "mainnet.status"
+    },
+    {
+      "id": "bsc-bch-mainnet", "group": "mainnet", "kind": "service", "service": "evm",
+      "label": "EVM ↔ BCH API (mainnet)", "purpose": "EVM ↔ BCH order lookups and refunds (mainnet)",
+      "var": "VITE_BSC_BCH_SERVER_MAINNET_URL", "fallback": "http://localhost:3005",
+      "probe": "health", "path": "/health",
+      "check": { "path": "mainnet.bch", "equals": "mainnet" }, "detailPath": "mainnet.status"
+    },
+    {
+      "id": "solzk-mainnet", "timeoutMs": 20000, "group": "mainnet", "kind": "service", "service": "solzk",
+      "label": "Solana ↔ BCH ZK server (mainnet)", "purpose": "Mainnet SOL ↔ BCH (MAINNET_ENABLED on the server)",
+      "var": "VITE_SOL_BCH_ZK_SERVER_MAINNET_URL", "fallback": "http://localhost:3007",
+      "probe": "health", "path": "/health",
+      "check": { "path": "networks.mainnet.solana.cluster", "present": true }, "detailPath": "networks.mainnet.status"
+    },
+
+    {
+      "id": "mcp", "group": "shared", "kind": "service", "service": "mcp", "optional": true,
+      "label": "MCP server", "purpose": "AI-agent tools (/mcp page); reads both Mesh networks",
+      "var": "VITE_MCP_URL", "fallback": "http://localhost:8787/mcp",
+      "probe": "health", "path": "/health", "fromOrigin": true,
+      "check": { "path": "status", "equals": "ok" }
+    },
+    {
+      "id": "cauldron-chipnet", "group": "testnet", "kind": "dependency",
+      "label": "Cauldron indexer (chipnet)", "purpose": "Token list and AMM prices on chipnet",
+      "fixed": "https://indexer-chipnet.riften.net/cauldron/pool/active?token=dfe50223c8d5cba8dcef8dff6d92b61deb88a8ba44947367f2b746487b56039b",
+      "probe": "http"
+    },
+    {
+      "id": "cauldron-mainnet", "group": "mainnet", "kind": "dependency",
+      "label": "Cauldron indexer (mainnet)", "purpose": "Token list and AMM prices on mainnet",
+      "fixed": "https://indexer.riften.net/cauldron/pool/active?token=2469acc5afa4b10cb5b5c04afb89c3a3ffd61c5da9c01e26d00951cae2a02544",
+      "probe": "http"
+    },
+    {
+      "id": "solana-rpc", "group": "testnet", "kind": "dependency",
+      "label": "Solana RPC (devnet)", "purpose": "Solana balances and sends",
+      "var": "VITE_SOLANA_RPC_URL", "fallback": "https://api.devnet.solana.com",
+      "probe": "sol-rpc"
+    },
+    {
+      "id": "arc-testnet-rpc", "group": "testnet", "kind": "dependency",
+      "label": "Arc testnet RPC", "purpose": "Arc testnet wallet and USDC transfers",
+      "var": "VITE_ARC_TESTNET_RPC", "fallback": "https://rpc.testnet.arc.io", "probe": "evm-rpc"
+    },
+    {
+      "id": "arc-mainnet-rpc", "group": "mainnet", "kind": "dependency",
+      "label": "Arc mainnet RPC", "purpose": "Arc mainnet wallet and USDC transfers",
+      "var": "VITE_ARC_MAINNET_RPC", "fallback": "https://rpc.mainnet.arc.io", "probe": "evm-rpc"
+    },
+    {
+      "id": "eth-rpc", "group": "mainnet", "kind": "dependency",
+      "label": "Ethereum RPC", "purpose": "Ethereum balances, CCTP, EVM swaps",
+      "var": "VITE_ETH_MAINNET_RPC", "fallback": "https://ethereum-rpc.publicnode.com", "probe": "evm-rpc"
+    },
+    {
+      "id": "bsc-rpc", "group": "mainnet", "kind": "dependency",
+      "label": "BSC RPC", "purpose": "BSC balances and EVM ↔ BCH swaps",
+      "var": "VITE_BSC_MAINNET_RPC", "fallback": "https://bsc-dataseed1.binance.org/", "probe": "evm-rpc"
+    },
+    {
+      "id": "bsc-htlc-rpc", "group": "mainnet", "kind": "dependency",
+      "label": "EVM HTLC RPC", "purpose": "Mainnet STARK HTLC escrow calls",
+      "var": "VITE_MAINNET_EVM_RPC", "fallback": "https://bsc-dataseed1.binance.org/", "probe": "evm-rpc"
+    },
+    {
+      "id": "base-rpc", "group": "mainnet", "kind": "dependency",
+      "label": "Base RPC", "purpose": "Base balances and CCTP",
+      "var": "VITE_BASE_MAINNET_RPC", "fallback": "https://base-rpc.publicnode.com", "probe": "evm-rpc"
+    },
+    {
+      "id": "arb-rpc", "group": "mainnet", "kind": "dependency",
+      "label": "Arbitrum RPC", "purpose": "Arbitrum balances and CCTP",
+      "var": "VITE_ARB_MAINNET_RPC", "fallback": "https://arbitrum-one-rpc.publicnode.com", "probe": "evm-rpc"
+    },
+    {
+      "id": "op-rpc", "group": "mainnet", "kind": "dependency",
+      "label": "Optimism RPC", "purpose": "Optimism balances and CCTP",
+      "var": "VITE_OP_MAINNET_RPC", "fallback": "https://optimism-rpc.publicnode.com", "probe": "evm-rpc"
+    },
+    {
+      "id": "supabase", "group": "shared", "kind": "dependency", "optional": true,
+      "label": "Supabase", "purpose": "Accounts and saved app data",
+      "var": "VITE_SUPABASE_URL", "fallback": "", "probe": "http", "path": "/auth/v1/health"
+    },
+    {
+      "id": "sanity", "group": "shared", "kind": "dependency", "optional": true,
+      "label": "Sanity CMS", "purpose": "Knowledge base and docs content",
+      "var": "VITE_SANITY_PROJECT_ID", "fallback": "", "template": "https://{value}.api.sanity.io/v1/ping", "probe": "http"
+    }
+  ]
+}

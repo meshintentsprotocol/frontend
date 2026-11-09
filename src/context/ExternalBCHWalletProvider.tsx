@@ -26,6 +26,7 @@ import {
 } from '@/lib/walletStore';
 import {
     AppNetwork,
+    ChainFamily,
     ExternalWallet,
     appNetworkOf,
     MAX_EXTERNAL_WALLETS,
@@ -58,7 +59,15 @@ import {
     type WizSession,
 } from '@/lib/wallets/wizardconnect';
 import { setWalletContext } from '@/lib/wallets/ambient';
-import { hasAppKitMarker, restoreAppKitConnections, disconnectAppKit } from '@/lib/wallets/appkitBridge';
+import {
+    hasAppKitMarker,
+    restoreAppKitConnections,
+    disconnectAppKit,
+    handleModeSwitch,
+    setAppKitNetwork,
+    namespaceOf,
+} from '@/lib/wallets/appkitBridge';
+import { isAppKitLoaded } from '@/lib/wallets/appkit';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -209,50 +218,45 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
 
     const allWallets = useExternalWallets();
     const activeBchId = useActiveWalletId('bch');
+    const activeEvmId = useActiveWalletId('evm');
+    const activeSolanaId = useActiveWalletId('solana');
+    const activeBtcId = useActiveWalletId('btc');
 
     // ── Keep ambient wallet context in sync for non-React services ───────────
     useEffect(() => {
-        const builtInBch = appNetwork === 'mainnet' ? bchMainnetAddress : bchChipnetAddress;
-        const builtInBtc = appNetwork === 'mainnet' ? (btcMainnetAddress || btcAddress) : (btcTestnetAddress || btcAddress);
+        const builtIn: Record<ChainFamily, string | null> = {
+            bch: (appNetwork === 'mainnet' ? bchMainnetAddress : bchChipnetAddress) || null,
+            evm: evmAddress || null,
+            solana: solanaAddress || null,
+            btc: (appNetwork === 'mainnet' ? (btcMainnetAddress || btcAddress) : (btcTestnetAddress || btcAddress)) || null,
+        };
+        const activeIds: Record<ChainFamily, string | null> = {
+            bch: activeBchId, evm: activeEvmId, solana: activeSolanaId, btc: activeBtcId,
+        };
 
-        const bchExts = allWallets.filter(w => w.family === 'bch' && w.network === appNetwork);
-        const activeExt = allWallets.find(w => w.id === activeBchId && w.family === 'bch' && w.network === appNetwork);
-        const activeBch = (activeBchId === MAIN_WALLET_ID || !activeBchId) ? builtInBch : (activeExt?.address ?? builtInBch);
-
-        const bchConnected: string[] = [];
-        if (builtInBch) bchConnected.push(builtInBch);
-        for (const w of bchExts) {
-            if (!bchConnected.includes(w.address)) bchConnected.push(w.address);
+        const active = {} as Record<ChainFamily, string | null>;
+        const connected = {} as Record<ChainFamily, string[]>;
+        for (const family of ['bch', 'evm', 'solana', 'btc'] as ChainFamily[]) {
+            const exts = allWallets.filter(w => w.family === family && w.network === appNetwork);
+            const activeExt = exts.find(w => w.id === activeIds[family]);
+            active[family] = activeExt?.address ?? builtIn[family];
+            const list: string[] = builtIn[family] ? [builtIn[family]!] : [];
+            for (const w of exts) if (!list.includes(w.address)) list.push(w.address);
+            connected[family] = list;
         }
-
-        const evmConnected = evmAddress ? [evmAddress] : [];
-        const solConnected = solanaAddress ? [solanaAddress] : [];
-        const btcConnected = builtInBtc ? [builtInBtc] : [];
 
         setWalletContext({
             network: appNetwork,
-            active: {
-                bch: activeBch,
-                evm: evmAddress,
-                solana: solanaAddress,
-                btc: builtInBtc,
-            },
-            builtIn: {
-                bch: builtInBch,
-                evm: evmAddress,
-                solana: solanaAddress,
-                btc: builtInBtc,
-            },
-            connectedAddresses: {
-                bch: bchConnected,
-                evm: evmConnected,
-                solana: solConnected,
-                btc: btcConnected,
-            },
+            active,
+            builtIn,
+            connectedAddresses: connected,
         });
     }, [
         appNetwork,
         activeBchId,
+        activeEvmId,
+        activeSolanaId,
+        activeBtcId,
         allWallets,
         bchChipnetAddress,
         bchMainnetAddress,
@@ -302,10 +306,14 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
         }
     }, [appNetwork, allWallets]);
 
-    // ── Restore persisted AppKit wallets on mount/network change ────────────
+    // ── AppKit wallets: restore on load, follow the mode on every switch ────
     useEffect(() => {
-        if (hasAppKitMarker()) {
+        if (isAppKitLoaded()) {
+            handleModeSwitch(appNetwork === 'mainnet', appNetwork).catch(e => console.warn('[AppKit] mode switch error:', e));
+        } else if (hasAppKitMarker()) {
             restoreAppKitConnections(appNetwork).catch(e => console.warn('[AppKit] restore error:', e));
+        } else {
+            setAppKitNetwork(appNetwork);
         }
     }, [appNetwork]);
 
@@ -325,8 +333,8 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
             } else if (wallet.source === 'extension') {
                 disconnectExtension();
             } else if (wallet.source === 'appkit') {
-                const ns = wallet.family === 'evm' ? 'eip155' : wallet.family === 'solana' ? 'solana' : 'bip122';
-                await disconnectAppKit(ns as any);
+                const ns = namespaceOf(wallet.family);
+                if (ns) await disconnectAppKit(ns);
             }
         });
         return unregister;
@@ -612,8 +620,13 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
         removeWallet(id);
     }, []);
 
+    /** Every external wallet on every chain and network; the selection goes back to the built-in wallet. */
     const disconnectAll = useCallback(() => {
         clearAllWallets();
+        setActiveWalletId(MAIN_WALLET_ID, 'bch');
+        setActiveWalletId(null, 'evm');
+        setActiveWalletId(null, 'solana');
+        setActiveWalletId(null, 'btc');
     }, []);
 
     // ── Transaction Signing with Runner ──────────────────────────────────────

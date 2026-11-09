@@ -72,6 +72,11 @@ export function holdingsFrom(
     return rows;
 }
 
+/** Type-guard to check if an address is non-null, defined, and non-empty. */
+export function hasAddress(addr?: string | null): addr is string {
+    return Boolean(addr && addr.trim() !== '');
+}
+
 export function useSwapServerHoldings(p: {
     evmAddress?: string | null; solanaAddress?: string | null; isMainnet: boolean; usdcPrice: number; usdcChange24h?: number; refetchInterval?: number | false;
 }) {
@@ -81,16 +86,16 @@ export function useSwapServerHoldings(p: {
     const config = useQuery({
         queryKey: ['swap-server', 'config', api.baseUrl],
         queryFn: ({ signal }) => api.getConfig({ signal }),
-        enabled: on && (!!p.evmAddress || !!p.solanaAddress),
+        enabled: on && (hasAddress(p.evmAddress) || hasAddress(p.solanaAddress)),
         staleTime: 30_000, retry: 1,
     }).data;
 
     const chains = holdingChains(config, p.isMainnet);
     const usdc = useQuery({
         queryKey: ['swap-server', 'holdings-usdc', api.baseUrl, chains.map(c => c.key).join(), p.evmAddress, p.solanaAddress],
-        enabled: on && chains.length > 0,
+        enabled: on && chains.length > 0 && (hasAddress(p.evmAddress) || hasAddress(p.solanaAddress)),
         queryFn: async ({ signal }): Promise<ChainBalance[]> => {
-            const asked = chains.flatMap(c => { const owner = c.kind === 'evm' ? p.evmAddress : p.solanaAddress; return owner ? [{ key: c.key, owner }] : []; });
+            const asked = chains.flatMap(c => { const owner = c.kind === 'evm' ? p.evmAddress : p.solanaAddress; return hasAddress(owner) ? [{ key: c.key, owner }] : []; });
             // A chain whose RPC is down is left out; the others still show.
             const got = await Promise.allSettled(asked.map(a => api.getChainBalance(a.key, a.owner, { signal })));
             return got.flatMap(r => (r.status === 'fulfilled' ? [r.value] : []));
@@ -101,7 +106,7 @@ export function useSwapServerHoldings(p: {
     const solana = useQuery({
         queryKey: ['swap-server', 'sol-balances', p.solanaAddress],
         queryFn: ({ signal }) => api.getSolBalances(p.solanaAddress!, { signal }),
-        enabled: on && p.isMainnet && !!p.solanaAddress && !!config?.solana.enabled,
+        enabled: on && p.isMainnet && hasAddress(p.solanaAddress) && !!config?.solana.enabled,
         staleTime: 15_000, refetchInterval: p.refetchInterval ?? false, retry: 1,
     });
 
@@ -109,8 +114,8 @@ export function useSwapServerHoldings(p: {
         holdings: holdingsFrom(config, usdc.data ?? [], solana.data?.balances ?? [], p),
         isFetching: usdc.isFetching || solana.isFetching,
         refetch: () => {
-            if (on && !!p.evmAddress) void usdc.refetch();
-            if (on && p.isMainnet && !!p.solanaAddress && !!config?.solana.enabled) void solana.refetch();
+            if (on && (hasAddress(p.evmAddress) || hasAddress(p.solanaAddress))) void usdc.refetch();
+            if (on && p.isMainnet && hasAddress(p.solanaAddress) && !!config?.solana.enabled) void solana.refetch();
         },
     };
 }

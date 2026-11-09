@@ -11,6 +11,8 @@ import {
     isWalletBackedUp, saveAppSettings, useAppSettings,
 } from '@/lib/appSettings';
 import { walletUi } from '@/lib/walletUi';
+import { useExternalWallets } from '@/lib/wallets/registry';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import {
     SegmentedControl, SettingsRow, SettingsSection, SettingsSelect, SettingsSubpage, SettingsSwitch,
 } from './primitives';
@@ -54,16 +56,22 @@ export function WalletSettingsTab({
     const [autoLockMinutes, setAutoLockMinutes] = useState(() => getAppSettings().autoLockMinutes);
     const wdk = useWDK();
     const { theme, setTheme } = useTheme();
+    // Every hook runs before the sub-view return below: a hook after it changes the hook count
+    // when a sub-view opens, React throws, and the whole wallet goes blank.
+    const settings = useAppSettings();
+    const externalWallets = useExternalWallets();
     const hasEncrypted = hasStoredWallet();
 
     if (view !== 'root') {
         return (
             <SettingsSubpage title={VIEW_TITLES[view]} onBack={() => setView('root')}>
-                {view === 'trading' && <TradingView />}
-                {view === 'notifications' && <NotificationsView />}
-                {view === 'addresses' && <AddressesView onConnectExternal={() => walletUi.openConnect()} />}
-                {view === 'recovery' && <RecoveryPhraseView />}
-                {view === 'about' && <AboutView />}
+                <ErrorBoundary label={VIEW_TITLES[view]} onReset={() => setView('root')}>
+                    {view === 'trading' && <TradingView />}
+                    {view === 'notifications' && <NotificationsView />}
+                    {view === 'addresses' && <AddressesView onConnectExternal={() => walletUi.openConnect()} />}
+                    {view === 'recovery' && <RecoveryPhraseView />}
+                    {view === 'about' && <AboutView />}
+                </ErrorBoundary>
             </SettingsSubpage>
         );
     }
@@ -73,7 +81,6 @@ export function WalletSettingsTab({
         saveAppSettings({ autoLockMinutes: minutes });
     };
 
-    const settings = useAppSettings();
     // Errors can't be muted, so they always count as on.
     const toastLevels = MUTABLE_TOAST_LEVELS.length + 1;
     const mutedCount = settings.mutedToasts.length;
@@ -165,7 +172,7 @@ export function WalletSettingsTab({
                     />
                 </SettingsSection>
 
-                {wdk.isInitialized && (
+                {(wdk.isInitialized || externalWallets.length > 0) && (
                     <SettingsSection title="Wallet">
                         <SettingsRow icon={Wallet} label="Addresses" onClick={() => setView('addresses')} />
                     </SettingsSection>

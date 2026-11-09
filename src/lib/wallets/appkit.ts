@@ -53,11 +53,13 @@ export async function getAppKit(): Promise<any> {
                 { createAppKit },
                 { EthersAdapter },
                 { SolanaAdapter },
+                { BitcoinAdapter },
                 networks,
             ] = await Promise.all([
                 import('@reown/appkit'),
                 import('@reown/appkit-adapter-ethers'),
                 import('@reown/appkit-adapter-solana'),
+                import('@reown/appkit-adapter-bitcoin'),
                 import('@reown/appkit/networks'),
             ]);
 
@@ -65,6 +67,7 @@ export async function getAppKit(): Promise<any> {
                 mainnet, base, arbitrum, optimism, bsc,
                 sepolia, baseSepolia, arbitrumSepolia, optimismSepolia, bscTestnet,
                 solana, solanaDevnet,
+                bitcoin, bitcoinTestnet,
                 defineChain,
             } = networks;
 
@@ -77,13 +80,13 @@ export async function getAppKit(): Promise<any> {
 
             const instance = createAppKit({
                 projectId,
-                adapters: [new EthersAdapter(), new SolanaAdapter()],
+                adapters: [new EthersAdapter(), new SolanaAdapter(), new BitcoinAdapter()],
                 // Both modes' networks registered at creation; the app restricts usage to the current mode
                 networks: [
                     // Mainnet
-                    mainnet, base, arbitrum, optimism, bsc, arc, solana,
+                    mainnet, base, arbitrum, optimism, bsc, arc, solana, bitcoin,
                     // Testnet
-                    sepolia, baseSepolia, arbitrumSepolia, optimismSepolia, bscTestnet, arcTestnet, solanaDevnet,
+                    sepolia, baseSepolia, arbitrumSepolia, optimismSepolia, bscTestnet, arcTestnet, solanaDevnet, bitcoinTestnet,
                 ],
                 metadata: {
                     name: 'Cham',

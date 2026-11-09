@@ -4,7 +4,6 @@ import { ConnectWalletButton } from '@/components/connect-wallet-button';
 import { TokenSearchModal } from '@/components/common/TokenSearchModal';
 import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { NetworkBadge } from '@/components/wallet/NetworkControl';
 
 import { MeshNavDropdown } from '@/components/common/MeshNavDropdown';
 import { TradeNavDropdown } from '@/components/common/TradeNavDropdown';
@@ -50,7 +49,7 @@ export function Header() {
                         <MobileNavMenu />
                     </div>
 
-                    {/* Desktop Nav — unified order: Trade, Explore, Pool, Portfolio, Knowledgehub */}
+                    {/* Desktop Nav — unified order: Trade, Borrow, Explore, Pool, Portfolio, Knowledgehub */}
                     <nav className="hidden lg:flex items-center gap-6 xl:gap-8">
                         {/* 1. Trade Dropdown */}
                         <TradeNavDropdown />
@@ -114,14 +113,12 @@ export function Header() {
                     </nav>
                 </div>
 
-                {/* ── Right Section: network badge + wallet ── */}
+                {/* ── Right Section: wallet ── */}
                 <div className="hidden lg:flex items-center gap-3 shrink-0">
                     {/* Programmatic modal for cross-component open-token-search event */}
                     <TokenSearchModal open={searchOpen} onOpenChange={setSearchOpen}>
                         <span />
                     </TokenSearchModal>
-                    {/* Which network is on. The switch itself is in the wallet's profile. */}
-                    <NetworkBadge />
 
                     <ConnectWalletButton variant="header" />
                 </div>

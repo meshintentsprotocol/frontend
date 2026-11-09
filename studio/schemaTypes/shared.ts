@@ -67,3 +67,52 @@ export const siteSettings = defineType({
     ],
     preview: { prepare: () => ({ title: 'Site settings' }) },
 });
+
+export const subscriber = defineType({
+    name: 'subscriber',
+    title: 'Newsletter Subscriber',
+    type: 'document',
+    fields: [
+        defineField({
+            name: 'email',
+            title: 'Email',
+            type: 'string',
+            validation: r => r.required().email('Must be a valid email address'),
+        }),
+        defineField({
+            name: 'subscribedAt',
+            title: 'Subscribed At',
+            type: 'datetime',
+            readOnly: true,
+            initialValue: () => new Date().toISOString(),
+        }),
+        defineField({
+            name: 'source',
+            title: 'Source',
+            type: 'string',
+            description: 'Where the user subscribed from.',
+            options: {
+                list: [
+                    { title: 'KB Homepage', value: 'kb-page' },
+                    { title: 'Article Page', value: 'article-page' },
+                    { title: 'Other', value: 'other' },
+                ],
+            },
+            initialValue: 'other',
+        }),
+    ],
+    preview: {
+        select: { title: 'email', subtitle: 'source', date: 'subscribedAt' },
+        prepare: ({ title, subtitle, date }) => ({
+            title: title || 'Unknown email',
+            subtitle: `${subtitle || 'unknown'} · ${date ? new Date(date).toLocaleDateString() : ''}`,
+        }),
+    },
+    orderings: [
+        {
+            title: 'Newest first',
+            name: 'newestFirst',
+            by: [{ field: 'subscribedAt', direction: 'desc' }],
+        },
+    ],
+});

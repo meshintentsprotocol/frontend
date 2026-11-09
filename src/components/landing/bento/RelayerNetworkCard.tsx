@@ -4,7 +4,8 @@
  * Features:
  * - Network visualization with floating nodes
  * - Decentralized relayer messaging
- * - Pink gradient mesh background (like Uniswap's Unichain card)
+ * - Triggered on hover (desktop) or scroll in-view (mobile)
+ * - Pink/teal gradient mesh background
  * - "Start building" CTA
  */
 
@@ -13,6 +14,7 @@ import { Network, ArrowRight, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
+import { useBentoAnimationTrigger } from './useBentoAnimationTrigger';
 
 interface RelayerNetworkCardProps {
     className?: string;
@@ -42,11 +44,17 @@ const sizeClasses = {
 };
 
 export function RelayerNetworkCard({ className }: RelayerNetworkCardProps) {
+    const { cardRef, isActive, onMouseEnter, onMouseLeave } = useBentoAnimationTrigger();
+
     return (
         <div
+            ref={cardRef}
+            onMouseEnter={onMouseEnter}
+            onMouseLeave={onMouseLeave}
             className={cn(
-                'bento-card h-full min-h-[320px] flex flex-col overflow-hidden',
+                'bento-card h-full min-h-[320px] flex flex-col overflow-hidden transition-all duration-300 cursor-pointer',
                 'mesh-gradient-teal grainy',
+                isActive && 'ring-1 ring-teal-500/30',
                 className
             )}
         >
@@ -54,7 +62,10 @@ export function RelayerNetworkCard({ className }: RelayerNetworkCardProps) {
             <div className="relative z-10 flex-1 flex flex-col max-w-[60%]">
                 {/* Card Header */}
                 <div className="flex items-center gap-2 mb-4">
-                    <div className="w-10 h-10 rounded-xl bg-teal-500/10 flex items-center justify-center">
+                    <div className={cn(
+                        "w-10 h-10 rounded-xl flex items-center justify-center transition-colors duration-300",
+                        isActive ? "bg-teal-500/20 shadow-sm shadow-teal-500/20" : "bg-teal-500/10"
+                    )}>
                         <Network className="w-5 h-5 text-teal-500" />
                     </div>
                     <span className="tag-teal">
@@ -90,7 +101,10 @@ export function RelayerNetworkCard({ className }: RelayerNetworkCardProps) {
             {/* Floating Network Nodes Visualization */}
             <div className="absolute inset-0 pointer-events-none overflow-hidden">
                 {/* Connection lines (decorative) */}
-                <svg className="absolute inset-0 w-full h-full opacity-20">
+                <svg className={cn(
+                    "absolute inset-0 w-full h-full transition-opacity duration-500",
+                    isActive ? "opacity-40" : "opacity-15"
+                )}>
                     <defs>
                         <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="100%">
                             <stop offset="0%" stopColor="hsl(175 80% 40%)" stopOpacity="0.5" />
@@ -108,8 +122,9 @@ export function RelayerNetworkCard({ className }: RelayerNetworkCardProps) {
                     <motion.div
                         key={index}
                         className={cn(
-                            'absolute rounded-full overflow-hidden',
+                            'absolute rounded-full overflow-hidden transition-shadow duration-300',
                             'bg-zinc-100 dark:bg-zinc-800 border-2 border-background shadow-lg',
+                            isActive && 'shadow-teal-500/20 ring-1 ring-teal-400/40',
                             sizeClasses[node.size as keyof typeof sizeClasses]
                         )}
                         style={{ left: node.x, top: node.y }}
@@ -117,10 +132,23 @@ export function RelayerNetworkCard({ className }: RelayerNetworkCardProps) {
                         whileInView={{ opacity: 1, scale: 1 }}
                         viewport={{ once: true }}
                         transition={{ delay: node.delay, duration: 0.4 }}
-                        animate={{
-                            y: [0, -8, 0],
-                            rotate: [0, 5, -5, 0]
+                        animate={isActive ? {
+                            y: [0, -10, 0],
+                            rotate: [0, 6, -6, 0]
+                        } : {
+                            y: 0,
+                            rotate: 0
                         }}
+                        {...(isActive ? {
+                            transition: {
+                                repeat: Infinity,
+                                duration: 2.2 + index * 0.3,
+                                ease: 'easeInOut',
+                                delay: node.delay
+                            }
+                        } : {
+                            transition: { duration: 0.4 }
+                        })}
                     >
                         <img
                             src={TOKEN_ICONS[index]}
@@ -137,6 +165,12 @@ export function RelayerNetworkCard({ className }: RelayerNetworkCardProps) {
                     whileInView={{ opacity: 1, rotate: 0 }}
                     viewport={{ once: true }}
                     transition={{ delay: 0.5 }}
+                    animate={isActive ? { scale: [1, 1.05, 1], rotate: [12, 16, 12] } : { scale: 1, rotate: 12 }}
+                    {...(isActive ? {
+                        transition: { repeat: Infinity, duration: 4, ease: 'easeInOut' }
+                    } : {
+                        transition: { duration: 0.5 }
+                    })}
                 >
                     <div className="w-full h-full bg-gradient-to-br from-teal-500/30 to-cyan-600/20 rounded-3xl rotate-12 backdrop-blur-sm border border-teal-500/20" />
                 </motion.div>

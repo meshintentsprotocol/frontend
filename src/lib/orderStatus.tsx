@@ -100,6 +100,24 @@ export const STATUS_META: Record<BCHOrderStatus, StatusMeta> = {
         cls: 'border-red-500/50 text-red-400',
         icon: <AlertTriangle className={ICON} />,
     },
+    awaiting_funding: {
+        label: 'Funding', inFlight: true,
+        hint: 'Your funding transaction was sent. The order opens once the server sees it, usually within a minute.',
+        cls: 'border-blue-500/50 text-blue-400',
+        icon: <Loader2 className={cn(ICON, 'animate-spin')} />,
+    },
+    underfunded: {
+        label: 'Underfunded', inFlight: true,
+        hint: 'The funding does not cover the order, so it cannot fill. Everything sent is refunded at expiry.',
+        cls: 'border-amber-500/50 text-amber-400',
+        icon: <AlertTriangle className={ICON} />,
+    },
+    closed: {
+        label: 'Closed', inFlight: false,
+        hint: 'The order was closed by a transaction outside this app (for example a cancel from another device).',
+        cls: 'border-zinc-500/50 text-zinc-400',
+        icon: <Ban className={ICON} />,
+    },
     abandoned: {
         label: 'Not Funded', inFlight: false,
         hint: 'This order was created but never funded, so it was dropped. Nothing was locked.',

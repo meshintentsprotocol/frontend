@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { normalizeSwapServer } from '@/lib/relayers';
-import { holdingChains, holdingsFrom } from '../useHoldings';
+import { holdingChains, holdingsFrom, hasAddress } from '../useHoldings';
 import type { ActivityItem, ChainBalance, SolanaBalance, SwapServerConfig } from '../types';
 import testnet from './fixtures.json';
 import mainnet from './fixtures.mainnet.json';
@@ -70,3 +70,49 @@ describe('explore rows', () => {
         expect(normalizeSwapServer(swap)).toMatchObject({ source: 'jupiter', direction: 'Solana', status: 'ACTIVE', sellToken: 'SOL', buyToken: 'TOKEN' });
     });
 });
+
+describe('address guards and null-address scenario', () => {
+    it('hasAddress identifies valid addresses correctly', () => {
+        expect(hasAddress('0x1234567890abcdef1234567890abcdef12345678')).toBe(true);
+        expect(hasAddress('So11111111111111111111111111111111111111112')).toBe(true);
+        expect(hasAddress(null)).toBe(false);
+        expect(hasAddress(undefined)).toBe(false);
+        expect(hasAddress('')).toBe(false);
+        expect(hasAddress('   ')).toBe(false);
+    });
+
+    it('returns empty holdings when balances are empty or address is missing', () => {
+        expect(holdingsFrom(testnetConfig, [], [], { isMainnet: false, usdcPrice: 1 })).toEqual([]);
+        expect(holdingsFrom(mainnetConfig, [], [], { isMainnet: true, usdcPrice: 1 })).toEqual([]);
+        expect(holdingsFrom(undefined, [], [], { isMainnet: false, usdcPrice: 1 })).toEqual([]);
+    });
+
+    it('guards refetch callback: no network requests triggered when addresses are null/undefined', () => {
+        let usdcRefetched = false;
+        let solanaRefetched = false;
+
+        const fakeUsdc = { refetch: () => { usdcRefetched = true; } };
+        const fakeSolana = { refetch: () => { solanaRefetched = true; } };
+
+        const testRefetch = (p: { evmAddress?: string | null; solanaAddress?: string | null; isMainnet: boolean }, on: boolean) => {
+            if (on && (hasAddress(p.evmAddress) || hasAddress(p.solanaAddress))) void fakeUsdc.refetch();
+            if (on && p.isMainnet && hasAddress(p.solanaAddress)) void fakeSolana.refetch();
+        };
+
+        // When addresses are null or undefined
+        testRefetch({ evmAddress: null, solanaAddress: undefined, isMainnet: false }, true);
+        expect(usdcRefetched).toBe(false);
+        expect(solanaRefetched).toBe(false);
+
+        // When addresses are empty string
+        testRefetch({ evmAddress: '', solanaAddress: '', isMainnet: true }, true);
+        expect(usdcRefetched).toBe(false);
+        expect(solanaRefetched).toBe(false);
+
+        // When evm address is present
+        testRefetch({ evmAddress: '0x123', solanaAddress: null, isMainnet: false }, true);
+        expect(usdcRefetched).toBe(true);
+        expect(solanaRefetched).toBe(false);
+    });
+});
+

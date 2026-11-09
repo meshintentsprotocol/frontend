@@ -1,4 +1,5 @@
 
+import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useKb, KB_FALLBACK_COVER } from '../components/knowledge-base/kbService';
 import { KBStatus } from '../components/knowledge-base/KBStatus';
@@ -6,7 +7,8 @@ import { KBArticleList } from '../components/knowledge-base/KBArticleList';
 import { imageUrl } from '@/shared/sanity';
 import { kbArticleSeo } from '@/shared/seo';
 import { useSeo } from '@/lib/useSeo';
-import { ChevronRight, Home, Calendar, User, Clock, Share2, MessageSquare } from 'lucide-react';
+import { ChevronRight, Home, Calendar, User, Clock, Share2, MessageSquare, Check, Copy, Send, Loader2, CheckCircle2 } from 'lucide-react';
+import { useSubscribe } from '@/lib/useSubscribe';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
@@ -24,6 +26,39 @@ export function KBArticlePage() {
     // Find category from ID or from article data
     const category = kbService.getCategory(article?.categoryId ?? categoryId ?? '');
     const related = article ? kbService.getRelated(article) : [];
+
+    const [copied, setCopied] = useState(false);
+    const [subscriberEmail, setSubscriberEmail] = useState('');
+    const { status: subStatus, message: subMessage, subscribe: handleSubscribe } = useSubscribe();
+
+    const handleCopyLink = async () => {
+        try {
+            await navigator.clipboard.writeText(window.location.href);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        } catch (e) {
+            console.error('Failed to copy', e);
+        }
+    };
+
+    const handleShareTwitter = () => {
+        if (!article) return;
+        const text = `${article.title} — BCHMesh Knowledge Base`;
+        const url = window.location.href;
+        window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`, '_blank', 'noopener,noreferrer');
+    };
+
+    const handleShareTelegram = () => {
+        if (!article) return;
+        const text = article.title;
+        const url = window.location.href;
+        window.open(`https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`, '_blank', 'noopener,noreferrer');
+    };
+
+    const onArticleSubscribe = (e: React.FormEvent) => {
+        e.preventDefault();
+        handleSubscribe(subscriberEmail, 'article-page');
+    };
 
     useSeo(article ? kbArticleSeo({
         id: article.id,
@@ -201,13 +236,43 @@ export function KBArticlePage() {
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-10">
                             {/* Share Card */}
                             <Card className="bg-card/50 border-border/50 backdrop-blur-xl shadow-lg h-full">
-                                <CardHeader>
-                                    <h4 className="font-bold text-sm uppercase tracking-wider text-muted-foreground">Share</h4>
+                                <CardHeader className="pb-3">
+                                    <h4 className="font-bold text-sm uppercase tracking-wider text-muted-foreground">Share Article</h4>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="flex gap-2">
-                                        <Button variant="outline" size="icon" className="w-full rounded-xl hover:bg-primary/20 hover:text-primary hover:border-primary/50 transition-all"><Share2 className="h-4 w-4" /></Button>
-                                        <Button variant="outline" size="icon" className="w-full rounded-xl hover:bg-primary/20 hover:text-primary hover:border-primary/50 transition-all"><svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.29 20.251c7.547 0 11.675-6.253 11.675-11.675 0-.178 0-.355-.012-.53A8.348 8.348 0 0022 5.92a8.19 8.19 0 01-2.357.646 4.118 4.118 0 001.804-2.27 8.224 8.224 0 01-2.605.996 4.107 4.107 0 00-6.993 3.743 11.65 11.65 0 01-8.457-4.287 4.106 4.106 0 001.27 5.477A4.072 4.072 0 012.8 9.713v.052a4.105 4.105 0 003.292 4.022 4.095 4.095 0 01-1.853.07 4.108 4.108 0 003.834 2.85A8.233 8.233 0 012 18.407a11.616 11.616 0 006.29 1.84" /></svg></Button>
+                                    <div className="grid grid-cols-3 gap-2">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={handleCopyLink}
+                                            title="Copy link to clipboard"
+                                            className="rounded-xl flex flex-col items-center justify-center h-14 hover:bg-primary/10 hover:text-primary hover:border-primary/50 transition-all gap-1 text-[11px]"
+                                        >
+                                            {copied ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
+                                            <span>{copied ? 'Copied!' : 'Copy'}</span>
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={handleShareTwitter}
+                                            title="Share on X (Twitter)"
+                                            className="rounded-xl flex flex-col items-center justify-center h-14 hover:bg-primary/10 hover:text-primary hover:border-primary/50 transition-all gap-1 text-[11px]"
+                                        >
+                                            <svg className="h-4 w-4" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                                            </svg>
+                                            <span>Post</span>
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={handleShareTelegram}
+                                            title="Share on Telegram"
+                                            className="rounded-xl flex flex-col items-center justify-center h-14 hover:bg-primary/10 hover:text-primary hover:border-primary/50 transition-all gap-1 text-[11px]"
+                                        >
+                                            <Send className="h-4 w-4" />
+                                            <span>Telegram</span>
+                                        </Button>
                                     </div>
                                 </CardContent>
                             </Card>
@@ -238,10 +303,37 @@ export function KBArticlePage() {
                                 <CardContent className="p-6 relative z-10 flex flex-col justify-center h-full">
                                     <h4 className="font-bold mb-1">Weekly Alpha</h4>
                                     <p className="text-xs text-muted-foreground mb-3">Get the latest intents and strategies.</p>
-                                    <div className="space-y-2">
-                                        <Input placeholder="Email" className="bg-background/50 h-9 text-xs" />
-                                        <Button size="sm" className="w-full text-xs h-8">Subscribe</Button>
-                                    </div>
+                                    <form onSubmit={onArticleSubscribe} className="space-y-2">
+                                        <Input
+                                            type="email"
+                                            placeholder="you@protocol.dev"
+                                            value={subscriberEmail}
+                                            onChange={(e) => setSubscriberEmail(e.target.value)}
+                                            disabled={subStatus === 'loading' || subStatus === 'success'}
+                                            className="bg-background/50 h-9 text-xs"
+                                        />
+                                        <Button
+                                            type="submit"
+                                            size="sm"
+                                            disabled={subStatus === 'loading' || subStatus === 'success'}
+                                            className="w-full text-xs h-8"
+                                        >
+                                            {subStatus === 'loading' ? (
+                                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                            ) : subStatus === 'success' ? (
+                                                <span className="flex items-center gap-1 text-emerald-300">
+                                                    <CheckCircle2 className="w-3.5 h-3.5" /> Subscribed
+                                                </span>
+                                            ) : (
+                                                'Subscribe'
+                                            )}
+                                        </Button>
+                                    </form>
+                                    {subMessage && (
+                                        <p className={`mt-2 text-[11px] font-medium ${subStatus === 'success' ? 'text-emerald-500' : subStatus === 'duplicate' ? 'text-amber-500' : 'text-red-500'}`}>
+                                            {subMessage}
+                                        </p>
+                                    )}
                                 </CardContent>
                             </Card>
                         </div>
@@ -253,23 +345,6 @@ export function KBArticlePage() {
                                 <KBArticleList articles={related} />
                             </div>
                         )}
-
-                        {/* Comments */}
-                        <div className="pt-20">
-                            <h3 className="text-2xl font-bold mb-6">Discussion</h3>
-                            <Card className="bg-card/50 border-border/50 border-dashed backdrop-blur-sm">
-                                <CardContent className="p-12 text-center space-y-4">
-                                    <div className="w-12 h-12 mx-auto bg-muted rounded-full flex items-center justify-center text-muted-foreground">
-                                        <MessageSquare className="h-5 w-5" />
-                                    </div>
-                                    <div>
-                                        <p className="font-medium">Join the conversation</p>
-                                        <p className="text-sm text-muted-foreground mt-1">Connect your wallet to share your thoughts.</p>
-                                    </div>
-                                    <Button className="mt-4">Connect Wallet</Button>
-                                </CardContent>
-                            </Card>
-                        </div>
                     </div>
                 </div>
             </div>

@@ -7,6 +7,7 @@ import { WalletPoolsTab } from './WalletPoolsTab';
 import { WalletSettingsTab } from './settings/WalletSettingsTab';
 import { ChangePasswordModal } from './ChangePasswordModal';
 import { WalletProfile } from './WalletProfile';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { ConnectWalletView } from './ConnectWalletView';
 import { WalletOnboardingView } from './WalletOnboardingView';
 import { Chameleon } from './Chameleon';
@@ -280,16 +281,18 @@ export function WalletPopup() {
                     </div>
 
                     <div className={cn('min-h-0 flex-1', subTab === 'orders' ? 'flex flex-col' : 'overflow-y-auto px-3 pb-6 lg-scroll')}>
-                        {subTab === 'tokens' && <WalletTokensTab balanceVisible={balanceVisible} activeTokens={activeTokens} loading={portfolioLoading} onClose={docked ? undefined : onClose} />}
-                        {subTab === 'pools' && <WalletPoolsTab onClose={docked ? undefined : onClose} />}
-                        {subTab === 'orders' && <OrdersHub variant="embedded" />}
-                        {subTab === 'settings' && (
-                            <WalletSettingsTab
-                                balanceVisible={balanceVisible}
-                                onBalanceVisibleChange={setBalanceVisible}
-                                onChangePassword={() => setShowChangePwd(true)}
-                            />
-                        )}
+                        <ErrorBoundary key={subTab} label={`The ${subTab} tab`}>
+                            {subTab === 'tokens' && <WalletTokensTab balanceVisible={balanceVisible} activeTokens={activeTokens} loading={portfolioLoading} onClose={docked ? undefined : onClose} />}
+                            {subTab === 'pools' && <WalletPoolsTab onClose={docked ? undefined : onClose} />}
+                            {subTab === 'orders' && <OrdersHub variant="embedded" />}
+                            {subTab === 'settings' && (
+                                <WalletSettingsTab
+                                    balanceVisible={balanceVisible}
+                                    onBalanceVisibleChange={setBalanceVisible}
+                                    onChangePassword={() => setShowChangePwd(true)}
+                                />
+                            )}
+                        </ErrorBoundary>
                     </div>
                 </div>
             ) : (

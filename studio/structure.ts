@@ -41,6 +41,8 @@ export const structure: StructureResolver = S =>
             S.documentTypeListItem('tag').title('Tags'),
             S.documentTypeListItem('author').title('Authors'),
             S.divider(),
+            S.documentTypeListItem('subscriber').title('Newsletter Subscribers'),
+            S.divider(),
             S.listItem()
                 .title('Site settings')
                 .child(S.document().schemaType('siteSettings').documentId('siteSettings')),

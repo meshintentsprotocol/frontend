@@ -4,31 +4,43 @@
  * Features:
  * - Developer-focused messaging
  * - Code snippet or API visualization
- * - Orange gradient mesh background
- * - "Integrate the API" CTA
+ * - Triggered on hover (desktop) or scroll in-view (mobile)
+ * - Orange/green gradient mesh background
+ * - "Integrate the SDK" CTA linking to /docs
  */
 
 import { cn } from '@/lib/utils';
 import { Code2, ArrowRight, Terminal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { motion } from 'framer-motion';
+import { Link } from 'react-router-dom';
+import { useBentoAnimationTrigger } from './useBentoAnimationTrigger';
 
 interface TradingApiCardProps {
     className?: string;
 }
 
 export function TradingApiCard({ className }: TradingApiCardProps) {
+    const { cardRef, isActive, onMouseEnter, onMouseLeave } = useBentoAnimationTrigger();
+
     return (
         <div
+            ref={cardRef}
+            onMouseEnter={onMouseEnter}
+            onMouseLeave={onMouseLeave}
             className={cn(
-                'bento-card h-full min-h-[320px] flex flex-col',
+                'bento-card h-full min-h-[320px] flex flex-col transition-all duration-300 cursor-pointer',
                 'mesh-gradient-green grainy',
+                isActive && 'ring-1 ring-emerald-500/30',
                 className
             )}
         >
             {/* Card Header */}
             <div className="flex items-center gap-2 mb-4">
-                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center">
+                <div className={cn(
+                    "w-10 h-10 rounded-xl flex items-center justify-center transition-colors duration-300",
+                    isActive ? "bg-emerald-500/20 shadow-sm shadow-emerald-500/20" : "bg-emerald-500/10"
+                )}>
                     <Code2 className="w-5 h-5 text-emerald-500" />
                 </div>
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-500">
@@ -50,11 +62,7 @@ export function TradingApiCard({ className }: TradingApiCardProps) {
             </p>
 
             {/* CTA Button */}
-            <a
-                href="https://docs.intentsprotocol.xyz/"
-                target="_blank"
-                rel="noopener noreferrer"
-            >
+            <Link to="/docs" className="inline-block w-fit">
                 <Button
                     variant="outline"
                     className="rounded-full gap-2 group border-emerald-500/30 hover:border-emerald-500/50 hover:bg-emerald-500/5"
@@ -62,7 +70,7 @@ export function TradingApiCard({ className }: TradingApiCardProps) {
                     Integrate the SDK
                     <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                 </Button>
-            </a>
+            </Link>
 
             {/* Code Snippet Visualization */}
             <div className="mt-auto pt-6">
@@ -70,10 +78,13 @@ export function TradingApiCard({ className }: TradingApiCardProps) {
                     initial={{ opacity: 0, y: 10 }}
                     whileInView={{ opacity: 1, y: 0 }}
                     viewport={{ once: true }}
-                    className="bg-zinc-900 dark:bg-zinc-950 rounded-xl p-4 font-mono text-xs overflow-hidden relative"
+                    className={cn(
+                        "bg-zinc-900 dark:bg-zinc-950 rounded-xl p-4 font-mono text-xs overflow-hidden relative border transition-all duration-300",
+                        isActive ? "border-emerald-500/40 shadow-md shadow-emerald-500/10" : "border-white/5"
+                    )}
                 >
                     {/* Shimmer effect */}
-                    <div className="absolute inset-0 shimmer" />
+                    <div className={cn("absolute inset-0 shimmer transition-opacity duration-300", isActive ? "opacity-70" : "opacity-20")} />
 
                     <div className="relative z-10">
                         <div className="flex items-center gap-2 mb-3">

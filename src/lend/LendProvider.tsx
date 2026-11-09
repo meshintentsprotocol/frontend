@@ -85,8 +85,15 @@ export function LendProvider({ children }: { children: ReactNode }) {
                     liquidiumConfigured() ? liquidiumProvider.listMarkets() : Promise.resolve([]),
                 ]);
                 const all: Market[] = [];
+                let firstError: unknown;
                 for (const r of results) {
                     if (r.status === 'fulfilled') all.push(...r.value);
+                    else if (firstError === undefined) firstError = r.reason;
+                }
+                // Only hide a provider error when another provider actually returned markets. If nothing loaded,
+                // surface the error so the UI shows "couldn't load" instead of an empty, unexplained asset picker.
+                if (!all.length && firstError !== undefined) {
+                    throw firstError instanceof Error ? firstError : new Error('The markets could not be loaded.');
                 }
                 return all;
             },

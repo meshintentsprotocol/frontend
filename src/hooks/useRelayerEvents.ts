@@ -13,10 +13,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CASHTOKEN_RELAYER_URL, CASHTOKEN_RELAYER_MAINNET_URL } from '@/lib/config';
 
-/** Every event type the relayer emits. Verified against its broadcastWsEvent calls. */
+/**
+ * Event types. The Mesh server (meshserver src/intents/lifecycle.ts) sends the intent:*
+ * events in the first two lines, each with the full intent view as `data`; the rest
+ * are the older CashToken relayer's.
+ */
 export type RelayerEventType =
-    | 'intent:created' | 'intent:updated' | 'intent:filled' | 'intent:refunded'
-    | 'intent:cancelled' | 'intent:failed' | 'intent:abandoned'
+    | 'intent:created' | 'intent:funded' | 'intent:underfunded' | 'intent:unfillable' | 'intent:routable'
+    | 'intent:filled' | 'intent:refund_pending' | 'intent:refund_failed' | 'intent:refunded' | 'intent:cancelled' | 'intent:closed'
+    | 'intent:updated' | 'intent:failed' | 'intent:abandoned'
     | 'router:fill' | 'router:sniped' | 'router:paused' | 'router:resumed';
 
 export interface RelayerEvent {

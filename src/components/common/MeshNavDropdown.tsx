@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, Layers, BookOpen, TrendingUp, PlusCircle, Trophy } from 'lucide-react';
+import { Sparkles, Layers, TrendingUp, PlusCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { meshSection } from '@/lib/mesh/routes';
 
@@ -14,7 +14,13 @@ export interface MeshPageItem {
 
 export const MESH_PAGES: MeshPageItem[] = [
   {
-    name: 'Positions',
+    name: 'New Position',
+    path: '/mesh/new',
+    description: 'Pick a pair and a strategy',
+    icon: PlusCircle,
+  },
+  {
+    name: 'My Positions',
     path: '/mesh/positions',
     description: 'Your strategies, V4 positions and pools',
     icon: Layers,
@@ -24,24 +30,6 @@ export const MESH_PAGES: MeshPageItem[] = [
     path: '/mesh/pools',
     description: 'Every pair, pool and strategy on Mesh',
     icon: TrendingUp,
-  },
-  {
-    name: 'Leaderboard',
-    path: '/mesh/leaderboard',
-    description: 'Liquidity providers ranked by volume and fees',
-    icon: Trophy,
-  },
-  {
-    name: 'New Position',
-    path: '/mesh/new',
-    description: 'Pick a pair and a strategy',
-    icon: PlusCircle,
-  },
-  {
-    name: 'Order Book',
-    path: '/orderbook',
-    description: 'Live UTXO liquidity ladder & depth',
-    icon: BookOpen,
   },
   {
     name: 'Overview',
@@ -57,7 +45,6 @@ export function isMeshPageActive(path: string, pathname: string): boolean {
   const section = meshSection(pathname);
   if (path === '/mesh/positions') return section === 'positions';
   if (path === '/mesh/pools') return section === 'pools';
-  if (path === '/mesh/leaderboard') return section === 'leaderboard';
   if (path === '/mesh/new') return section === 'create';
   return pathname === path;
 }
@@ -71,9 +58,8 @@ export function MeshNavDropdown({ className }: MeshNavDropdownProps) {
   const location = useLocation();
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const currentUrl = location.pathname + location.search;
   // Check if current route is one of the mesh pages
-  const isMeshActive = location.pathname.startsWith('/mesh') || location.pathname === '/orderbook';
+  const isMeshActive = location.pathname.startsWith('/mesh');
 
   const handleMouseEnter = () => {
     if (timeoutRef.current) {
@@ -105,9 +91,9 @@ export function MeshNavDropdown({ className }: MeshNavDropdownProps) {
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >
-      {/* Trigger Button matching the other nav items exactly */}
+      {/* Trigger Button routing to New Position on click */}
       <Link
-        to="/mesh/positions"
+        to="/mesh/new"
         onClick={() => setIsOpen(false)}
         className={cn(
           'flex items-center text-[15px] font-semibold transition-all duration-300 py-2 relative group outline-none',

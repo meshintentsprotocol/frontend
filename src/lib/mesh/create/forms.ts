@@ -30,8 +30,9 @@ export function formDefaults(template: string, network: string, opts: { token?: 
     if (f.default !== undefined) v[f.key] = f.default;
     if (f.kind === 'token' && !f.optional) v[f.key] = SECOND.test(f.key) ? second : main;
   }
-  // a pegged pair can't trade a token against itself
+  // a pegged pair can't trade a token against itself, and earns a smaller fee (the server's suggestion: 0.10%)
   if (template === 'stable-pair' && v.tokenA && v.tokenA === v.tokenB) v.tokenB = v.tokenA === CHIPNET_MUSD ? CHIPNET_PUSD : network === 'mainnet' ? '' : CHIPNET_MUSD;
+  if (template === 'stable-pair') v.feeBps = '10';
   if (template === 'multi-pair' && v.token1 && v.token1 === v.token2) v.token2 = v.token1 === CHIPNET_MUSD ? CHIPNET_PUSD : network === 'mainnet' ? '' : CHIPNET_MUSD;
   return v;
 }

@@ -7,7 +7,7 @@
 import { cn } from '@/lib/utils';
 import { useWallets, shortAddress } from '@/hooks/useWallets';
 import { walletUi } from '@/lib/walletUi';
-import { WalletGlyph } from './WalletIcon';
+import { WalletGlyph, WalletIcon } from './WalletIcon';
 
 export function ActiveWalletChip({ className }: { className?: string }) {
     const { active } = useWallets();
@@ -27,7 +27,9 @@ export function ActiveWalletChip({ className }: { className?: string }) {
             )}
             style={{ color: active.color, borderColor: `${active.color}55` }}
         >
-            <WalletGlyph color={active.color} size={22} />
+            {active.iconUrl
+                ? <WalletIcon id={active.iconId} src={active.iconUrl} color={active.color} size={22} />
+                : <WalletGlyph color={active.color} size={22} />}
             <span className="hidden max-w-[84px] truncate sm:inline">{active.name}</span>
         </button>
     );

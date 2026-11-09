@@ -32,7 +32,7 @@ function OrbitRing({ radius, speed, tokens, startAngle, inView }: OrbitRingProps
 
   return (
     <div
-      className="absolute top-1/2 left-1/2 rounded-full border border-white/[0.04]"
+      className="absolute top-1/2 left-1/2 rounded-full border border-blue-500/10"
       style={{
         width: size,
         height: size,
@@ -59,7 +59,7 @@ function OrbitRing({ radius, speed, tokens, startAngle, inView }: OrbitRingProps
               initial={{ opacity: 0, scale: 0.5 }}
               animate={inView ? { opacity: 1, scale: 1 } : {}}
               transition={{ delay: 0.3 + idx * 0.15, type: 'spring', stiffness: 200 }}
-              className="group flex flex-col items-center justify-center p-3 w-20 h-20 rounded-[22px] bg-zinc-900/60 border border-white/5 backdrop-blur-xl hover:border-emerald-500/30 hover:bg-zinc-800/80 transition-all duration-300 cursor-default shadow-xl"
+              className="group flex flex-col items-center justify-center p-3 w-20 h-20 rounded-[22px] bg-[#070d1e]/80 border border-blue-500/20 backdrop-blur-xl hover:border-cyan-400/50 hover:bg-blue-950/80 transition-all duration-300 cursor-default shadow-xl"
             >
               <img
                 src={token.logo}
@@ -68,7 +68,7 @@ function OrbitRing({ radius, speed, tokens, startAngle, inView }: OrbitRingProps
                 onError={(e) => { (e.target as HTMLImageElement).src = '/logos/bitcoin-cash-bch-logo.svg'; }}
               />
               <span className="text-[10px] font-bold text-white/70 group-hover:text-white transition-colors">{token.symbol}</span>
-              <span className={`text-[9px] font-mono ${token.changeUp ? 'text-emerald-400' : 'text-red-400'}`}>
+              <span className={`text-[9px] font-mono ${token.changeUp ? 'text-cyan-400' : 'text-red-400'}`}>
                 {token.change}
               </span>
             </motion.div>
@@ -84,10 +84,10 @@ export function MeshLiveNetworkSection() {
   const inView = useInView(ref, { once: true, margin: '-80px' });
 
   return (
-    <section ref={ref} className="relative py-24 lg:py-40 bg-[#050505] overflow-hidden border-y border-white/5">
+    <section ref={ref} className="relative py-24 lg:py-40 bg-[#030712] overflow-hidden border-y border-blue-500/10">
       {/* Background */}
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] bg-emerald-500/4 rounded-full blur-[180px]" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] bg-blue-600/8 rounded-full blur-[180px]" />
         <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-10 mix-blend-overlay" />
       </div>
 
@@ -99,49 +99,41 @@ export function MeshLiveNetworkSection() {
           transition={{ duration: 0.6 }}
           className="text-center mb-20"
         >
-          <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-white/10 bg-white/[0.03] text-[11px] font-bold uppercase tracking-widest text-zinc-400 mb-6">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            Live Network
+          <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-cyan-400/30 bg-cyan-500/10 text-[11px] font-bold uppercase tracking-widest text-cyan-300 mb-6 shadow-[0_0_12px_rgba(6,182,212,0.15)]">
+            Network Reach
           </span>
           <h2 className="text-4xl md:text-6xl font-black tracking-tighter text-white">
-            BCH + CashToken{' '}
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-400">Ecosystem</span>
+            Connected to Every{' '}
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-sky-300 to-blue-500">
+              Liquidity Venue
+            </span>
           </h2>
-          <p className="mt-4 text-lg text-zinc-400 max-w-xl mx-auto">
-            Mesh pools pair native BCH with any CashToken. Liquidity that actually lives on-chain.
+          <p className="mt-4 text-lg text-zinc-300 max-w-xl mx-auto">
+            Your single BCH deposit simultaneously backs swaps across every CashToken pair, Cauldron DEX pool, and cross-chain bridge route.
           </p>
         </motion.div>
 
-        {/* Orbital visualization */}
-        <div className="relative flex items-center justify-center" style={{ height: 680 }}>
+        {/* Orbital rings visualizer */}
+        <div className="relative w-[340px] h-[340px] sm:w-[620px] sm:h-[620px] mx-auto">
+          {/* Center core */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20">
+            <div className="relative flex flex-col items-center justify-center w-28 h-28 sm:w-36 sm:h-36 rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 text-black font-black shadow-[0_0_60px_rgba(6,182,212,0.5)] border-2 border-white/20 select-none">
+              <span className="text-xs uppercase tracking-widest text-black/70 font-mono">BCHMesh</span>
+              <span className="text-xl sm:text-2xl font-black">DLMM</span>
+              <span className="text-[10px] text-black/70 font-mono font-bold">L1 Covenants</span>
+            </div>
+          </div>
+
           {/* Orbit rings */}
           {ORBITS.map((orbit, i) => (
-            <OrbitRing key={i} {...orbit} inView={inView} />
-          ))}
-
-          {/* Center BCH logo */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.5 }}
-            animate={inView ? { opacity: 1, scale: 1 } : {}}
-            transition={{ type: 'spring', stiffness: 150, delay: 0.1 }}
-            className="relative z-10 flex flex-col items-center justify-center w-28 h-28 rounded-[32px] bg-gradient-to-br from-emerald-500/20 to-teal-500/10 border border-emerald-500/30 backdrop-blur-xl shadow-[0_0_60px_rgba(52,211,153,0.25)]"
-          >
-            <img src="/logos/bitcoin-cash-bch-logo.svg" alt="BCH" className="w-14 h-14" />
-            <span className="text-[10px] font-black text-emerald-400 tracking-widest mt-1">BCH</span>
-            {/* Pulse ring */}
-            <div className="absolute inset-0 rounded-[32px] border border-emerald-500/20 animate-ping" style={{ animationDuration: '3s' }} />
-          </motion.div>
-        </div>
-
-        {/* Mobile grid fallback */}
-        <div className="lg:hidden grid grid-cols-3 gap-4 mt-8 max-w-sm mx-auto">
-          {TOKENS.map(token => (
-            <div key={token.symbol} className="flex flex-col items-center p-3 rounded-2xl bg-zinc-900/50 border border-white/5">
-              <img src={token.logo} alt={token.symbol} className="w-8 h-8 mb-1"
-                onError={(e) => { (e.target as HTMLImageElement).src = '/logos/bitcoin-cash-bch-logo.svg'; }} />
-              <span className="text-[10px] font-bold text-zinc-400">{token.symbol}</span>
-              <span className={`text-[9px] font-mono ${token.changeUp ? 'text-emerald-400' : 'text-red-400'}`}>{token.change}</span>
-            </div>
+            <OrbitRing
+              key={i}
+              radius={orbit.radius}
+              speed={orbit.speed}
+              tokens={orbit.tokens}
+              startAngle={orbit.startAngle}
+              inView={inView}
+            />
           ))}
         </div>
       </div>

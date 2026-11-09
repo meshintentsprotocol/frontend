@@ -171,7 +171,9 @@ export function createParyonProvider(
         id: 'paryon',
 
         listMarkets: async (): Promise<Market[]> => {
-            const m = await request<RawParyonMarket>('/lendbch/market');
+            // Chipnet cold reads can take ~60s; give the market call room beyond the default 25s so the asset
+            // picker still populates on the first load rather than silently coming back empty.
+            const m = await request<RawParyonMarket>('/lendbch/market', undefined, 60_000);
             const bchPrice = m.priceCents ? Number(m.priceCents) / 100 : 0;
             const minOpenCr = m.limits?.minOpenRatioPct || 150;
             const maxLtv = Math.round(1_000_000 / minOpenCr); // e.g. 6667 bps for 150%
@@ -307,7 +309,12 @@ export function createParyonProvider(
 
         paryon: {
             prepareBorrow: (params) => request<ParyonPrepareBorrowResult>('/lendbch/prepare/borrow', params),
-            prepareManage: (params) => request<ParyonPrepareManageResult>('/lendbch/prepare/manage', params),
+            prepareManage: (params) => {
+                // UI uses readable action names; the server's manage builder branches on 'add' | 'withdraw' | 'repay' | 'close'.
+                const map: Record<string, string> = { addCollateral: 'add', withdrawCollateral: 'withdraw' };
+                const actionType = map[(params as { actionType: string }).actionType] ?? (params as { actionType: string }).actionType;
+                return request<ParyonPrepareManageResult>('/lendbch/prepare/manage', { ...params, actionType });
+            },
             prepareRate: (params) => request<ParyonPrepareRateResult>('/lendbch/prepare/rate', params),
             submit: (params) => request<{ success: boolean; txids: string[] }>('/lendbch/submit', params),
             broadcast: (txHex) => request<{ txid: string }>('/lendbch/broadcast', { txHex }),

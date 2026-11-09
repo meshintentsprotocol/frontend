@@ -159,6 +159,12 @@ export function createAppKitEvmSender(address: string): EvmSender {
             const signer = await provider.getSigner();
             const from = await signer.getAddress();
 
+            // The wallet may have switched account since it connected; never sign from an
+            // account other than the one Cham shows (and records in the journal).
+            if (from.toLowerCase() !== address.toLowerCase()) {
+                throw new Error(`Your wallet is on account ${from.slice(0, 6)}…${from.slice(-4)}, but Cham is connected to ${address.slice(0, 6)}…${address.slice(-4)}. Switch back to that account in your wallet, or reconnect it.`);
+            }
+
             // Estimate gas and prepare fees
             const [gasEstimate, nonce, fees] = await Promise.all([
                 provider.estimateGas({

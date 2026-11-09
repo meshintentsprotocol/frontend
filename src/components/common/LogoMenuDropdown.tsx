@@ -24,7 +24,6 @@ interface ExploreItem {
 }
 
 const EXPLORE_ITEMS: ExploreItem[] = [
-    { name: 'Admin Analytics', path: '/admin', description: 'Real-time swap flows & profits', icon: ShieldCheck },
     { name: 'Cham Wallet', path: '/wallet', description: 'Crosschain Mobile & Extension', icon: Wallet },
     { name: 'Features', path: '/features', description: 'Core protocol capabilities', icon: Zap },
     { name: 'Ecosystem', path: '/ecosystem', description: 'Partners & integrations', icon: Globe },
@@ -191,17 +190,14 @@ export function LogoMenuDropdown() {
 
                             {/* Bottom row: Docs Link + Socials */}
                             <div className="flex items-center justify-between px-1.5 pt-0.5">
-                                <a
-                                    href="https://docs.intentsprotocol.xyz/"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
+                                <Link
+                                    to="/docs"
                                     onClick={() => setIsOpen(false)}
                                     className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-zinc-400 hover:text-emerald-400 hover:bg-white/[0.04] transition-all group/doc"
                                 >
                                     <FileText className="w-3.5 h-3.5 text-zinc-400 group-hover/doc:text-emerald-400" />
                                     <span>Documentation</span>
-                                    <ExternalLink className="w-3 h-3 text-zinc-600 group-hover/doc:text-emerald-400" />
-                                </a>
+                                </Link>
 
                                 <div className="flex items-center gap-1">
                                     {SOCIAL_LINKS.map((social) => {

@@ -10,6 +10,8 @@ import { useConnection } from '@solana/wallet-adapter-react';
 import { Keypair, PublicKey, SystemProgram, Transaction } from '@solana/web3.js';
 import { BCHSwapParams, BCHSwapType, BCHOrder, isTerminalOrderStatus, splitOrders } from '@/types';
 import { useRelayerEvents, type RelayerEvent } from '@/hooks/useRelayerEvents';
+import { applyMeshIntent, type MeshIntentView } from '@/lib/meshIntent';
+import { toBaseUnits } from '@/lib/units';
 import { BCH_SOLANA_RELAYER_URL, CASHTOKEN_RELAYER_URL, CASHTOKEN_RELAYER_MAINNET_URL } from '@/lib/config';
 import { isActive, norm } from '@/lib/wallets/visibility';
 import { appNetworkOf } from '@/lib/wallets/types';
@@ -92,7 +94,10 @@ function normalizeBchAddress(address: string, isMainnet: boolean): string {
 // Context Type
 // ============================================================================
 interface BCHSwapContextType {
+    /** A swap, claim, refund or cancel the user started is running. */
     isLoading: boolean;
+    /** Order statuses are being re-read in the background. Never blocks the swap button. */
+    isRefreshing: boolean;
     swapStep: string;  // Current step description for UI feedback
     pendingOrders: BCHOrder[];
     completedOrders: BCHOrder[];
@@ -152,6 +157,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
     const activeWalletRef = useRef({ isMainActive, activeExtWallet });
     activeWalletRef.current = { isMainActive, activeExtWallet };
     const [isLoading, setIsLoading] = useState(false);
+    const [isRefreshing, setIsRefreshing] = useState(false);
     const [swapStep, setSwapStep] = useState('');
     const [pendingOrders, setPendingOrders] = useState<BCHOrder[]>([]);
     const [completedOrders, setCompletedOrders] = useState<BCHOrder[]>([]);
@@ -189,7 +195,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
             all.unshift(order);
             if (all.length > 50) all.pop();
             localStorage.setItem(key, JSON.stringify(all));
-            if (order.status === 'pending') {
+            if (!isTerminalOrderStatus(order.status)) {
                 setPendingOrders(prev => [order, ...prev]);
             } else {
                 setCompletedOrders(prev => [order, ...prev]);
@@ -527,25 +533,34 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
         const sellCategoryId = params.sellToken.categoryId || (params.sellToken.chain === 'bch' && params.sellToken.symbol !== 'BCH' ? params.sellToken.categoryId : 'BCH');
         const buyCategoryId = params.buyToken.categoryId || (params.buyToken.chain === 'bch' && params.buyToken.symbol !== 'BCH' ? params.buyToken.categoryId : 'BCH');
 
-        // Convert amounts to satoshis / token base units
-        const sellBaseUnits = Math.floor(params.sellAmount * Math.pow(10, params.sellToken.decimals || 0));
-        const buyBaseUnits = Math.floor(params.buyAmount * Math.pow(10, params.buyToken.decimals || 0));
+        // Amounts in satoshis / token base units, converted exactly (0.29 BCH is 29000000 sats,
+        // not the 28999999 that floor(0.29 * 1e8) gives).
+        const sellUnitsBig = params.sellUnits ? BigInt(params.sellUnits) : toBaseUnits(params.sellAmount, params.sellToken.decimals || 0);
+        const buyUnitsBig = params.buyUnits ? BigInt(params.buyUnits) : toBaseUnits(params.buyAmount, params.buyToken.decimals || 0);
+        if (!sellUnitsBig || sellUnitsBig <= 0n) throw new Error('Enter an amount to sell');
+        if (!buyUnitsBig || buyUnitsBig <= 0n) throw new Error('No price for this order: the amount to receive is zero');
+        const sellBaseUnits = sellUnitsBig.toString();
+        const buyBaseUnits = buyUnitsBig.toString();
         const isLimit = params.orderType === 'limit';
-        const startBuyUnits = buyBaseUnits;
-        const endBuyUnits = Math.max(1, Math.floor(buyBaseUnits * 0.98));
+        // Dutch auction: starts at the quote and walks down to 98% of it.
+        const startBuyUnits = buyUnitsBig;
+        const endBuyUnits = (buyUnitsBig * 98n) / 100n > 0n ? (buyUnitsBig * 98n) / 100n : 1n;
+        const limitSeconds = params.expirySeconds
+            ?? (params.expiryTime ? params.expiryTime - Math.floor(Date.now() / 1000) : 86400);
 
         try {
             const response = await axios.post(`${relayerUrl}/intent/create`, {
                 makerAddress,
                 sellToken: sellCategoryId || 'BCH',
                 buyToken: buyCategoryId || 'BCH',
-                sellAmount: sellBaseUnits.toString(),
-                buyAmount: buyBaseUnits.toString(),
+                sellAmount: sellBaseUnits,
+                buyAmount: buyBaseUnits,
                 startBuyAmount: isLimit ? undefined : startBuyUnits.toString(),
                 endBuyAmount: isLimit ? undefined : endBuyUnits.toString(),
                 orderType: isLimit ? 'limit' : 'dutch',
-                duration: params.duration || 3600,
-                expiryTime: params.expiryTime || Math.floor(Date.now() / 1000) + 3600,
+                // A limit order's lifetime goes as a duration: the server measures it from its own
+                // clock, so a user clock that runs fast cannot push a 7-day order past the limit.
+                duration: isLimit ? limitSeconds : (params.duration || 3600),
                 network: isMainnet ? 'mainnet' : 'chipnet',
             });
 
@@ -832,14 +847,18 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 buyToken: params.buyToken,
                 sellAmount: params.sellAmount,
                 buyAmount: params.buyAmount,
-                status: 'pending',
+                // Funded by us just now; the server opens it once its scanner sees the transaction.
+                status: 'awaiting_funding',
                 contractAddress: data.contractAddress,
                 tokenAddress: data.tokenAddress,
                 intentId: data.intentId,
                 txid: fundTxId,
                 explorerUrl,
                 createdAt: Date.now(),
-                expiryTime: params.expiryTime,
+                // The server's times, not the browser's: the expiry it enforces and when a refund can go out.
+                expiryTime: data.expiryTimestamp ?? params.expiryTime,
+                refundableFrom: data.refundEligibleAt,
+                fillableUntil: data.refundEligibleAt,
                 duration: params.duration,
                 contractName: data.contractName,
                 constructorArgs: data.constructorArgs,
@@ -855,9 +874,11 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 : `Mode: ⚡ Dutch Auction Intent (BCHMesh / Cauldron AMM) • Contract: ${data.contractAddress?.slice(0, 16)}...`;
 
             toast.success(
-                params.orderType === 'limit' ? '📋 Limit Order Covenant Created!' : '⚡ Intent Swap Initiated!',
+                params.orderType === 'limit' ? 'Limit order placed' : 'Swap submitted',
                 {
-                    description: modeDescription,
+                    description: params.orderType === 'limit'
+                        ? `${params.sellAmount} ${params.sellToken.symbol} → at least ${params.buyAmount} ${params.buyToken.symbol}. It fills when a route pays your price.`
+                        : modeDescription,
                     action: explorerUrl ? {
                         label: 'View on Explorer',
                         onClick: () => window.open(explorerUrl, '_blank'),
@@ -2208,7 +2229,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
     };
 
     const refreshOrders = useCallback(async () => {
-        setIsLoading(true);
+        setIsRefreshing(true);
         try {
             const ordersKey = getOrdersKey(wdkRef.current.bchNetwork);
             const saved = localStorage.getItem(ordersKey);
@@ -2293,71 +2314,17 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                             // No change, keep pending
                         }
                     } else if (order.swapType === 'same-chain') {
-                        // Poll the CashToken relayer. Every non-terminal status is polled, not
-                        // just 'pending': an order can legitimately sit in 'active', 'expired'
-                        // (refund retrying) or 'failed' (funded, retrying on backoff) and still
-                        // move afterwards. Gating on 'pending' froze all three.
+                        // Poll the Mesh server. Every non-terminal status is polled: an order
+                        // can sit in awaiting_funding, active, underfunded or expired (refund on
+                        // its way) and still move afterwards.
                         const ctNet = wdkRef.current.bchNetwork;
                         const ctRelayerUrl = ctNet === 'mainnet' ? CASHTOKEN_RELAYER_MAINNET_URL : CASHTOKEN_RELAYER_URL;
                         try {
                             const res = await axios.get(`${ctRelayerUrl}/intent/${order.intentId}`);
                             const intent = res.data;
                             if (intent) {
-                                const prevStatus = order.status;
-
-                                // Mirror the relayer's status directly — it is the source of
-                                // truth and now has states this used to silently drop
-                                // ('abandoned' was unmapped entirely, so those orders polled
-                                // forever showing "pending").
-                                const normalizedStatus = (intent.status || '').toLowerCase();
-                                switch (normalizedStatus) {
-                                    case 'filled':
-                                        order.status = 'filled';
-                                        order.fillTxid = intent.fillTxid;
-                                        order.explorerUrl = intent.fillExplorerUrl || intent.explorerUrl
-                                            || (intent.fillTxid ? buildExplorerUrl(intent.fillTxid, 'bch') : undefined);
-                                        break;
-                                    case 'refunded':
-                                        order.status = 'refunded';
-                                        order.refundTxid = intent.refundTxid ?? intent.fillTxid;
-                                        if (order.refundTxid) {
-                                            order.destExplorerUrl = intent.refundExplorerUrl || intent.fillExplorerUrl
-                                                || buildExplorerUrl(order.refundTxid, 'bch');
-                                        }
-                                        break;
-                                    case 'cancelled':
-                                        order.status = 'cancelled';
-                                        order.cancelTxid = intent.cancelTxid;
-                                        if (order.cancelTxid) {
-                                            order.destExplorerUrl = intent.fillExplorerUrl
-                                                || buildExplorerUrl(order.cancelTxid, 'bch');
-                                        }
-                                        break;
-                                    case 'abandoned':
-                                        order.status = 'abandoned';
-                                        break;
-                                    case 'expired':
-                                        order.status = 'expired';
-                                        break;
-                                    case 'failed':
-                                        order.status = 'failed';
-                                        break;
-                                    case 'active':
-                                    case 'pending':
-                                    default:
-                                        order.status = 'pending';
-                                        break;
-                                }
-
-                                // Detail the relayer already tracked but nothing displayed.
-                                order.fillableUntil    = intent.fillableUntil    ?? order.fillableUntil;
-                                order.refundableFrom   = intent.refundableFrom   ?? order.refundableFrom;
-                                order.lastSkipCategory = intent.lastSkipCategory ?? order.lastSkipCategory;
-                                order.lastSkipReason   = intent.lastSkipReason   ?? order.lastSkipReason;
-                                order.routeType        = intent.routeType        ?? order.routeType;
-
-                                if (order.status !== prevStatus) updated = true;
-                                else updated = updated || !!intent.lastSkipReason;
+                                // The Mesh server's lifecycle, mapped the same way as its WebSocket events.
+                                if (applyMeshIntent(order, intent as MeshIntentView, txid => buildExplorerUrl(txid, 'bch'))) updated = true;
                             }
                         } catch (pollErr: any) {
                             // 404 means the relayer has no record — it keeps a 500-entry ring
@@ -2462,7 +2429,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
             }
         } catch { /* ignore */ }
         finally {
-            setIsLoading(false);
+            setIsRefreshing(false);
         }
     }, [queryClient]);
 
@@ -2497,7 +2464,11 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
         const intent = event.data;
         const prev = order.status;
 
-        switch (event.type) {
+        if (order.swapType === 'same-chain' && String(event.type).startsWith('intent:')) {
+            // Every intent:* event from the Mesh server carries the full intent view.
+            if (!applyMeshIntent(order, intent as MeshIntentView, txid => (wdkRef.current.bchNetwork === 'mainnet'
+                ? `https://blockchair.com/bitcoin-cash/transaction/${txid}` : `https://chipnet.chaingraph.cash/tx/${txid}`))) return;
+        } else switch (event.type) {
             case 'intent:filled':
                 order.status = 'filled';
                 order.fillTxid = intent.fillTxid ?? order.fillTxid;
@@ -2566,6 +2537,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
             const label = order.status === 'filled' ? `Order Filled (${modeBadge})`
                 : order.status === 'refunded' ? 'Order Refunded'
                 : order.status === 'cancelled' ? 'Order Cancelled'
+                : order.status === 'abandoned' ? 'Order not funded'
                 : 'Order Closed';
             toast.success(label, {
                 description: `${order.sellAmount} ${order.sellToken?.symbol} → ${order.buyAmount} ${order.buyToken?.symbol} • Mode: ${modeBadge}`,
@@ -3088,7 +3060,37 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
             let refundTxid: string | undefined;
             let refundExplorerUrl: string | undefined;
 
-            if (order.swapType === 'bch-to-eth') {
+            if (order.swapType === 'same-chain') {
+                // ── Same-chain intent: the covenant's cancel() can only pay the maker, so the
+                // server broadcasts it. It does so by itself after the deadline; this asks now.
+                const relayerUrl = isMainnet ? CASHTOKEN_RELAYER_MAINNET_URL : CASHTOKEN_RELAYER_URL;
+                setSwapStep('Asking the server to refund...');
+                const res = await axios.post(`${relayerUrl}/intent/${order.intentId}/refund`, {}, { validateStatus: () => true });
+                const r = res.data ?? {};
+                if (r.intent) applyMeshIntent(order, r.intent as MeshIntentView, txid => buildExplorerUrl(txid, 'bch'));
+                if (r.status === 'NOT_ELIGIBLE') {
+                    const at = r.refundEligibleAt as number | undefined;
+                    const mins = at ? Math.max(1, Math.ceil((at - Date.now() / 1000) / 60)) : undefined;
+                    const settled = order.status === 'filled' || order.status === 'refunded' || order.status === 'cancelled';
+                    if (!settled) {
+                        throw new Error(mins
+                            ? `Not refundable yet. Chain time passes the deadline in about ${mins} min, and the refund goes out automatically then.`
+                            : (r.error || 'Not refundable yet.'));
+                    }
+                } else if (r.status !== 'SUCCESS') {
+                    throw new Error(r.error || `Refund request failed (HTTP ${res.status})`);
+                }
+                if (r.txid) {
+                    refundTxid = r.txid;
+                    refundExplorerUrl = buildExplorerUrl(r.txid, 'bch');
+                } else {
+                    // Already settled on the server (filled or refunded earlier): show that.
+                    localStorage.setItem(key, JSON.stringify(all));
+                    const split = splitOrders(all);
+                    setPendingOrders(split.pending);
+                    setCompletedOrders(split.completed);
+                }
+            } else if (order.swapType === 'bch-to-eth') {
                 // ── BCH→EVM covenant refund via OP_ELSE (CLTV) branch ─────────
                 const currentBchWallet = bchWalletRef.current;
                 if (!currentBchWallet.address) throw new Error('Connect your BCH wallet to claim the refund');
@@ -3395,7 +3397,8 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
 
             if (refundTxid) {
                 order.status = 'refunded';
-                order.fillTxid = refundTxid;
+                if (order.swapType !== 'same-chain') order.fillTxid = refundTxid;
+                order.refundTxid = refundTxid;
                 order.destExplorerUrl = refundExplorerUrl;
                 localStorage.setItem(key, JSON.stringify(all));
                 {
@@ -3487,6 +3490,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
         <BCHSwapContext.Provider
             value={{
                 isLoading,
+                isRefreshing,
                 swapStep,
                 pendingOrders: visiblePending,
                 completedOrders: visibleCompleted,

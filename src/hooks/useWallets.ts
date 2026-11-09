@@ -11,7 +11,7 @@ import {
 } from '@/lib/walletStore';
 import { ChainFamily, appNetworkOf } from '@/lib/wallets/types';
 
-export type WalletKind = 'main' | ExternalWalletSource;
+export type WalletKind = 'main' | ExternalWalletSource | 'appkit';
 
 /** One connected wallet, built-in or external, as the UI shows it. */
 export interface ConnectedWallet {
@@ -31,6 +31,13 @@ export interface ConnectedWallet {
     /** Key its colour and name are stored under. */
     lookKey: string;
 }
+
+export interface WalletGroup {
+    family: ChainFamily;
+    wallets: ConnectedWallet[];
+}
+
+const FAMILIES: ChainFamily[] = ['bch', 'evm', 'solana', 'btc'];
 
 function iconFor(kind: WalletKind, label: string): string {
     if (kind === 'main') return 'main';
@@ -88,7 +95,7 @@ export function useWallets() {
             list.push({
                 id: w.id,
                 family: w.family,
-                kind: w.source as ExternalWalletSource,
+                kind: w.source,
                 iconId: iconFor(w.source as WalletKind, w.label),
                 iconUrl: w.icon,
                 name: looks[w.address]?.name || w.label,
@@ -121,13 +128,56 @@ export function useWallets() {
 
     const active = activeFor('bch');
 
+    /**
+     * The wallets per chain, for the switcher. A chain other than BCH is listed once an
+     * external wallet is connected on it, with the built-in wallet first so the user can
+     * switch back to it (it is active whenever no external wallet of that chain is).
+     */
+    const groups = useMemo<WalletGroup[]>(() => {
+        const builtInAddress: Record<Exclude<ChainFamily, 'bch'>, string | null | undefined> = {
+            evm: wdk.evmAddress,
+            solana: wdk.solanaAddress,
+            btc: currentNetwork === 'mainnet' ? (wdk.btcMainnetAddress || wdk.btcAddress) : (wdk.btcTestnetAddress || wdk.btcAddress),
+        };
+        const out: WalletGroup[] = [];
+        for (const family of FAMILIES) {
+            const own = wallets.filter(w => w.family === family);
+            if (family === 'bch') {
+                if (own.length > 0) out.push({ family, wallets: own });
+                continue;
+            }
+            if (own.length === 0) continue;
+            const builtIn = wdk.isInitialized ? builtInAddress[family] : null;
+            const rows = builtIn
+                ? [{
+                    id: MAIN_WALLET_ID,
+                    family,
+                    kind: 'main' as const,
+                    iconId: 'main',
+                    name: looks[MAIN_WALLET_ID]?.name || 'Cham Wallet',
+                    address: builtIn,
+                    color: looks[MAIN_WALLET_ID]?.color || defaultWalletColor(MAIN_WALLET_ID),
+                    active: !own.some(w => w.active),
+                    lookKey: MAIN_WALLET_ID,
+                }, ...own]
+                : own;
+            out.push({ family, wallets: rows });
+        }
+        return out;
+    }, [wallets, looks, currentNetwork, wdk.isInitialized, wdk.evmAddress, wdk.solanaAddress, wdk.btcAddress, wdk.btcMainnetAddress, wdk.btcTestnetAddress]);
+
+    /** The wallet the header shows: the active BCH wallet, else the active wallet of another chain. */
+    const primary = active ?? FAMILIES.map(f => activeFor(f)).find(Boolean) ?? null;
+
     const setActive = useCallback((id: string | null, family: ChainFamily = 'bch') => {
         setActiveWalletId(id, family);
     }, []);
 
     return {
         wallets,
+        groups,
         active,
+        primary,
         activeFor,
         /** True when the user has any wallet to act with, built-in or external. */
         hasWallet: wallets.length > 0,

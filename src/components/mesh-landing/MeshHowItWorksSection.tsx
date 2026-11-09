@@ -1,173 +1,109 @@
-import { motion, useInView } from 'framer-motion';
-import { useRef, useEffect, useState } from 'react';
-import { Settings2, Zap, Coins } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Sliders, Zap, Coins, ArrowRight } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 const STEPS = [
   {
-    num: '01',
-    icon: Settings2,
-    title: 'Choose Strategy',
-    description: 'Select Fixed Rate, Oracle Spot, or Dutch Decay. Set your price curve and fee tier in seconds.',
-    color: 'emerald',
-    gradient: 'from-emerald-500/20 to-emerald-600/5',
-    border: 'border-emerald-500/30',
-    iconBg: 'bg-emerald-500/15',
-    iconColor: 'text-emerald-400',
-    numColor: 'text-emerald-500/40',
+    step: '01',
+    badge: 'Configuration',
+    title: 'Select Price Bins',
+    description: 'Configure your discrete price range using V4 DLMM bins (Spot, Curve, or Bid-Ask) or multi-asset V3 pools.',
+    icon: Sliders,
+    hoverBg: 'hover:bg-[#06b6d4]', // Neon Cyan
   },
   {
-    num: '02',
-    icon: Zap,
+    step: '02',
+    badge: 'Genesis Mint',
     title: 'Deploy Covenant',
-    description: 'Funds lock on-chain in a non-custodial P2SH32 CashScript contract — one atomic BCH transaction.',
-    color: 'teal',
-    gradient: 'from-teal-500/20 to-teal-600/5',
-    border: 'border-teal-500/30',
-    iconBg: 'bg-teal-500/15',
-    iconColor: 'text-teal-400',
-    numColor: 'text-teal-500/40',
+    description: 'Lock liquidity into a stateless P2SH32 CashScript covenant in one atomic transaction and receive an 82-byte NFT position token.',
+    icon: Zap,
+    hoverBg: 'hover:bg-[#2be64d]', // Neon Lime
   },
   {
-    num: '03',
+    step: '03',
+    badge: 'Zero Slippage',
+    title: 'Earn Auto-Yield',
+    description: 'Takers fill discrete bins in-place. Each round trip captures spread while fees compound perpetually on-chain.',
     icon: Coins,
-    title: 'Earn Fees Automatically',
-    description: 'Takers submit intents, your pool fills partial or full amounts. LP fees accumulate and dock anytime.',
-    color: 'cyan',
-    gradient: 'from-cyan-500/20 to-cyan-600/5',
-    border: 'border-cyan-500/30',
-    iconBg: 'bg-cyan-500/15',
-    iconColor: 'text-cyan-400',
-    numColor: 'text-cyan-500/40',
+    hoverBg: 'hover:bg-[#a855f7]', // Electric Purple
   },
 ];
 
-function DashedConnector({ active }: { active: boolean }) {
-  return (
-    <div className="hidden lg:flex items-center justify-center w-20 shrink-0 mt-[-24px] relative">
-      <svg width="80" height="2" viewBox="0 0 80 2" fill="none" className="overflow-visible">
-        <line
-          x1="0" y1="1" x2="80" y2="1"
-          stroke="rgba(255,255,255,0.08)"
-          strokeWidth="1.5"
-          strokeDasharray="5 4"
-        />
-        {active && (
-          <motion.line
-            x1="0" y1="1" x2="80" y2="1"
-            stroke="rgb(52,211,153)"
-            strokeWidth="1.5"
-            strokeDasharray="5 4"
-            initial={{ pathLength: 0, opacity: 0 }}
-            animate={{ pathLength: 1, opacity: 1 }}
-            transition={{ duration: 0.6, ease: 'easeInOut' }}
-          />
-        )}
-      </svg>
-      {/* Arrow tip */}
-      <div className="absolute right-0 top-1/2 -translate-y-1/2 w-0 h-0"
-        style={{
-          borderTop: '4px solid transparent',
-          borderBottom: '4px solid transparent',
-          borderLeft: `6px solid ${active ? 'rgb(52,211,153)' : 'rgba(255,255,255,0.1)'}`,
-          transition: 'border-left-color 0.3s',
-        }}
-      />
-    </div>
-  );
-}
-
 export function MeshHowItWorksSection() {
-  const ref = useRef(null);
-  const inView = useInView(ref, { once: true, margin: '-100px' });
-  const [activeStep, setActiveStep] = useState(0);
-
-  // Cycle through steps
-  useEffect(() => {
-    if (!inView) return;
-    const id = setInterval(() => setActiveStep(s => (s + 1) % STEPS.length), 1800);
-    return () => clearInterval(id);
-  }, [inView]);
-
   return (
-    <section ref={ref} className="relative py-24 lg:py-32 bg-[#050505] overflow-hidden">
-      {/* Background orb */}
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-teal-500/5 rounded-full blur-[160px]" />
-        <div className="absolute inset-0 bg-[url('/noise.svg')] opacity-10 mix-blend-overlay" />
+    <section className="relative py-24 md:py-32 overflow-hidden bg-gradient-to-b from-[#07090e] via-[#080b12] to-[#06080d]">
+      {/* Ambient background glow & subtle dot matrix */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[70vw] h-[360px] bg-emerald-500/[0.04] rounded-full blur-[140px]" />
+        <div className="absolute inset-0 bg-[radial-gradient(#ffffff0a_1px,transparent_1px)] [background-size:28px_28px] opacity-35" />
       </div>
 
-      <div className="container mx-auto px-4 relative z-10">
-        {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: 24 }}
-          animate={inView ? { opacity: 1, y: 0 } : {}}
-          transition={{ duration: 0.6 }}
-          className="text-center mb-16 lg:mb-20"
-        >
-          <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-white/10 bg-white/[0.03] text-[11px] font-bold uppercase tracking-widest text-zinc-400 mb-6">
-            How It Works
-          </span>
-          <h2 className="text-4xl md:text-6xl font-black tracking-tighter text-white">
-            Three Steps to{' '}
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-400">
-              Liquidity
-            </span>
+      <div className="container mx-auto px-4 sm:px-6 max-w-7xl relative z-10">
+        {/* Title */}
+        <div className="text-center mb-14 md:mb-20">
+          <div className="inline-block px-3.5 py-1 rounded-full text-xs font-mono font-bold tracking-wider uppercase bg-white/5 text-zinc-400 border border-white/10 mb-4">
+            Workflow Architecture
+          </div>
+          <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extrabold tracking-tight text-white leading-tight">
+            How Mesh Protocol works
           </h2>
-          <p className="mt-4 text-lg text-zinc-400 max-w-xl mx-auto">
-            Deploy concentrated liquidity on Bitcoin Cash without giving up custody of your funds.
+          <p className="mt-4 text-base sm:text-lg text-zinc-400 max-w-2xl mx-auto">
+            From single-transaction genesis to autonomous in-place fills on Bitcoin Cash.
           </p>
-        </motion.div>
+        </div>
 
-        {/* Steps */}
-        <div className="flex flex-col lg:flex-row items-stretch justify-center gap-0 lg:gap-0">
-          {STEPS.map((step, idx) => {
-            const Icon = step.icon;
-            const isActive = activeStep === idx;
-            return (
-              <div key={idx} className="flex flex-col lg:flex-row items-center">
-                <motion.div
-                  initial={{ opacity: 0, y: 40 }}
-                  animate={inView ? { opacity: 1, y: 0 } : {}}
-                  transition={{ duration: 0.6, delay: idx * 0.15, ease: 'easeOut' }}
-                  className={`relative w-full lg:w-72 xl:w-80 flex-1 lg:flex-none rounded-3xl border bg-gradient-to-br ${step.gradient} backdrop-blur-xl p-7 transition-all duration-500 cursor-default
-                    ${isActive ? step.border + ' shadow-lg' : 'border-white/5'}
-                  `}
-                >
-                  {/* Step number watermark */}
-                  <span className={`absolute top-4 right-5 font-black text-6xl leading-none select-none pointer-events-none ${step.numColor}`}>
-                    {step.num}
+        {/* 3 Simple 1inch-Style Step Cards */}
+        <div className="flex overflow-x-auto snap-x snap-mandatory lg:grid lg:grid-cols-3 gap-5 md:gap-6 pb-6 lg:pb-0 scrollbar-none no-scrollbar -mx-4 px-4 sm:-mx-6 sm:px-6 lg:mx-0 lg:px-0">
+          {STEPS.map((s, idx) => (
+            <motion.div
+              key={s.step}
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.4, delay: idx * 0.1 }}
+              className="w-[84vw] sm:w-[340px] lg:w-auto shrink-0 snap-center h-full"
+            >
+              <div
+                className={`group h-[380px] sm:h-[400px] rounded-3xl p-7 sm:p-8 flex flex-col justify-between transition-all duration-300 ease-out cursor-pointer bg-[#131418] border border-white/10 ${s.hoverBg} hover:border-transparent hover:shadow-2xl`}
+              >
+                <div>
+                  {/* Top: Step number & Badge */}
+                  <div className="flex items-center justify-between mb-8">
+                    <span className="inline-block px-3 py-1 rounded-full text-xs font-bold tracking-tight bg-black text-white">
+                      {s.badge}
+                    </span>
+                    <span className="text-xl font-black font-mono text-zinc-600 group-hover:text-black/50 transition-colors">
+                      {s.step}
+                    </span>
+                  </div>
+
+                  {/* Title */}
+                  <h3 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white group-hover:text-black leading-snug mb-3 transition-colors duration-200">
+                    {s.title}
+                  </h3>
+
+                  {/* Description */}
+                  <p className="text-sm sm:text-base text-zinc-400 group-hover:text-black/80 leading-relaxed font-normal transition-colors duration-200">
+                    {s.description}
+                  </p>
+                </div>
+
+                {/* Bottom link */}
+                <div className="pt-6">
+                  <span className="text-xs font-mono font-bold uppercase tracking-wider text-cyan-400 group-hover:text-black transition-colors flex items-center gap-1.5">
+                    Step {s.step} Details <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
                   </span>
-
-                  {/* Icon */}
-                  <div className={`w-12 h-12 rounded-2xl ${step.iconBg} flex items-center justify-center mb-5 border ${step.border}`}>
-                    <Icon className={`w-6 h-6 ${step.iconColor}`} />
-                  </div>
-
-                  {/* Content */}
-                  <h3 className="text-xl font-black text-white mb-2">{step.title}</h3>
-                  <p className="text-sm text-zinc-400 leading-relaxed">{step.description}</p>
-
-                  {/* Active indicator bar */}
-                  <div className="mt-5 h-[2px] rounded-full bg-white/5 overflow-hidden">
-                    <motion.div
-                      className={`h-full bg-gradient-to-r ${idx === 0 ? 'from-emerald-400 to-teal-400' : idx === 1 ? 'from-teal-400 to-cyan-400' : 'from-cyan-400 to-emerald-400'}`}
-                      initial={{ scaleX: 0 }}
-                      animate={{ scaleX: isActive ? 1 : 0 }}
-                      transition={{ duration: 1.6, ease: 'linear' }}
-                      style={{ originX: 0 }}
-                    />
-                  </div>
-                </motion.div>
-
-                {/* Connector between cards */}
-                {idx < STEPS.length - 1 && (
-                  <DashedConnector active={activeStep > idx} />
-                )}
+                </div>
               </div>
-            );
-          })}
+            </motion.div>
+          ))}
         </div>
       </div>
+
+      {/* Radiant transition into Strategy Types section */}
+      <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-teal-400/25 via-emerald-400/35 to-transparent pointer-events-none" />
     </section>
   );
 }
+
+export default MeshHowItWorksSection;

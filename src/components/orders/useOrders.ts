@@ -93,7 +93,7 @@ export function useOrders() {
         asset,
         isMainnet,
         refresh,
-        loading: !!swap?.isLoading || !!server?.rowsLoading || twap.isFetching,
+        loading: !!swap?.isRefreshing || !!server?.rowsLoading || twap.isFetching,
         /** Set when the TWAP server could not be read; the other sources still show. */
         twapError: twap.error ? (twap.error as Error).message : undefined,
     };

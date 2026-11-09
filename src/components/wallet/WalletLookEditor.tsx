@@ -19,7 +19,7 @@ import { forgetWalletNotifications } from '@/lib/notifications';
 import { forgetWalletOrders } from '@/context/BCHSwapContext';
 import { notifyToast as toast } from '@/lib/notify-toast';
 import { cn } from '@/lib/utils';
-import { WalletGlyph } from './WalletIcon';
+import { WalletGlyph, WalletIcon } from './WalletIcon';
 
 /** Swatches and a name field. Colour is saved as it is picked; the name when the field is left or Enter is pressed. */
 export function WalletLookEditor({ wallet, className }: { wallet: ConnectedWallet; className?: string }) {
@@ -115,7 +115,9 @@ export function WalletEditCard({ walletId, onClose }: { walletId: string | null;
                 {wallet && (
                     <>
                         <div className="flex items-center gap-3 pr-8">
-                            <WalletGlyph color={wallet.color} size={48} />
+                            {wallet.kind === 'main'
+                                ? <WalletGlyph color={wallet.color} size={48} />
+                                : <WalletIcon id={wallet.iconId} src={wallet.iconUrl} chain={wallet.family} color={wallet.color} size={48} />}
                             <div className="min-w-0">
                                 <DialogTitle className="truncate text-base font-bold text-white">{wallet.name}</DialogTitle>
                                 <DialogDescription className="truncate font-mono text-[11px] text-white/45">{shortAddress(wallet.address, 10, 8)}</DialogDescription>

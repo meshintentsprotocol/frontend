@@ -576,13 +576,15 @@ export function usePortfolio(options?: { pollingMs?: number; scope?: 'main' | 'a
         if (currentEvmAddress) evmQuery.refetch();
         if (currentSolanaAddress) solQuery.refetch();
         if (movementAddress) movementQuery.refetch();
-        if (bchOwner) bchQuery.refetch();
+        if (bchOwner) {
+            bchQuery.refetch();
+            cauldronQuery.refetch();
+        }
         if (extBchActive) extQuery.refetch();
         if (currentBtcAddress) btcQuery.refetch();
-        cauldronQuery.refetch();
-        swapServer.refetch();
+        if (currentEvmAddress || currentSolanaAddress) swapServer.refetch();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [currentEvmAddress, currentSolanaAddress, movementAddress, bchOwner, extBchActive, currentBtcAddress, evmQuery.refetch, solQuery.refetch, movementQuery.refetch, bchQuery.refetch, extQuery.refetch, btcQuery.refetch, cauldronQuery.refetch]);
+    }, [currentEvmAddress, currentSolanaAddress, movementAddress, bchOwner, extBchActive, currentBtcAddress, evmQuery.refetch, solQuery.refetch, movementQuery.refetch, bchQuery.refetch, extQuery.refetch, btcQuery.refetch, cauldronQuery.refetch, swapServer.refetch]);
 
     const anyChainLoading = extBchActive ? (extQuery.isLoading || pricesLoading) :
         (!!currentEvmAddress && evmQuery.isLoading) ||

@@ -1,10 +1,9 @@
 import { useEffect, useId, useState } from 'react';
 import type { ComponentType, ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { ArrowLeftRight, ArrowUpRight, ChevronDown, Compass, Droplets, Github, Menu, Wallet } from 'lucide-react';
+import { ArrowLeftRight, ArrowUpRight, ChevronDown, Compass, Droplets, Github, Landmark, Menu, Wallet } from 'lucide-react';
 import { Drawer, DrawerContent, DrawerDescription, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
 import { cn } from '@/lib/utils';
-import { useWDK } from '@/context/WDKProvider';
 import { MESH_PAGES, isMeshPageActive } from '@/components/common/MeshNavDropdown';
 import { TRADE_PAGES } from '@/components/common/TradeNavDropdown';
 import { PORTFOLIO_PAGES } from '@/components/common/PortfolioNavDropdown';
@@ -12,8 +11,7 @@ import { PORTFOLIO_PAGES } from '@/components/common/PortfolioNavDropdown';
 // ============================================================================
 // Mobile navigation — bottom sheet opened from the header's menu button
 // ============================================================================
-// App destinations first as large rows, then collapsible link groups, then the
-// network switch and socials.
+// App destinations first as large rows, then collapsible link groups, then socials.
 
 const APP_VERSION = '0.1.0';
 
@@ -40,9 +38,10 @@ const under = (base: string) => (pathname: string) => pathname === base || pathn
 
 const APP_ITEMS: AppItem[] = [
     { name: 'Trade', path: '/trade', icon: ArrowLeftRight, matches: p => p === '/trade' || p === '/twap', children: TRADE_PAGES },
+    { name: 'Borrow', path: '/borrow', icon: Landmark, matches: under('/borrow') },
     { name: 'Explore', path: '/explore', icon: Compass, matches: under('/explore') },
-    { name: 'Pool', path: '/mesh/positions', icon: Droplets, matches: p => p.startsWith('/mesh') || p === '/orderbook', children: MESH_PAGES },
-    { name: 'Portfolio', path: '/portfolio', icon: Wallet, matches: under('/portfolio'), children: PORTFOLIO_PAGES },
+    { name: 'Pool', path: '/mesh/new', icon: Droplets, matches: p => p.startsWith('/mesh'), children: MESH_PAGES },
+    { name: 'Portfolio', path: '/portfolio', icon: Wallet, matches: p => under('/portfolio')(p) || p === '/mesh/leaderboard', children: PORTFOLIO_PAGES },
 ];
 
 const LINK_GROUPS: { title: string; links: SubLink[] }[] = [
@@ -61,8 +60,7 @@ const LINK_GROUPS: { title: string; links: SubLink[] }[] = [
         title: 'Resources',
         links: [
             { name: 'Knowledgehub', path: '/kb' },
-            { name: 'Documentation', path: 'https://docs.intentsprotocol.xyz/', external: true },
-            { name: 'Admin Analytics', path: '/admin' },
+            { name: 'Documentation', path: '/docs' },
         ],
     },
     {
@@ -166,8 +164,6 @@ export function MobileNavMenu() {
     const [open, setOpen] = useState(false);
     const [expanded, setExpanded] = useState<string | null>(null);
     const location = useLocation();
-    const wdk = useWDK();
-    const isMainnet = wdk.bchNetwork === 'mainnet';
     const currentUrl = location.pathname + location.search;
     const listId = useId();
 
@@ -200,7 +196,7 @@ export function MobileNavMenu() {
             </DrawerTrigger>
             <DrawerContent className="max-h-[88dvh] p-0">
                 <DrawerTitle className="sr-only">Navigation menu</DrawerTitle>
-                <DrawerDescription className="sr-only">Site navigation, network and social links</DrawerDescription>
+                <DrawerDescription className="sr-only">Site navigation and social links</DrawerDescription>
 
                 <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-1 sm:px-6">
                     <div className="mx-auto w-full max-w-md">
@@ -280,36 +276,8 @@ export function MobileNavMenu() {
                             ))}
                         </div>
 
-                        {/* ─── Network ─── */}
-                        <div className="mt-2 flex items-center justify-between gap-3 border-t border-white/[0.08] px-2 pt-4">
-                            <span className="text-sm font-medium text-zinc-400">Network</span>
-                            <div role="radiogroup" aria-label="Network" className="flex rounded-xl border border-white/10 bg-white/[0.03] p-1">
-                                {([['chipnet', 'Testnet'], ['mainnet', 'Mainnet']] as const).map(([net, label]) => {
-                                    const selected = wdk.bchNetwork === net;
-                                    return (
-                                        <button
-                                            key={net}
-                                            type="button"
-                                            role="radio"
-                                            aria-checked={selected}
-                                            onClick={() => wdk.setBchNetwork(net)}
-                                            className={cn(
-                                                'flex h-9 items-center gap-1.5 rounded-lg px-4 text-xs font-semibold transition-colors',
-                                                selected
-                                                    ? net === 'mainnet' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-white/10 text-white'
-                                                    : 'text-zinc-500 hover:text-zinc-300',
-                                            )}
-                                        >
-                                            {net === 'mainnet' && isMainnet && <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />}
-                                            {label}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-
                         {/* ─── Footer: version + socials ─── */}
-                        <div className="mt-4 flex items-center justify-between px-2">
+                        <div className="mt-4 flex items-center justify-between border-t border-white/[0.08] pt-4 px-2">
                             <span className="text-xs text-zinc-500">BCH Intents · v{APP_VERSION} · Beta</span>
                             <div className="flex items-center">
                                 {SOCIALS.map(s => (

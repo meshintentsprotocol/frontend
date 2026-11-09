@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg width="1200" height="750" viewBox="0 0 1200 750" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+        <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#080c16"/>
+            <stop offset="50%" stop-color="#0d1424"/>
+            <stop offset="100%" stop-color="#070a12"/>
+        </linearGradient>
+
+        <radialGradient id="glowGrad1" cx="85%" cy="30%" r="60%">
+            <stop offset="0%" stop-color="#0ac18e" stop-opacity="0.32"/>
+            <stop offset="70%" stop-color="#0d1424" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="glowGrad2" cx="15%" cy="85%" r="50%">
+            <stop offset="0%" stop-color="#0ac18e" stop-opacity="0.14"/>
+            <stop offset="80%" stop-color="#080c16" stop-opacity="0"/>
+        </radialGradient>
+
+        <linearGradient id="glassGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="rgba(255, 255, 255, 0.08)"/>
+            <stop offset="100%" stop-color="rgba(255, 255, 255, 0.02)"/>
+        </linearGradient>
+
+        <pattern id="gridPattern" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255, 255, 255, 0.035)" stroke-width="1"/>
+        </pattern>
+    </defs>
+
+    <!-- Canvas Background -->
+    <rect width="1200" height="750" fill="url(#bgGrad)"/>
+    <rect width="1200" height="750" fill="url(#gridPattern)"/>
+
+    <!-- Ambient Glows -->
+    <rect width="1200" height="750" fill="url(#glowGrad1)"/>
+    <rect width="1200" height="750" fill="url(#glowGrad2)"/>
+
+    <!-- Top Ambient Accent Line -->
+    <line x1="0" y1="0" x2="1200" y2="0" stroke="#0ac18e" stroke-width="4" opacity="0.85"/>
+
+    <!-- Left Header Meta / Category Pill -->
+    <g transform="translate(80, 75)">
+        <rect x="0" y="0" width="230" height="34" rx="17" fill="rgba(255, 255, 255, 0.05)" stroke="rgba(255, 255, 255, 0.12)" stroke-width="1"/>
+        <circle cx="17" cy="17" r="5" fill="#0ac18e"/>
+        <text x="32" y="22" fill="#e2e8f0" font-size="11" font-weight="700" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" letter-spacing="1.5">KNOWLEDGE BASE</text>
+    </g>
+
+    <!-- Right Brand Badge -->
+    <g transform="translate(870, 75)">
+        <rect x="0" y="0" width="250" height="34" rx="17" fill="rgba(10, 193, 142, 0.08)" stroke="#0ac18e" stroke-opacity="0.3" stroke-width="1"/>
+        <text x="125" y="22" fill="#0ac18e" font-size="11" font-weight="700" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" letter-spacing="1.5" text-anchor="middle">BCH INTENTS</text>
+    </g>
+
+    <!-- Title Block (Left Column) -->
+    <text x="80" y="220" fill="#ffffff" font-size="38" font-weight="800" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" letter-spacing="-0.5">
+        <tspan x="80" dy="0">Deep Dive: How Intent</tspan><tspan x="80" dy="46">Swaps Work</tspan>
+    </text>
+
+    <!-- Summary Block -->
+    <text x="80" y="440" fill="#94a3b8" font-size="17" font-weight="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+        <tspan x="80" dy="0">A technical look at the lifecycle of an</tspan><tspan x="80" dy="26">intent, from signing to Dutch Auction</tspan><tspan x="80" dy="26">settlement.</tspan>
+    </text>
+
+    <!-- Protocol Footer Indicator -->
+    <g transform="translate(80, 600)">
+        <rect x="0" y="0" width="340" height="42" rx="21" fill="rgba(255, 255, 255, 0.04)" stroke="rgba(255, 255, 255, 0.08)" stroke-width="1"/>
+        <text x="24" y="26" fill="#cbd5e1" font-size="12" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="600">BCHMesh Liquidity Layer</text>
+        <circle cx="215" cy="21" r="3" fill="#64748b"/>
+        <text x="230" y="26" fill="#0ac18e" font-size="12" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="700">Verified</text>
+    </g>
+
+    <!-- Right Column: Bento Graphic Box & Token Badges -->
+    <g transform="translate(660, 150)">
+        <rect x="0" y="0" width="460" height="490" rx="24" fill="url(#glassGrad)" stroke="rgba(255, 255, 255, 0.1)" stroke-width="1.5"/>
+        <circle cx="230" cy="180" r="160" fill="#0ac18e" opacity="0.08"/>
+
+        <!-- Token Pair Floating Spheres -->
+        <g transform="translate(140, 50)">
+            <circle cx="60" cy="60" r="48" fill="#131b2e" stroke="#0ac18e" stroke-width="3"/>
+            <image href="data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz4KPCEtLSBHZW5lcmF0b3I6IEFkb2JlIElsbHVzdHJhdG9yIDI0LjAuMCwgU1ZHIEV4cG9ydCBQbHVnLUluIC4gU1ZHIFZlcnNpb246IDYuMDAgQnVpbGQgMCkgIC0tPgo8c3ZnIHZlcnNpb249IjEuMSIgaWQ9IkxheWVyXzEiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIHg9IjBweCIgeT0iMHB4IgoJIHZpZXdCb3g9IjAgMCA3ODggNzg4IiBzdHlsZT0iZW5hYmxlLWJhY2tncm91bmQ6bmV3IDAgMCA3ODggNzg4OyIgeG1sOnNwYWNlPSJwcmVzZXJ2ZSI+CjxzdHlsZSB0eXBlPSJ0ZXh0L2NzcyI+Cgkuc3Qwe2ZpbGw6IzBBQzE4RTt9Cgkuc3Qxe2ZpbGw6I0ZGRkZGRjt9Cjwvc3R5bGU+CjxjaXJjbGUgY2xhc3M9InN0MCIgY3g9IjM5NCIgY3k9IjM5NCIgcj0iMzk0Ii8+CjxwYXRoIGlkPSJzeW1ib2xfMV8iIGNsYXNzPSJzdDEiIGQ9Ik01MTYuOSwyNjEuN2MtMTkuOC00NC45LTY1LjMtNTQuNS0xMjEtNDUuMkwzNzgsMTQ3LjFMMzM1LjgsMTU4bDE3LjYsNjkuMgoJYy0xMS4xLDIuOC0yMi41LDUuMi0zMy44LDguNEwzMDIsMTY2LjhsLTQyLjIsMTAuOWwxNy45LDY5LjRjLTkuMSwyLjYtODUuMiwyMi4xLTg1LjIsMjIuMWwxMS42LDQ1LjJjMCwwLDMxLTguNywzMC43LTgKCWMxNy4yLTQuNSwyNS4zLDQuMSwyOS4xLDEyLjJsNDkuMiwxOTAuMmMwLjYsNS41LTAuNCwxNC45LTEyLjIsMTguMWMwLjcsMC40LTMwLjcsNy45LTMwLjcsNy45bDQuNiw1Mi43YzAsMCw3NS40LTE5LjMsODUuMy0yMS44CglsMTguMSw3MC4ybDQyLjItMTAuOWwtMTguMS03MC43YzExLjYtMi43LDIyLjktNS41LDMzLjktOC40bDE4LDcwLjNsNDIuMi0xMC45bC0xOC4xLTcwLjFjNjUtMTUuOCwxMTAuOS01Ni44LDEwMS41LTExOS41CgljLTYtMzcuOC00Ny4zLTY4LjgtODEuNi03Mi4zQzUxOS4zLDMyNC43LDUzMCwyOTcuNCw1MTYuOSwyNjEuN0w1MTYuOSwyNjEuN3ogTTQ5Ni42LDQyNy4yYzguNCw2Mi4xLTc3LjksNjkuNy0xMDYuNCw3Ny4yCglsLTI0LjgtOTIuOUMzOTQsNDA0LDQ4Mi40LDM3Mi41LDQ5Ni42LDQyNy4yeiBNNDQ0LjYsMzAwLjdjOC45LDU1LjItNjQuOSw2MS42LTg4LjcsNjcuN2wtMjIuNi04NC4zCglDMzU3LjIsMjc4LjIsNDI2LjUsMjQ5LjYsNDQ0LjYsMzAwLjd6Ii8+Cjwvc3ZnPgo=" x="22" y="22" width="76" height="76"/>
+
+            
+            <circle cx="135" cy="60" r="40" fill="#131b2e" stroke="rgba(255,255,255,0.3)" stroke-width="2.5"/>
+            <image href="data:image/svg+xml;base64,PHN2ZyBkYXRhLW5hbWU9Ijg2OTc3Njg0LTEyZGItNDg1MC04ZjMwLTIzM2E3YzI2N2QxMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB2aWV3Qm94PSIwIDAgMjAwMCAyMDAwIj4KICA8cGF0aCBkPSJNMTAwMCAyMDAwYzU1NC4xNyAwIDEwMDAtNDQ1LjgzIDEwMDAtMTAwMFMxNTU0LjE3IDAgMTAwMCAwIDAgNDQ1LjgzIDAgMTAwMHM0NDUuODMgMTAwMCAxMDAwIDEwMDB6IiBmaWxsPSIjMjc3NWNhIi8+CiAgPHBhdGggZD0iTTEyNzUgMTE1OC4zM2MwLTE0NS44My04Ny41LTE5NS44My0yNjIuNS0yMTYuNjYtMTI1LTE2LjY3LTE1MC01MC0xNTAtMTA4LjM0czQxLjY3LTk1LjgzIDEyNS05NS44M2M3NSAwIDExNi42NyAyNSAxMzcuNSA4Ny41IDQuMTcgMTIuNSAxNi42NyAyMC44MyAyOS4xNyAyMC44M2g2Ni42NmMxNi42NyAwIDI5LjE3LTEyLjUgMjkuMTctMjkuMTZ2LTQuMTdjLTE2LjY3LTkxLjY3LTkxLjY3LTE2Mi41LTE4Ny41LTE3MC44M3YtMTAwYzAtMTYuNjctMTIuNS0yOS4xNy0zMy4zMy0zMy4zNGgtNjIuNWMtMTYuNjcgMC0yOS4xNyAxMi41LTMzLjM0IDMzLjM0djk1LjgzYy0xMjUgMTYuNjctMjA0LjE2IDEwMC0yMDQuMTYgMjA0LjE3IDAgMTM3LjUgODMuMzMgMTkxLjY2IDI1OC4zMyAyMTIuNSAxMTYuNjcgMjAuODMgMTU0LjE3IDQ1LjgzIDE1NC4xNyAxMTIuNXMtNTguMzQgMTEyLjUtMTM3LjUgMTEyLjVjLTEwOC4zNCAwLTE0NS44NC00NS44NC0xNTguMzQtMTA4LjM0LTQuMTYtMTYuNjYtMTYuNjYtMjUtMjkuMTYtMjVoLTcwLjg0Yy0xNi42NiAwLTI5LjE2IDEyLjUtMjkuMTYgMjkuMTd2NC4xN2MxNi42NiAxMDQuMTYgODMuMzMgMTc5LjE2IDIyMC44MyAyMDB2MTAwYzAgMTYuNjYgMTIuNSAyOS4xNiAzMy4zMyAzMy4zM2g2Mi41YzE2LjY3IDAgMjkuMTctMTIuNSAzMy4zNC0zMy4zM3YtMTAwYzEyNS0yMC44NCAyMDguMzMtMTA4LjM0IDIwOC4zMy0yMjAuODR6IiBmaWxsPSIjZmZmIi8+CiAgPHBhdGggZD0iTTc4Ny41IDE1OTUuODNjLTMyNS0xMTYuNjYtNDkxLjY3LTQ3OS4xNi0zNzAuODMtODAwIDYyLjUtMTc1IDIwMC0zMDguMzMgMzcwLjgzLTM3MC44MyAxNi42Ny04LjMzIDI1LTIwLjgzIDI1LTQxLjY3VjMyNWMwLTE2LjY3LTguMzMtMjkuMTctMjUtMzMuMzMtNC4xNyAwLTEyLjUgMC0xNi42NyA0LjE2LTM5NS44MyAxMjUtNjEyLjUgNTQ1Ljg0LTQ4Ny41IDk0MS42NyA3NSAyMzMuMzMgMjU0LjE3IDQxMi41IDQ4Ny41IDQ4Ny41IDE2LjY3IDguMzMgMzMuMzQgMCAzNy41LTE2LjY3IDQuMTctNC4xNiA0LjE3LTguMzMgNC4xNy0xNi42NnYtNTguMzRjMC0xMi41LTEyLjUtMjkuMTYtMjUtMzcuNXpNMTIyOS4xNyAyOTUuODNjLTE2LjY3LTguMzMtMzMuMzQgMC0zNy41IDE2LjY3LTQuMTcgNC4xNy00LjE3IDguMzMtNC4xNyAxNi42N3Y1OC4zM2MwIDE2LjY3IDEyLjUgMzMuMzMgMjUgNDEuNjcgMzI1IDExNi42NiA0OTEuNjcgNDc5LjE2IDM3MC44MyA4MDAtNjIuNSAxNzUtMjAwIDMwOC4zMy0zNzAuODMgMzcwLjgzLTE2LjY3IDguMzMtMjUgMjAuODMtMjUgNDEuNjdWMTcwMGMwIDE2LjY3IDguMzMgMjkuMTcgMjUgMzMuMzMgNC4xNyAwIDEyLjUgMCAxNi42Ny00LjE2IDM5NS44My0xMjUgNjEyLjUtNTQ1Ljg0IDQ4Ny41LTk0MS42Ny03NS0yMzcuNS0yNTguMzQtNDE2LjY3LTQ4Ny41LTQ5MS42N3oiIGZpbGw9IiNmZmYiLz4KPC9zdmc+Cg==" x="103" y="28" width="64" height="64"/>
+            
+        </g>
+
+        <!-- Visual Diagram in the Bento box -->
+        
+                <g transform="translate(680, 420)">
+                    <rect x="0" y="80" width="22" height="60" rx="4" fill="#0ac18e" opacity="0.3"/>
+                    <rect x="30" y="50" width="22" height="90" rx="4" fill="#0ac18e" opacity="0.5"/>
+                    <rect x="60" y="20" width="22" height="120" rx="4" fill="#0ac18e" opacity="0.8"/>
+                    <rect x="90" y="0" width="26" height="140" rx="4" fill="#0ac18e"/>
+                    <rect x="124" y="15" width="22" height="125" rx="4" fill="#0ac18e" opacity="0.85"/>
+                    <rect x="154" y="40" width="22" height="100" rx="4" fill="#0ac18e" opacity="0.6"/>
+                    <rect x="184" y="70" width="22" height="70" rx="4" fill="#0ac18e" opacity="0.4"/>
+                    <rect x="214" y="95" width="22" height="45" rx="4" fill="#0ac18e" opacity="0.25"/>
+                    <line x1="-10" y1="140" x2="250" y2="140" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
+                    <circle cx="103" cy="-12" r="6" fill="#fff"/>
+                    <line x1="103" y1="-5" x2="103" y2="140" stroke="#fff" stroke-dasharray="3,3" opacity="0.6"/>
+                </g>
+            
+
+        <!-- Bottom Metric Glass Badges -->
+        <g transform="translate(30, 375)">
+            <rect x="0" y="0" width="190" height="85" rx="14" fill="rgba(15, 23, 42, 0.7)" stroke="rgba(255, 255, 255, 0.08)" stroke-width="1"/>
+            <text x="18" y="32" fill="#94a3b8" font-size="12" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="500">Protocol</text>
+            <text x="18" y="64" fill="#0ac18e" font-size="18" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="800">BCHMesh</text>
+
+            <rect x="210" y="0" width="190" height="85" rx="14" fill="rgba(15, 23, 42, 0.7)" stroke="rgba(255, 255, 255, 0.08)" stroke-width="1"/>
+            <text x="228" y="32" fill="#94a3b8" font-size="12" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="500">Finality</text>
+            <text x="228" y="64" fill="#ffffff" font-size="18" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-weight="800">Instant</text>
+        </g>
+    </g>
+
+    <rect x="660" y="640" width="460" height="2" fill="#0ac18e" opacity="0.4"/>
+</svg>

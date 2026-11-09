@@ -26,6 +26,7 @@ export default defineConfig({
             '@reown/appkit',
             '@reown/appkit-adapter-ethers',
             '@reown/appkit-adapter-solana',
+            '@reown/appkit-adapter-bitcoin',
             '@reown/appkit/networks',
             'viem',
             'abitype',
@@ -37,6 +38,7 @@ export default defineConfig({
     resolve: {
         alias: {
             "@": path.resolve(__dirname, "./src"),
+            "@walletconnect/universal-provider": path.resolve(__dirname, "./node_modules/@walletconnect/universal-provider/dist/index.es.js"),
             // sodium-native is a C++ Node.js addon — cannot run in the browser.
             "sodium-native": "sodium-javascript",
             // mainnet-js has an optional dynamic import of this package (try/catch wrapped).

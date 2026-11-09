@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { BCHOrder, TwapOrderRecord, Token } from '@/types';
 import type { ActivityItem } from '@/swap-server/types';
 import {
-    bchOrderLinks, bchOrderSteps, bchOrderTimer, chainsOfSwapType, countByKind, filterOrders, formatAmount,
+    bchOrderCancellable, bchOrderLinks, bchOrderRefundable, bchOrderSteps, bchOrderTimer, chainsOfSwapType, countByKind, filterOrders, formatAmount,
     fromActivity, fromBchOrder, fromTwapOrder, sortOrders, twapSteps, type AssetInfo,
 } from '../model';
 
@@ -47,7 +47,7 @@ describe('fromBchOrder', () => {
         const item = fromBchOrder(order(), { isMainnet: false });
         expect(item).toMatchObject({ key: 'bch:o1', kind: 'swap', open: true, buyApprox: true, route: 'Bitcoin Cash · Dutch auction' });
         expect(item.sell).toMatchObject({ symbol: 'BCH', amount: '0.1' });
-        expect(item.status).toMatchObject({ label: 'Pending', tone: 'progress' });
+        expect(item.status).toMatchObject({ label: 'Filling', tone: 'progress' });
     });
 
     it('reads a limit order as its own kind, with an exact amount', () => {
@@ -222,5 +222,42 @@ describe('formatAmount', () => {
         expect(formatAmount(0)).toBe('0');
         expect(formatAmount(undefined)).toBe('?');
         expect(formatAmount('abc')).toBe('?');
+    });
+});
+
+describe('same-chain lifecycle (Mesh server)', () => {
+    it('reads an open limit order as Open and a funding one as Funding', () => {
+        expect(fromBchOrder(order({ orderType: 'limit' }), { isMainnet: false }).status).toMatchObject({ label: 'Open', tone: 'progress' });
+        const funding = fromBchOrder(order({ orderType: 'limit', status: 'awaiting_funding' }), { isMainnet: false });
+        expect(funding).toMatchObject({ open: true, status: { label: 'Funding' } });
+        const steps = bchOrderSteps(order({ orderType: 'limit', status: 'awaiting_funding' }), { isMainnet: false, nowSec: 1_700_000_100 });
+        expect(steps.find(s => s.key === 'fund')?.state).toBe('active');
+        expect(steps.find(s => s.key === 'fill')?.state).toBe('pending');
+    });
+
+    it('settles a closed order and shows what arrived on a fill', () => {
+        expect(fromBchOrder(order({ status: 'closed' }), { isMainnet: false }).open).toBe(false);
+        const filled = fromBchOrder(order({ status: 'filled', receivedUnits: '4387' }), { isMainnet: false });
+        expect(filled.buy.amount).toBe('43.87');
+    });
+
+    it('offers the refund from the time the server gives, not before', () => {
+        const o = order({ orderType: 'limit', status: 'expired', expiryTime: 1_700_003_600, refundableFrom: 1_700_004_000 });
+        expect(bchOrderRefundable(o, 1_700_003_900)).toBe(false);
+        expect(bchOrderRefundable(o, 1_700_004_000)).toBe(true);
+        expect(bchOrderRefundable(order({ status: 'filled', refundableFrom: 1 }), 1_700_004_000)).toBe(false);
+    });
+
+    it('only cancels an open limit order before its expiry', () => {
+        const now = Math.floor(Date.now() / 1000);
+        expect(bchOrderCancellable(order({ orderType: 'limit', expiryTime: now + 600 }))).toBe(true);
+        expect(bchOrderCancellable(order({ orderType: 'limit', expiryTime: now - 60 }))).toBe(false);
+        expect(bchOrderCancellable(order({ orderType: 'limit', status: 'awaiting_funding' }))).toBe(false);
+        expect(bchOrderCancellable(order({ orderType: 'market' }))).toBe(false);
+    });
+
+    it('labels the timer of an expired limit order with the refund time', () => {
+        const o = order({ orderType: 'limit', status: 'expired', expiryTime: 1_700_003_600, refundableFrom: 1_700_004_200 });
+        expect(bchOrderTimer(o, 1_700_003_700)?.text).toBe('expired · refund in ~8m 20s');
     });
 });

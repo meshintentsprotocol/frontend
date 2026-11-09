@@ -135,5 +135,22 @@ describe('evmSender', () => {
             expect(hashLog).toEqual([sent.hash]);
             expect(sent.hash).toBe('0x9999999999999999999999999999999999999999999999999999999999999999');
         });
+
+        it('refuses to send when the wallet is on another account than the connected one', async () => {
+            const requestedLog: any[] = [];
+            // The wallet reports 0x3333…; Cham connected 0x4444….
+            const sender = createAppKitEvmSender('0x4444444444444444444444444444444444444444');
+
+            await expect(sender.send(11155111, {
+                to: '0x2222222222222222222222222222222222222222',
+                data: '0x',
+                value: 1000n,
+            }, {
+                onRequested: (r) => { requestedLog.push(r); },
+            })).rejects.toThrow(/Switch back to that account/);
+
+            expect(requestedLog).toEqual([]);
+            expect(mockEip1193.request).not.toHaveBeenCalledWith(expect.objectContaining({ method: 'eth_sendTransaction' }));
+        });
     });
 });

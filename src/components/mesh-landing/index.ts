@@ -1,7 +1,9 @@
 export { MeshHeroSection } from './MeshHeroSection';
+export { MeshLiquidityWireframe } from './MeshLiquidityWireframe';
 export { MeshStatsBar } from './MeshStatsBar';
 export { MeshHowItWorksSection } from './MeshHowItWorksSection';
 export { MeshStrategyTypesSection } from './MeshStrategyTypesSection';
 export { MeshLiveNetworkSection } from './MeshLiveNetworkSection';
 export { MeshBenefitsSection } from './MeshBenefitsSection';
+export { MeshFAQ } from './MeshFAQ';
 export { MeshCTASection } from './MeshCTASection';

@@ -1,6 +1,6 @@
 import { seo } from './seo';
-import { author, siteSettings, tag } from './shared';
+import { author, siteSettings, subscriber, tag } from './shared';
 import { kbArticle, kbCategory } from './kb';
 import { docsPage, docsSection, navGroup } from './docs';
 
-export const schemaTypes = [kbArticle, kbCategory, docsPage, docsSection, navGroup, tag, author, siteSettings, seo];
+export const schemaTypes = [kbArticle, kbCategory, docsPage, docsSection, navGroup, tag, author, siteSettings, seo, subscriber];

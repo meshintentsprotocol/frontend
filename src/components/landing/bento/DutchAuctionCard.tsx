@@ -4,6 +4,7 @@
  * Features:
  * - Animated price decay curve (Dutch auction visualization)
  * - Shows price dropping until a solver fills the order
+ * - Triggered on hover (desktop) or scroll in-view (mobile)
  * - Amber/orange gradient mesh background
  * - "Fair Price, Every Time" messaging
  */
@@ -12,6 +13,7 @@ import { cn } from '@/lib/utils';
 import { TrendingDown, Zap } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useEffect, useRef, useState } from 'react';
+import { useBentoAnimationTrigger } from './useBentoAnimationTrigger';
 
 interface DutchAuctionCardProps {
     className?: string;
@@ -23,33 +25,55 @@ const START_PRICE = 1.18;
 const FILL_PRICE = 1.042;
 
 export function DutchAuctionCard({ className }: DutchAuctionCardProps) {
+    const { cardRef, isActive, isMobile, onMouseEnter, onMouseLeave } = useBentoAnimationTrigger();
     const [step, setStep] = useState(0);
     const [filled, setFilled] = useState(false);
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const startAuction = () => {
+    const clearTimers = () => {
+        if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+        }
+        if (timeoutRef.current) {
+            clearTimeout(timeoutRef.current);
+            timeoutRef.current = null;
+        }
+    };
+
+    const runAuctionCycle = () => {
+        clearTimers();
         setStep(0);
         setFilled(false);
-        if (intervalRef.current) clearInterval(intervalRef.current);
+
         intervalRef.current = setInterval(() => {
-            setStep(prev => {
+            setStep((prev) => {
                 if (prev >= TOTAL_STEPS - 1) {
-                    clearInterval(intervalRef.current!);
+                    if (intervalRef.current) clearInterval(intervalRef.current);
                     setFilled(true);
-                    // restart after a pause
-                    setTimeout(startAuction, 2000);
+                    // Pause on fill, then loop if still active
+                    timeoutRef.current = setTimeout(() => {
+                        runAuctionCycle();
+                    }, 1800);
                     return prev;
                 }
                 return prev + 1;
             });
-        }, 80);
+        }, 75);
     };
 
     useEffect(() => {
-        startAuction();
-        return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
+        if (isActive) {
+            runAuctionCycle();
+        } else {
+            clearTimers();
+            setStep(0);
+            setFilled(false);
+        }
+        return () => clearTimers();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [isActive]);
 
     const progress = step / (TOTAL_STEPS - 1); // 0 → 1
     const currentPrice = START_PRICE - (START_PRICE - FILL_PRICE) * progress;
@@ -57,9 +81,13 @@ export function DutchAuctionCard({ className }: DutchAuctionCardProps) {
 
     return (
         <div
+            ref={cardRef}
+            onMouseEnter={onMouseEnter}
+            onMouseLeave={onMouseLeave}
             className={cn(
-                'bento-card h-full min-h-[280px] flex flex-col',
+                'bento-card h-full min-h-[280px] flex flex-col transition-all duration-300 cursor-pointer',
                 'mesh-gradient-amber grainy',
+                isActive && 'ring-1 ring-amber-500/30',
                 className
             )}
         >
@@ -69,7 +97,10 @@ export function DutchAuctionCard({ className }: DutchAuctionCardProps) {
                     <h3 className="text-xl md:text-2xl font-bold mb-1">Dutch Auction</h3>
                     <p className="text-muted-foreground text-sm">Solvers compete. You win.</p>
                 </div>
-                <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center">
+                <div className={cn(
+                    "w-10 h-10 rounded-xl flex items-center justify-center transition-colors duration-300",
+                    isActive ? "bg-amber-500/20 shadow-sm shadow-amber-500/20" : "bg-amber-500/10"
+                )}>
                     <TrendingDown className="w-5 h-5 text-amber-500" />
                 </div>
             </div>
@@ -122,8 +153,12 @@ export function DutchAuctionCard({ className }: DutchAuctionCardProps) {
                         >
                             ⚡ Solver filled at ${FILL_PRICE} — best market price
                         </motion.span>
+                    ) : isActive ? (
+                        <span className="text-amber-300/90 font-medium">Solvers competing… price decaying</span>
                     ) : (
-                        <span>Solvers competing… price decaying</span>
+                        <span className="text-zinc-500">
+                            {isMobile ? 'Solvers compete · Best market price' : 'Hover to simulate Dutch auction fill'}
+                        </span>
                     )}
                 </div>
             </div>

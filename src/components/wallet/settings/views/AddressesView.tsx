@@ -2,9 +2,11 @@ import { useState, ReactNode } from 'react';
 import { useWDK } from '@/context/WDKProvider';
 import { useBCHWallet } from '@/context/BCHWalletProvider';
 import { useExternalBCHWallet } from '@/context/ExternalBCHWalletProvider';
-import { useBchAddressBalance } from '@/hooks/useBchAddressBalance';
 import { useBchWalletBalance } from '@/hooks/useBchWalletBalance';
 import { addressSet as wizAddressSet } from '@/lib/wallets/wizardconnect';
+import { useVisibleWallets } from '@/lib/wallets/registry';
+import { appNetworkOf, type ExternalWallet } from '@/lib/wallets/types';
+import { WalletIcon, CHAIN_NAMES } from '@/components/wallet/WalletIcon';
 import { Copy, ExternalLink, KeyRound, Wallet, Check, Loader2, Plus, WifiOff, Wifi } from 'lucide-react';
 import { notifyToast as toast } from '@/lib/notify-toast';
 import { cn } from '@/lib/utils';
@@ -17,6 +19,15 @@ import { cn } from '@/lib/utils';
 function copyAddress(address: string, label: string) {
     navigator.clipboard.writeText(address);
     toast.success(`${label} address copied!`);
+}
+
+/** Bundled icon file for a wallet whose session gave no icon (see public/logos/wallets). */
+function iconIdFor(wallet: ExternalWallet): string {
+    if (wallet.source === 'extension') return 'bch-intents';
+    const l = wallet.label.toLowerCase();
+    if (l.includes('cashonize')) return 'cashonize';
+    if (l.includes('paytaca')) return 'paytaca';
+    return 'walletconnect';
 }
 
 function formatAddr(addr: string) {
@@ -133,15 +144,35 @@ export function AddressesView({ onConnectExternal }: AddressesViewProps) {
     const bchWallet = useBCHWallet();
     const extBCH = useExternalBCHWallet();
     const isMainnet = wdk.bchNetwork === 'mainnet';
+    const externals = useVisibleWallets(appNetworkOf(wdk.bchNetwork));
 
-    if (!wdk.isInitialized) {
+    if (!wdk.isInitialized && externals.length === 0) {
         return (
             <div className="flex flex-col items-center justify-center py-10 text-center px-4">
                 <Wallet className="h-10 w-10 text-muted-foreground/30 mb-3" />
                 <p className="text-sm text-muted-foreground">No wallet connected</p>
                 <p className="text-[10px] text-muted-foreground/60 mt-1">
-                    Connect a WDK wallet to view addresses
+                    Unlock Cham or connect a wallet to see its addresses
                 </p>
+                {onConnectExternal && (
+                    <button
+                        onClick={onConnectExternal}
+                        className="mt-3 inline-flex items-center gap-1 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-1.5 text-[11px] font-semibold text-emerald-300 hover:bg-emerald-500/15"
+                    >
+                        <Plus className="h-3 w-3" /> Connect a wallet
+                    </button>
+                )}
+            </div>
+        );
+    }
+
+    if (!wdk.isInitialized) {
+        return (
+            <div className="space-y-2">
+                <ConnectedHeader count={externals.length} onConnectExternal={onConnectExternal} />
+                {externals.map(w => (
+                    <ExternalWalletCard key={w.id} wallet={w} isMainnet={isMainnet} onDisconnect={() => extBCH.disconnectWallet(w.id)} />
+                ))}
             </div>
         );
     }
@@ -282,34 +313,73 @@ export function AddressesView({ onConnectExternal }: AddressesViewProps) {
                         />
                     )}
 
-                    {/* ── External BCH Wallets ── */}
-                    {extBCH.wallets.map(extWallet => (
-                        <ExternalWalletCard
-                            key={extWallet.id}
-                            wallet={extWallet}
-                            isMainnet={isMainnet}
-                            onDisconnect={() => extBCH.disconnectWallet(extWallet.id)}
-                        />
-                    ))}
                 </div>
             </div>
+
+            {/* ═══════════════ CONNECTED WALLETS ═══════════════ */}
+            {externals.length > 0 && (
+                <div className="space-y-2">
+                    <ConnectedHeader count={externals.length} />
+                    {externals.map(w => (
+                        <ExternalWalletCard key={w.id} wallet={w} isMainnet={isMainnet} onDisconnect={() => extBCH.disconnectWallet(w.id)} />
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function ConnectedHeader({ count, onConnectExternal }: { count: number; onConnectExternal?: () => void }) {
+    return (
+        <div className="flex items-center justify-between px-1">
+            <div className="flex flex-1 items-center gap-2">
+                <span className="text-[10px] uppercase tracking-[0.14em] text-white/40 font-bold">Connected wallets · {count}</span>
+                <span className="flex-1 h-px bg-white/[0.06]" />
+            </div>
+            {onConnectExternal && (
+                <button
+                    onClick={onConnectExternal}
+                    className="ml-2 flex items-center gap-1 text-[10px] font-semibold text-emerald-400/80 hover:text-emerald-300 transition-colors px-2 py-1 rounded-md hover:bg-emerald-500/10"
+                >
+                    <Plus className="h-3 w-3" />
+                    Add Wallet
+                </button>
+            )}
         </div>
     );
 }
 
 // ============================================================================
-// ExternalWalletCard — shows a connected external BCH wallet (WC / Wizard)
+// ExternalWalletCard — a connected external wallet on any chain
 // ============================================================================
 
+const SOURCE_LABEL: Record<ExternalWallet['source'], string> = {
+    wizardconnect: 'WizardConnect',
+    walletconnect: 'WalletConnect',
+    extension: 'Extension',
+    appkit: 'AppKit',
+};
+
+function explorerFor(wallet: ExternalWallet, isMainnet: boolean): string {
+    const a = wallet.address;
+    switch (wallet.family) {
+        case 'bch': return isMainnet ? `https://blockchair.com/bitcoin-cash/address/${a}` : `https://chipnet.chaingraph.cash/address/${a}`;
+        case 'evm': return isMainnet ? `https://etherscan.io/address/${a}` : `https://sepolia.etherscan.io/address/${a}`;
+        case 'solana': return isMainnet ? `https://explorer.solana.com/address/${a}` : `https://explorer.solana.com/address/${a}?cluster=devnet`;
+        case 'btc': return isMainnet ? `https://mempool.space/address/${a}` : `https://mempool.space/testnet/address/${a}`;
+    }
+}
+
 interface ExternalWalletCardProps {
-    wallet: import('@/context/ExternalBCHWalletProvider').ExternalBCHWallet;
+    wallet: ExternalWallet;
     isMainnet: boolean;
     onDisconnect: () => void;
 }
 
 function ExternalWalletCard({ wallet, isMainnet, onDisconnect }: ExternalWalletCardProps) {
+    const isBch = wallet.family === 'bch';
     const { data: balData, isLoading } = useBchWalletBalance({
-        wallet,
+        wallet: isBch ? wallet : null,
         isMainnet,
         refetchMs: 15_000,
     });
@@ -322,12 +392,11 @@ function ExternalWalletCard({ wallet, isMainnet, onDisconnect }: ExternalWalletC
         setTimeout(() => setCopied(false), 1200);
     };
 
-    const explorerUrl = isMainnet
-        ? `https://blockchair.com/bitcoin-cash/address/${wallet.address}`
-        : `https://chipnet.chaingraph.cash/address/${wallet.address}`;
-
-    const sourceLabel = wallet.source === 'wizardconnect' ? 'WizardConnect' : wallet.source === 'extension' ? 'Extension' : 'WalletConnect';
+    const explorerUrl = explorerFor(wallet, isMainnet);
+    const sourceLabel = SOURCE_LABEL[wallet.source];
     const hdCount = wallet.source === 'wizardconnect' ? wizAddressSet(wallet.id).length : 1;
+    const networkLabel = isMainnet ? 'Mainnet'
+        : wallet.family === 'bch' ? 'Chipnet' : wallet.family === 'solana' ? 'Devnet' : 'Testnet';
 
     return (
         <div className="relative rounded-xl bg-white/[0.02] hover:bg-white/[0.04] border border-blue-500/15 hover:border-blue-500/25 p-3 transition-all duration-200 shadow-sm hover:-translate-y-[1px] shadow-blue-500/5">
@@ -339,19 +408,17 @@ function ExternalWalletCard({ wallet, isMainnet, onDisconnect }: ExternalWalletC
             </div>
 
             <div className="flex items-center gap-3 pr-20">
-                {/* Icon */}
-                <div className="h-9 w-9 rounded-xl bg-blue-500/10 border border-blue-500/20 ring-1 ring-blue-500/10 flex items-center justify-center flex-shrink-0 text-base">
-                    {wallet.source === 'wizardconnect' ? '🔵' : wallet.source === 'extension' ? '🧩' : '🟢'}
-                </div>
+                {/* Icon: the wallet's own, with its chain as a badge */}
+                <WalletIcon id={iconIdFor(wallet)} src={wallet.icon} chain={wallet.family} size={36} />
 
                 {/* Name + address */}
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5 mb-0.5">
-                        <span className="text-xs font-semibold tracking-tight text-blue-300">
+                        <span className="truncate text-xs font-semibold tracking-tight text-blue-300">
                             {wallet.label}
                         </span>
                         <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded border bg-emerald-500/10 text-emerald-300 border-emerald-500/25 uppercase tracking-wider">
-                            {isMainnet ? 'Mainnet' : 'Chipnet'}
+                            {networkLabel}
                         </span>
                         {wallet.source === 'wizardconnect' && (
                             <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded border bg-blue-500/10 text-blue-300 border-blue-500/25">
@@ -389,7 +456,9 @@ function ExternalWalletCard({ wallet, isMainnet, onDisconnect }: ExternalWalletC
             <div className="mt-2 pt-2 border-t border-white/[0.04] flex items-center justify-between gap-2">
                 <div className="flex items-center gap-1.5">
                     <Wifi className="h-3 w-3 text-blue-400/70" />
-                    {isLoading ? (
+                    {!isBch ? (
+                        <span className="text-[11px] font-semibold text-blue-300/80">{CHAIN_NAMES[wallet.family]}</span>
+                    ) : isLoading ? (
                         <Loader2 className="h-3 w-3 animate-spin text-white/30" />
                     ) : (
                         <span className="text-[11px] font-mono font-semibold text-blue-300">

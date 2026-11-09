@@ -1,4 +1,4 @@
-// OLD — retired 2026-10-19, kept until the clean-up. Not part of the live app. See devrel-agent-context/walletuidocs/connect/old-code.md.
+// Live bento card
 /**
  * MovementSwapsCard - Card 2 in the bento grid
  * 
@@ -7,15 +7,17 @@
  * - "Construct. Express. Execute." tagline
  * - Dutch Auctions description
  * - Animated swap visualization showing token routing
+ * - Triggered on hover (desktop) or scroll in-view (mobile)
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { ArrowRight, Sparkles, Zap, Shield } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TokenDisplay } from '@/components/common/TokenDisplay';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useBentoAnimationTrigger } from './useBentoAnimationTrigger';
 
 // Tokens for the swap animation — CashToken + Cross-Chain swaps
 const SWAP_PAIRS = [
@@ -69,29 +71,50 @@ interface MovementSwapsCardProps {
 }
 
 export function MovementSwapsCard({ className }: MovementSwapsCardProps) {
+    const { cardRef, isActive, isMobile, onMouseEnter, onMouseLeave } = useBentoAnimationTrigger();
     const [currentPair, setCurrentPair] = useState(0);
+    const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-    // Rotate swap pairs every 2 seconds
+    // Rotate swap pairs when active
     useEffect(() => {
-        const interval = setInterval(() => {
+        if (!isActive) {
+            if (intervalRef.current) {
+                clearInterval(intervalRef.current);
+                intervalRef.current = null;
+            }
+            setCurrentPair(0);
+            return;
+        }
+
+        intervalRef.current = setInterval(() => {
             setCurrentPair((prev) => (prev + 1) % SWAP_PAIRS.length);
-        }, 2000);
-        return () => clearInterval(interval);
-    }, []);
+        }, 1900);
+
+        return () => {
+            if (intervalRef.current) clearInterval(intervalRef.current);
+        };
+    }, [isActive]);
 
     const pair = SWAP_PAIRS[currentPair];
 
     return (
         <div
+            ref={cardRef}
+            onMouseEnter={onMouseEnter}
+            onMouseLeave={onMouseLeave}
             className={cn(
-                'bento-card h-full min-h-[420px] flex flex-col',
+                'bento-card h-full min-h-[420px] flex flex-col transition-all duration-300 cursor-pointer',
                 'mesh-gradient-teal grainy',
+                isActive && 'ring-1 ring-teal-500/30',
                 className
             )}
         >
             {/* Card Header */}
             <div className="flex items-center gap-2 mb-4">
-                <div className="w-10 h-10 rounded-xl bg-teal-500/10 flex items-center justify-center">
+                <div className={cn(
+                    "w-10 h-10 rounded-xl flex items-center justify-center transition-colors duration-300",
+                    isActive ? "bg-teal-500/20 shadow-sm shadow-teal-500/20" : "bg-teal-500/10"
+                )}>
                     <Sparkles className="w-5 h-5 text-teal-500" />
                 </div>
                 <span className="tag-teal">
@@ -138,12 +161,12 @@ export function MovementSwapsCard({ className }: MovementSwapsCardProps) {
             <div className="mt-auto">
                 <div className="bg-zinc-100 dark:bg-zinc-800/50 rounded-2xl p-6 relative overflow-hidden">
                     {/* Animated routing line */}
-                    <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                         <motion.div
                             className="h-0.5 bg-gradient-to-r from-teal-500/0 via-teal-500 to-teal-500/0"
                             initial={{ width: 0, opacity: 0 }}
-                            animate={{ width: '60%', opacity: 1 }}
-                            transition={{ duration: 0.8, repeat: Infinity, repeatType: 'reverse' }}
+                            animate={isActive ? { width: '60%', opacity: 1 } : { width: '20%', opacity: 0.3 }}
+                            transition={isActive ? { duration: 0.8, repeat: Infinity, repeatType: 'reverse' } : { duration: 0.3 }}
                         />
                     </div>
 
@@ -152,10 +175,10 @@ export function MovementSwapsCard({ className }: MovementSwapsCardProps) {
                         <AnimatePresence mode="wait">
                             <motion.div
                                 key={`from-${currentPair}`}
-                                initial={{ opacity: 0, x: -20 }}
+                                initial={{ opacity: 0, x: -16 }}
                                 animate={{ opacity: 1, x: 0 }}
-                                exit={{ opacity: 0, x: -20 }}
-                                transition={{ duration: 0.3 }}
+                                exit={{ opacity: 0, x: -16 }}
+                                transition={{ duration: 0.25 }}
                                 className="flex flex-col items-center gap-2"
                             >
                                 <TokenDisplay
@@ -175,9 +198,9 @@ export function MovementSwapsCard({ className }: MovementSwapsCardProps) {
                             <AnimatePresence mode="wait">
                                 <motion.span
                                     key={`type-${currentPair}`}
-                                    initial={{ opacity: 0, y: -5 }}
+                                    initial={{ opacity: 0, y: -4 }}
                                     animate={{ opacity: 1, y: 0 }}
-                                    exit={{ opacity: 0, y: 5 }}
+                                    exit={{ opacity: 0, y: 4 }}
                                     transition={{ duration: 0.2 }}
                                     className={cn(
                                         "text-[10px] font-semibold px-2 py-0.5 rounded-full mb-1",
@@ -190,23 +213,25 @@ export function MovementSwapsCard({ className }: MovementSwapsCardProps) {
                                 </motion.span>
                             </AnimatePresence>
                             <motion.div
-                                animate={{ scale: [1, 1.2, 1] }}
-                                transition={{ duration: 1, repeat: Infinity }}
+                                animate={isActive ? { scale: [1, 1.18, 1] } : { scale: 1 }}
+                                transition={isActive ? { duration: 1, repeat: Infinity } : { duration: 0.2 }}
                                 className="w-10 h-10 rounded-full bg-teal-500/10 flex items-center justify-center"
                             >
                                 <ArrowRight className="w-5 h-5 text-teal-500" />
                             </motion.div>
-                            <span className="text-xs text-teal-500 font-medium">~2s</span>
+                            <span className="text-xs text-teal-500 font-medium">
+                                {isActive ? '~2s' : (isMobile ? 'Live fill' : 'Hover to view')}
+                            </span>
                         </div>
 
                         {/* To Token */}
                         <AnimatePresence mode="wait">
                             <motion.div
                                 key={`to-${currentPair}`}
-                                initial={{ opacity: 0, x: 20 }}
+                                initial={{ opacity: 0, x: 16 }}
                                 animate={{ opacity: 1, x: 0 }}
-                                exit={{ opacity: 0, x: 20 }}
-                                transition={{ duration: 0.3 }}
+                                exit={{ opacity: 0, x: 16 }}
+                                transition={{ duration: 0.25 }}
                                 className="flex flex-col items-center gap-2"
                             >
                                 <TokenDisplay

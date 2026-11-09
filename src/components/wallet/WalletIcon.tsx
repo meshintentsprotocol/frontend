@@ -1,6 +1,22 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Wallet } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import type { ChainFamily } from '@/lib/wallets/types';
+
+/** Logo of each chain family, for chain pickers and the small badge on a wallet icon. */
+export const CHAIN_LOGOS: Record<ChainFamily, string> = {
+    bch: '/logos/bitcoin-cash-bch-logo.svg',
+    evm: '/logos/ethereum-eth-logo.svg',
+    solana: '/logos/solana.svg',
+    btc: '/logos/bitcoin-btc-logo.svg',
+};
+
+export const CHAIN_NAMES: Record<ChainFamily, string> = {
+    bch: 'Bitcoin Cash',
+    evm: 'EVM',
+    solana: 'Solana',
+    btc: 'Bitcoin',
+};
 
 /**
  * A wallet's icon: `public/logos/wallets/<id>.svg`, on a tile tinted with the
@@ -37,22 +53,27 @@ export function WalletGlyph({ color = '#10b981', size = 40, className }: { color
     );
 }
 
-export function WalletIcon({ id, src, color, size = 36, active, className }: {
+export function WalletIcon({ id, src, color, size = 36, active, chain, className }: {
     /** 'main' | 'cashonize' | 'paytaca' | 'walletconnect' | 'bch-intents' */
     id: string;
-    /** Direct image URL from session metadata (e.g. peer icon) */
+    /** The wallet's own icon from its session (WalletConnect peer, AppKit wallet info); tried first. */
     src?: string;
     /** Hex colour of the wallet; tints the ring. */
     color?: string;
     size?: number;
     /** Shows the small live dot. */
     active?: boolean;
+    /** Shows the chain's logo as a small badge, for lists that mix chains. */
+    chain?: ChainFamily;
     className?: string;
 }) {
-    const [failed, setFailed] = useState(false);
+    // Session icon first, then the bundled file, then the glyph.
+    const sources = [src, `/logos/wallets/${id}.svg`].filter((s): s is string => !!s);
+    const [attempt, setAttempt] = useState(0);
+    useEffect(() => { setAttempt(0); }, [src, id]);
+    const imageSrc = sources[attempt];
     const radius = Math.round(size * 0.3);
-
-    const imageSrc = !failed && src ? src : `/logos/wallets/${id}.svg`;
+    const badge = Math.max(12, Math.round(size * 0.42));
 
     return (
         <span
@@ -62,15 +83,27 @@ export function WalletIcon({ id, src, color, size = 36, active, className }: {
                 boxShadow: color ? `0 0 0 1.5px ${color}66, 0 4px 14px -6px ${color}80` : '0 0 0 1px rgba(255,255,255,0.08)',
             }}
         >
-            {failed ? (
-                <Wallet style={{ width: size * 0.48, height: size * 0.48, color: color ?? '#a1a1aa' }} />
-            ) : (
+            {imageSrc ? (
                 <img
+                    key={imageSrc}
                     src={imageSrc}
                     alt=""
                     draggable={false}
-                    onError={() => setFailed(true)}
+                    referrerPolicy="no-referrer"
+                    onError={() => setAttempt(a => a + 1)}
                     style={{ width: size - 4, height: size - 4, borderRadius: radius - 2, objectFit: 'contain' }}
+                />
+            ) : (
+                <Wallet style={{ width: size * 0.48, height: size * 0.48, color: color ?? '#a1a1aa' }} />
+            )}
+            {chain && (
+                <img
+                    src={CHAIN_LOGOS[chain]}
+                    alt={CHAIN_NAMES[chain]}
+                    title={CHAIN_NAMES[chain]}
+                    draggable={false}
+                    className="absolute -bottom-1 -left-1 rounded-full bg-[#0A0A0A] p-[1.5px] ring-1 ring-[#0A0A0A]"
+                    style={{ width: badge, height: badge }}
                 />
             )}
             {active && (

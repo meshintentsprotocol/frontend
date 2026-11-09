@@ -3,7 +3,8 @@
  *
  * Lets the user select the chain family:
  * - Bitcoin Cash: moves to Step 3 (QR / protocol selection).
- * - EVM / Solana / Bitcoin: disabled with "Coming soon" badge until P6-P8.
+ * - EVM / Solana / Bitcoin: open Reown AppKit for that namespace (one wallet per chain).
+ * Each chain says which wallet is already connected on it.
  *
  * Phase 2: The connect screen
  */
@@ -13,6 +14,8 @@ import { cn } from '@/lib/utils';
 import { ChainFamily, AppNetwork } from '@/lib/wallets/types';
 import { useWDK } from '@/context/WDKProvider';
 import { appNetworkOf } from '@/lib/wallets/types';
+import { useVisibleWallets } from '@/lib/wallets/registry';
+import { CHAIN_LOGOS } from '../WalletIcon';
 
 interface ChainPickerProps {
     onBack: () => void;
@@ -59,7 +62,7 @@ const CHAINS: ChainOption[] = [
         description: 'Xverse, Leather, OKX, Phantom',
         icon: 'btc',
         accent: '#f59e0b',
-        available: false,
+        available: true,
     },
 ];
 
@@ -69,6 +72,8 @@ const TAG = 'rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tr
 export function ChainPicker({ onBack, onPickChain }: ChainPickerProps) {
     const { bchNetwork } = useWDK();
     const appNetwork: AppNetwork = appNetworkOf(bchNetwork);
+    const visible = useVisibleWallets(appNetwork);
+    const connectedOn = (family: ChainFamily) => visible.filter(w => w.family === family);
 
     return (
         <div className="space-y-4" data-connect-step="chain">
@@ -88,7 +93,11 @@ export function ChainPicker({ onBack, onPickChain }: ChainPickerProps) {
             </div>
 
             <div className="space-y-2">
-                {CHAINS.map((chain) => (
+                {CHAINS.map((chain) => {
+                    const existing = connectedOn(chain.family);
+                    // AppKit holds one wallet per chain: a second connect replaces the first.
+                    const replaces = chain.family !== 'bch' && existing.length > 0 ? existing[0] : null;
+                    return (
                     <button
                         key={chain.family}
                         type="button"
@@ -100,10 +109,10 @@ export function ChainPicker({ onBack, onPickChain }: ChainPickerProps) {
                         )}
                     >
                         <div
-                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-bold text-xs ring-1 ring-white/10"
-                            style={{ backgroundColor: `${chain.accent}15`, color: chain.accent }}
+                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ring-1 ring-white/10"
+                            style={{ backgroundColor: `${chain.accent}15` }}
                         >
-                            {chain.name.slice(0, 3).toUpperCase()}
+                            <img src={CHAIN_LOGOS[chain.family]} alt="" className="h-6 w-6 object-contain" draggable={false} />
                         </div>
                         <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
@@ -113,16 +122,22 @@ export function ChainPicker({ onBack, onPickChain }: ChainPickerProps) {
                                         Coming soon
                                     </span>
                                 )}
+                                {chain.available && existing.length > 0 && (
+                                    <span className={cn(TAG, 'border-emerald-400/30 bg-emerald-400/10 text-emerald-300')}>
+                                        {existing.length === 1 ? 'Connected' : `${existing.length} connected`}
+                                    </span>
+                                )}
                             </div>
                             <p className="mt-0.5 truncate text-[11px] text-white/50">
-                                {chain.description}
+                                {replaces ? `${replaces.label} is connected · connecting again replaces it` : chain.description}
                             </p>
                         </div>
                         {chain.available && (
                             <ChevronRight className="h-4 w-4 shrink-0 text-white/30 transition-transform group-hover:translate-x-0.5 group-hover:text-white/60" />
                         )}
                     </button>
-                ))}
+                    );
+                })}
             </div>
 
             {/* Network mode note */}

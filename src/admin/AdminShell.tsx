@@ -9,23 +9,30 @@ import { useIsFetching } from '@tanstack/react-query';
 import {
   LayoutDashboard, Activity, ArrowDownUp, Zap, Repeat, Users, Waves, Layers, UserCircle, Recycle, SlidersHorizontal,
   Undo2, Server, KeyRound, Pause, Play, Menu, X, ShieldCheck, ShieldAlert, History, ArrowLeft, RefreshCw, Scale, ArrowLeftRight, Radar, Wallet, Settings2,
-  Globe, Fuel, Coins, LineChart, ScrollText, PiggyBank, Landmark, HeartPulse, Gem,
+  Globe, Fuel, Coins, LineChart, ScrollText, PiggyBank, Landmark, HeartPulse, Gem, Network,
 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { AdminProvider, useAdmin, POLL_OPTIONS } from './AdminContext';
 import { AssetProvider } from './assets';
 import { useOverview } from './hooks';
+import { useServiceProbes } from './serviceProbes';
 import { ago, useNow } from './kit';
 import { AdminApiError } from './api';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
-interface NavItem { to: string; label: string; icon: typeof Activity; end?: boolean; badge?: (o: NonNullable<ReturnType<typeof useOverview>['data']>) => { n: number; tone: 'amber' | 'rose' | 'zinc' } | null }
+interface NavItem {
+  to: string; label: string; icon: typeof Activity; end?: boolean;
+  badge?: (o: NonNullable<ReturnType<typeof useOverview>['data']>) => { n: number; tone: 'amber' | 'rose' | 'zinc' } | null;
+  /** Badge from the Services probes (servers down or misconfigured), not from the Mesh overview. */
+  servicesBadge?: boolean;
+}
 
 const NAV: Array<{ group: string; items: NavItem[] }> = [
   {
     group: 'Monitor', items: [
       { to: '/admin', label: 'Overview', icon: LayoutDashboard, end: true, badge: o => (o.alerts.length ? { n: o.alerts.length, tone: o.alerts.some(a => a.severity === 'error') ? 'rose' : 'amber' } : null) },
+      { to: '/admin/services', label: 'Services', icon: Network, servicesBadge: true },
       { to: '/admin/events', label: 'Events', icon: Activity, badge: o => (o.events.h24.bySeverity.error ? { n: o.events.h24.bySeverity.error, tone: 'rose' } : null) },
     ],
   },
@@ -106,6 +113,8 @@ const BADGE_TONE = { amber: 'bg-amber-500/15 text-amber-300', rose: 'bg-rose-500
 
 function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const { data } = useOverview();
+  // checked less often than the Services page itself polls
+  const probes = useServiceProbes(6).data?.summary;
   return (
     <nav aria-label="Admin" className="flex flex-col gap-5 p-3">
       <Link to="/admin" onClick={onNavigate} className="flex items-center gap-2.5 px-2 pt-1">
@@ -122,7 +131,9 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
           <div className="px-2 mb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-600">{g.group}</div>
           <ul className="space-y-0.5">
             {g.items.map(it => {
-              const b = data && it.badge ? it.badge(data) : null;
+              const b = it.servicesBadge
+                ? (probes?.problems ? { n: probes.problems, tone: probes.down || probes.mismatch ? 'rose' as const : 'amber' as const } : null)
+                : data && it.badge ? it.badge(data) : null;
               const Icon = it.icon;
               return (
                 <li key={it.to}>
@@ -279,7 +290,9 @@ function Frame({ children }: { children: ReactNode }) {
   const rejected = error instanceof AdminApiError && error.status === 401;
   // the swap-server pages talk to another server with its own key; they carry their own gate
   const swapArea = loc.pathname.startsWith('/admin/swap');
-  const locked = !swapArea && (!adminKey || rejected);
+  // Services only reads public /health endpoints, and must work while the Mesh server is down
+  const servicesPage = loc.pathname.startsWith('/admin/services');
+  const locked = !swapArea && !servicesPage && (!adminKey || rejected);
   useEffect(() => setMenu(false), [loc.pathname]);
   return (
     <AssetProvider network={data?.network ?? 'chipnet'}>

@@ -5,6 +5,7 @@
  * - Cross-chain Swaps header with swap icon
  * - "Cross-Chain Execution" tagline
  * - Live token prices from Pyth Oracle with auto-scroll animation
+ * - Triggered on hover (desktop) or scroll in-view (mobile)
  * - "Explore chains" CTA links to Live on Network section
  */
 
@@ -15,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { TokenDisplay } from '@/components/common/TokenDisplay';
 import { PriceService } from '@/lib/pyth';
 import { PriceData } from '@/types';
+import { useBentoAnimationTrigger } from './useBentoAnimationTrigger';
 
 // Token assets configuration
 const DISPLAY_TOKENS = [
@@ -67,6 +69,7 @@ interface CrossChainSwapsCardProps {
 }
 
 export function CrossChainSwapsCard({ className }: CrossChainSwapsCardProps) {
+    const { cardRef, isActive, isMobile, onMouseEnter, onMouseLeave } = useBentoAnimationTrigger();
     const [prices, setPrices] = useState<Record<string, PriceData>>({});
     const [loading, setLoading] = useState(true);
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -84,17 +87,16 @@ export function CrossChainSwapsCard({ className }: CrossChainSwapsCardProps) {
         return () => clearInterval(interval);
     }, []);
 
-    // Auto-scroll animation for token list
+    // Auto-scroll animation for token list — runs when active
     useEffect(() => {
         const el = scrollRef.current;
-        if (!el) return;
+        if (!el || !isActive) return;
 
         let animationId: number;
-        let scrollSpeed = 0.5; // pixels per frame
-        let paused = false;
+        const scrollSpeed = 0.65; // pixels per frame
 
         const scroll = () => {
-            if (!paused && el.scrollHeight > el.clientHeight) {
+            if (el.scrollHeight > el.clientHeight) {
                 el.scrollTop += scrollSpeed;
                 // Reset to top when scrolled past halfway (seamless loop)
                 if (el.scrollTop >= el.scrollHeight / 2) {
@@ -104,19 +106,12 @@ export function CrossChainSwapsCard({ className }: CrossChainSwapsCardProps) {
             animationId = requestAnimationFrame(scroll);
         };
 
-        const handleEnter = () => { paused = true; };
-        const handleLeave = () => { paused = false; };
-
-        el.addEventListener('mouseenter', handleEnter);
-        el.addEventListener('mouseleave', handleLeave);
         animationId = requestAnimationFrame(scroll);
 
         return () => {
             cancelAnimationFrame(animationId);
-            el.removeEventListener('mouseenter', handleEnter);
-            el.removeEventListener('mouseleave', handleLeave);
         };
-    }, [loading]);
+    }, [isActive, loading]);
 
     const handleExploreChains = () => {
         const el = document.getElementById('live-on-network');
@@ -130,15 +125,22 @@ export function CrossChainSwapsCard({ className }: CrossChainSwapsCardProps) {
 
     return (
         <div
+            ref={cardRef}
+            onMouseEnter={onMouseEnter}
+            onMouseLeave={onMouseLeave}
             className={cn(
-                'bento-card h-full min-h-[420px] flex flex-col',
+                'bento-card h-full min-h-[420px] flex flex-col transition-all duration-300 cursor-pointer',
                 'grainy',
+                isActive && 'ring-1 ring-emerald-500/30',
                 className
             )}
         >
             {/* Card Header */}
             <div className="flex items-center gap-2 mb-4">
-                <div className="icon-box-primary">
+                <div className={cn(
+                    "icon-box-primary transition-colors duration-300",
+                    isActive && "bg-emerald-500/20 shadow-sm shadow-emerald-500/20"
+                )}>
                     <ArrowLeftRight className="w-5 h-5" />
                 </div>
                 <span className="tag-primary">
@@ -170,14 +172,17 @@ export function CrossChainSwapsCard({ className }: CrossChainSwapsCardProps) {
             {/* Token Prices List - Auto-scrolling */}
             <div
                 ref={scrollRef}
-                className="mt-auto bg-muted/30 dark:bg-zinc-800/30 rounded-2xl p-3 overflow-hidden max-h-[220px]"
+                className={cn(
+                    "mt-auto bg-muted/30 dark:bg-zinc-800/30 rounded-2xl p-3 overflow-hidden max-h-[220px] transition-all duration-300",
+                    isActive && "border border-emerald-500/20"
+                )}
             >
                 <div className="space-y-1">
                     {scrollTokens.map((token, index) => {
                         const priceData = prices[token.priceKey];
                         const price = PriceService.formatPrice(priceData);
-                        // Mock price change for demo (Pyth doesn't provide 24h change directly)
-                        const priceChange = (Math.random() * 10 - 5);
+                        // Mock price change for demo
+                        const priceChange = ((index % 3 === 0 ? 1 : -1) * (1.2 + (index * 0.4)));
 
                         return (
                             <div

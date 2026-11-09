@@ -15,6 +15,7 @@ import { StrategiesPage, StrategyDetailPage, LpsPage, LpDetailPage, IdlePage } f
 import { OperationsPage, RefundsPage, SystemPage } from './pages/OperationsPages';
 import { MarketPage, LiquidityHealthPage } from './pages/MarketPages';
 import { V4PositionsPage } from './pages/V4PositionsPage';
+import { ServicesPage } from './pages/ServicesPage';
 import { BalancerOverviewPage, BalancerTradesPage, BalancerTradeDetailPage, BalancerOpportunitiesPage, BalancerWalletPage, BalancerSettingsPage } from './pages/BalancerPages';
 import { AdminPage } from '@/pages/AdminPage';
 import { SwapArea } from './swap/SwapArea';
@@ -28,6 +29,7 @@ export const adminRoutes = (
   <Route path="/admin" element={<AdminShell />}>
     <Route index element={<OverviewPage />} />
     <Route path="events" element={<EventsPage />} />
+    <Route path="services" element={<ServicesPage />} />
     <Route path="intents" element={<IntentsPage />} />
     <Route path="intents/:id" element={<IntentDetailPage />} />
     <Route path="fills" element={<FillsPage />} />

@@ -24,7 +24,7 @@ const KIND_OF: Record<BCHOrderType, OrderFilter> = { market: 'swap', limit: 'lim
 export default function BchSwapPage() {
     const location = useLocation();
     const queryParams = new URLSearchParams(location.search);
-    const initialTypeParam = queryParams.get('type');
+    const initialTypeParam = queryParams.get('type') || queryParams.get('mode');
     const initialOrderType: BCHOrderType = initialTypeParam === 'limit'
         ? 'limit'
         : initialTypeParam === 'twap' || location.pathname === '/twap'
@@ -37,7 +37,8 @@ export default function BchSwapPage() {
 
     // Ensure orderType updates if URL param changes after initial mount
     useEffect(() => {
-        const typeParam = new URLSearchParams(location.search).get('type');
+        const params = new URLSearchParams(location.search);
+        const typeParam = params.get('type') || params.get('mode');
         if (typeParam === 'limit') setOrderType('limit');
         else if (typeParam === 'twap' || location.pathname === '/twap') setOrderType('twap');
         else setOrderType('market');

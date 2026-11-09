@@ -57,6 +57,11 @@ export interface BCHSwapParams {
     orderType: BCHOrderType;
     duration?: number;     // Dutch auction duration (seconds)
     expiryTime?: number;   // Limit order expiry (unix timestamp)
+    /** Limit order: seconds it stays open. Sent to the server as a duration, so the user's clock does not matter. */
+    expirySeconds?: number;
+    /** Exact amounts in base units (same-chain orders). Used instead of sellAmount/buyAmount × 10^decimals. */
+    sellUnits?: string;
+    buyUnits?: string;
     twap?: {
         numSlices: number;
         intervalSec: number;
@@ -126,10 +131,17 @@ export interface TwapOrderRecord {
  *              relayer's funding deadline. Terminal; nothing will ever arrive.
  *   failed     Repeated execution failures. The covenant is still FUNDED and the
  *              relayer is still retrying on backoff, so this is not terminal either.
+ *
+ * Same-chain orders follow the Mesh server's lifecycle (see lib/meshIntent.ts):
+ *
+ *   awaiting_funding  Created; the server has not seen the funding transaction yet.
+ *   underfunded       Funded with less than the order needs: never filled, refunded in full at expiry.
+ *   closed            The covenant was spent by a transaction this app did not build. Terminal.
  */
 export type BCHOrderStatus =
     | 'pending' | 'source_locked' | 'proving' | 'claimable' | 'claimed'
     | 'filled' | 'cancelled' | 'expired' | 'refunded' | 'failed' | 'abandoned'
+    | 'awaiting_funding' | 'underfunded' | 'closed'
     | 'unknown';   // relayer no longer has a record of it (see notes on 404 handling)
 
 /**
@@ -141,7 +153,7 @@ export type BCHOrderStatus =
  * forever. Both happened.
  */
 export const TERMINAL_ORDER_STATUSES: ReadonlySet<BCHOrderStatus> = new Set<BCHOrderStatus>([
-    'filled', 'claimed', 'cancelled', 'refunded', 'abandoned',
+    'filled', 'claimed', 'cancelled', 'refunded', 'abandoned', 'closed',
     // The relayer has no record of it (aged out of its 500-entry ring buffer), so
     // there is nothing left to poll — even though it is not a settlement as such.
     'unknown',
@@ -213,7 +225,9 @@ export interface BCHOrder {
     sourceTimelock?: number;
     /** Why an open order has not filled yet, categorised by the relayer. */
     lastSkipCategory?: 'unprofitable_spread' | 'slippage_too_high' | 'insufficient_capital'
-        | 'no_pool' | 'quote_error' | 'other';
+        | 'no_pool' | 'quote_error' | 'no_route' | 'other';
+    /** What the maker was paid, in base units of the buy token (filled same-chain orders). */
+    receivedUnits?: string;
     lastSkipReason?: string;
     /** Which route the solver used / intends to use. */
     routeType?: string;

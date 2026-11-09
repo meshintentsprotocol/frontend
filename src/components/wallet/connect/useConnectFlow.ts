@@ -83,7 +83,7 @@ export function connectFlowReducer(state: ConnectFlowState, action: ConnectFlowA
                 linkText: null,
                 expiresAt: undefined,
                 error: null,
-                isLoading: action.family === 'evm' || action.family === 'solana', // show spinner while AppKit loads
+                isLoading: action.family === 'evm' || action.family === 'solana' || action.family === 'btc', // show spinner while AppKit loads
             };
 
         case 'SELECT_PROTOCOL':
@@ -219,24 +219,32 @@ export function useConnectFlow(): UseConnectFlowReturn {
         const network = appNetworkOf(bchNetwork);
 
         try {
+            console.log('[ConnectFlow] Starting AppKit EVM bridge…');
+            dispatch({ type: 'PAIRING_START' });
+
             // Ensure the bridge is running
             await startAppKitBridge(network);
 
-            // Open AppKit's connect modal for EVM
+            console.log('[ConnectFlow] Bridge started, opening AppKit modal for eip155…');
+            // Open AppKit's connect modal — waits until the modal is closed
             await openAppKitConnect('eip155');
 
+            console.log('[ConnectFlow] AppKit modal closed, checking for EVM wallet…');
             // After modal closes, check if we got a wallet
             if (currentAttempt !== attemptRef.current) return;
 
             // Look for the AppKit wallet in the registry
             const appkitWallet = findWalletById('appkit-evm');
             if (appkitWallet) {
+                console.log('[ConnectFlow] EVM wallet found:', appkitWallet.address);
                 dispatch({ type: 'PAIRING_SUCCESS', wallet: appkitWallet });
             } else {
+                console.log('[ConnectFlow] AppKit modal closed without connecting');
                 // Modal closed without connecting
                 dispatch({ type: 'GO_TO_CHAIN' });
             }
         } catch (err) {
+            console.error('[ConnectFlow] AppKit EVM error:', err);
             if (currentAttempt === attemptRef.current) {
                 const msg = err instanceof Error ? err.message : String(err || '');
                 dispatch({ type: 'PAIRING_ERROR', error: msg || 'Could not open wallet selector' });
@@ -250,24 +258,71 @@ export function useConnectFlow(): UseConnectFlowReturn {
         const network = appNetworkOf(bchNetwork);
 
         try {
+            console.log('[ConnectFlow] Starting AppKit Solana bridge…');
+            dispatch({ type: 'PAIRING_START' });
+
             // Ensure the bridge is running
             await startAppKitBridge(network);
 
-            // Open AppKit's connect modal for Solana
+            console.log('[ConnectFlow] Bridge started, opening AppKit modal for solana…');
+            // Open AppKit's connect modal — waits until the modal is closed
             await openAppKitConnect('solana');
 
+            console.log('[ConnectFlow] AppKit modal closed, checking for Solana wallet…');
             // After modal closes, check if we got a wallet
             if (currentAttempt !== attemptRef.current) return;
 
             // Look for the AppKit wallet in the registry
             const appkitWallet = findWalletById('appkit-solana');
             if (appkitWallet) {
+                console.log('[ConnectFlow] Solana wallet found:', appkitWallet.address);
                 dispatch({ type: 'PAIRING_SUCCESS', wallet: appkitWallet });
             } else {
+                console.log('[ConnectFlow] AppKit modal closed without connecting');
                 // Modal closed without connecting
                 dispatch({ type: 'GO_TO_CHAIN' });
             }
         } catch (err) {
+            console.error('[ConnectFlow] AppKit Solana error:', err);
+            if (currentAttempt === attemptRef.current) {
+                const msg = err instanceof Error ? err.message : String(err || '');
+                dispatch({ type: 'PAIRING_ERROR', error: msg || 'Could not open wallet selector' });
+            }
+        }
+    }, [bchNetwork]);
+
+    /** Open AppKit for Bitcoin connection (Phase 8) */
+    const startAppKitBitcoin = useCallback(async () => {
+        const currentAttempt = ++attemptRef.current;
+        const network = appNetworkOf(bchNetwork);
+
+        try {
+            console.log('[ConnectFlow] Starting AppKit Bitcoin bridge…');
+            dispatch({ type: 'PAIRING_START' });
+
+            // Ensure the bridge is running
+            await startAppKitBridge(network);
+
+            console.log('[ConnectFlow] Bridge started, opening AppKit modal for bip122…');
+            // Open AppKit's connect modal — waits until the modal is closed
+            await openAppKitConnect('bip122');
+
+            console.log('[ConnectFlow] AppKit modal closed, checking for Bitcoin wallet…');
+            // After modal closes, check if we got a wallet
+            if (currentAttempt !== attemptRef.current) return;
+
+            // Look for the AppKit wallet in the registry
+            const appkitWallet = findWalletById('appkit-btc');
+            if (appkitWallet) {
+                console.log('[ConnectFlow] Bitcoin wallet found:', appkitWallet.address);
+                dispatch({ type: 'PAIRING_SUCCESS', wallet: appkitWallet });
+            } else {
+                console.log('[ConnectFlow] AppKit modal closed without connecting');
+                // Modal closed without connecting
+                dispatch({ type: 'GO_TO_CHAIN' });
+            }
+        } catch (err) {
+            console.error('[ConnectFlow] AppKit Bitcoin error:', err);
             if (currentAttempt === attemptRef.current) {
                 const msg = err instanceof Error ? err.message : String(err || '');
                 dispatch({ type: 'PAIRING_ERROR', error: msg || 'Could not open wallet selector' });
@@ -294,8 +349,10 @@ export function useConnectFlow(): UseConnectFlowReturn {
             startAppKitEvm();
         } else if (family === 'solana') {
             startAppKitSolana();
+        } else if (family === 'btc') {
+            startAppKitBitcoin();
         }
-    }, [startPairingForProtocol, startAppKitEvm, startAppKitSolana]);
+    }, [startPairingForProtocol, startAppKitEvm, startAppKitSolana, startAppKitBitcoin]);
 
     const selectProtocol = useCallback((protocol: BchProtocol) => {
         dispatch({ type: 'SELECT_PROTOCOL', protocol });

@@ -8,6 +8,7 @@
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
 import { CrossChainSwapsCard } from './CrossChainSwapsCard';
+import { MovementSwapsCard } from './MovementSwapsCard';
 import { DutchAuctionCard } from './DutchAuctionCard';
 import { TrustlessHTLCCard } from './TrustlessHTLCCard';
 import { TradingApiCard } from './TradingApiCard';
@@ -52,15 +53,25 @@ export function BentoSection({ className }: BentoSectionProps) {
 
                 {/* Bento Grid Layout */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-                    {/* Row 1: Cross-Chain Swaps card spanning full width */}
+                    {/* Row 1: Two cards spanning 2 cols each */}
                     <motion.div
                         initial={{ opacity: 0, y: 30 }}
                         whileInView={{ opacity: 1, y: 0 }}
                         viewport={{ once: true }}
                         transition={{ delay: 0.1 }}
-                        className="md:col-span-2 lg:col-span-4"
+                        className="lg:col-span-2"
                     >
                         <CrossChainSwapsCard />
+                    </motion.div>
+
+                    <motion.div
+                        initial={{ opacity: 0, y: 30 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        viewport={{ once: true }}
+                        transition={{ delay: 0.2 }}
+                        className="lg:col-span-2"
+                    >
+                        <MovementSwapsCard />
                     </motion.div>
 
                     {/* Row 2: Dutch Auction + Trustless HTLC */}
