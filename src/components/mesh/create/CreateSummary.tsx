@@ -9,6 +9,7 @@ import { formatUnits, formatUsd } from '@/lib/mesh/format';
 import { formatPrice, signedPct } from '@/lib/mesh/create/price';
 import { toBaseUnits } from '@/lib/mesh/v3/strategyForms';
 import type { CreateFlow } from './useCreateFlow';
+import { settingsSummary } from './SettingsStep';
 
 const SHAPE_NAME: Record<string, string> = { spot: 'Spot', curve: 'Curve', bidask: 'Bid-Ask' };
 
@@ -36,14 +37,18 @@ export function depositTotals(flow: CreateFlow): { text: string; usd: number | n
 }
 
 export function CreateSummary({ flow }: { flow: CreateFlow }) {
-  const { main, marketP, rangeLayout: l, engine } = flow;
+  const { main, marketP, rangeLayout: l, engine, def } = flow;
   const sym = main.symbol;
   const dep = depositTotals(flow);
   const unit = engine === 'v4' ? 'Bins' : 'Pools';
   const rows: Array<SummaryRow | null> = [
     { key: 'strategy', label: 'Strategy', value: <span className="inline-flex items-center gap-2 font-sans">{flow.def.name}<EngineBadge engine={engine} /></span> },
-    marketP ? { key: 'market', label: 'Market', value: `1 BCH = ${formatPrice(marketP)} ${sym}` } : { key: 'market', label: 'Market', value: 'No market price', tone: 'warn' },
   ];
+
+  if (def.pair !== 'token-token') {
+    rows.push(marketP ? { key: 'market', label: 'Market', value: `1 BCH = ${formatPrice(marketP)} ${sym}` } : { key: 'market', label: 'Market', value: 'No market price', tone: 'warn' });
+  }
+
   if (flow.strategy === 'range') {
     if (l && !l.error) {
       rows.push(
@@ -61,20 +66,26 @@ export function CreateSummary({ flow }: { flow: CreateFlow }) {
       key: 'earns', label: 'Earns',
       value: engine === 'v4' ? `${step}% step per round trip` : `${step}% step + ${(Number(flow.values.feeBps || 30) / 100).toFixed(2)}% fee`,
     });
+  } else {
+    rows.push({ key: 'settings', label: def.settingsLabel, value: settingsSummary(flow) });
   }
+
   rows.push({ key: 'deposit', label: 'Deposit', value: dep.text || '—', strong: !!dep.text });
   if (dep.usd !== null) rows.push({ key: 'usd', label: 'Value', value: formatUsd(dep.usd), tone: 'muted' });
   rows.push({ key: 'owner', label: 'Owned by', value: engine === 'v4' ? 'Position NFT' : 'This wallet', tone: 'muted' });
+
+  const avatarA = def.pair === 'token-token' ? flow.infoOf(flow.values.tokenA ?? '') : 'BCH';
+  const avatarB = def.pair === 'token-token' ? flow.infoOf(flow.values.tokenB ?? '') : def.pair === 'bch-multi' ? flow.infoOf(flow.values.token1 ?? '') : main;
 
   return (
     <div className="rounded-3xl border border-white/[0.07] bg-[#0c0c10] p-4 sm:p-5">
       <div className="mb-3 flex items-center gap-3">
         <span className="flex -space-x-2" aria-hidden>
-          <TokenAvatar info="BCH" size={30} />
-          <TokenAvatar info={main} size={30} />
+          <TokenAvatar info={avatarA} size={30} />
+          <TokenAvatar info={avatarB} size={30} />
         </span>
         <div className="min-w-0">
-          <div className="font-heading text-[15px] font-semibold text-white">BCH / {sym}</div>
+          <div className="font-heading text-[15px] font-semibold text-white">{flow.pairLabel}</div>
           <div className="text-xs text-zinc-400">{flow.replaces ? 'Rebalance' : 'New position'}</div>
         </div>
       </div>

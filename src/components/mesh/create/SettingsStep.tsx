@@ -9,23 +9,57 @@ import type { StrategyId } from '@/lib/mesh/create/registry';
 import { ActionButton, NoteBox, StickyActionBar } from '@/components/mesh/kit';
 import type { CreateFlow } from './useCreateFlow';
 import { RangeSettings } from './strategies/RangeSettings';
+import { FixedSettings, fixedSummary } from './strategies/FixedSettings';
+import { GridSettings, gridSummary } from './strategies/GridSettings';
+import { LadderSettings, ladderSummary } from './strategies/LadderSettings';
+import { TwoPriceSettings, twoPriceSummary } from './strategies/TwoPriceSettings';
+import { MultiPairSettings, multiPairSummary } from './strategies/MultiPairSettings';
+import { StablePairSettings, stablePairSummary } from './strategies/StablePairSettings';
 
-/** Strategies whose step ② is built (P3 adds the rest). */
+/** Strategies whose step ② is built. */
 export const SETTINGS: Partial<Record<StrategyId, ComponentType<{ flow: CreateFlow }>>> = {
   range: RangeSettings,
+  grid: GridSettings,
+  'recycling-pair': TwoPriceSettings,
+  fixed: FixedSettings,
+  spread: TwoPriceSettings,
+  'take-profit': LadderSettings,
+  accumulate: LadderSettings,
+  'multi-pair': MultiPairSettings,
+  'stable-pair': StablePairSettings,
 };
 
 export const hasNewFlow = (id: StrategyId) => id in SETTINGS;
 
 /** A short line for the step list and the pinned action bar ("10 bins · ±5%"). */
 export function settingsSummary(flow: CreateFlow): string {
-  const l = flow.rangeLayout;
-  if (flow.strategy === 'range' && l && !l.error) {
-    const unit = flow.engine === 'v4' ? 'bin' : 'pool';
-    const w = flow.marketP ? Math.max(Math.abs(l.minP / flow.marketP - 1), Math.abs(l.maxP / flow.marketP - 1)) * 100 : null;
-    return `${l.bins.length} ${unit}${l.bins.length === 1 ? '' : 's'}${w !== null ? ` · ±${w.toFixed(w < 10 ? 1 : 0)}%` : ''}`;
+  switch (flow.strategy) {
+    case 'range': {
+      const l = flow.rangeLayout;
+      if (l && !l.error) {
+        const unit = flow.engine === 'v4' ? 'bin' : 'pool';
+        const w = flow.marketP ? Math.max(Math.abs(l.minP / flow.marketP - 1), Math.abs(l.maxP / flow.marketP - 1)) * 100 : null;
+        return `${l.bins.length} ${unit}${l.bins.length === 1 ? '' : 's'}${w !== null ? ` · ±${w.toFixed(w < 10 ? 1 : 0)}%` : ''}`;
+      }
+      return flow.def.settingsHint;
+    }
+    case 'grid':
+      return gridSummary(flow);
+    case 'fixed':
+      return fixedSummary(flow);
+    case 'spread':
+    case 'recycling-pair':
+      return twoPriceSummary(flow);
+    case 'take-profit':
+    case 'accumulate':
+      return ladderSummary(flow);
+    case 'multi-pair':
+      return multiPairSummary(flow);
+    case 'stable-pair':
+      return stablePairSummary(flow);
+    default:
+      return flow.def.settingsHint;
   }
-  return flow.def.settingsHint;
 }
 
 export function SettingsStep({ flow }: { flow: CreateFlow }) {
