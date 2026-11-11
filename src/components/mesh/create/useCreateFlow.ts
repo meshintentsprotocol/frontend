@@ -263,7 +263,16 @@ export function useCreateFlow({ strategy, token, tokenB, replaces, simple = fals
     if (engine === 'v4' && v4Probe.isError && !(v4Probe.error instanceof MeshApiError && v4Probe.error.status === 503)) return v4Probe.error.message;
     return null;
   })();
-  const settingsChecking = engine === 'v3' ? layoutPreview.isFetching || trialInput !== trialDebounced : v4Probe.isFetching;
+  const trialPending = useMemo(() => {
+    if (!trialInput && !trialDebounced) return false;
+    return JSON.stringify(trialInput) !== JSON.stringify(trialDebounced);
+  }, [trialInput, trialDebounced]);
+  const v4TrialPending = useMemo(() => {
+    if (!v4TrialInput && !v4TrialDebounced) return false;
+    return JSON.stringify(v4TrialInput) !== JSON.stringify(v4TrialDebounced);
+  }, [v4TrialInput, v4TrialDebounced]);
+
+  const settingsChecking = engine === 'v3' ? layoutPreview.isFetching || trialPending : v4Probe.isFetching || v4TrialPending;
   const settingsWarnings: string[] = engine === 'v3' ? layoutPreview.data?.warnings ?? [] : v4Probe.data?.warnings ?? [];
   const settingsNotes: string[] = engine === 'v3' ? layoutPreview.data?.notes ?? [] : [];
 
