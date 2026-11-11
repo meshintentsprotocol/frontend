@@ -182,7 +182,7 @@ export function TransactionsTable({ activeChain, refreshTrigger }: { activeChain
     const [isRefetching, setIsRefetching] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
 
-    const meshServerUrl = BCH_MESH_SERVER_URL || CASHTOKEN_RELAYER_URL || 'https://bchmesh-production.up.railway.app';
+    const meshServerUrl = BCH_MESH_SERVER_URL || CASHTOKEN_RELAYER_URL || 'https://meshserver-production-9ed93ac9.up.railway.app';
     const crossChainRelayerUrl = CROSS_CHAIN_RELAYER_URL || 'https://cross-chain-relayer-production-a93e.up.railway.app';
 
     useEffect(() => {
