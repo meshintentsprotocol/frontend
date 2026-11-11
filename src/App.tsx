@@ -37,6 +37,7 @@ import MeshLandingPage from "./pages/MeshLandingPage"
 import MeshProviderDetailPage from "./pages/MeshProviderDetailPage"
 import MeshStrategyPage from "./pages/MeshStrategyPage"
 import MeshPositionPage from "./pages/MeshPositionPage"
+import MeshPairPage from "./pages/MeshPairPage"
 import OrderbookPage from "./pages/OrderbookPage"
 import { WDKProvider } from "./context/WDKProvider"
 import { ExternalBCHWalletProvider } from "./context/ExternalBCHWalletProvider"
@@ -181,6 +182,12 @@ function App() {
                                                 <div className="flex flex-col min-h-screen bg-[#050505]">
                                                     <Header />
                                                     <main className="flex-1 pt-24"><MeshPositionPage /></main>
+                                                </div>
+                                            } />
+                                            <Route path="/mesh/pair/:token" element={
+                                                <div className="flex flex-col min-h-screen bg-[#050505]">
+                                                    <Header />
+                                                    <main className="flex-1 pt-24"><MeshPairPage /></main>
                                                 </div>
                                             } />
                                             <Route path="/mesh/pool/:address" element={

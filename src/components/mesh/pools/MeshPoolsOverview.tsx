@@ -3,10 +3,11 @@
  * panel that routes between pairs, all pools and all strategies (?view=).
  */
 import React, { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Layers, PlusCircle, Trophy, Wifi, WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { meshPaths } from '@/lib/mesh/routes';
 import { useMeshHealth, useMeshPairs, useMeshPools, useMeshPoolStream, useMeshStats, useStrategies } from '@/hooks/useMesh';
 import type { PairSummary } from '@/lib/mesh/meshApi';
 import { formatNumber, formatSatsCompact, formatUsd, satsToUsd } from '@/lib/mesh/format';
@@ -90,7 +91,9 @@ export function PairsTable({ pairs, bchUsd, onProvide }: { pairs: PairSummary[];
           return (
             <div key={p.pair} className="p-3 rounded-2xl bg-black/30 border border-white/[0.06] space-y-3">
               <div className="flex items-center justify-between gap-2">
-                <PoolPairLabel token={t} showSide={false} size={24} />
+                <Link to={meshPaths.pair(p.tokenCategory)} className="hover:opacity-80 transition">
+                  <PoolPairLabel token={t} showSide={false} size={24} />
+                </Link>
                 <Button size="sm" variant="outline" className="rounded-lg text-xs h-8 shrink-0" onClick={() => onProvide(p.tokenCategory)}>Provide</Button>
               </div>
               <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 text-xs font-mono">
@@ -122,7 +125,11 @@ export function PairsTable({ pairs, bchUsd, onProvide }: { pairs: PairSummary[];
               const t = get(p.tokenCategory);
               return (
                 <tr key={p.pair} className="border-b border-white/[0.04] hover:bg-white/[0.02]">
-                  <td className="px-2 py-3"><PoolPairLabel token={t} showSide={false} /></td>
+                  <td className="px-2 py-3">
+                    <Link to={meshPaths.pair(p.tokenCategory)} className="hover:opacity-80 transition block">
+                      <PoolPairLabel token={t} showSide={false} />
+                    </Link>
+                  </td>
                   <td className="px-2 py-3 font-mono text-zinc-300">{p.activePools} · {p.lpCount}</td>
                   <td className="px-2 py-3 font-mono text-zinc-200">{formatSatsCompact(p.tvlSats)}<div className="text-[11px] text-zinc-500">{formatUsd(satsToUsd(p.tvlSats, bchUsd))}</div></td>
                   <td className="px-2 py-3 font-mono text-zinc-300">{formatSatsCompact(p.volume24hSats)}</td>
