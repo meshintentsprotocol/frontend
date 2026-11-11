@@ -192,11 +192,10 @@ export default function MeshPositionPage() {
 
           <BinStrip
             bins={v.bins}
-            marketTpb={marketTpb}
+            market={marketTpb}
             symbol={info.symbol}
             decimals={info.decimals}
-            minSatsPerUnit={market.data?.cauldron ? Number(market.data.cauldron.satsPerToken) : null}
-            fills={fills}
+            activity={fills}
           />
 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-2">
@@ -268,6 +267,7 @@ export default function MeshPositionPage() {
           onOpenChange={o => !o && setDialog(null)}
           view={v}
           symbol={info.symbol}
+          decimals={info.decimals}
           onDone={() => { setDialog(null); invalidate(); }}
         />
       )}

@@ -41,12 +41,12 @@ export function MeshPairPage() {
 
   const marketTpb = marketQ.data?.cauldron
     ? Number(tokenPerBchFromSatsPerUnit(marketQ.data.cauldron.satsPerToken, info.decimals))
-    : pairData?.bestBidSatsPerToken
-      ? Number(tokenPerBchFromSatsPerUnit(pairData.bestBidSatsPerToken, info.decimals))
+    : pairData?.bestBid?.satsPerToken
+      ? Number(tokenPerBchFromSatsPerUnit(pairData.bestBid.satsPerToken, info.decimals))
       : null;
 
   const pairFills = useMemo(() => {
-    return (fillsQ.data?.activity ?? []).filter(
+    return (fillsQ.data?.events ?? []).filter(
       e => (e as any).tokenCategory?.toLowerCase() === token.toLowerCase() || (e as any).details?.token === token,
     );
   }, [fillsQ.data, token]);
@@ -134,7 +134,7 @@ export function MeshPairPage() {
             {pairData ? formatSatsCompact(pairData.volume7dSats) : '—'}
           </div>
           <div className="mt-0.5 text-xs text-zinc-400">
-            {pairData ? `${pairData.fillCount7d} fills this week` : '—'}
+            {pairData ? `${pairData.poolCount} pools this week` : '—'}
           </div>
         </div>
 
@@ -144,7 +144,7 @@ export function MeshPairPage() {
             {pairData ? `${pairData.poolCount} pools` : '—'}
           </div>
           <div className="mt-0.5 text-xs text-zinc-400">
-            {pairData?.lpsCount ?? 1} liquidity providers
+            {pairData?.lpCount ?? 1} liquidity providers
           </div>
         </div>
       </div>
@@ -155,18 +155,16 @@ export function MeshPairPage() {
           <button
             type="button"
             onClick={() => setTab('depth')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
-              tab === 'depth' ? 'bg-white/10 text-white' : 'text-zinc-400 hover:text-white'
-            }`}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${tab === 'depth' ? 'bg-white/10 text-white' : 'text-zinc-400 hover:text-white'
+              }`}
           >
             Market Depth & Bins
           </button>
           <button
             type="button"
             onClick={() => setTab('activity')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
-              tab === 'activity' ? 'bg-white/10 text-white' : 'text-zinc-400 hover:text-white'
-            }`}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${tab === 'activity' ? 'bg-white/10 text-white' : 'text-zinc-400 hover:text-white'
+              }`}
           >
             Recent Fills ({pairFills.length})
           </button>
@@ -183,7 +181,7 @@ export function MeshPairPage() {
                 Loading market depth…
               </div>
             ) : depthQ.data ? (
-              <DepthChart depth={depthQ.data} symbol={info.symbol} decimals={info.decimals} />
+              <DepthChart token={token} symbol={info.symbol} decimals={info.decimals} />
             ) : (
               <div className="py-12 text-center text-xs text-zinc-500">
                 No depth data available for this pair.
@@ -209,7 +207,7 @@ export function MeshPairPage() {
                       <span className="text-emerald-400 font-semibold">Fill</span>
                       <span className="font-mono text-zinc-400">{shortHex(f.txid, 6, 4)}</span>
                       <a
-                        href={explorerTx(network, f.txid)}
+                        href={explorerTx(network as import('@/lib/mesh/signer').BchNetwork, f.txid)}
                         target="_blank"
                         rel="noreferrer"
                         className="text-zinc-500 hover:text-zinc-300"
@@ -232,3 +230,4 @@ export function MeshPairPage() {
 }
 
 export default MeshPairPage;
+

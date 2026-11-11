@@ -74,7 +74,7 @@ export function MeshPositionsView() {
         return { symbol: info.symbol || 'Token', decimals: info.decimals || 8 };
       },
       bchUsd,
-      idleStrategyIds: idleQ.data?.idleStrategies?.map(i => i.strategyId) ?? [],
+      idleStrategyIds: idleQ.data?.items?.filter(i => i.strategy).map(i => i.strategy!) ?? [],
     });
   }, [v4Q.data, v3Q.data, standalonePools, getToken, bchUsd, idleQ.data]);
 
@@ -211,9 +211,12 @@ export function MeshPositionsView() {
         <RecycleDialog
           open={recycleOpen}
           onOpenChange={setRecycleOpen}
-          ownerPkh={wallet.pkh}
+          report={idleQ.data}
+          infoOf={getToken}
+          bchUsd={bchUsd}
         />
       )}
     </div>
   );
 }
+

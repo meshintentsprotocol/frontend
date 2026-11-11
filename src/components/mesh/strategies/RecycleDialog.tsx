@@ -30,22 +30,33 @@ const KIND: Record<IdleKind, { label: string; icon: typeof Moon }> = {
 const SPREADS = [50, 100, 200];
 
 export function RecycleDialog({ open, onOpenChange, report, infoOf, bchUsd }: {
-  open: boolean; onOpenChange: (o: boolean) => void; report: IdleReport; infoOf: (cat: string) => TokenInfo; bchUsd?: number | null;
+  open: boolean; onOpenChange: (o: boolean) => void; report?: IdleReport | null; infoOf?: (cat: string) => TokenInfo; bchUsd?: number | null;
 }) {
   const wallet = useMeshSigner();
   const invalidate = useInvalidateMesh();
-  const [selected, setSelected] = useState<Set<string>>(() => new Set(report.items.map(i => i.id)));
+  const items = report?.items ?? [];
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(items.map(i => i.id)));
   const [spreadBps, setSpreadBps] = useState(100);
   const [plan, setPlan] = useState<RecyclePlan | null>(null);
   const [built, setBuilt] = useState<BuiltTx | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => { if (open) { setSelected(new Set(report.items.map(i => i.id))); setPlan(null); setBuilt(null); setError(null); } }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (open) {
+      setSelected(new Set((report?.items ?? []).map(i => i.id)));
+      setPlan(null);
+      setBuilt(null);
+      setError(null);
+    }
+  }, [open, report]);
+
   useEffect(() => { setPlan(null); setBuilt(null); }, [selected, spreadBps]);
 
-  const chosenValue = useMemo(() => report.items.filter(i => selected.has(i.id)).reduce((a, i) => a + BigInt(i.valueSats), 0n), [report, selected]);
-  const amount = (cat: string, units: string) => (cat === '0x' ? formatSatsCompact(units) : `${formatUnits(units, infoOf(cat).decimals)} ${infoOf(cat).symbol}`);
+  const chosenValue = useMemo(() => (report?.items ?? []).filter(i => selected.has(i.id)).reduce((a, i) => a + BigInt(i.valueSats), 0n), [report, selected]);
+  const defaultInfoOf = (cat: string): TokenInfo => ({ category: cat, symbol: cat.slice(0, 6), name: cat.slice(0, 6), decimals: 0, icon: null, known: false });
+  const getInfo = infoOf ?? defaultInfoOf;
+  const amount = (cat: string, units: string) => (cat === '0x' ? formatSatsCompact(units) : `${formatUnits(units, getInfo(cat).decimals)} ${getInfo(cat).symbol}`);
   const toggle = (id: string) => setSelected(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
   async function onPlan() {
@@ -117,24 +128,30 @@ export function RecycleDialog({ open, onOpenChange, report, infoOf, bchUsd }: {
         </DialogHeader>
 
         <div className="space-y-2">
-          {report.items.map((i: IdleItem) => {
-            const K = KIND[i.kind];
-            const on = selected.has(i.id);
-            return (
-              <label key={i.id} className={cn('flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-colors',
-                on ? 'border-emerald-400/30 bg-emerald-500/[0.05]' : 'border-white/[0.08] hover:border-white/20')}>
-                <input type="checkbox" checked={on} onChange={() => toggle(i.id)} className="mt-1 h-4 w-4 accent-emerald-500" />
-                <K.icon className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" aria-hidden />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-semibold">{K.label}{i.token ? ` · ${infoOf(i.token).symbol}` : ''}</span>
-                    <span className="font-mono text-xs tabular-nums">{formatSatsCompact(i.valueSats)}</span>
+          {items.length === 0 ? (
+            <div className="text-center py-6 text-zinc-500 text-xs">
+              No idle liquidity found to recycle.
+            </div>
+          ) : (
+            items.map((i: IdleItem) => {
+              const K = KIND[i.kind];
+              const on = selected.has(i.id);
+              return (
+                <label key={i.id} className={cn('flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-colors',
+                  on ? 'border-emerald-400/30 bg-emerald-500/[0.05]' : 'border-white/[0.08] hover:border-white/20')}>
+                  <input type="checkbox" checked={on} onChange={() => toggle(i.id)} className="mt-1 h-4 w-4 accent-emerald-500" />
+                  <K.icon className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" aria-hidden />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold">{K.label}{i.token ? ` · ${getInfo(i.token).symbol}` : ''}</span>
+                      <span className="font-mono text-xs tabular-nums">{formatSatsCompact(i.valueSats)}</span>
+                    </div>
+                    <div className="text-[11px] text-zinc-400">{i.reason}{i.kind === 'wallet' && i.asset && i.amount ? ` · ${amount(i.asset, i.amount)}` : ''}</div>
                   </div>
-                  <div className="text-[11px] text-zinc-400">{i.reason}{i.kind === 'wallet' && i.asset && i.amount ? ` · ${amount(i.asset, i.amount)}` : ''}</div>
-                </div>
-              </label>
-            );
-          })}
+                </label>
+              );
+            })
+          )}
         </div>
 
         <div className="flex items-center justify-between gap-3">
@@ -158,7 +175,7 @@ export function RecycleDialog({ open, onOpenChange, report, infoOf, bchUsd }: {
                 {BigInt(plan.fromWallet.sats) > 0n ? formatSatsCompact(plan.fromWallet.sats) : ''}{Object.entries(plan.fromWallet.tokens).map(([c, a]) => ` ${amount(c, a)}`)}</span></>}
             </div>
             {plan.open.map(o => {
-              const t = infoOf(String(o.params.token));
+              const t = getInfo(String(o.params.token));
               const buy = Number(o.params.buySatsPerToken); const sell = Number(o.params.sellSatsPerToken);
               const m = o.pools[0]?.market?.[0];
               return (
