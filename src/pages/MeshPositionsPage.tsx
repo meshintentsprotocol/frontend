@@ -1,18 +1,13 @@
 /**
- * /mesh/positions — the LP's positions: V3 strategies, V4 positions and
- * standalone pools (?view=pools).
+ * /mesh/positions — Unified LP positions: V4 discrete bins, V3 strategies,
+ * and standalone pools in one searchable, filterable dashboard (MeshDocs/meshv3v4flow/09 §3.2).
  */
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { MeshMyPools, type PositionsView } from '@/components/mesh/pools/MeshMyPools';
-import { meshPaths } from '@/lib/mesh/routes';
+import { MeshPositionsView } from '@/components/mesh/positions/MeshPositionsView';
 
 export function MeshPositionsPage() {
-  const [params] = useSearchParams();
-  const navigate = useNavigate();
-  const view: PositionsView = params.get('view') === 'pools' ? 'pools' : 'strategies';
   return (
     <div className="container mx-auto py-4 sm:py-6 px-4 md:px-8 max-w-[1200px] space-y-6">
-      <MeshMyPools view={view} onView={v => navigate(meshPaths.positions(v), { replace: true })} onCreateNew={() => navigate(meshPaths.create())} />
+      <MeshPositionsView />
     </div>
   );
 }
