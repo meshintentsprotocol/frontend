@@ -321,6 +321,18 @@ export interface V4AdminMigration {
   shareOfSats: { v4: number; v3: number };
 }
 
+export interface RevenueWindow {
+ fills: number; transactions: number; activeTraders: number; kinds: Record<string, number>;
+ bchSideVolumeSats: string; treasury: Record<string,string>; retained: Record<string,string>; partners: Record<string,string>; recordedFillFeeSats:string;
+ comparable: { fills:number; receiptsSats:string; feeSats:string; marginSats:string };
+ coverage: { unknownReceiptFills:number; missingFeeFills:number; inventoryFills:number; unknownTimestampFills:number };
+ balancer: { confirmedTrades:number; confirmedNetSats:string; pendingTrades:number; pendingNetSats:string; rejected:number; dryRun:number };
+}
+export interface Revenue {
+ network:string; now:number; treasuryPkh:string|null; solverAddress:string|null; balancerAddress:string|null;
+ balancerOnline:boolean; balancerDryRun:boolean; retainedBalancerTrades:number;
+ windows:Record<'h24'|'d7'|'d30'|'all',RevenueWindow>;
+}
 export function createAdminApi(baseUrl: string, getKey: () => string) {
   const base = baseUrl.replace(/\/+$/, '') + '/api/v1/admin';
   const qs = (q: Query = {}) => {
@@ -344,6 +356,7 @@ export function createAdminApi(baseUrl: string, getKey: () => string) {
   return {
     base,
     overview: () => get<Overview>('/overview'),
+    revenue: () => get<Revenue>('/revenue'),
     events: (q?: Query) => get<{ events: OpsEvent[]; total: number; latestSeq: number; categories: EventCategory[]; counts24h: EventCounts }>('/events', q),
     intents: (q?: Query) => get<IntentList>('/intents', q),
     intent: (id: string) => get<IntentDetail>(`/intents/${encodeURIComponent(id)}`),

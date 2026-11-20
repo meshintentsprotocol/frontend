@@ -9,6 +9,7 @@ import { EventsPage } from './pages/EventsPage';
 import { IntentsPage } from './pages/IntentsPage';
 import { IntentDetailPage } from './pages/IntentDetailPage';
 import { FillsPage } from './pages/FillsPage';
+import { RevenuePage } from './pages/RevenuePage';
 import { TwapListPage, TwapDetailPage, TradersPage } from './pages/TwapPages';
 import { PoolsPage, PoolDetailPage } from './pages/PoolPages';
 import { StrategiesPage, StrategyDetailPage, LpsPage, LpDetailPage, IdlePage } from './pages/LiquidityPages';
@@ -33,6 +34,7 @@ export const adminRoutes = (
     <Route path="intents" element={<IntentsPage />} />
     <Route path="intents/:id" element={<IntentDetailPage />} />
     <Route path="fills" element={<FillsPage />} />
+    <Route path="revenue" element={<RevenuePage />} />
     <Route path="twap" element={<TwapListPage />} />
     <Route path="twap/:id" element={<TwapDetailPage />} />
     <Route path="traders" element={<TradersPage />} />

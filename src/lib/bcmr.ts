@@ -6,12 +6,13 @@
 // Paytaca BCMR indexer directly. Metadata only — prices stay in cauldron.ts.
 // Docs: devrel-agent-context/MeshDocs/TokenDataAPIdocs
 
-import { BCH_MESH_SERVER_URL } from './config';
+import { meshServerUrlFor } from './config';
 
 export type TokenMetadataSource = 'bcmr-indexer' | 'cauldron' | 'embedded';
 
 export interface TokenMetadata {
     category: string;
+    resolvedCategory?: string;
     network: 'mainnet' | 'chipnet';
     name: string;
     symbol: string;
@@ -43,8 +44,9 @@ const MAX_BATCH = 100;
 
 const CATEGORY_RE = /^[0-9a-f]{64}$/;
 
-export function normalizeCategory(raw: string | null | undefined): string | null {
-    const c = (raw ?? '').trim().toLowerCase().replace(/^0x/, '');
+export function normalizeCategory(raw: unknown): string | null {
+    if (typeof raw !== 'string') return null;
+    const c = raw.trim().toLowerCase().replace(/^0x/, '');
     return CATEGORY_RE.test(c) ? c : null;
 }
 
@@ -58,7 +60,7 @@ function sanitizeUris(raw: unknown): Record<string, string> {
     const out: Record<string, string> = {};
     if (!raw || typeof raw !== 'object') return out;
     for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-        if (typeof value !== 'string' || key.length > 32) continue;
+        if (typeof value !== 'string' || key.length > 32 || !/^[-a-z0-9]+$/.test(key)) continue;
         const v = value.trim();
         const ok = key === 'icon' || key === 'image' ? SAFE_ICON.test(v) : SAFE_URI.test(v);
         if (ok && v.length <= 4096) out[key] = v;
@@ -68,10 +70,11 @@ function sanitizeUris(raw: unknown): Record<string, string> {
 
 function fromPaytaca(category: string, network: 'mainnet' | 'chipnet', body: any): TokenMetadata | null {
     if (!body || body.error || !body.token) return null;
+    if (normalizeCategory(body.token.category) !== category) return null;
     const symbol = clip(body.token.symbol, 32).toUpperCase();
     const rawDecimals = body.token.decimals;
-    const decimals = rawDecimals === undefined || rawDecimals === null ? 0 : Number(rawDecimals);
-    if (!symbol || !Number.isInteger(decimals) || decimals < 0 || decimals > 18) return null;
+    const decimals = rawDecimals === undefined ? 0 : rawDecimals;
+    if (!symbol || typeof decimals !== 'number' || !Number.isInteger(decimals) || decimals < 0 || decimals > 18) return null;
     const uris = sanitizeUris(body.uris);
     const tokenCategory = normalizeCategory(body.token.category);
     return {
@@ -81,7 +84,7 @@ function fromPaytaca(category: string, network: 'mainnet' | 'chipnet', body: any
         symbol,
         decimals,
         description: clip(body.description, 2000),
-        icon: uris.icon ?? null,
+        icon: uris.icon ?? uris.image ?? null,
         uris,
         isNft: body.is_nft === true,
         nftType: body.nft_type === 'sequential' || body.nft_type === 'parsable' ? body.nft_type : null,
@@ -91,6 +94,25 @@ function fromPaytaca(category: string, network: 'mainnet' | 'chipnet', body: any
         migratedTo: tokenCategory && tokenCategory !== category ? tokenCategory : null,
         fetchedAt: Date.now(),
     };
+}
+
+export function parseServerMetadata(category: string, network: 'mainnet' | 'chipnet', raw: unknown): TokenMetadata | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const body = raw as TokenMetadata;
+    if (normalizeCategory(body.category) !== category || body.network !== network || typeof body.decimals !== 'number') return null;
+    if (!['bcmr-indexer', 'cauldron', 'embedded'].includes(body.source)) return null;
+    // Older servers used the new category's decimals for migrated tokens.
+    if (body.migratedTo && body.resolvedCategory !== category) return null;
+    const result = fromPaytaca(category, network, { ...body, uris: { ...body.uris, icon: body.icon ?? body.uris?.icon },
+        token: { category, symbol: body.symbol, decimals: body.decimals, nfts: body.nfts },
+        is_nft: body.isNft, nft_type: body.nftType });
+    return result ? { ...result, source: body.source, resolvedCategory: category,
+        snapshotTimestamp: typeof body.snapshotTimestamp === 'string' ? body.snapshotTimestamp : null,
+        migratedTo: normalizeCategory(body.migratedTo) } : null;
+}
+
+export class MetadataUnavailableError extends Error {
+    constructor() { super('Token metadata is temporarily unavailable.'); this.name = 'MetadataUnavailableError'; }
 }
 
 // ── Transport ────────────────────────────────────────────────────────────────
@@ -108,13 +130,11 @@ async function fetchJson(url: string, timeoutMs: number, init?: RequestInit): Pr
 }
 
 async function fetchDirect(category: string, network: 'mainnet' | 'chipnet'): Promise<TokenMetadata | null> {
-    try {
-        const { status, body } = await fetchJson(`${PAYTACA_URLS[network]}/api/tokens/${category}/`, DIRECT_TIMEOUT_MS);
-        if (status !== 200) return null;
-        return fromPaytaca(category, network, body);
-    } catch {
-        return null;
-    }
+    const { status, body } = await fetchJson(`${PAYTACA_URLS[network]}/api/tokens/${category}/`, DIRECT_TIMEOUT_MS);
+    if (status === 404 || (status === 200 && body?.error && /no valid metadata|category not found|no metadata/i.test(String(body.error)))) return null;
+    const parsed = status === 200 ? fromPaytaca(category, network, body) : null;
+    if (!parsed) throw new MetadataUnavailableError();
+    return parsed;
 }
 
 // ── Client with in-memory cache ──────────────────────────────────────────────
@@ -126,6 +146,7 @@ const inflight = new Map<string, Promise<TokenMetadata | null>>();
 const keyOf = (category: string, network: string) => `${network}:${category}`;
 
 function remember(category: string, network: string, value: TokenMetadata | null): void {
+    if (cache.size >= 1000 && !cache.has(keyOf(category, network))) cache.delete(cache.keys().next().value!);
     cache.set(keyOf(category, network), {
         value,
         expiresAt: Date.now() + (value ? FOUND_TTL_MS : MISSING_TTL_MS),
@@ -134,7 +155,8 @@ function remember(category: string, network: string, value: TokenMetadata | null
 
 function cached(category: string, network: string): TokenMetadata | null | undefined {
     const entry = cache.get(keyOf(category, network));
-    if (!entry || entry.expiresAt < Date.now()) return undefined;
+    if (!entry) return undefined;
+    if (entry.expiresAt < Date.now()) { cache.delete(keyOf(category, network)); return undefined; }
     return entry.value;
 }
 
@@ -144,6 +166,7 @@ export const BcmrClient = {
         const category = normalizeCategory(categoryRaw);
         if (!category) return null;
         const network = isMainnet ? 'mainnet' : 'chipnet';
+        const meshUrl = meshServerUrlFor(isMainnet);
 
         const hit = cached(category, network);
         if (hit !== undefined) return hit;
@@ -153,16 +176,15 @@ export const BcmrClient = {
 
         const task = (async () => {
             try {
+                if (!meshUrl) throw new Error('Mesh server is not configured for this network');
                 const { status, body } = await fetchJson(
-                    `${BCH_MESH_SERVER_URL}/bcmr/${category}?network=${network}`,
+                    `${meshUrl}/bcmr/${category}?network=${network}`,
                     SERVER_TIMEOUT_MS,
                 );
-                if (status === 200 && body?.symbol) {
-                    remember(category, network, body as TokenMetadata);
-                    return body as TokenMetadata;
-                }
+                const parsed = status === 200 ? parseServerMetadata(category, network, body) : null;
+                if (parsed) { remember(category, network, parsed); return parsed; }
                 // Server already tried every source — trust its miss
-                if (status === 404) {
+                if (status === 404 && body?.network === network && normalizeCategory(body.category) === category) {
                     remember(category, network, null);
                     return null;
                 }
@@ -181,6 +203,7 @@ export const BcmrClient = {
     /** Metadata for many categories; result is keyed by lowercase category. */
     async getMany(categoriesRaw: string[], isMainnet: boolean): Promise<Record<string, TokenMetadata | null>> {
         const network = isMainnet ? 'mainnet' : 'chipnet';
+        const meshUrl = meshServerUrlFor(isMainnet);
         const categories = [...new Set(categoriesRaw.map(normalizeCategory).filter((c): c is string => !!c))];
         const out: Record<string, TokenMetadata | null> = {};
         const missing: string[] = [];
@@ -195,14 +218,18 @@ export const BcmrClient = {
         for (let i = 0; i < missing.length; i += MAX_BATCH) {
             const chunk = missing.slice(i, i + MAX_BATCH);
             try {
-                const { status, body } = await fetchJson(`${BCH_MESH_SERVER_URL}/bcmr/batch`, SERVER_TIMEOUT_MS * 3, {
+                if (!meshUrl) throw new Error('Mesh server is not configured for this network');
+                const { status, body } = await fetchJson(`${meshUrl}/bcmr/batch`, SERVER_TIMEOUT_MS * 3, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ network, categories: chunk }),
                 });
-                if (status !== 200 || !body?.tokens) throw new Error(`HTTP ${status}`);
+                if (status !== 200 || body?.network !== network || !body?.tokens || typeof body.tokens !== 'object') throw new Error(`HTTP ${status}`);
                 for (const c of chunk) {
-                    const value = (body.tokens[c] ?? null) as TokenMetadata | null;
+                    if (body.unavailable?.includes(c) || !Object.prototype.hasOwnProperty.call(body.tokens, c)) { unresolved.push(c); continue; }
+                    const raw = body.tokens[c];
+                    const value = raw === null ? null : parseServerMetadata(c, network, raw);
+                    if (raw !== null && !value) { unresolved.push(c); continue; }
                     remember(c, network, value);
                     out[c] = value;
                 }
@@ -214,8 +241,8 @@ export const BcmrClient = {
         // Server unavailable → resolve the rest directly, a few at a time
         for (let i = 0; i < unresolved.length; i += 4) {
             const slice = unresolved.slice(i, i + 4);
-            const values = await Promise.all(slice.map(c => this.get(c, isMainnet)));
-            slice.forEach((c, k) => { out[c] = values[k]; });
+            const values = await Promise.all(slice.map(c => this.get(c, isMainnet).catch(() => undefined)));
+            slice.forEach((c, k) => { if (values[k] !== undefined) out[c] = values[k]!; });
         }
         return out;
     },

@@ -11,8 +11,8 @@ import {
     BCH_SOLANA_RELAYER_URL,
 } from './config';
 
-const BSC_BCH_SERVER_URL = import.meta.env.VITE_BSC_BCH_SERVER_URL || 'https://meshserver.onrender.com';
-const BSC_BCH_SERVER_MAINNET_URL = import.meta.env.VITE_BSC_BCH_SERVER_MAINNET_URL || 'https://meshserver.onrender.com';
+const BSC_BCH_SERVER_URL = import.meta.env.VITE_BSC_BCH_SERVER_URL || 'https://meshserver-production-9ed93ac9.up.railway.app';
+const BSC_BCH_SERVER_MAINNET_URL = import.meta.env.VITE_BSC_BCH_SERVER_MAINNET_URL || 'https://meshserver-production-9ed93ac9.up.railway.app';
 
 export type TxStatus = 'PENDING' | 'ACTIVE' | 'FILLED' | 'COMPLETED' | 'REFUNDED' | 'FAILED' | 'EXPIRED';
 export type TxSource = 'cashtoken' | 'bsc-bch' | 'sol-bch' | 'cctp' | 'jupiter';
@@ -180,9 +180,9 @@ function mapSolStatus(s: string): TxStatus {
 function normalizeSol(r: RawSolIntent): ProtocolTx {
     let sell = 'BCH', buy = 'SOL';
     const dir = r.direction;
-    if (dir === 'BCH_TO_SOL')  { sell = 'BCH';  buy = 'SOL'; }
-    if (dir === 'SOL_TO_BCH')  { sell = 'SOL';  buy = 'BCH'; }
-    if (dir === 'BCH_TO_USDC') { sell = 'BCH';  buy = 'USDC'; }
+    if (dir === 'BCH_TO_SOL') { sell = 'BCH'; buy = 'SOL'; }
+    if (dir === 'SOL_TO_BCH') { sell = 'SOL'; buy = 'BCH'; }
+    if (dir === 'BCH_TO_USDC') { sell = 'BCH'; buy = 'USDC'; }
     if (dir === 'USDC_TO_BCH') { sell = 'USDC'; buy = 'BCH'; }
     return {
         id: r.id,

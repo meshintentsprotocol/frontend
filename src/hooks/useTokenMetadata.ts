@@ -1,4 +1,4 @@
-import { useQuery, keepPreviousData } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { BcmrClient, normalizeCategory, type TokenMetadata } from '@/lib/bcmr';
 import { useWDK } from '@/context/WDKProvider';
 
@@ -24,7 +24,8 @@ export function useTokenMetadataMany(categories: string[], isMainnet: boolean) {
         queryKey: ['bcmr-many', isMainnet ? 'mainnet' : 'chipnet', normalized.join(',')],
         enabled: normalized.length > 0,
         staleTime: STALE_MS,
-        placeholderData: keepPreviousData,
+        placeholderData: (previous, query) => query?.queryKey[1] === (isMainnet ? 'mainnet' : 'chipnet') ? previous : undefined,
         queryFn: () => BcmrClient.getMany(normalized, isMainnet),
+        refetchInterval: query => query.state.data && normalized.some(c => !(c in query.state.data!)) ? 15_000 : false,
     });
 }

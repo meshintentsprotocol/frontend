@@ -40,6 +40,7 @@ const NAV: Array<{ group: string; items: NavItem[] }> = [
     group: 'Trading', items: [
       { to: '/admin/intents', label: 'Intents', icon: ArrowDownUp, badge: o => { const p = o.intents.problems.failing + o.intents.problems.refund_failed; return p ? { n: p, tone: 'rose' } : o.intents.open ? { n: o.intents.open, tone: 'zinc' } : null; } },
       { to: '/admin/fills', label: 'Fills', icon: Zap },
+      { to: '/admin/revenue', label: 'Revenue', icon: Coins },
       { to: '/admin/twap', label: 'TWAP orders', icon: Repeat, badge: o => (o.twap.byStatus.RUNNING ? { n: o.twap.byStatus.RUNNING, tone: 'zinc' } : null) },
       { to: '/admin/traders', label: 'Traders', icon: Users },
     ],

@@ -27,9 +27,10 @@ describe('endpoint registry', () => {
         const eps = resolveEndpoints(registry, { VITE_MESH_SERVER_URL: 'https://mesh.example' });
         const by = (id: string) => eps.find(e => e.id === id)!;
         expect(by('mesh-testnet')).toMatchObject({ url: 'https://mesh.example', source: 'VITE_MESH_SERVER_URL' });
-        expect(by('mesh-quotes-testnet')).toMatchObject({ url: 'https://mesh.example', source: 'VITE_MESH_SERVER_URL (fallback)' });
+        expect(by('mesh-quotes-testnet')).toMatchObject({ url: 'https://mesh.example', source: 'VITE_MESH_SERVER_URL' });
+        expect(by('mesh-mainnet')).toMatchObject({ url: '', source: 'not set' });
         expect(by('evm-testnet')).toMatchObject({ url: 'http://localhost:3005', source: 'code default' });
-        expect(by('cctp-mainnet')).toMatchObject({ url: '', source: 'not set' });
+        expect(by('cctp-mainnet')).toMatchObject({ url: 'https://cctp-swap-server-production-7cb54caf.up.railway.app', source: 'code default' });
         const sanity = resolveEndpoints(registry, { VITE_SANITY_PROJECT_ID: 'abc' }).find(e => e.id === 'sanity')!;
         expect(sanity.url).toBe('https://abc.api.sanity.io/v1/ping');
     });
@@ -54,7 +55,7 @@ describe('probes', () => {
             'http://a/health': { body: { status: 'ok', network: 'chipnet' } },
             'http://a/health/ready': { body: { ready: true } },
         });
-        const rows = await probeAll(only(['mesh-testnet', 'mesh-mainnet']), { VITE_MESH_SERVER_URL: 'http://a', VITE_CASHTOKEN_RELAYER_MAINNET_URL: 'http://a' }, { fetch: f });
+        const rows = await probeAll(only(['mesh-testnet', 'mesh-mainnet']), { VITE_MESH_SERVER_URL: 'http://a', VITE_MESH_SERVER_MAINNET_URL: 'http://a' }, { fetch: f });
         expect(rows[0].result).toMatchObject({ status: 'live', reported: 'chipnet' });
         expect(rows[1].result).toMatchObject({ status: 'mismatch', reported: 'chipnet' });
         expect(rows[1].result.detail).toContain('Expected mainnet');
@@ -76,11 +77,11 @@ describe('probes', () => {
         expect(row.result.detail).toContain('MAINNET_ENABLED');
     });
 
-    it('down on no answer or an error status; optional unset is fine', async () => {
+    it('down on no answer or an error status', async () => {
         const { f } = fakeFetch({ 'http://b/health': { status: 500, body: {} } });
         const rows = await probeAll(only(['cctp-testnet', 'evm-testnet', 'cctp-mainnet']), { VITE_CCTP_SWAP_SERVER_URL: 'http://b', VITE_EVM_RELAYER_URL: 'http://gone' }, { fetch: f });
-        expect(rows.map(r => r.result.status)).toEqual(['down', 'down', 'unset']);
-        expect(summarize(rows)).toMatchObject({ down: 2, unset: 1, problems: 2 });
+        expect(rows.map(r => r.result.status)).toEqual(['down', 'down', 'down']);
+        expect(summarize(rows)).toMatchObject({ down: 3, unset: 0, problems: 3 });
     });
 
     it('JSON-RPC: chain id for EVM, getHealth for Solana', async () => {
@@ -96,7 +97,7 @@ describe('probes', () => {
 
     it('probes a shared URL once and flags localhost from a deployed page', async () => {
         const { f, calls } = fakeFetch({ 'http://localhost:3001/health': { body: { network: 'chipnet' } }, 'http://localhost:3001/health/ready': { body: {} } });
-        const rows = await probeAll(only(['mesh-testnet', 'mesh-quotes-testnet']), {}, { fetch: f, pageOrigin: 'https://app.example' });
+        const rows = await probeAll(only(['mesh-testnet', 'mesh-quotes-testnet']), { VITE_MESH_SERVER_URL: 'http://localhost:3001' }, { fetch: f, pageOrigin: 'https://app.example' });
         expect(calls.filter(u => u === 'http://localhost:3001/health')).toHaveLength(1);
         expect(rows.every(r => r.result.warning === 'Points at localhost from a deployed page')).toBe(true);
         expect(summarize(rows).problems).toBe(2);

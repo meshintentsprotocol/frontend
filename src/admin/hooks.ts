@@ -16,6 +16,7 @@ function usePolled<T>(key: unknown[], fn: () => Promise<T>, factor = 1, enabled 
   return useQuery({ queryKey: key, queryFn: fn, refetchInterval: interval(factor), placeholderData: keepPreviousData, enabled: enabled && !!adminKey, retry: 1 });
 }
 
+export function useRevenue() { const { api } = useAdmin(); return usePolled(k('revenue'), api.revenue); }
 export function useOverview() { const { api } = useAdmin(); return usePolled(k('overview'), api.overview); }
 export function useEvents(q: Query) { const { api } = useAdmin(); return usePolled(k('events', q), () => api.events(q)); }
 export function useIntents(q: Query) { const { api } = useAdmin(); return usePolled(k('intents', q), () => api.intents(q)); }

@@ -4,28 +4,28 @@
     {
       "id": "mesh-testnet", "group": "testnet", "kind": "service", "service": "mesh:testnet",
       "label": "Mesh server", "purpose": "Market data, pools, positions, TWAP, prices, admin console",
-      "var": "VITE_MESH_SERVER_URL", "fallbackVars": ["VITE_MESH_API_URL"], "fallback": "http://localhost:3001",
+      "var": "VITE_MESH_SERVER_URL", "fallback": "https://meshserver-production-9ed93ac9.up.railway.app",
       "probe": "health", "path": "/health", "readyPath": "/health/ready",
       "check": { "path": "network", "equals": "chipnet" }
     },
     {
       "id": "mesh-quotes-testnet", "group": "testnet", "kind": "service", "service": "mesh:testnet",
       "label": "Swap quotes & intents", "purpose": "Same-chain quotes, limit/market orders, live order updates",
-      "var": "VITE_CASHTOKEN_RELAYER_URL", "fallbackVars": ["VITE_MESH_SERVER_URL"], "fallback": "http://localhost:3001",
+      "var": "VITE_MESH_SERVER_URL", "fallback": "https://meshserver-production-9ed93ac9.up.railway.app",
       "probe": "health", "path": "/health", "readyPath": "/health/ready",
       "check": { "path": "network", "equals": "chipnet" }
     },
     {
       "id": "relayer-testnet", "group": "testnet", "kind": "service", "service": "mesh:testnet",
       "label": "Intent relayer", "purpose": "Older intent pages (same server as the Mesh server)",
-      "var": "VITE_RELAYER_URL", "fallbackVars": ["VITE_MESH_SERVER_URL"], "fallback": "http://localhost:3001",
+      "var": "VITE_MESH_SERVER_URL", "fallback": "https://meshserver-production-9ed93ac9.up.railway.app",
       "probe": "health", "path": "/health",
       "check": { "path": "network", "equals": "chipnet" }
     },
     {
       "id": "cctp-testnet", "group": "testnet", "kind": "service", "service": "cctp:testnet",
       "label": "Swap server (testnet)", "purpose": "Cross-chain USDC (Circle CCTP) on testnets",
-      "var": "VITE_CCTP_SWAP_SERVER_URL", "fallback": "http://localhost:3012",
+      "var": "VITE_CCTP_SWAP_SERVER_URL", "fallback": "https://cctp-swap-server-production-7cb54caf.up.railway.app",
       "probe": "health", "path": "/health",
       "check": { "path": "network", "equals": "testnet" }
     },
@@ -68,7 +68,7 @@
     {
       "id": "mesh-mainnet", "group": "mainnet", "kind": "service", "service": "mesh:mainnet",
       "label": "Mesh server (mainnet)", "purpose": "Mainnet quotes, orders and live order updates",
-      "var": "VITE_CASHTOKEN_RELAYER_MAINNET_URL", "fallbackVars": ["VITE_MESH_SERVER_URL"], "fallback": "http://localhost:3001",
+      "var": "VITE_MESH_SERVER_MAINNET_URL", "unsetNote": "Set a mainnet Mesh URL before using mainnet CashToken swaps",
       "probe": "health", "path": "/health", "readyPath": "/health/ready",
       "check": { "path": "network", "equals": "mainnet" }
     },
@@ -76,7 +76,7 @@
       "id": "cctp-mainnet", "group": "mainnet", "kind": "service", "service": "cctp:mainnet", "optional": true,
       "label": "Swap server (mainnet)", "purpose": "Mainnet USDC (CCTP), Solana/Jupiter, BCH 1Click, lending",
       "unsetNote": "Not set: Mainnet mode uses the testnet swap server (Solana swaps only)",
-      "var": "VITE_CCTP_SWAP_SERVER_MAINNET_URL", "fallback": "",
+      "var": "VITE_CCTP_SWAP_SERVER_MAINNET_URL", "fallback": "https://cctp-swap-server-production-7cb54caf.up.railway.app",
       "probe": "health", "path": "/health",
       "check": { "path": "network", "equals": "mainnet" }
     },

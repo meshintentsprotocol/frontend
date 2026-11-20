@@ -78,3 +78,10 @@ describe('Mesh Balancer calls', () => {
     expect(body(2)).toEqual({ type: 'split-utxos', count: 8, sats: 40000 });
   });
 });
+
+it('revenue requests use the authenticated Mesh admin endpoint', async () => {
+ const f = mockFetch(200, {windows:{}});
+ await createAdminApi('http://mesh:3001/', () => 'operator-key').revenue();
+ expect(f.mock.calls[0]![0]).toBe('http://mesh:3001/api/v1/admin/revenue');
+ expect((f.mock.calls[0]![1]?.headers as Record<string,string>)['x-admin-key']).toBe('operator-key');
+});
