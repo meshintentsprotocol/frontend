@@ -55,7 +55,7 @@ function CustomTooltip({ active, payload, label, range }: CustomTooltipProps) {
     );
 }
 
-export function TokenChart({ tokenId, isCashToken, isMainnet, currentPrice }: TokenChartProps) {
+export function TokenChart({ tokenId, isCashToken, isMainnet }: TokenChartProps) {
     const [range, setRange] = useState<TimeRange>('1D');
     const { data: chartData, isLoading } = useTokenChart(tokenId, isCashToken, range, isMainnet);
 
@@ -72,7 +72,7 @@ export function TokenChart({ tokenId, isCashToken, isMainnet, currentPrice }: To
     const gradientId = `priceGrad-${tokenId.slice(0, 8)}`;
 
     return (
-        <div className="w-full">
+        <div className="w-full min-w-0">
             {/* Range change indicator */}
             {rangeChange != null && (
                 <p className={cn('text-sm font-semibold mb-3', isUp ? 'text-emerald-500' : 'text-rose-500')}>
@@ -81,7 +81,7 @@ export function TokenChart({ tokenId, isCashToken, isMainnet, currentPrice }: To
             )}
 
             {/* Chart */}
-            <div className="h-[200px] w-full">
+            <div className="h-[200px] w-full min-w-0 overflow-hidden">
                 {isLoading ? (
                     <div className="h-full w-full flex items-center justify-center">
                         <div className="h-32 w-full bg-white/[0.02] rounded-xl animate-pulse" />
@@ -135,7 +135,7 @@ export function TokenChart({ tokenId, isCashToken, isMainnet, currentPrice }: To
             </div>
 
             {/* Range picker */}
-            <div className="flex items-center gap-1 mt-3">
+            <div className="flex flex-wrap items-center gap-1 mt-3">
                 {RANGES.map(r => (
                     <button
                         key={r}

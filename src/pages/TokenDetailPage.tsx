@@ -73,6 +73,8 @@ function SwapCardSkeleton() {
     );
 }
 
+const METADATA_SOURCE_LABELS: Record<string, string> = { 'bcmr-indexer': 'BCMR indexer', cauldron: 'Cauldron registry', embedded: 'Embedded registry' };
+
 export function TokenDetailPage() {
     const { id: slug = '' } = useParams<{ id: string }>();
     const navigate = useNavigate();
@@ -144,7 +146,7 @@ export function TokenDetailPage() {
     const changePositive = detail?.change24h != null ? detail.change24h >= 0 : true;
 
     return (
-        <div className="mx-auto px-4 md:px-8 max-w-[1200px] py-6 pb-28 lg:pb-6 relative">
+        <div className="mx-auto px-4 md:px-8 w-full min-w-0 max-w-[1200px] py-6 pb-28 lg:pb-6 relative">
 
             {/* Back nav */}
             <Link
@@ -156,10 +158,10 @@ export function TokenDetailPage() {
             </Link>
 
             {/* Main grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="grid min-w-0 grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-6 lg:gap-8">
 
                 {/* ── Left column (2/3) ─────────────────────────────────── */}
-                <div className="lg:col-span-2 flex flex-col space-y-8">
+                <div className="min-w-0 flex flex-col space-y-8">
 
                     {/* Token header */}
                     {isLoading ? (
@@ -171,7 +173,7 @@ export function TokenDetailPage() {
                             </div>
                         </div>
                     ) : detail ? (
-                        <div className="flex items-start gap-4">
+                        <div className="flex min-w-0 items-start gap-3 sm:gap-4">
                             {/* Same resolver as the list rows: IPFS gateway fallbacks, then identicon */}
                             <TokenChainIcon
                                 tokenIcon={detail.icon}
@@ -180,10 +182,10 @@ export function TokenDetailPage() {
                                 size="lg"
                                 className="mt-1"
                             />
-                            <div className="min-w-0">
+                            <div className="min-w-0 flex-1">
                                 <div className="flex flex-wrap items-center gap-2 mb-1">
-                                    <h1 className="text-2xl font-semibold text-foreground truncate">{detail.name}</h1>
-                                    <span className="text-sm text-muted-foreground font-mono uppercase tracking-wide">{detail.symbol}</span>
+                                    <h1 className="max-w-full break-words text-xl sm:text-2xl font-semibold text-foreground [overflow-wrap:anywhere]" title={detail.name}>{detail.name}</h1>
+                                    <span className="max-w-full truncate text-sm text-muted-foreground font-mono uppercase tracking-wide">{detail.symbol}</span>
                                     {isCashToken ? (
                                         <Badge variant="outline" className="text-[9px] h-4 px-1.5 border-emerald-500/20 text-emerald-400">
                                             <Layers className="h-2.5 w-2.5 mr-1 inline" />CashToken
@@ -203,7 +205,7 @@ export function TokenDetailPage() {
                                 </div>
 
                                 <div className="flex flex-wrap items-baseline gap-3">
-                                    <span className="text-3xl font-bold text-foreground">
+                                    <span className="max-w-full break-words text-2xl sm:text-3xl font-bold text-foreground [overflow-wrap:anywhere]">
                                         {formatPrice(detail.priceUsd)}
                                     </span>
                                     {detail.change24h != null && (
@@ -221,13 +223,26 @@ export function TokenDetailPage() {
                                     )}
                                 </div>
 
+                                {isCashToken && detail.metadataStatus && (
+                                    <p className="mt-2 text-xs text-muted-foreground" aria-live="polite">
+                                        {detail.metadataStatus === 'available'
+                                            ? 'Metadata: ' + (METADATA_SOURCE_LABELS[detail.metadataSource ?? ''] ?? 'Published registry')
+                                            : detail.metadataStatus === 'unavailable' ? 'Metadata temporarily unavailable' : 'No published metadata found'}
+                                    </p>
+                                )}
+                                {detail.migratedTo && (
+                                    <Link className="mt-2 block text-xs text-primary underline" to={'/explore/tokens/ct-' + detail.migratedTo}>
+                                        This category has migrated. View the current category.
+                                    </Link>
+                                )}
+
                                 {isCashToken && (
                                     <div className="mt-1.5 flex items-center gap-1.5">
                                         <span className="text-[10px] font-mono text-muted-foreground/50">
                                             {tokenId.slice(0, 12)}…{tokenId.slice(-8)}
                                         </span>
                                         <a
-                                            href={`https://explorer.bitcoinunlimited.info/token/${tokenId}`}
+                                            href={detail.explorerLinks[0]}
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             className="text-muted-foreground/40 hover:text-muted-foreground transition-colors"
@@ -273,7 +288,7 @@ export function TokenDetailPage() {
                 </div>
 
                 {/* ── Right column (1/3) — sticky floating swap card (Desktop only) ─────── */}
-                <div className="lg:col-span-1 hidden lg:block">
+                <div className="min-w-0 hidden lg:block">
                     <div className="sticky top-28">
                         {!swapReady ? (
                             <SwapCardSkeleton />

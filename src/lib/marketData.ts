@@ -8,6 +8,7 @@
 // ============================================================================
 
 import { BCH_MESH_SERVER_URL } from './config';
+import { fetchBitfinexPrices, fetchBitfinexMarkets } from './bitfinexPricing';
 
 export type ChartRange = '1H' | '1D' | '1W' | '1M' | '1Y' | 'ALL';
 export interface ChartPoint { time: number; price: number }
@@ -97,13 +98,27 @@ let spotInflight: Promise<Record<string, SpotPrice>> | null = null;
 export const MarketService = {
     /** Live spot prices keyed by market symbol (stale entries included, flagged). */
     async getPrices(): Promise<Record<string, SpotPrice>> {
-        if (spotCache && Date.now() - spotCache.at < SPOT_TTL_MS) return spotCache.value;
+        if (spotCache && Date.now() - spotCache.at < SPOT_TTL_MS && Object.keys(spotCache.value).length > 0) return spotCache.value;
         if (spotInflight) return spotInflight;
         spotInflight = getJson<{ prices: Record<string, SpotPrice> }>('/api/v1/prices', 5000)
-            .then(body => {
-                const value = body.prices ?? {};
-                spotCache = { at: Date.now(), value };
+            .then(async body => {
+                let value = body.prices ?? {};
+                if (Object.keys(value).length === 0) {
+                    value = await fetchBitfinexPrices().catch(() => ({}));
+                }
+                if (Object.keys(value).length > 0) {
+                    spotCache = { at: Date.now(), value };
+                }
                 return value;
+            })
+            .catch(async err => {
+                console.warn('[MarketService] Server price endpoint unreachable, using Bitfinex HTTP fallback:', err?.message);
+                const fallback = await fetchBitfinexPrices().catch(() => ({}));
+                if (Object.keys(fallback).length > 0) {
+                    spotCache = { at: Date.now(), value: fallback };
+                    return fallback;
+                }
+                return spotCache?.value ?? {};
             })
             .finally(() => { spotInflight = null; });
         return spotInflight;
@@ -111,8 +126,16 @@ export const MarketService = {
 
     /** Price + table stats (mcap / FDV / volume / 1h) for every market symbol. */
     async getMarkets(): Promise<Record<string, MarketRow>> {
-        const body = await getJson<{ markets: MarketRow[] }>('/api/v1/market');
-        return Object.fromEntries((body.markets ?? []).map(m => [m.symbol, m]));
+        try {
+            const body = await getJson<{ markets: MarketRow[] }>('/api/v1/market');
+            const result = Object.fromEntries((body.markets ?? []).map(m => [m.symbol, m]));
+            if (Object.keys(result).length > 0) return result;
+            // Server returned empty — try Bitfinex
+            return await fetchBitfinexMarkets().catch(() => ({}));
+        } catch (err) {
+            console.warn('[MarketService] Market endpoint unreachable, using Bitfinex HTTP fallback:', (err as Error)?.message);
+            return await fetchBitfinexMarkets().catch(() => ({}));
+        }
     },
 
     async getMarket(symbol: string): Promise<MarketDetail> {

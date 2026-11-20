@@ -32,10 +32,10 @@ interface StatItemProps {
 
 function StatItem({ label, value, accent, sub }: StatItemProps) {
     return (
-        <div className="flex flex-col gap-0.5 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3.5 py-3">
+        <div className="flex min-w-0 flex-col gap-0.5 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3.5 py-3">
             <span className="text-[10px] font-medium text-white/35 uppercase tracking-wider">{label}</span>
             <span className={cn(
-                'font-semibold text-sm',
+                'break-words font-semibold text-sm [overflow-wrap:anywhere]',
                 accent === true && 'text-emerald-400',
                 accent === false && 'text-red-400',
                 accent == null && 'text-white',

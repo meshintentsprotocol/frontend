@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import { useTokenMetadataMany } from '@/hooks/useTokenMetadata';
+import { useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -12,7 +13,6 @@ import { CauldronService } from '@/lib/cauldron';
 import { useWDK } from '@/context/WDKProvider';
 import { TokenChainIcon } from '@/components/common/TokenChainIcon';
 import { resolveTokenIconUri } from '@/lib/tokenIcons';
-import { logoForSymbol } from '@/lib/tokenLogos';
 
 type AssetChain = 'Bitcoin Cash' | 'EVM' | 'Solana' | 'Movement' | 'Monero';
 interface Asset {
@@ -76,9 +76,10 @@ export function TokensTable({ activeChain, refreshTrigger }: TokensTableProps) {
         queryFn: () => CauldronService.getTopCashTokens(50, isMainnet),
         staleTime: 60_000,
         refetchInterval: 60_000,
-        placeholderData: keepPreviousData,
+        placeholderData: (data, query) => query?.queryKey[1] === (isMainnet ? 'mainnet' : 'chipnet') ? data : undefined,
     });
-    const cashTokens = cashTokenQuery.data ?? [];
+    const metadata = useTokenMetadataMany(cashTokenQuery.data?.map(t => t.token_id) ?? [], isMainnet);
+    const cashTokens = useMemo(() => (cashTokenQuery.data ?? []).map(t => CauldronService.applyMetadata(t, metadata.data?.[t.token_id])), [cashTokenQuery.data, metadata.data]);
 
     useEffect(() => {
         if (refreshTrigger === 0) return;
@@ -132,7 +133,7 @@ export function TokensTable({ activeChain, refreshTrigger }: TokensTableProps) {
             )}
 
             <div className="px-4 py-2 border-b border-white/[0.06] flex items-center justify-between text-xs text-muted-foreground">
-                <span>Prices via <span className="text-emerald-400 font-medium">BCHMesh market feed</span> (exchange median), CashToken metrics via <span className="text-emerald-400 font-medium">Cauldron Indexer</span></span>
+                <span>Prices via <span className="text-emerald-400 font-medium">BCHMesh market feed</span> (exchange median) · <span className="text-blue-400/80 font-medium">Bitfinex</span> fallback, CashToken metrics via <span className="text-emerald-400 font-medium">Cauldron Indexer</span></span>
                 <span className={cn(
                     "text-[10px] font-semibold px-2 py-0.5 rounded-full border",
                     isMainnet
@@ -200,8 +201,8 @@ export function TokensTable({ activeChain, refreshTrigger }: TokensTableProps) {
                                                 <TokenChainIcon tokenIcon={asset.icon} tokenName={asset.name} chain={asset.chainId} size="sm" />
                                                 <div className="flex flex-col min-w-0">
                                                     <div className="flex items-center gap-2">
-                                                        <span className="font-semibold text-sm truncate">{asset.name}</span>
-                                                        <span className="text-xs text-muted-foreground uppercase tracking-wide">{asset.symbol}</span>
+                                                        <span className="max-w-[180px] font-semibold text-sm truncate">{asset.name}</span>
+                                                        <span className="max-w-[100px] truncate text-xs text-muted-foreground uppercase tracking-wide">{asset.symbol}</span>
                                                     </div>
                                                     <div className="mt-0.5 flex items-center gap-1.5">
                                                         <Badge variant="outline" className={cn(
@@ -251,12 +252,9 @@ export function TokensTable({ activeChain, refreshTrigger }: TokensTableProps) {
                         )}
 
                         {!showSkeleton && filteredCashTokens.map(ct => {
-                            const { symbol: sym, iconRaw } = CauldronService.metadataOf(ct);
-                            const icon = resolveTokenIconUri(iconRaw ?? logoForSymbol(sym), ct.token_id);
+                            const { symbol: sym, name: displayName, iconRaw } = CauldronService.metadataOf(ct);
+                            const icon = iconRaw || resolveTokenIconUri(null, ct.token_id);
                             const registered = ct.metadata_source !== 'cauldron-listing';
-                            const displayName = registered
-                                ? (ct.display_name || sym)
-                                : `Unregistered ${ct.token_id.slice(0, 6)}…`;
                             const change24h = Number.isFinite(ct.change_24h_bp) ? ct.change_24h_bp / 100 : null; // bp → percent
                             const change7d = Number.isFinite(ct.change_7d_bp) ? ct.change_7d_bp / 100 : 0;
                             // price_now is sats per whole (display) token
@@ -282,12 +280,12 @@ export function TokensTable({ activeChain, refreshTrigger }: TokensTableProps) {
                                             <div className="flex flex-col min-w-0">
                                                 <div className="flex items-center gap-2">
                                                     <span
-                                                        className={cn("font-semibold text-sm truncate", !registered && "text-muted-foreground")}
+                                                        className={cn("max-w-[180px] font-semibold text-sm truncate", !registered && "text-muted-foreground")}
                                                         title={registered ? displayName : ct.token_id}
                                                     >
                                                         {displayName}
                                                     </span>
-                                                    {registered && <span className="text-xs text-muted-foreground uppercase tracking-wide">{sym}</span>}
+                                                    {registered && <span className="max-w-[100px] truncate text-xs text-muted-foreground uppercase tracking-wide">{sym}</span>}
                                                 </div>
                                                 <div className="mt-0.5 flex items-center gap-1.5">
                                                     <Badge variant="outline" className="text-[9px] h-3.5 px-1.5 border-emerald-500/20 text-emerald-400 font-medium">
@@ -298,9 +296,9 @@ export function TokensTable({ activeChain, refreshTrigger }: TokensTableProps) {
                                                         <Badge
                                                             variant="outline"
                                                             className="text-[9px] h-3.5 px-1.5 border-amber-500/20 text-amber-300/80 font-medium"
-                                                            title="No BCMR registry describes this token — name, symbol and decimals are unverified"
+                                                            title="Published metadata is not currently available from the configured sources"
                                                         >
-                                                            Unverified
+                                                            {metadata.isFetching ? 'Resolving metadata' : metadata.data && ct.token_id in metadata.data ? 'Metadata missing' : 'Metadata unavailable'}
                                                         </Badge>
                                                     )}
                                                     <span className="text-[8px] font-mono text-muted-foreground/60 truncate max-w-[80px]" title={ct.token_id}>

@@ -35,6 +35,9 @@ export interface TokenDetail {
     website: string | null;
     explorerLinks: string[];
     bcmrCategory?: string;
+    metadataSource?: string;
+    metadataStatus?: 'available' | 'missing' | 'unavailable';
+    migratedTo?: string | null;
     // raw data for advanced use
     raw?: MarketDetail | CauldronTokenData;
 }
@@ -72,15 +75,16 @@ export function useTokenDetail(
 
             // ── CashToken ────────────────────────────────────────────────────
             if (isCashToken) {
-                const [market, bcmr, bchPrice] = await Promise.all([
+                const [market, lookup, bchPrice] = await Promise.all([
                     CauldronService.getTokenDetail(tokenId, isMainnet),
-                    BcmrClient.get(tokenId, isMainnet).catch(() => null),
+                    BcmrClient.get(tokenId, isMainnet).then(metadata => ({ metadata, unavailable: false })).catch(() => ({ metadata: null, unavailable: true })),
                     liveBchUsd(),
                 ]);
+                const bcmr = lookup.metadata;
                 if (!market && !bcmr) return null;
 
                 // No Cauldron pool (e.g. a wallet-held token) — metadata-only row
-                const detail: CauldronTokenData = market ?? {
+                const listing: CauldronTokenData = market ?? {
                     token_id: bcmr!.category,
                     display_name: bcmr!.name,
                     display_symbol: bcmr!.symbol,
@@ -88,6 +92,7 @@ export function useTokenDetail(
                     price_now: 0, price_now_usd: 0, price_24h: 0, price_24h_usd: 0,
                     change_24h_bp: 0, change_7d_bp: 0,
                 };
+                const detail = CauldronService.applyMetadata(listing, bcmr);
                 const meta = CauldronService.metadataOf(detail, bcmr);
 
                 const tokenBchPrice = detail.price_now ? detail.price_now / 1e8 : 0;
@@ -113,7 +118,7 @@ export function useTokenDetail(
                 return {
                     symbol: meta.symbol,
                     name: meta.name || 'Unknown Token',
-                    icon: resolveTokenIconUri(meta.iconRaw, detail.token_id),
+                    icon: meta.iconRaw || resolveTokenIconUri(null, detail.token_id),
                     decimals: meta.decimals,
                     chain: 'Bitcoin Cash',
                     isCashToken: true,
@@ -137,6 +142,9 @@ export function useTokenDetail(
                     website: meta.website,
                     explorerLinks: [explorerBase],
                     bcmrCategory: detail.token_id,
+                    metadataSource: bcmr?.source ?? detail.metadata_source,
+                    metadataStatus: bcmr || (detail.metadata_source && detail.metadata_source !== 'cauldron-listing') ? 'available' : lookup.unavailable ? 'unavailable' : 'missing',
+                    migratedTo: bcmr?.migratedTo,
                     raw: detail,
                 } satisfies TokenDetail;
             }
@@ -144,8 +152,24 @@ export function useTokenDetail(
             // ── Cross-chain (priced by the mesh server's market feed) ────────
             const sym = tokenId.toUpperCase();
             const marketSym = marketSymbolFor(sym);
-            const detail = marketSym ? await MarketService.getMarket(marketSym).catch(() => null) : null;
+            let detail = marketSym ? await MarketService.getMarket(marketSym).catch(() => null) : null;
             const info = detail?.info ?? null;
+
+            // If the market detail call failed but we have spot prices from
+            // the Bitfinex fallback, build a minimal detail so the page still
+            // shows a live price rather than "$0.00".
+            let fallbackPrice: number | null = null;
+            let fallbackChange24h: number | null = null;
+            if (!detail && marketSym) {
+                try {
+                    const spotPrices = await MarketService.getPrices();
+                    const sp = spotPrices[marketSym];
+                    if (sp && sp.price > 0) {
+                        fallbackPrice = sp.price;
+                        fallbackChange24h = sp.change24h;
+                    }
+                } catch { /* no-op */ }
+            }
 
             const crossChainDecimals: Record<string, number> = {
                 BCH: 8, SOL: 9, USDC: 6, USDT: 6, ETH: 18, BTC: 8, MOVE: 8, XMR: 12, BNB: 18,
@@ -158,9 +182,9 @@ export function useTokenDetail(
                 decimals: crossChainDecimals[marketSym ?? sym] ?? 8,
                 chain: resolveChain(sym, isMainnet),
                 isCashToken: false,
-                priceUsd: detail && !detail.stale && detail.price ? detail.price : 0,
+                priceUsd: detail && !detail.stale && detail.price ? detail.price : (fallbackPrice ?? 0),
                 change1h: info?.change1h ?? null,
-                change24h: detail?.change24h ?? null,
+                change24h: detail?.change24h ?? fallbackChange24h ?? null,
                 change7d: info?.change7d ?? null,
                 marketCap: info?.marketCap ?? null,
                 fdv: info?.fdv ?? null,
