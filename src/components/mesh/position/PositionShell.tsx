@@ -17,7 +17,7 @@ export interface PositionShellProps {
   id: string;
   engine: 'v4' | 'v3';
   pairLabel: string;
-  tokenInfo: TokenInfo | string;
+  tokenInfo: TokenInfo | 'BCH';
   strategyName: string;
   status: CoverageStatus;
   isOwner: boolean;

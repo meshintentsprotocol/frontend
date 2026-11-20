@@ -65,3 +65,4 @@ export function RangeBar({ minPrice, maxPrice, marketPrice, symbol, className }:
     </div>
   );
 }
+

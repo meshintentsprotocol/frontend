@@ -164,7 +164,7 @@ export default function MeshPositionPage() {
         pairLabel={name.data ?? v.pairName ?? `BCH / ${info.symbol}`}
         tokenInfo={info}
         strategyName={`Range (${c.binCount} bins)`}
-        status={inRange ? 'in-range' : 'out-of-range'}
+        status={funded === 0 ? 'closed' : inRange ? 'in-range' : 'out-of-range'}
         isOwner={isHolder}
         valueSats={valSats}
         valueUsd={valUsd}

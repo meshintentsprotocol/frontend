@@ -67,3 +67,4 @@ export function coverageBadge(status: CoverageStatus): { label: string; tone: 'e
       return { label: 'Closed', tone: 'zinc' };
   }
 }
+

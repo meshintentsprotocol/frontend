@@ -1,10 +1,11 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Search, Loader2, Sparkles, Check, Globe, AlertCircle } from 'lucide-react';
-import { CauldronService, type CauldronTokenData } from '@/lib/cauldron';
+import { CauldronService } from '@/lib/cauldron';
 import { useWDK } from '@/context/WDKProvider';
 import { resolveTokenIconUri } from '@/lib/tokenIcons';
+import { useTokenCatalog } from '@/hooks/useTokenCatalog';
 
 export interface MeshToken {
   symbol: string;
@@ -38,7 +39,6 @@ export const CHIPNET_DEFAULT_TOKENS: MeshToken[] = [
     decimals: 2,
     icon: '/assets/bchintentslogo.png',
     categoryId: 'dfe50223c8d5cba8dcef8dff6d92b61deb88a8ba44947367f2b746487b56039b',
-    priceUsd: 1.00,
   },
   {
     symbol: 'mUSD',
@@ -46,7 +46,6 @@ export const CHIPNET_DEFAULT_TOKENS: MeshToken[] = [
     decimals: 2,
     icon: '/assets/bchintentslogo.png',
     categoryId: 'b4863d5773c7a269b6fe3b9f7ce2ce1098ab71c0b046ef2a39058d5e30b1f353',
-    priceUsd: 1.00,
   },
 ];
 
@@ -67,66 +66,30 @@ export function TokenSelectModal({
   otherSelectedToken,
   title = 'Select a Token',
 }: TokenSelectModalProps) {
-  const { bchNetwork, bchAddress } = useWDK();
+  const { bchNetwork } = useWDK();
   const isMainnet = bchNetwork === 'mainnet';
 
   const [search, setSearch] = useState('');
-  const [cauldronTokens, setCauldronTokens] = useState<MeshToken[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Fetch tokens from Cauldron indexer
-  useEffect(() => {
-    let mounted = true;
-    const fetchTokens = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const rawTokens = await CauldronService.getTopCashTokens(50, isMainnet);
-        if (mounted) {
-          const mapped: MeshToken[] = rawTokens
-            .map(t => ({ t, meta: CauldronService.metadataOf(t) }))
-            .filter(({ meta }) => meta.symbol !== 'UNKNOWN')
-            .map(({ t, meta }) => {
-              const { symbol, name, decimals } = meta;
-              const icon = resolveTokenIconUri(meta.iconRaw, t.token_id);
-              return {
-                symbol,
-                name,
-                decimals,
-                icon,
-                categoryId: t.token_id,
-                priceUsd: t.price_now_usd,
-                priceSats: t.price_now,
-                change24hBp: t.change_24h_bp,
-                tvlSats: t.tvl_sats,
-              };
-            });
-
-          setCauldronTokens(mapped);
-        }
-      } catch (err: any) {
-        if (mounted) setError('Failed to load Cauldron tokens');
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    };
-
-    if (open) {
-      void fetchTokens();
-    }
-
-    return () => {
-      mounted = false;
-    };
-  }, [isMainnet, open]);
+  const catalog = useTokenCatalog([], isMainnet, open);
+  const cauldronTokens = useMemo<MeshToken[]>(() => catalog.cashTokens
+    .map(t => ({ t, meta: CauldronService.metadataOf(t) }))
+    .filter(({ meta }) => meta.symbol !== 'UNKNOWN')
+    .map(({ t, meta }) => ({
+      symbol: meta.symbol, name: meta.name, decimals: meta.decimals,
+      icon: resolveTokenIconUri(meta.iconRaw, t.token_id), categoryId: t.token_id,
+      priceUsd: t.price_now_usd, priceSats: t.price_now,
+      change24hBp: t.change_24h_bp, tvlSats: t.tvl_sats,
+    })), [catalog.cashTokens]);
+  const loading = catalog.loading;
+  const error = catalog.error;
 
   // Combined token list
   const allTokens = useMemo(() => {
     const defaultList = isMainnet ? [NATIVE_BCH_TOKEN] : CHIPNET_DEFAULT_TOKENS;
-    const existingIds = new Set(defaultList.map(t => t.categoryId || (t.isNativeBch ? 'BCH' : '')));
-    const filteredCauldron = cauldronTokens.filter(t => !existingIds.has(t.categoryId || ''));
-    return [...defaultList, ...filteredCauldron];
+    const byCategory = new Map(defaultList.map(t => [t.categoryId || 'BCH', t]));
+    // Fresh Cauldron metadata and prices replace static chipnet placeholders.
+    for (const token of cauldronTokens) byCategory.set(token.categoryId!, token);
+    return [...byCategory.values()];
   }, [isMainnet, cauldronTokens]);
 
   // Filtered by search query
@@ -182,7 +145,7 @@ export function TokenSelectModal({
         {/* Popular / Quick-select Chips */}
         <div className="flex flex-wrap gap-2 pt-1">
           {allTokens.slice(0, 4).map(t => {
-            const isSelected = selectedToken?.symbol === t.symbol;
+            const isSelected = !!selectedToken && (selectedToken.categoryId || 'BCH') === (t.categoryId || 'BCH');
             return (
               <button
                 key={t.categoryId || t.symbol}
@@ -215,8 +178,8 @@ export function TokenSelectModal({
           )}
 
           {filteredTokens.map(token => {
-            const isSelected = selectedToken?.symbol === token.symbol;
-            const isOther = otherSelectedToken?.symbol === token.symbol;
+            const isSelected = !!selectedToken && (selectedToken.categoryId || 'BCH') === (token.categoryId || 'BCH');
+            const isOther = !!otherSelectedToken && (otherSelectedToken.categoryId || 'BCH') === (token.categoryId || 'BCH');
 
             return (
               <button
@@ -304,6 +267,7 @@ export function TokenSelectModal({
             );
           })}
 
+          {error && <p className="px-3 py-2 text-xs text-amber-300">Cauldron token list is unavailable. Showing known tokens.</p>}
           {!loading && filteredTokens.length === 0 && (
             <div className="py-10 text-center space-y-2 text-zinc-500">
               <AlertCircle className="w-6 h-6 mx-auto text-zinc-600" />

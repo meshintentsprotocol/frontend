@@ -6,16 +6,17 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { TokenAvatar } from '@/components/mesh/pools/shared';
+import { TokenAvatar, useTokenInfo } from '@/components/mesh/pools/shared';
 import { EngineBadge } from '@/components/mesh/kit';
 import { RangeBar } from './RangeBar';
 import { coverageBadge } from '@/lib/mesh/positions/coverage';
-import { formatNumber, formatSatsCompact, formatUsd, shortHex } from '@/lib/mesh/format';
+import { formatNumber, formatSatsCompact, formatUnits, formatUsd, shortHex } from '@/lib/mesh/format';
 import type { PositionRow as PositionRowModel } from '@/lib/mesh/positions/viewModel';
 
 export function PositionCard({ row }: { row: PositionRowModel }) {
   const [expanded, setExpanded] = useState(false);
   const badge = coverageBadge(row.status);
+  const { get: tokenInfo } = useTokenInfo([row.tokenCat]);
 
   return (
     <div className="rounded-2xl border border-white/[0.08] bg-[#0c0c10] p-4 space-y-3">
@@ -24,7 +25,7 @@ export function PositionCard({ row }: { row: PositionRowModel }) {
         <div className="flex items-center gap-2.5">
           <span className="flex -space-x-1.5" aria-hidden>
             <TokenAvatar info="BCH" size={28} />
-            <TokenAvatar info={row.tokenSymbol} size={28} />
+            <TokenAvatar info={tokenInfo(row.tokenCat)} size={28} />
           </span>
           <div>
             <div className="flex items-center gap-2">
@@ -112,7 +113,11 @@ export function PositionCard({ row }: { row: PositionRowModel }) {
               {row.children.map(child => (
                 <div key={child.id} className="flex items-center justify-between text-xs py-1">
                   <span className="text-zinc-300">{child.name}</span>
-                  <span className="font-mono text-emerald-400">{formatSatsCompact(child.sats)}</span>
+                                    <span className="font-mono text-right">
+                    {child.sats > 0n && <span className="block text-emerald-400">{formatSatsCompact(child.sats)}</span>}
+                    {child.tokens !== undefined && child.tokens > 0n && <span className="block text-sky-300">{formatUnits(child.tokens, child.tokenDecimals ?? 0)} {child.tokenSymbol}</span>}
+                    {child.sats === 0n && !child.tokens && <span className="text-zinc-500">-</span>}
+                  </span>
                 </div>
               ))}
             </div>
@@ -132,3 +137,4 @@ export function PositionCard({ row }: { row: PositionRowModel }) {
     </div>
   );
 }
+

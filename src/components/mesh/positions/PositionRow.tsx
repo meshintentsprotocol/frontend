@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { TokenAvatar } from '@/components/mesh/pools/shared';
+import { TokenAvatar, useTokenInfo } from '@/components/mesh/pools/shared';
 import { EngineBadge } from '@/components/mesh/kit';
 import { RangeBar } from './RangeBar';
 import { coverageBadge } from '@/lib/mesh/positions/coverage';
@@ -16,6 +16,7 @@ import type { PositionRow as PositionRowModel } from '@/lib/mesh/positions/viewM
 export function PositionRow({ row }: { row: PositionRowModel }) {
   const [expanded, setExpanded] = useState(false);
   const badge = coverageBadge(row.status);
+  const { get: tokenInfo } = useTokenInfo([row.tokenCat]);
 
   return (
     <>
@@ -42,7 +43,7 @@ export function PositionRow({ row }: { row: PositionRowModel }) {
             <div className="flex items-center gap-2.5">
               <span className="flex -space-x-1.5" aria-hidden>
                 <TokenAvatar info="BCH" size={24} />
-                <TokenAvatar info={row.tokenSymbol} size={24} />
+                <TokenAvatar info={tokenInfo(row.tokenCat)} size={24} />
               </span>
               <div>
                 <Link
@@ -159,9 +160,9 @@ export function PositionRow({ row }: { row: PositionRowModel }) {
                       {child.sats > 0n && (
                         <div className="text-emerald-400">{formatSatsCompact(child.sats)}</div>
                       )}
-                      {child.tokens && child.tokens > 0n && (
+                      {child.tokens !== undefined && child.tokens > 0n && (
                         <div className="text-sky-300">
-                          {formatNumber(Number(child.tokens), 0)} {child.tokenSymbol}
+                          {formatUnits(child.tokens, child.tokenDecimals ?? 0)} {child.tokenSymbol}
                         </div>
                       )}
                     </div>
@@ -175,3 +176,4 @@ export function PositionRow({ row }: { row: PositionRowModel }) {
     </>
   );
 }
+

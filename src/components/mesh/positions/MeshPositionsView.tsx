@@ -3,15 +3,17 @@
  * Merges V4 discrete bins, V3 strategy covenants, and standalone pools into one list.
  */
 import { useMemo, useState } from 'react';
+import { useQueries } from '@tanstack/react-query';
+import { tokensPerBchFromSats } from '@/lib/mesh/create/price';
 import { Link, useNavigate } from 'react-router-dom';
 import { PlusCircle, Wallet, Layers, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useMeshPools, useMeshSigner, useMeshStats, useStrategies, useIdle } from '@/hooks/useMesh';
+import { meshApi, useMeshPools, useMeshSigner, useMeshStats, useStrategies, useIdle } from '@/hooks/useMesh';
 import { useV4Held } from '@/hooks/useMeshV4';
 import { useTokenInfo } from '@/components/mesh/pools/shared';
 import { meshPaths } from '@/lib/mesh/routes';
 import { shortHex } from '@/lib/mesh/format';
-import { buildPositionsViewModel } from '@/lib/mesh/positions/viewModel';
+import { buildPositionsViewModel, strategyTokenCategories } from '@/lib/mesh/positions/viewModel';
 import { PositionsSummaryTiles } from './PositionsSummaryTiles';
 import { PositionsFilterTabs, type FilterCount, type PositionFilter } from './PositionsFilterTabs';
 import { PositionsTable } from './PositionsTable';
@@ -44,8 +46,8 @@ export function MeshPositionsView() {
       if (v4.commitment.tokenCat) set.add(v4.commitment.tokenCat.toLowerCase());
     }
     for (const s of v3Q.data?.strategies ?? []) {
-      const cat = (s.params?.token as string) || (s.params?.token1 as string) || (s.params?.tokenA as string);
-      if (cat && cat !== '0x') set.add(cat.toLowerCase());
+      for (const cat of strategyTokenCategories(s)) set.add(cat);
+
     }
     for (const p of poolsQ.data?.pools ?? []) {
       if (p.v3?.reserve && p.v3.reserve !== '0x') set.add(p.v3.reserve.toLowerCase());
@@ -57,6 +59,15 @@ export function MeshPositionsView() {
   }, [v4Q.data, v3Q.data, poolsQ.data]);
 
   const { get: getToken } = useTokenInfo(tokenCats);
+  const marketQueries = useQueries({
+    queries: tokenCats.map(token => ({
+      queryKey: ['mesh', 'market-ref', token],
+      queryFn: () => meshApi.marketRef(token),
+      staleTime: 30_000,
+      refetchInterval: 60_000,
+    })),
+  });
+  const markets = new Map(tokenCats.map((token, index) => [token, marketQueries[index]?.data]));
 
   // Standalone pools are those not tied to a strategy
   const standalonePools = useMemo(() => {
@@ -71,12 +82,17 @@ export function MeshPositionsView() {
       standalonePools,
       tokenInfo: cat => {
         const info = getToken(cat);
-        return { symbol: info.symbol || 'Token', decimals: info.decimals || 8 };
+        return { symbol: info.symbol || 'Token', decimals: info.decimals ?? 0 };
+      },
+      marketRef: cat => {
+        const market = markets.get(cat);
+        const sats = Number(market?.cauldron?.satsPerToken);
+        return { midTpb: sats > 0 ? tokensPerBchFromSats(sats, getToken(cat).decimals) : null };
       },
       bchUsd,
       idleStrategyIds: idleQ.data?.items?.filter(i => i.strategy).map(i => i.strategy!) ?? [],
     });
-  }, [v4Q.data, v3Q.data, standalonePools, getToken, bchUsd, idleQ.data]);
+  }, [v4Q.data, v3Q.data, standalonePools, getToken, bchUsd, idleQ.data, marketQueries]);
 
   // Counts for filter tabs
   const counts: FilterCount = useMemo(() => {
@@ -159,6 +175,12 @@ export function MeshPositionsView() {
         </div>
       ) : (
         <>
+          {[v3Q, v4Q, poolsQ].some(query => query.isError) && (
+            <div role="alert" className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-4 text-xs text-amber-200">
+              <p>Some positions could not be loaded. Your balances and totals may be incomplete.</p>
+              <Button size="sm" variant="outline" className="mt-2" onClick={() => { [v3Q, v4Q, poolsQ].filter(query => query.isError).forEach(query => { void query.refetch(); }); }}>Retry</Button>
+            </div>
+          )}
           {/* Summary Tiles */}
           <PositionsSummaryTiles summary={summary} />
 
@@ -175,7 +197,7 @@ export function MeshPositionsView() {
             <div className="rounded-3xl border border-white/[0.08] bg-[#0c0c10] p-12 text-center">
               <Layers className="w-10 h-10 text-zinc-500 mx-auto mb-3" />
               <h2 className="text-base font-semibold text-white">
-                {filter === 'all' ? 'No positions yet' : `No positions are ${filter.replace('-', ' ')}`}
+                {[v3Q, v4Q, poolsQ].some(query => query.isError) ? 'Position data is incomplete' : filter === 'all' ? 'No positions yet' : `No positions are ${filter.replace('-', ' ')}`}
               </h2>
               <p className="text-xs text-zinc-400 max-w-sm mx-auto mt-1 mb-4">
                 {filter === 'all'

@@ -119,3 +119,4 @@ describe('buildPositionsViewModel', () => {
     expect(vm.summary.totalActive).toBe(3);
   });
 });
+

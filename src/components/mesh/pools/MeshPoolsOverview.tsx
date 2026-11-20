@@ -16,6 +16,7 @@ import { Pager, usePagination } from '@/components/common/Pager';
 import { StrategyCard, strategyTokens } from '@/components/mesh/strategies/StrategyCard';
 import { EmptyState, PoolPairLabel, useTokenInfo } from './shared';
 import { PoolsTable } from './PoolsTable';
+import { V4PoolsList } from './V4PoolsList';
 import { DepthChart } from './DepthChart';
 
 const PAIRS_PER_PAGE = 10;
@@ -237,13 +238,15 @@ export function MeshPoolsOverview({ onTab }: { onTab: (t: 'positions' | 'leaderb
         {view === 'pairs' && (
           <>
             {pairs.isError ? <div className="text-xs text-amber-300">Could not load pairs: {(pairs.error as Error).message}</div>
-              : <PairsTable pairs={pairPages.pageItems} bchUsd={bchUsd} onProvide={t => onTab('create', t)} />}
+              : pairs.isLoading ? <p role="status" className="py-10 text-center text-xs text-zinc-400">Loading pairs...</p> : <PairsTable pairs={pairPages.pageItems} bchUsd={bchUsd} onProvide={t => onTab('create', t)} />}
             <Pager page={pairPages.page} pageCount={pairPages.pageCount} onPage={pairPages.setPage} />
             {(pairs.data?.pairs.length ?? 0) > 0 && <PairDepthPanel pairs={pairs.data!.pairs} />}
           </>
         )}
         {view === 'pools' && (
           <>
+            <V4PoolsList status={status} />
+            <h2 className="text-sm font-semibold text-white pt-3 border-t border-white/10">V3 covenant pools</h2>
             {pools.isError ? <div className="text-xs text-amber-300">Could not load pools: {(pools.error as Error).message}</div>
               : <PoolsTable pools={pools.data?.pools ?? []} bchUsd={bchUsd} loading={pools.isLoading} showOwner />}
             <Pager page={Math.min(poolPage, poolPageCount)} pageCount={poolPageCount} onPage={setPoolPage} />

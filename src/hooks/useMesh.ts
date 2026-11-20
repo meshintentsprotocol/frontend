@@ -40,7 +40,11 @@ export function useMeshStats(refetchMs = 15_000) {
 export function useMeshPools(q: PoolListQuery = {}, opts: { enabled?: boolean; refetchMs?: number } = {}) {
   return useQuery({
     queryKey: keys.pools(q), queryFn: () => meshApi.list(q), enabled: opts.enabled ?? true,
-    refetchInterval: opts.refetchMs ?? 15_000, placeholderData: keepPreviousData,
+    refetchInterval: opts.refetchMs ?? 15_000,
+    placeholderData: (prev, prevQuery) => {
+      const previous = prevQuery?.queryKey[2] as PoolListQuery | undefined;
+      return previous?.owner === q.owner ? prev : undefined;
+    },
   });
 }
 

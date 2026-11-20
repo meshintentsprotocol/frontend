@@ -28,3 +28,4 @@ export function PositionsTable({ rows }: { rows: PositionRowModel[] }) {
     </div>
   );
 }
+

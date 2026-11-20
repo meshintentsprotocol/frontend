@@ -12,6 +12,14 @@ import { gridPriceNum } from '@/lib/mesh/v4/position';
 import { satsToUsd } from '@/lib/mesh/format';
 import { STRATEGIES, type StrategyId } from '@/lib/mesh/create/registry';
 
+/** Categories used by both indexed multi-pair params and the classic form fields. */
+export function strategyTokenCategories(strategy: Pick<StrategySummary, 'params'>): string[] {
+  const params = strategy.params;
+  const tokens = Array.isArray(params?.tokens) ? params.tokens.map((entry: unknown) => typeof entry === 'string' ? entry : (entry as { token?: string })?.token) : [];
+  return [...new Set([params?.token, params?.token1, params?.tokenA, params?.tokenB, ...tokens]
+    .filter((cat): cat is string => typeof cat === 'string' && !!cat && cat !== '0x')
+    .map(cat => cat.toLowerCase()))];
+}
 export interface PositionChild {
   id: string;
   name: string;
@@ -20,6 +28,7 @@ export interface PositionChild {
   sats: bigint;
   tokens?: bigint;
   tokenSymbol?: string;
+  tokenDecimals?: number;
   priceText?: string;
   url?: string;
 }
@@ -95,7 +104,7 @@ export function buildPositionsViewModel(opts: ViewModelOptions): {
 
     // Calculate low and high prices for V4 bins
     const lowSats = gridPriceNum(pos.commitment.binStepBps, pos.commitment.lowIndex);
-    const highSats = gridPriceNum(pos.commitment.binStepBps, pos.commitment.highIndex);
+    const highSats = gridPriceNum(pos.commitment.binStepBps, pos.commitment.highIndex + 1);
     const minP = tokensPerBchFromSats(highSats, info.decimals);
     const maxP = tokensPerBchFromSats(lowSats, info.decimals);
 
@@ -129,6 +138,7 @@ export function buildPositionsViewModel(opts: ViewModelOptions): {
           sats,
           tokens,
           tokenSymbol: info.symbol,
+          tokenDecimals: info.decimals,
           priceText: tpb > 0 ? `1 BCH = ${tpb.toFixed(2)} ${info.symbol}` : undefined,
         };
       });
@@ -166,7 +176,8 @@ export function buildPositionsViewModel(opts: ViewModelOptions): {
 
     // Find main token category
     const poolCats = stg.pools.map(p => p.role).filter(Boolean);
-    const tokenCat = (stg.params?.token as string) || (stg.params?.token1 as string) || (stg.params?.tokenA as string) || '';
+    const tokenCats = strategyTokenCategories(stg);
+    const tokenCat = tokenCats[0] ?? '';
     const info = tokenInfo(tokenCat);
     const mkt = marketRef(tokenCat);
 
@@ -205,7 +216,7 @@ export function buildPositionsViewModel(opts: ViewModelOptions): {
       id: stg.id,
       kind: 'v3-strategy',
       engine: 'v3',
-      pairLabel: def?.pair === 'token-token' ? 'Token / Token' : `BCH / ${info.symbol}`,
+      pairLabel: def?.pair === 'token-token' ? tokenCats.map(cat => tokenInfo(cat).symbol).join(' / ') : def?.pair === 'bch-multi' ? 'BCH / ' + tokenCats.map(cat => tokenInfo(cat).symbol).join(' / ') : `BCH / ${info.symbol}`,
       tokenCat,
       tokenSymbol: info.symbol,
       strategyName: name,
@@ -227,8 +238,11 @@ export function buildPositionsViewModel(opts: ViewModelOptions): {
     });
   }
 
+  // Strategy pools are already included in their parent's value and fee totals.
+  const strategyPoolAddresses = new Set(v3Strategies.flatMap(strategy => strategy.pools.map(pool => pool.address)));
   // 3. Process Standalone V3 Pools
   for (const pool of standalonePools) {
+    if (strategyPoolAddresses.has(pool.address)) continue;
     const valSats = BigInt(pool.valueSats || '0');
     const reserveIsBch = pool.v3?.reserve === '0x';
     const firstSlot = pool.v3?.slots[0];
@@ -295,3 +309,4 @@ export function buildPositionsViewModel(opts: ViewModelOptions): {
     },
   };
 }
+
