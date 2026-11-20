@@ -33,8 +33,8 @@ export interface Site {
 export const SITE_DEFAULTS = {
     siteName: 'BCH Intents',
     description: 'Intent-based cross-chain swaps on Bitcoin Cash. Trustless, instant, non-custodial.',
-    ogImage: '/assets/bchintentslogo_edited.png',
-    logo: '/assets/bchintentslogo_edited.png',
+    ogImage: '/assets/pwa-512x512.png',
+    logo: '/assets/logo.svg',
 };
 
 export interface Crumb {

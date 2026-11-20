@@ -121,7 +121,10 @@ cp .env.example .env
 
 ```env
 VITE_CROSS_CHAIN_RELAYER_URL=https://your-cross-chain-relayer.up.railway.app
-VITE_CASHTOKEN_RELAYER_URL=https://your-cashtoken-relayer.up.railway.app
+VITE_MESH_SERVER_URL=https://your-chipnet-mesh-server.example
+VITE_MESH_SERVER_MAINNET_URL=https://your-mainnet-mesh-server.example
+VITE_CCTP_SWAP_SERVER_URL=https://your-testnet-cctp-swap-server.example
+VITE_CCTP_SWAP_SERVER_MAINNET_URL=https://your-mainnet-cctp-swap-server.example
 VITE_SOLANA_RPC_URL=https://api.devnet.solana.com
 VITE_MOVEMENT_NODE_URL=https://aptos.testnet.porto.movementlabs.xyz/v1
 ```

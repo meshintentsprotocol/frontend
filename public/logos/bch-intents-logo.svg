@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="bch-lightning-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#00F59B" />
+      <stop offset="100%" stop-color="#00C853" />
+    </linearGradient>
+  </defs>
+  <path
+    d="M 280.72 70.70 Q 318.00 30.00 308.26 84.33 L 287.99 197.47 Q 287.00 203.00 292.61 203.34 L 400.84 209.92 Q 435.00 212.00 411.50 236.88 L 222.66 436.83 Q 180.00 482.00 195.53 421.85 L 225.47 305.92 Q 227.00 300.00 220.90 299.67 L 111.81 293.82 Q 78.00 292.00 100.87 267.03 Z"
+    fill="url(#bch-lightning-grad)"
+  />
+</svg>
+

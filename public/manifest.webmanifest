@@ -11,25 +11,31 @@
   "categories": ["finance", "utilities"],
   "icons": [
     {
-      "src": "/assets/bchintentslogo_edited.png",
+      "src": "/assets/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/pwa-192x192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/assets/bchintentslogo_edited.png",
+      "src": "/assets/pwa-512x512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/assets/bchintentslogo_edited.png",
+      "src": "/assets/pwa-maskable-192x192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "/assets/bchintentslogo_edited.png",
+      "src": "/assets/pwa-maskable-512x512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
