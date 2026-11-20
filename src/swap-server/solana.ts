@@ -15,7 +15,7 @@ import type { SolanaTxSigner } from '@/lib/wallets/solanaSigner';
 
 export function jupiterToken(t: SolanaToken): Token {
     return {
-        symbol: t.symbol, name: t.name, icon: t.icon ?? '', decimals: t.decimals, type: 'spl-token', chain: 'solana', address: t.mint,
+        network: 'mainnet', symbol: t.symbol, name: t.name, icon: t.icon ?? '', decimals: t.decimals, type: 'spl-token', chain: 'solana', address: t.mint,
         priceUsd: t.usdPrice,
         swapServer: { product: 'jupiter', verified: t.verified, suspicious: t.suspicious, isStock: t.isStock },
     };

@@ -1,3 +1,4 @@
+import { bchWalletAddress } from './walletAddresses';
 /**
  * Everything the swap card needs for a pair the swap server handles, behind one hook. The card asks it first:
  *
@@ -15,7 +16,7 @@ import { resolveRoute, type SwapRoute } from './routing';
 import { evmFees, evmProvider, evmUsdcBalance } from './signers';
 import { useSwapServerOptional } from './context';
 import { withJupiterTokens } from './solana';
-import { pairAfterSelect, withBchTokens, withCctpTokens } from './tokens';
+import { pairAfterSelect, withBchTokens, withCctpTokens, tokenSupportsMode, type SwapTokenMode } from './tokens';
 import { useWDK } from '@/context/WDKProvider';
 import { useSolanaQuote, useSolanaTokenList, useSolanaTokenSearch } from './useSolanaSwap';
 import type { BchQuote, CctpChain, CctpQuote, SolanaQuote, SwapServerConfig } from './types';
@@ -118,7 +119,9 @@ export interface SwapServerCardState {
     /** The selector's list with the swap server's rows in. */
     tokens: (base: Token[]) => Token[];
     /** After a pick on one side: what the other side should become, if anything. */
-    pair: (picked: Token, other: Token, list: Token[]) => { other?: Token; reset?: boolean };
+    pair: (picked: Token, other: Token, list: Token[], mode?: SwapTokenMode, pickedIsSell?: boolean) => { other?: Token; reset?: boolean };
+    canPair?: (picked: Token, other: Token, list: Token[], pickedIsSell?: boolean, mode?: SwapTokenMode) => boolean;
+    supportsMode?: (token: Token, mode: SwapTokenMode) => boolean;
     /** Mainnet mode: find Solana tokens beyond the list, by name, symbol or mint. */
     searchTokens?: (q: string) => Promise<Token[]>;
 }
@@ -148,20 +151,27 @@ export function useSwapServerCard({ sellToken, buyToken, sellAmount, isMainnet }
 
     // 1Click BCH tokens from server catalog (207+ cross-chain tokens)
     const bchListQuery = useQuery({
-        queryKey: ['swap-server', 'bch-tokens'],
+        queryKey: ['swap-server', 'bch-tokens', api?.baseUrl],
         queryFn: ({ signal }) => (api ? api.getBchTokens(undefined, { signal }).then(r => r.tokens).catch(() => []) : Promise.resolve([])),
-        enabled: !!api,
+        enabled: !!api && isMainnet,
         staleTime: 5 * 60_000,
     });
     const bchTokens = bchListQuery.data;
 
     // Jupiter's rows first, then CCTP, then 1Click BCH tokens.
     const tokens = useCallback(
-        (base: Token[]) => withBchTokens(withCctpTokens(withJupiterTokens(base, solTokens, isMainnet), config, isMainnet), bchTokens),
+        (base: Token[]) => withBchTokens(withCctpTokens(withJupiterTokens(base, solTokens, isMainnet), config, isMainnet), bchTokens, isMainnet),
         [config, isMainnet, solTokens, bchTokens]
     );
     const searchTokens = useSolanaTokenSearch(isMainnet);
-    const pair = useCallback((p: Token, o: Token, list: Token[]) => pairAfterSelect(p, o, { tokens: list, config, isMainnet }), [config, isMainnet]);
+    const pair = useCallback((p: Token, o: Token, list: Token[], mode?: SwapTokenMode, pickedIsSell = true) => pairAfterSelect(p, o, { tokens: list, config, isMainnet, mode, pickedIsSell }), [config, isMainnet]);
+    const supportsMode = useCallback((token: Token, mode: SwapTokenMode) => tokenSupportsMode(token, mode, { config, isMainnet }), [config, isMainnet]);
+    const canPair = useCallback((picked: Token, other: Token, list: Token[], pickedIsSell = true, mode?: SwapTokenMode) => {
+        const fix = pair(picked, other, list, mode, pickedIsSell);
+        if (fix.reset) return true;
+        const opposite = fix.other ?? other;
+        return resolveRoute(pickedIsSell ? picked : opposite, pickedIsSell ? opposite : picked, { isMainnet, config })?.kind !== 'unsupported';
+    }, [pair, isMainnet, config]);
     const wdk = useWDK();
     const cctp = route?.kind === 'usdc-cctp' ? route : null;
     const jup = route?.kind === 'sol-jupiter' ? route : null;
@@ -180,7 +190,7 @@ export function useSwapServerCard({ sellToken, buyToken, sellAmount, isMainnet }
     const bchQuotable = !!bch && !!api && Number(bchAmount) > 0 && !config?.bch?.paused;
 
     const bchQuoteQuery = useQuery({
-        queryKey: ['swap-server', 'bch-quote', bch?.fromAsset, bch?.toAsset, bchAmount],
+        queryKey: ['swap-server', 'bch-quote', api?.baseUrl, bch?.fromAsset, bch?.toAsset, bchAmount],
         queryFn: ({ signal }) => api!.getBchQuote({
             fromAsset: bch!.fromAsset,
             toAsset: bch!.toAsset,
@@ -195,23 +205,9 @@ export function useSwapServerCard({ sellToken, buyToken, sellAmount, isMainnet }
     });
     const bchQuote = bchQuotable && bchSettled ? bchQuoteQuery.data : undefined;
 
-    const bchAddress = (isMainnet ? wdk.bchMainnetAddress : wdk.bchAddress) || wdk.bchAddress || wdk.bchMainnetAddress || wdk.bchChipnetAddress || null;
-
-    const recipient = useMemo(() => {
-        if (!bch) return null;
-        if (bch.toChain === 'bch') return bchAddress;
-        if (bch.toChain === 'solana') return wdk.solanaAddress || null;
-        if (bch.toChain === 'near') return 'antony.near';
-        return wdk.evmAddress || null;
-    }, [bch, bchAddress, wdk.solanaAddress, wdk.evmAddress]);
-
-    const refundTo = useMemo(() => {
-        if (!bch) return null;
-        if (bch.fromChain === 'bch') return bchAddress;
-        if (bch.fromChain === 'solana') return wdk.solanaAddress || null;
-        if (bch.fromChain === 'near') return 'antony.near';
-        return wdk.evmAddress || null;
-    }, [bch, bchAddress, wdk.solanaAddress, wdk.evmAddress]);
+    const addresses = { bchMainnet: wdk.bchMainnetAddress, solana: wdk.solanaAddress, evm: wdk.evmAddress };
+    const recipient = bch ? bchWalletAddress(bch.toChain, addresses) : null;
+    const refundTo = bch ? bchWalletAddress(bch.fromChain, addresses) : null;
 
     const owner = cctp ? (cctp.src.kind === 'evm' ? ctx?.evmAddress : ctx?.solanaAddress) : null;
     const balance = useCctpBalance(cctp?.src, owner);
@@ -225,7 +221,7 @@ export function useSwapServerCard({ sellToken, buyToken, sellAmount, isMainnet }
     const quotable = !!cctp && !!config && !invalid && !paused;
 
     const quoteQuery = useQuery({
-        queryKey: ['swap-server', 'quote', cctp?.src.key, cctp?.dst.key, amount],
+        queryKey: ['swap-server', 'quote', api?.baseUrl, cctp?.src.key, cctp?.dst.key, amount],
         queryFn: ({ signal }) => api!.getQuote({ src: cctp!.src.key, dst: cctp!.dst.key, amount }, { signal }),
         enabled: quotable && !!api,
         staleTime: 10_000, refetchInterval: 20_000,
@@ -236,8 +232,8 @@ export function useSwapServerCard({ sellToken, buyToken, sellAmount, isMainnet }
     const quoteError = quotable && settled && quoteQuery.error ? quoteQuery.error : null;
 
     return useMemo((): SwapServerCardState => {
-        if (!ctx || !route) return { ...IDLE, tokens, pair, searchTokens };
-        const shared = { route, tokens, pair, searchTokens };
+        if (!ctx || !route) return { ...IDLE, tokens, pair, canPair, supportsMode, searchTokens };
+        const shared = { route, tokens, pair, canPair, supportsMode, searchTokens };
         if (route.kind === 'unsupported') return { ...IDLE, ...shared, blocked: route.reason };
 
         const busy = ctx.signing;
@@ -368,5 +364,5 @@ export function useSwapServerCard({ sellToken, buyToken, sellAmount, isMainnet }
                 return !!t;
             },
         };
-    }, [ctx, route, config, tokens, pair, searchTokens, sellAmount, sellToken, buyToken, sol, typed, invalid, paused, settled, quote, quoteError, quoteQuery.isFetching, balance.data, gas, bchQuote, bchQuoteQuery.isFetching, bchAmount, recipient, refundTo]);
+    }, [ctx, route, config, tokens, pair, canPair, supportsMode, searchTokens, sellAmount, sellToken, buyToken, sol, typed, invalid, paused, settled, quote, quoteError, quoteQuery.isFetching, balance.data, gas, bchQuote, bchQuoteQuery.isFetching, bchQuoteQuery.error, bchSettled, bchAmount, recipient, refundTo]);
 }

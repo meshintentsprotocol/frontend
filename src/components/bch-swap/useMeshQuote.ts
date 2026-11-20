@@ -83,6 +83,10 @@ export function useMeshQuote({ relayerUrl, network, sellCategory, buyCategory, s
             setState({ status: 'idle', key });
             return;
         }
+        if (!relayerUrl) {
+            setState({ status: 'error', key, error: `Mesh server is not configured for ${network}` });
+            return;
+        }
         // Keep the last answer for the same request while it refreshes; a new amount starts clean.
         setState(prev => (prev.key === key && prev.status === 'ready' ? prev : { status: 'loading', key }));
 

@@ -5,7 +5,8 @@ import { Input } from "@/components/ui/input";
 import { ChevronDown, Search, Loader2, Layers, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Token } from "@/types";
-import { CauldronService } from "@/lib/cauldron";
+import { useTokenCatalog } from "@/hooks/useTokenCatalog";
+import { tokenKey, normalizeChainName, type SwapTokenMode } from "@/swap-server/tokens";
 import { TokenChainIcon } from "@/components/common/TokenChainIcon";
 
 // ============================================================================
@@ -40,6 +41,7 @@ export const SOLANA_TOKENS: Token[] = [
         decimals: 6,
         type: "spl-token",
         chain: "solana",
+        network: "testnet",
         address: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
     },
 ];
@@ -122,6 +124,7 @@ export const ETH_TOKENS: Token[] = [
         decimals: 6,
         type: "erc20",
         chain: "ethereum",
+        network: "testnet",
         address: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
     },
     {
@@ -131,6 +134,7 @@ export const ETH_TOKENS: Token[] = [
         decimals: 6,
         type: "erc20",
         chain: "ethereum",
+        network: "testnet",
         address: "0xd077a400968890eacc75cdc901f0356c943e4fdb",
     },
 ];
@@ -153,6 +157,7 @@ export const BSC_TOKENS: Token[] = [
         decimals: 6,
         type: "erc20",
         chain: "bsc",
+        network: "mainnet",
         address: "0x55d398326f99059fF775485246999027B3197955",
     },
 ];
@@ -173,6 +178,7 @@ export const BASE_TOKENS: Token[] = [
         decimals: 6,
         type: "erc20",
         chain: "base",
+        network: "mainnet",
         address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
     },
 ];
@@ -193,6 +199,7 @@ export const ARBITRUM_TOKENS: Token[] = [
         decimals: 6,
         type: "erc20",
         chain: "arbitrum",
+        network: "mainnet",
         address: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
     },
 ];
@@ -213,28 +220,8 @@ export const OPTIMISM_TOKENS: Token[] = [
         decimals: 6,
         type: "erc20",
         chain: "optimism",
+        network: "mainnet",
         address: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
-    },
-];
-
-export const NEAR_TOKENS: Token[] = [
-    {
-        symbol: "wNEAR",
-        name: "Wrapped NEAR",
-        icon: "/logos/near.svg",
-        decimals: 24,
-        type: "nep141",
-        chain: "near",
-        address: "wrap.near",
-    },
-    {
-        symbol: "USDC",
-        name: "USD Coin (NEAR)",
-        icon: "/logos/usd-coin-usdc-logo.svg",
-        decimals: 6,
-        type: "nep141",
-        chain: "near",
-        address: "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1",
     },
 ];
 
@@ -245,7 +232,6 @@ export const ALL_BCH_SWAP_TOKENS: Token[] = [
     ...BASE_TOKENS,
     ...ARBITRUM_TOKENS,
     ...OPTIMISM_TOKENS,
-    ...NEAR_TOKENS,
     ...SOLANA_TOKENS,
     ...MOVEMENT_TOKENS,
     ...XMR_TOKENS,
@@ -259,7 +245,6 @@ export const MAINNET_SWAP_TOKENS: Token[] = [
     ...BASE_TOKENS,
     ...ARBITRUM_TOKENS,
     ...OPTIMISM_TOKENS,
-    ...NEAR_TOKENS,
     ...SOLANA_TOKENS,
     ...MOVEMENT_TOKENS,
 ];
@@ -270,7 +255,7 @@ export const MAINNET_SWAP_TOKENS: Token[] = [
 
 interface BCHTokenSelectorProps {
     value?: Token;
-    onSelect: (token: Token) => void;
+    onSelect: (token: Token, mode?: SwapTokenMode) => void;
     tokens?: Token[];
     className?: string;
     label?: string;
@@ -279,6 +264,8 @@ interface BCHTokenSelectorProps {
     isMainnet?: boolean;
     /** Finds tokens beyond the list (Solana mainnet tokens from the swap server), by name, symbol or mint. */
     searchTokens?: (query: string) => Promise<Token[]>;
+    canSelect?: (token: Token, mode?: SwapTokenMode) => boolean;
+    supportsMode?: (token: Token, mode: SwapTokenMode) => boolean;
 }
 
 type ChainFilter = 'all' | 'bch' | 'ethereum' | 'near' | 'bsc' | 'base' | 'arbitrum' | 'optimism' | 'solana' | 'polygon' | 'avalanche' | 'arc' | 'movement' | 'xmr';
@@ -286,7 +273,6 @@ type ChainFilter = 'all' | 'bch' | 'ethereum' | 'near' | 'bsc' | 'base' | 'arbit
 const CHAIN_FILTERS: { key: ChainFilter; label: string; logo: string | null }[] = [
     { key: 'all',       label: 'All',      logo: null },
     { key: 'bch',       label: 'BCH',      logo: '/logos/bitcoin-cash-bch-logo.svg' },
-    { key: 'near',      label: 'NEAR',     logo: '/logos/near.svg' },
     { key: 'ethereum',  label: 'Ethereum', logo: '/logos/ethereum-eth-logo.svg' },
     { key: 'solana',    label: 'Solana',   logo: '/logos/solana.svg' },
     { key: 'base',      label: 'Base',     logo: '/logos/Base_square_blue.svg' },
@@ -307,7 +293,6 @@ const SECTIONS: {
     dotColor: string;
 }[] = [
     { chain: 'bch',       label: 'Bitcoin Cash',    dotColor: 'bg-emerald-400' },
-    { chain: 'near',      label: 'NEAR Protocol',   dotColor: 'bg-emerald-400' },
     { chain: 'ethereum',  label: 'Ethereum',         dotColor: 'bg-blue-400' },
     { chain: 'solana',    label: 'Solana',           dotColor: 'bg-purple-400' },
     { chain: 'base',      label: 'Base',             dotColor: 'bg-blue-500' },
@@ -349,118 +334,8 @@ const CHAIN_BADGE_LABEL: Record<string, string> = {
     polygon: 'POL', pol: 'POL', avalanche: 'AVAX', avax: 'AVAX', movement: 'MOVE', xmr: 'XMR',
 };
 
-export function BCHTokenSelector({
-    value,
-    onSelect,
-    tokens = ALL_BCH_SWAP_TOKENS,
-    className,
-    label,
-    isMainnet = false,
-    searchTokens,
-}: BCHTokenSelectorProps) {
-    const [open, setOpen] = useState(false);
-    const [search, setSearch] = useState("");
-    const [chainFilter, setChainFilter] = useState<ChainFilter>('all');
-    const [dynamicTokens, setDynamicTokens] = useState<Token[]>([]);
-    const [isLoadingDynamic, setIsLoadingDynamic] = useState(false);
-
-    useEffect(() => {
-        let mounted = true;
-        const fetchTokens = async () => {
-            setIsLoadingDynamic(true);
-            const rawTokens = await CauldronService.getTopCashTokens(25, isMainnet);
-            if (mounted) {
-                const mapped = CauldronService.mapToTokens(rawTokens) as Token[];
-                const baseTokens = tokens || ALL_BCH_SWAP_TOKENS;
-                const existingTypes = new Set(baseTokens.map(t => t.type));
-                const filtered = mapped.filter(t =>
-                    !existingTypes.has(t.type) && t.symbol !== 'UNKNOWN'
-                );
-                setDynamicTokens(filtered);
-                setIsLoadingDynamic(false);
-            }
-        };
-        fetchTokens();
-        return () => { mounted = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [isMainnet]);
-
-    // Remote search, a moment after the typing stops; an answer for an older query is dropped.
-    const [found, setFound] = useState<Token[]>([]);
-    const [isSearching, setIsSearching] = useState(false);
-    const query = search.trim();
-    useEffect(() => {
-        if (!open || !searchTokens || query.length < 2 || (chainFilter !== 'all' && chainFilter !== 'solana')) { setFound([]); setIsSearching(false); return; }
-        let live = true;
-        setIsSearching(true);
-        const t = setTimeout(() => {
-            searchTokens(query).then(r => { if (live) setFound(r); }).catch(() => { if (live) setFound([]); }).finally(() => { if (live) setIsSearching(false); });
-        }, 350);
-        return () => { live = false; clearTimeout(t); };
-    }, [open, searchTokens, query, chainFilter]);
-
-    const normChain = (c?: string) => {
-        if (!c) return 'bch';
-        const lc = c.toLowerCase().trim();
-        if (lc === 'eth') return 'ethereum';
-        if (lc === 'arb') return 'arbitrum';
-        if (lc === 'op') return 'optimism';
-        if (lc === 'sol') return 'solana';
-        if (lc === 'pol') return 'polygon';
-        if (lc === 'avax') return 'avalanche';
-        return lc;
-    };
-
-    const rawList = [...(tokens || ALL_BCH_SWAP_TOKENS), ...dynamicTokens];
-    const initialList = (value?.categoryId && !rawList.some(t => t.categoryId === value.categoryId))
-        ? [value, ...rawList]
-        : rawList;
-
-    // Strict deduplication to prevent repetition between hardcoded and catalog tokens
-    const seenKeys = new Set<string>();
-    const displayTokens = initialList.filter(t => {
-        const k = t.categoryId ? `cat:${t.categoryId}` : `${normChain(t.chain)}:${t.symbol.toUpperCase()}`;
-        if (seenKeys.has(k)) return false;
-        seenKeys.add(k);
-        return true;
-    });
-
-    const localMatches = displayTokens.filter(t => {
-        const q = query.toLowerCase();
-        const matchesSearch = !q ||
-            t.name.toLowerCase().includes(q) ||
-            t.symbol.toLowerCase().includes(q) ||
-            (q.length >= 32 && t.address?.toLowerCase() === q);
-        const matchesChain = chainFilter === 'all' || normChain(t.chain) === chainFilter;
-        return matchesSearch && matchesChain;
-    });
-    const listed = new Set(localMatches.filter(t => t.address).map(t => `${t.chain}:${t.address}`));
-    const filteredTokens = [...localMatches, ...found.filter(t => !listed.has(`${t.chain}:${t.address}`))];
-
-    const handleOpenChange = (next: boolean) => {
-        setOpen(next);
-        if (!next) {
-            setSearch("");
-            setChainFilter('all');
-        }
-    };
-
-    const handleSelect = (token: Token) => {
-        if (token.disabled) return;
-        onSelect(token);
-        // Same as closing: the next open starts from the whole list, not from this pick's chain or search.
-        handleOpenChange(false);
-    };
-
-    // By category for CashTokens, by address where both rows have one (several tokens can share a symbol),
-    // otherwise by symbol and chain.
-    const isSelected = (token: Token) => value?.categoryId
-        ? value.categoryId === token.categoryId
-        : value?.address && token.address
-            ? value.address === token.address && value.chain === token.chain
-            : value?.symbol === token.symbol && value?.chain === token.chain;
-
-    const TokenRow = ({ token }: { token: Token }) => (
+function TokenRow({ token, onSelect, selected }: { token: Token; onSelect: (t: Token) => void; selected: boolean }) {
+    return (
         <Button
             variant="ghost"
             disabled={token.disabled}
@@ -470,7 +345,7 @@ export function BCHTokenSelector({
                     ? "opacity-40 cursor-not-allowed hover:bg-transparent"
                     : "hover:bg-muted/50"
             )}
-            onClick={() => handleSelect(token)}
+            onClick={() => onSelect(token)}
         >
             <TokenChainIcon
                 tokenIcon={token.icon}
@@ -481,7 +356,7 @@ export function BCHTokenSelector({
             />
             <div className="text-left flex flex-col flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                    <span className="font-semibold">{token.symbol}</span>
+                    <span className="truncate font-semibold" title={token.symbol}>{token.symbol}</span>
                     {token.chain && CHAIN_BADGE_STYLE[token.chain] && (
                         <span className={cn(
                             "text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0",
@@ -491,7 +366,7 @@ export function BCHTokenSelector({
                         </span>
                     )}
                 </div>
-                <span className="text-xs text-muted-foreground truncate">{token.name}</span>
+                <span className="text-xs text-muted-foreground truncate" title={token.name}>{token.name}</span>
             </div>
             <div className="ml-auto flex items-center gap-2 shrink-0">
                 {token.swapServer?.suspicious ? (
@@ -505,12 +380,85 @@ export function BCHTokenSelector({
                         Soon
                     </span>
                 )}
-                {isSelected(token) && (
+                {selected && (
                     <div className="w-2 h-2 rounded-full bg-primary" />
                 )}
             </div>
         </Button>
     );
+}
+
+
+export function BCHTokenSelector({
+    value,
+    onSelect,
+    tokens,
+    className,
+    label,
+    isMainnet = false,
+    searchTokens,
+    canSelect,
+    supportsMode,
+}: BCHTokenSelectorProps) {
+    const [open, setOpen] = useState(false);
+    const [search, setSearch] = useState("");
+    const [mode, setMode] = useState<SwapTokenMode>('all');
+    const [chainFilter, setChainFilter] = useState<ChainFilter>('all');
+    const catalog = useTokenCatalog(tokens ?? ALL_BCH_SWAP_TOKENS, isMainnet, !tokens);
+    const isLoadingDynamic = catalog.loading;
+
+    // Remote search, a moment after the typing stops; an answer for an older query is dropped.
+    const [found, setFound] = useState<Token[]>([]);
+    const [isSearching, setIsSearching] = useState(false);
+    const query = search.trim();
+    useEffect(() => {
+        if (!open || !searchTokens || (mode !== 'all' && mode !== 'solana') || query.length < 2 || (chainFilter !== 'all' && chainFilter !== 'solana')) { setFound([]); setIsSearching(false); return; }
+        let live = true;
+        setIsSearching(true);
+        const t = setTimeout(() => {
+            searchTokens(query).then(r => { if (live) setFound(r); }).catch(() => { if (live) setFound([]); }).finally(() => { if (live) setIsSearching(false); });
+        }, 350);
+        return () => { live = false; clearTimeout(t); };
+    }, [open, searchTokens, query, chainFilter, mode]);
+
+    const normChain = normalizeChainName;
+    const rawList = catalog.tokens;
+    const displayTokens = value?.categoryId && !rawList.some(t => tokenKey(t) === tokenKey(value))
+        ? [value, ...rawList] : rawList;
+
+    const productTokens = displayTokens.filter(t => !supportsMode || supportsMode(t, mode));
+    const visibleChains = new Set(productTokens.filter(t => !canSelect || canSelect(t, mode)).map(t => normChain(t.chain)));
+    const localMatches = productTokens.filter(t => {
+        const q = query.toLowerCase();
+        const matchesSearch = !q ||
+            t.name.toLowerCase().includes(q) ||
+            t.symbol.toLowerCase().includes(q) ||
+            (q.length >= 32 && (t.address?.toLowerCase() === q || t.categoryId?.toLowerCase() === q));
+        const matchesChain = chainFilter === 'all' || normChain(t.chain) === chainFilter;
+        return matchesSearch && matchesChain && (!canSelect || canSelect(t, mode));
+    });
+    const listed = new Set(localMatches.map(tokenKey));
+    const filteredTokens = [...localMatches, ...found.filter(t => (!supportsMode || supportsMode(t, mode)) && !listed.has(tokenKey(t)) && (!canSelect || canSelect(t, mode)))];
+
+    const handleOpenChange = (next: boolean) => {
+        setOpen(next);
+        if (!next) {
+            setSearch("");
+            setChainFilter('all');
+            setMode('all');
+        }
+    };
+
+    const handleSelect = (token: Token) => {
+        if (token.disabled) return;
+        onSelect(token, mode);
+        // Same as closing: the next open starts from the whole list, not from this pick's chain or search.
+        handleOpenChange(false);
+    };
+
+    // By category for CashTokens, by address where both rows have one (several tokens can share a symbol),
+    // otherwise by symbol and chain.
+    const isSelected = (token: Token) => !!value && tokenKey(value) === tokenKey(token);
 
     const triggerChain = value?.chain || 'bch';
 
@@ -521,7 +469,7 @@ export function BCHTokenSelector({
                     variant="outline"
                     role="combobox"
                     aria-expanded={open}
-                    className={cn("w-fit min-w-[140px] justify-between rounded-full pl-2 pr-3 py-6", className)}
+                    className={cn("w-fit min-w-0 max-w-[55%] justify-between rounded-full pl-2 pr-3 py-6", className)}
                 >
                     {value ? (
                         <div className="flex items-center gap-2">
@@ -531,7 +479,7 @@ export function BCHTokenSelector({
                                 chain={triggerChain}
                                 size="sm"
                             />
-                            <span className="font-semibold text-lg">{value.symbol}</span>
+                            <span className="max-w-[8rem] truncate font-semibold text-lg" title={value.symbol}>{value.symbol}</span>
                         </div>
                     ) : (
                         <span className="text-muted-foreground">{label || "Select Token"}</span>
@@ -540,10 +488,26 @@ export function BCHTokenSelector({
                 </Button>
             </DialogTrigger>
 
-            <DialogContent className="sm:max-w-[425px] p-0 gap-0 overflow-hidden">
+            <DialogContent className="w-[calc(100vw-2rem)] max-w-[425px] max-h-[85dvh] p-0 gap-0 overflow-hidden">
                 <DialogHeader className="p-4 pb-2">
                     <DialogTitle>Select a token</DialogTitle>
                 </DialogHeader>
+
+                {supportsMode && (
+                    <div className="min-w-0 px-4 pt-2">
+                        <div className="flex gap-1 overflow-x-auto pb-2" role="group" aria-label="Swap type">
+                            {([['all', 'All'], ['crosschain', 'Cross-chain'], ['cashtokens', 'CashTokens'], ['solana', 'Solana'], ['cctp', 'CCTP']] as const).map(([key, label]) => {
+                                const available = key === 'all' || displayTokens.some(t => supportsMode(t, key));
+                                return <button type="button" key={key} aria-pressed={mode === key} disabled={!available} title={!available ? (key === 'solana' ? 'Solana swaps are available on Mainnet' : 'Unavailable on the current network') : undefined}
+                                    onClick={() => { setMode(key); setChainFilter('all'); }}
+                                    className={cn('shrink-0 rounded-full px-3 py-2 text-xs font-semibold transition-colors disabled:opacity-35', mode === key ? 'bg-primary text-primary-foreground' : 'bg-white/5 text-muted-foreground hover:text-foreground')}>
+                                    {label}
+                                </button>;
+                            })}
+                        </div>
+                        <p className="pb-2 text-[11px] text-muted-foreground">{isMainnet ? 'Mainnet' : 'Testnet'} &middot; Supported chains</p>
+                    </div>
+                )}
 
                 {/* Search */}
                 <div className="px-4 pt-2 pb-2">
@@ -562,7 +526,7 @@ export function BCHTokenSelector({
                 <div className="px-4 pb-2">
                     <div className="flex flex-wrap items-center gap-1.5">
                         {/* Arc has tokens only while the swap server offers it (testnet mode): no empty chip otherwise. */}
-                        {CHAIN_FILTERS.filter(f => f.key !== 'arc' || displayTokens.some(t => t.chain === 'arc')).map(f => {
+                        {CHAIN_FILTERS.filter(f => f.key === 'all' || visibleChains.has(f.key)).map(f => {
                             const active = chainFilter === f.key;
                             return (
                                 <button
@@ -588,7 +552,7 @@ export function BCHTokenSelector({
                 </div>
 
                 {/* Token list */}
-                <div className="max-h-[350px] overflow-y-auto p-2">
+                <div className="min-h-0 max-h-[min(350px,42dvh)] overflow-y-auto p-2">
                     {filteredTokens.length === 0 ? (
                         <div className="text-center text-sm text-muted-foreground py-8">
                             {isLoadingDynamic || isSearching
@@ -609,6 +573,8 @@ export function BCHTokenSelector({
                                         <div className="grid gap-0.5">
                                             {sectionTokens.map((token, idx) => (
                                                 <TokenRow
+                                                    onSelect={handleSelect}
+                                                    selected={isSelected(token)}
                                                     key={`${token.chain}-${token.symbol}-${token.categoryId || token.address || 'native'}-${idx}`}
                                                     token={token}
                                                 />
@@ -632,6 +598,8 @@ export function BCHTokenSelector({
                                         <div className="grid gap-0.5">
                                             {dynamicOnly.map(token => (
                                                 <TokenRow
+                                                    onSelect={handleSelect}
+                                                    selected={isSelected(token)}
                                                     key={`ct-${token.categoryId || token.symbol}`}
                                                     token={token}
                                                 />

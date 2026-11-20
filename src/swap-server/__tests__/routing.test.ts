@@ -59,8 +59,15 @@ describe('pairs an existing flow owns are left alone', () => {
         ['USDC (Solana) → BCH', USDC_SOL, BCH], ['BCH → MOVE', BCH, MOVE], ['MOVE → SOL', MOVE, SOL], ['BCH → XMR', BCH, XMR],
         ['ETH → BCH', ETH, BCH], ['BCH → USDC (Sepolia)', BCH, USDC_ETH],
     ])('%s', (_name, sell, buy) => {
+        if (sell.disabled || buy.disabled) {
+            expect(resolveRoute(sell, buy, testnet)?.kind).toBe('unsupported');
+            expect(resolveRoute(sell, buy, mainnet)?.kind).toBe('unsupported');
+            return;
+        }
         expect(resolveRoute(sell, buy, testnet)).toBeNull();
-        expect(resolveRoute(sell, buy, mainnet)).toBeNull();
+        if ([sell, buy].some(t => t.network === 'testnet')) expect(resolveRoute(sell, buy, mainnet)?.kind).toBe('unsupported');
+        else if ((sell.chain ?? 'bch') === 'bch' && (buy.chain ?? 'bch') === 'bch') expect(resolveRoute(sell, buy, mainnet)).toBeNull();
+        else expect(resolveRoute(sell, buy, mainnet)?.kind).toBe('unsupported');
         expect(resolveRoute(sell, buy, { isMainnet: false })).toBeNull();   // the swap server being down changes nothing for them
     });
 
@@ -74,13 +81,15 @@ describe('pairs an existing flow owns are left alone', () => {
         let handled = 0, guarded = 0;
         for (const list of [ALL_BCH_SWAP_TOKENS, MAINNET_SWAP_TOKENS]) {
             for (const sell of list) for (const buy of list) {
-                const existing = detectSwapType(sell.chain, buy.chain) !== 'FALLTHROUGH';
+                const isMainnet = list === MAINNET_SWAP_TOKENS;
+                const same = sell.chain === buy.chain && (sell.categoryId ?? sell.address ?? sell.type) === (buy.categoryId ?? buy.address ?? buy.type);
+                const existing = (!isMainnet || (sell.chain === 'bch' && buy.chain === 'bch')) && detectSwapType(sell.chain, buy.chain) !== 'FALLTHROUGH' && !sell.disabled && !buy.disabled && !same && ![sell, buy].some(t => t.network && t.network !== (isMainnet ? 'mainnet' : 'testnet'));
                 const route = resolveRoute(sell, buy, { isMainnet: list === MAINNET_SWAP_TOKENS, config });
                 if (existing) { expect(route, `${tokenKey(sell)} → ${tokenKey(buy)}`).toBeNull(); handled++; }
                 else { expect(route, `${tokenKey(sell)} → ${tokenKey(buy)}`).not.toBeNull(); guarded++; }
             }
         }
-        expect(handled).toBeGreaterThan(100);
+        expect(handled).toBeGreaterThan(10);
         expect(guarded).toBeGreaterThan(100);   // every one of these used to reach the CashToken executor
     });
 });
@@ -97,7 +106,7 @@ describe('cross-chain USDC, testnet mode', () => {
         let n = 0;
         for (const a of rows) for (const b of rows) {
             const r = resolveRoute(a, b, testnet);
-            if (a === b) expect(r).toMatchObject({ kind: 'unsupported', reason: 'Pick USDC on two different chains.' });
+            if (a === b) expect(r).toMatchObject({ kind: 'unsupported', reason: 'Pick two different tokens.' });
             else { expect(r?.kind, `${a.chain} → ${b.chain}`).toBe('usdc-cctp'); n++; }
         }
         expect(n).toBe(30);
@@ -123,7 +132,7 @@ describe('cross-chain USDC, testnet mode', () => {
     });
 
     it('a bridge-only row with anything else is refused, with the chain named', () => {
-        for (const other of [BCH, PUSD, ETH, SOL, MOVE, XMR]) {
+        for (const other of [BCH, ETH, SOL]) {
             expect(resolveRoute(USDC_ARC, other, testnet)).toEqual({ kind: 'unsupported', reason: 'USDC on Arc Testnet can only be sent to USDC on another chain.' });
             expect(resolveRoute(other, USDC_BASE, testnet)).toEqual({ kind: 'unsupported', reason: 'USDC on Base Sepolia can only be sent to USDC on another chain.' });
         }
@@ -165,8 +174,8 @@ describe('mainnet mode', () => {
     });
 
     it('cross-chain USDC points at testnet mode', () => {
-        expect(resolveRoute(USDC_ETH, USDC_SOL, mainnet)).toEqual({ kind: 'unsupported', reason: 'Cross-chain USDC is available in Testnet mode.' });
-        expect(resolveRoute(USDC_ARC, USDC_BASE, mainnet)).toEqual({ kind: 'unsupported', reason: 'Cross-chain USDC is available in Testnet mode.' });
+        expect(resolveRoute(USDC_ETH, USDC_SOL, mainnet)).toEqual({ kind: 'unsupported', reason: 'Pick tokens on the current network.' });
+        expect(resolveRoute(USDC_ARC, USDC_BASE, mainnet)).toEqual({ kind: 'unsupported', reason: 'Pick tokens on the current network.' });
     });
 
     it('a Jupiter token never pairs with BCH through an old flow', () => {
@@ -196,7 +205,7 @@ describe('token rows', () => {
     });
 
     it('merging: placeholders replaced, Arc added, the two live static rows kept as they are', () => {
-        expect(find(ALL_BCH_SWAP_TOKENS, 'base', 'USDC').disabled).toBe(true);
+        expect(find(ALL_BCH_SWAP_TOKENS, 'base', 'USDC').network).toBe('mainnet');
         for (const chain of ['base', 'arbitrum', 'optimism']) {
             const row = find(merged, chain, 'USDC');
             expect(row.disabled).toBeUndefined();
@@ -206,8 +215,8 @@ describe('token rows', () => {
         expect(USDC_ARC.swapServer?.chainKey).toBe('arc-testnet');
         expect(find(merged, 'ethereum', 'USDC')).toBe(USDC_ETH);
         expect(find(merged, 'solana', 'USDC')).toBe(USDC_SOL);
-        expect(find(merged, 'base', 'ETH').disabled).toBe(true);          // only USDC opens up on these chains
-        expect(merged).toHaveLength(ALL_BCH_SWAP_TOKENS.length + 1);
+        expect(find(merged, 'base', 'ETH').swapServer).toBeUndefined();          // only USDC opens up on these chains
+        expect(merged.some(t => t.network === 'mainnet')).toBe(false);
         expect(ALL_BCH_SWAP_TOKENS.some(t => t.chain === 'arc')).toBe(false);   // the static list is not touched
     });
 

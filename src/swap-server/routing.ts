@@ -55,7 +55,7 @@ const sameAddress = (a: string, b: string, evm: boolean) => (evm ? a.toLowerCase
 export function cctpChainOf(token: Token, config?: SwapServerConfig): CctpChain | undefined {
     if (!config || !token.address) return undefined;
     const chain = token.swapServer?.chainKey
-        ? config.cctp.chains.find(c => c.key === token.swapServer!.chainKey)
+        ? (config.cctp.chains.find(c => c.key === token.swapServer!.chainKey) ?? chainForTokenChain(token.chain, config.cctp.chains))
         : chainForTokenChain(token.chain, config.cctp.chains);
     return chain && sameAddress(chain.usdc, token.address, chain.kind === 'evm') ? chain : undefined;
 }
@@ -78,19 +78,22 @@ export const PAIR_NOT_AVAILABLE = 'This pair is not available.';
 
 const unsupported = (reason: string): SwapRoute => ({ kind: 'unsupported', reason });
 
+/** Native BCH only: a CashToken category must never be converted into BCH. */
+export function isNativeBch(t: Token): boolean {
+    return family(t) === 'bch' && !t.categoryId && t.symbol === 'BCH' && t.type === 'native';
+}
+
 /** Stable 1Click asset identifier for Bitcoin Cash cross-chain swaps. */
 export function bchAssetIdOf(t: Token): string {
     if (t.swapServer?.assetId) return t.swapServer.assetId;
-    const f = family(t);
-    if (f === 'bch' || t.symbol?.toUpperCase() === 'BCH') return 'bch';
+    if (isNativeBch(t)) return 'bch';
     if (t.address && t.address.startsWith('0x')) return t.address;
     const c = bchChainOf(t);
     return `${c}:${t.symbol}`;
 }
 
 export function bchChainOf(t: Token): string {
-    const f = family(t);
-    if (f === 'bch' || t.symbol?.toUpperCase() === 'BCH') return 'bch';
+    if (isNativeBch(t)) return 'bch';
     if (t.chain === 'ethereum') return 'eth';
     if (t.chain === 'arbitrum') return 'arb';
     if (t.chain === 'optimism') return 'op';
@@ -104,25 +107,13 @@ export function resolveRoute(sell: Token, buy: Token, ctx: RouteContext): SwapRo
     const fromServer = !!sell.swapServer || !!buy.swapServer;
     const fs = family(sell), fb = family(buy);
 
-    // Bitcoin Cash cross-chain swaps (1Click NEAR Intents):
-    // Active when either token has swapServer.product === 'bch', or when one leg is BCH and the other leg
-    // is a cross-chain asset (EVM or Solana), excluding same-chain BCH and Movement HTLC.
-    const isBchLeg = (fs === 'bch' && fb !== 'bch' && fb !== 'movement' && fb !== 'xmr') ||
-                     (fs !== 'bch' && fb === 'bch' && fs !== 'movement' && fs !== 'xmr');
-    if (sell.swapServer?.product === 'bch' || buy.swapServer?.product === 'bch' || isBchLeg) {
-        if (ctx.config?.bch?.paused) {
-            return unsupported(ctx.config.bch.pauseReason || 'Bitcoin Cash cross-chain swaps are temporarily paused.');
-        }
-        return {
-            kind: 'bch-crosschain',
-            fromAsset: bchAssetIdOf(sell),
-            toAsset: bchAssetIdOf(buy),
-            fromChain: bchChainOf(sell),
-            toChain: bchChainOf(buy),
-        };
-    }
-
-    if (!fromServer && EXISTING_FLOWS.has(`${fs}>${fb}`)) return null;
+    if (fs === 'near' || fb === 'near') return unsupported(PAIR_NOT_AVAILABLE);
+    if (sell.disabled || buy.disabled) return unsupported(PAIR_NOT_AVAILABLE);
+    if ([sell, buy].some(t => t.network && t.network !== (ctx.isMainnet ? 'mainnet' : 'testnet'))) return unsupported('Pick tokens on the current network.');
+    if (sell.chain === buy.chain && (sell.categoryId ?? sell.address ?? sell.type) === (buy.categoryId ?? buy.address ?? buy.type)) return unsupported('Pick two different tokens.');
+    // A catalog capability on native BCH must never take over CashToken swaps.
+    if (fs === 'bch' && fb === 'bch') return null;
+    if ((fs === 'bch' && !isNativeBch(sell)) || (fb === 'bch' && !isNativeBch(buy))) return unsupported(PAIR_NOT_AVAILABLE);
 
     // Two Solana tokens in Mainnet mode are a swap, also when one of them is the USDC that can be bridged.
     if (ctx.isMainnet && fs === 'solana' && fb === 'solana') {
@@ -137,8 +128,17 @@ export function resolveRoute(sell: Token, buy: Token, ctx: RouteContext): SwapRo
         if (ctx.config!.cctp.closedRoutes.includes(`${src.key}>${dst.key}`)) return unsupported(`${src.name} → ${dst.name} is temporarily closed.`);
         return { kind: 'usdc-cctp', src, dst };
     }
+    // 1Click is a mainnet product; require the external asset's verified catalog ID.
+    const external = isNativeBch(sell) ? buy : isNativeBch(buy) ? sell : undefined;
+    if (external?.swapServer?.assetId && ctx.isMainnet) {
+        if (!ctx.config?.bch?.enabled) return unsupported('Bitcoin Cash cross-chain swaps are unavailable.');
+        if (ctx.config.bch.paused) return unsupported(ctx.config.bch.pauseReason || 'Bitcoin Cash cross-chain swaps are temporarily paused.');
+        return { kind: 'bch-crosschain', fromAsset: bchAssetIdOf(sell), toAsset: bchAssetIdOf(buy), fromChain: bchChainOf(sell), toChain: bchChainOf(buy) };
+    }
     const only = src ?? dst;
     if (only && (isCctpOnly(sell) || isCctpOnly(buy))) return unsupported(`USDC on ${only.name} can only be sent to USDC on another chain.`);
+    if (!ctx.isMainnet && !fromServer && EXISTING_FLOWS.has(`${fs}>${fb}`) && !sell.disabled && !buy.disabled) return null;
+    const bothUsdc = sell.symbol?.toUpperCase() === 'USDC' && buy.symbol?.toUpperCase() === 'USDC';
     if (!ctx.isMainnet) {
         if (!ctx.config && bothUsdc) return unsupported('The USDC bridge cannot be reached right now.');
         if (fs === 'solana' && fb === 'solana') return unsupported('Solana swaps are available in Mainnet mode.');

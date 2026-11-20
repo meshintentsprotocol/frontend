@@ -68,7 +68,8 @@ export interface SwapServerConfig {
         nearFeeRecipient?: string;
         minSwapUsd: number;
         maxSwapUsd: number;
-        supportedChains: string[];
+        network?: 'mainnet';
+        supportedChains?: string[];
     };
 }
 
@@ -305,6 +306,8 @@ export interface BchToken {
     decimals: number;
     chain: string;
     defuseAssetId?: string;
+    contractAddress?: string;
+    coingeckoId?: string;
     icon?: string;
     price?: number;
 }

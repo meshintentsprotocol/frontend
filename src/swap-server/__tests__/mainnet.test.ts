@@ -27,7 +27,7 @@ const USDC_MINT = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
 
 // The static list as the card has it in Mainnet mode: BCH, the testnet USDC row on Ethereum, the placeholders.
 const BCH: Token = { symbol: 'BCH', name: 'Bitcoin Cash', icon: '', decimals: 8, type: 'native', chain: 'bch' };
-const SEPOLIA_USDC: Token = { symbol: 'USDC', name: 'USD Coin (Sepolia)', icon: '', decimals: 6, type: 'erc20', chain: 'ethereum', address: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238' };
+const SEPOLIA_USDC: Token = { network: 'testnet', symbol: 'USDC', name: 'USD Coin (Sepolia)', icon: '', decimals: 6, type: 'erc20', chain: 'ethereum', address: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238' };
 const BASE_SOON: Token = { symbol: 'USDC', name: 'USD Coin (Base)', icon: '', decimals: 6, type: 'erc20', chain: 'base', disabled: true, comingSoon: true };
 const SOL: Token = { symbol: 'SOL', name: 'Solana', icon: '', decimals: 9, type: '11111111111111111111111111111111', chain: 'solana', address: config.solana.nativeMint };
 const STATIC = [BCH, SEPOLIA_USDC, BASE_SOON, SOL];
@@ -55,9 +55,9 @@ describe('the selector in Mainnet mode', () => {
     const list = withCctpTokens(withJupiterTokens(STATIC, [JUP_USDC], true), config, true);
     const on = (c: string) => list.filter(t => t.chain === c && t.symbol === 'USDC');
 
-    it('real USDC joins next to the testnet row on Ethereum instead of being mistaken for it', () => {
-        expect(on('ethereum').map(t => t.address)).toEqual([SEPOLIA_USDC.address, chain('ethereum').usdc]);
-        expect(on('ethereum')[1].swapServer).toEqual({ product: 'cctp', chainKey: 'ethereum' });
+    it('verified mainnet USDC replaces the static Sepolia row', () => {
+        expect(on('ethereum').map(t => t.address)).toEqual([chain('ethereum').usdc]);
+        expect(on('ethereum')[0].swapServer).toEqual({ product: 'cctp', chainKey: 'ethereum' });
     });
     it('a placeholder is replaced and Arc is added', () => {
         expect(on('base')).toHaveLength(1);
@@ -102,7 +102,7 @@ describe('routing in Mainnet mode with a mainnet server', () => {
     });
     it('the same chain twice is refused; BCH pairs are left to the existing flows', () => {
         expect(resolveRoute(usdc('base'), usdc('base'), ctx)).toMatchObject({ kind: 'unsupported' });
-        expect(resolveRoute(BCH, SOL, ctx)).toBeNull();
+        expect(resolveRoute(BCH, SOL, ctx)?.kind).toBe('unsupported');
     });
     it('with only a testnet server, Mainnet mode still says where cross-chain USDC is', () => {
         const row: Token = { ...usdc('base') };
