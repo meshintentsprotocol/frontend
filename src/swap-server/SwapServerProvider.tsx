@@ -11,6 +11,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Keypair } from '@solana/web3.js';
 import { useWDK } from '@/context/WDKProvider';
 import { notifyToast } from '@/lib/notify-toast';
+import { triggerBalanceRefresh } from '@/lib/balanceRefresh';
 import { ActivityService } from '@/lib/activity';
 import { useActiveAccounts } from '@/hooks/useActiveAccounts';
 import { createAppKitEvmSender, createLocalEvmSender, type EvmSender } from '@/lib/wallets/evmSender';
@@ -155,7 +156,10 @@ export function SwapServerProvider({ children, api: fixedApi }: { children: Reac
     const openCount = useMemo(() => rows.filter(i => !i.terminal).length, [rows]);
     const activeCount = useMemo(() => rows.filter(i => i.phase === 'processing' || i.phase === 'action_needed').length, [rows]);
     const refresh = useCallback(() => { void queryClient.invalidateQueries({ queryKey: [...KEY, 'activity'] }); }, [queryClient]);
-    const refreshBalances = useCallback(() => { void queryClient.invalidateQueries({ queryKey: [...KEY, 'usdc-balance'] }); }, [queryClient]);
+    const refreshBalances = useCallback(() => {
+        void queryClient.invalidateQueries({ queryKey: [...KEY, 'usdc-balance'] });
+        triggerBalanceRefresh();
+    }, [queryClient]);
 
     // ── announce a record once, when this session watched it reach its end ──
     const watched = useRef(new Set<string>());

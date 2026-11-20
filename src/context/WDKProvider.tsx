@@ -550,6 +550,13 @@ export function WDKProvider({ children }: { children: ReactNode }) {
         return () => clearInterval(id);
     }, [state.isInitialized, state.evmAddress, state.solanaAddress, state.movementAddress, state.bchNetwork]);
 
+    // Re-fetch immediately when an app-wide balance refresh event fires (swaps, sends, deposits)
+    useEffect(() => {
+        const handler = () => { fetchBalancesRef.current?.(); };
+        window.addEventListener('app:refresh-balances', handler);
+        return () => window.removeEventListener('app:refresh-balances', handler);
+    }, []);
+
     const refreshBalances = useCallback(async () => {
         await fetchBalancesRef.current?.();
     }, []);

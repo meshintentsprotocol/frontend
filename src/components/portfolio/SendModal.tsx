@@ -6,6 +6,7 @@ import { useWDK } from '@/context/WDKProvider';
 import { useBCHWallet } from '@/context/BCHWalletProvider';
 import { usePortfolio } from '@/hooks/usePortfolio';
 import { ArrowUpRight, ChevronLeft, ChevronRight, Loader2, Search, Wallet2 } from 'lucide-react';
+import { triggerBalanceRefresh } from '@/lib/balanceRefresh';
 import { notifyToast as toast } from '@/lib/notify-toast';
 import { ActivityService } from '@/lib/activity';
 import { getEVMChainConfig } from '@/lib/evmChains';
@@ -341,7 +342,7 @@ export function SendModal({ children }: { children?: React.ReactNode }) {
             );
             setMood('happy');
             setTimeout(() => { setIsOpen(false); reset(); }, 700);
-            wdk.refreshBalances();
+            triggerBalanceRefresh();
         } catch (e: any) {
             console.error('[Send] Error:', e);
             toast.error(e?.shortMessage || e?.message || 'Transaction failed');

@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { triggerBalanceRefresh } from '@/lib/balanceRefresh';
 import { notifyToast as toast } from '@/lib/notify-toast';
 import { useBCHWallet } from './BCHWalletProvider';
 import { useActiveWallet } from '@/hooks/useActiveWallet';
@@ -865,9 +866,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
             };
 
             saveOrder(order);
-            queryClient.invalidateQueries({ queryKey: ['bch-balance'] });
-            queryClient.invalidateQueries({ queryKey: ['bch-tokens'] });
-            queryClient.invalidateQueries({ queryKey: ['portfolio'] });
+            triggerBalanceRefresh();
             setSwapStep('');
             const modeDescription = params.orderType === 'limit'
                 ? `Mode: 📋 Limit Order Covenant • Contract: ${data.contractAddress?.slice(0, 16)}...`
@@ -1088,6 +1087,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
         } finally {
             setIsLoading(false);
             setSwapStep('');
+            triggerBalanceRefresh();
         }
     }, []);
 
@@ -2423,9 +2423,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                     setPendingOrders(split.pending);
                     setCompletedOrders(split.completed);
                 }
-                queryClient.invalidateQueries({ queryKey: ['bch-balance'] });
-                queryClient.invalidateQueries({ queryKey: ['bch-tokens'] });
-                queryClient.invalidateQueries({ queryKey: ['portfolio'] });
+                triggerBalanceRefresh();
             }
         } catch { /* ignore */ }
         finally {
@@ -2544,9 +2542,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
             });
 
             // Trigger immediate refresh of wallet balances
-            queryClient.invalidateQueries({ queryKey: ['bch-balance'] });
-            queryClient.invalidateQueries({ queryKey: ['bch-tokens'] });
-            queryClient.invalidateQueries({ queryKey: ['portfolio'] });
+            triggerBalanceRefresh();
         }
     }, [queryClient]);
 
@@ -3036,6 +3032,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
         } finally {
             setIsLoading(false);
             setSwapStep('');
+            triggerBalanceRefresh();
         }
     }, [bchWallet.connected]);
 
@@ -3421,6 +3418,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
         } finally {
             setIsLoading(false);
             setSwapStep('');
+            triggerBalanceRefresh();
         }
     }, [solanaConnection]);
 
@@ -3475,6 +3473,7 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
         } finally {
             setIsLoading(false);
             setSwapStep('');
+            triggerBalanceRefresh();
         }
     }, []);
 

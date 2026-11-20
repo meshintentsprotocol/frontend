@@ -1,13 +1,14 @@
+import { useTokenCatalog } from '@/hooks/useTokenCatalog';
+import { tokenKey, tokensInMode, type SwapTokenMode } from '@/swap-server/tokens';
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
 import {
     ArrowDown, Loader2, Zap, Globe, AlertTriangle, Settings2, History,
     Sparkles, Target
 } from 'lucide-react';
 import { Token, BCHSwapParams, BCHSwapType, BCHOrderType } from '@/types';
-import { BCHTokenSelector, BCH_TOKENS, SOLANA_TOKENS, ETH_TOKENS, ALL_BCH_SWAP_TOKENS, MAINNET_SWAP_TOKENS } from './BCHTokenSelector';
+import { BCHTokenSelector, BCH_TOKENS, ALL_BCH_SWAP_TOKENS, MAINNET_SWAP_TOKENS } from './BCHTokenSelector';
 import { isEvmChain, getEVMChainConfig, EVM_CHAINS_TESTNET } from '@/lib/evmChains';
 import { useBCHWallet } from '@/context/BCHWalletProvider';
 import { useBCHSwap } from '@/context/BCHSwapContext';
@@ -17,7 +18,6 @@ import { ConnectWalletButton } from '@/components/connect-wallet-button';
 import { useLocation } from 'react-router-dom';
 import { PriceService } from '@/lib/pyth';
 import { marketSymbolFor } from '@/lib/marketData';
-import { CauldronService } from '@/lib/cauldron';
 import { CASHTOKEN_RELAYER_URL, CASHTOKEN_RELAYER_MAINNET_URL, EVM_RELAYER_URL, EVM_RELAYER_MAINNET_URL, BCH_SOLANA_RELAYER_URL } from '@/lib/config';
 import axios from 'axios';
 import { AUCTION_DURATION, AUCTION_DURATION_PRESETS, formatAuctionDuration, getDefaultAuctionDuration } from '@/lib/appSettings';
@@ -30,13 +30,13 @@ import { useActiveWallet } from '@/hooks/useActiveWallet';
 import { useBchWalletBalance } from '@/hooks/useBchWalletBalance';
 import { ActiveWalletChip } from '@/components/wallet/ActiveWalletChip';
 import { QuoteCard, QuoteRow, QuoteWarning } from './QuoteCard';
-import { useExternalBCHWallet } from '@/context/ExternalBCHWalletProvider';
 import { TWAPOrderForm } from './TWAPOrderForm';
 import { cashAddressToLockingBytecode, binToHex } from '@bitauth/libauth';
 import { pusdToken, PUSD_MAINNET, PUSD_CHIPNET } from '@/lib/pusd';
 import { useSwapServerCard } from '@/swap-server/useSwapServerCard';
 import { SwapServerButton, SwapServerDetails } from '@/swap-server/SwapServerCardParts';
 import { walletUi } from '@/lib/walletUi';
+import { triggerBalanceRefresh } from '@/lib/balanceRefresh';
 import { useMeshQuote } from './useMeshQuote';
 import { ExpiryPicker } from './ExpiryPicker';
 import { toBaseUnits, fromBaseUnits, ratioString, limitBuyUnits, plainDecimal } from '@/lib/units';
@@ -96,25 +96,26 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
     const location = useLocation();
     const queryParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
 
+    const initialNetwork = useWDK().bchNetwork;
+    const initialTokens = tokensInMode(initialNetwork === 'mainnet' ? MAINNET_SWAP_TOKENS : ALL_BCH_SWAP_TOKENS, initialNetwork === 'mainnet');
     const initialSellToken = useMemo(() => {
         if (anchorToken && anchorSideProp === 'sell') return anchorToken;
         const sellParam = queryParams.get('sell');
         if (sellParam) {
-            return ALL_BCH_SWAP_TOKENS.find(t => t.symbol.toUpperCase() === sellParam.toUpperCase()) || BCH_TOKENS[0];
+            return initialTokens.find(t => tokenKey(t) === sellParam) ?? initialTokens.find(t => t.symbol.toUpperCase() === sellParam.toUpperCase()) ?? BCH_TOKENS[0];
         }
         return BCH_TOKENS[0];
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // Default pair: BCH → pUSD of the active network (PUSD on mainnet, PUSDTEST on chipnet).
-    const initialNetwork = useWDK().bchNetwork;
     const initialBuyToken = useMemo(() => {
         if (anchorToken && anchorSideProp === 'buy') return anchorToken;
         // CashToken sell-side anchor → pair with BCH so the swap makes sense
         if (anchorToken && anchorSideProp === 'sell' && anchorToken.type === 'cashtoken') return BCH_TOKENS[0];
         const buyParam = queryParams.get('buy');
         if (buyParam) {
-            return ALL_BCH_SWAP_TOKENS.find(t => t.symbol.toUpperCase() === buyParam.toUpperCase()) || pusdToken(initialNetwork === 'mainnet');
+            return initialTokens.find(t => tokenKey(t) === buyParam) ?? initialTokens.find(t => t.symbol.toUpperCase() === buyParam.toUpperCase()) ?? pusdToken(initialNetwork === 'mainnet');
         }
         return pusdToken(initialNetwork === 'mainnet');
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -139,8 +140,7 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
     const [cauldronPrices, setCauldronPrices] = useState<Record<string, number>>({});
     const [flipping, setFlipping] = useState(false);
 
-    const { activeWalletId, setActiveWallet, isMainActive, activeExtWallet } = useActiveWallet();
-    const extBCH = useExternalBCHWallet();
+    const { isMainActive, activeExtWallet } = useActiveWallet();
     const bchWallet = useBCHWallet();
     const { detectSwapType, executeSwap, isLoading, swapStep, pendingOrders } = useBCHSwap();
     const wdk = useWDK();
@@ -181,7 +181,7 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                     return binToHex(decoded.bytecode.slice(3, 23));
                 }
             }
-        } catch {}
+        } catch { /* Invalid addresses have no public-key hash. */ }
         return '';
     }, [userAddress]);
     const isMainnet = wdk.bchNetwork === 'mainnet';
@@ -195,7 +195,18 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
 
     const staticTokens = isMainnet ? MAINNET_SWAP_TOKENS : ALL_BCH_SWAP_TOKENS;
     const ssTokens = ss.tokens;
-    const availableTokens = useMemo(() => ssTokens(staticTokens), [ssTokens, staticTokens]);
+    const modeTokens = useMemo(() => tokensInMode(staticTokens, isMainnet), [staticTokens, isMainnet]);
+    const catalog = useTokenCatalog(modeTokens, isMainnet);
+    const availableTokens = useMemo(() => ssTokens(catalog.tokens), [ssTokens, catalog.tokens]);
+
+    useEffect(() => {
+        const refresh = (current: Token) => {
+            const row = availableTokens.find(t => tokenKey(t) === tokenKey(current));
+            return row && JSON.stringify(row) !== JSON.stringify(current) ? row : current;
+        };
+        setSellToken(refresh);
+        setBuyToken(refresh);
+    }, [availableTokens]);
 
     // Resolve a human-readable EVM chain label from the active sell/buy token
     const activeEvmChain = isEvmChain(sellToken.chain) ? sellToken.chain
@@ -214,10 +225,10 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
         const anchorIsBuy  = !!anchorToken && anchorSide === 'buy';
         // pUSD of the other network → this network's pUSD
         const otherPusd = (t: Token) => (t.categoryId === PUSD_MAINNET || t.categoryId === PUSD_CHIPNET) && t.categoryId !== pusd.categoryId;
-        if (!anchorIsSell && (otherPusd(sellToken) || !allowed.has(`${sellToken.chain}:${sellToken.symbol}`))) {
+        if (!anchorIsSell && (otherPusd(sellToken) || (sellToken.network && sellToken.network !== (isMainnet ? 'mainnet' : 'testnet')) || !allowed.has(`${sellToken.chain}:${sellToken.symbol}`))) {
             setSellToken(otherPusd(sellToken) ? pusd : BCH_TOKENS[0]);
         }
-        if (!anchorIsBuy && (otherPusd(buyToken) || !allowed.has(`${buyToken.chain}:${buyToken.symbol}`))) {
+        if (!anchorIsBuy && (otherPusd(buyToken) || (buyToken.network && buyToken.network !== (isMainnet ? 'mainnet' : 'testnet')) || !allowed.has(`${buyToken.chain}:${buyToken.symbol}`))) {
             setBuyToken(pusd);
         }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -232,13 +243,15 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
         const sellParam = queryParams.get('sell');
         const buyParam = queryParams.get('buy');
         if (sellParam) {
-            const token = ALL_BCH_SWAP_TOKENS.find(t => t.symbol.toUpperCase() === sellParam.toUpperCase());
+            const token = availableTokens.find(t => tokenKey(t) === sellParam) ?? availableTokens.find(t => t.symbol.toUpperCase() === sellParam.toUpperCase());
             if (token) setSellToken(token);
         }
         if (buyParam) {
-            const token = ALL_BCH_SWAP_TOKENS.find(t => t.symbol.toUpperCase() === buyParam.toUpperCase());
+            const token = availableTokens.find(t => tokenKey(t) === buyParam) ?? availableTokens.find(t => t.symbol.toUpperCase() === buyParam.toUpperCase());
             if (token) setBuyToken(token);
         }
+    // Apply URL selections on navigation, without overriding later user picks on catalog refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [queryParams]);
 
     useEffect(() => {
@@ -246,26 +259,17 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
             const pythData = await PriceService.getLatestPrices();
             setPrices(pythData);
 
-            const bchPriceUsd = pythData['BCH'] ? PriceService.formatPrice(pythData['BCH']) : 0;
-
-            try {
-                const rawTokens = await CauldronService.getTopCashTokens(50, isMainnet);
-                const priceMap: Record<string, number> = {};
-                for (const t of rawTokens) {
-                    const sym = CauldronService.metadataOf(t).symbol;
-                    const tokenBchPrice = t.price_now ? t.price_now / 1e8 : 0;
-                    const priceUsd = t.price_now_usd > 0 ? t.price_now_usd : (bchPriceUsd > 0 ? tokenBchPrice * bchPriceUsd : 0);
-                    if (priceUsd <= 0) continue;
-                    if (sym && priceUsd > (priceMap[sym] || 0)) priceMap[sym] = priceUsd;
-                    if (t.token_id) priceMap[t.token_id] = priceUsd;
-                }
-                setCauldronPrices(priceMap);
-            } catch { /* non-fatal */ }
         };
         fetchAllPrices();
         const interval = setInterval(fetchAllPrices, 15000);
         return () => clearInterval(interval);
     }, [isMainnet]);
+
+    useEffect(() => {
+        const pricesByCategory: Record<string, number> = {};
+        for (const token of catalog.tokens) if (token.categoryId && token.priceUsd) pricesByCategory[token.categoryId] = token.priceUsd;
+        setCauldronPrices(pricesByCategory);
+    }, [catalog.tokens]);
 
     const getTokenPrice = useCallback((token: Token): number => {
         // A Solana mainnet token from the swap server is priced by its mint, never by its symbol.
@@ -277,6 +281,7 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
             const formatted = PriceService.formatPrice(prices[feedKey]);
             if (formatted > 0) return formatted;
         }
+        if (token.categoryId) return cauldronPrices[token.categoryId] ?? token.priceUsd ?? 0;
         if (cauldronPrices[token.symbol] > 0) return cauldronPrices[token.symbol];
         if (cauldronPrices[cleanSymbol] > 0) return cauldronPrices[cleanSymbol];
         if (token.categoryId && cauldronPrices[token.categoryId] > 0) return cauldronPrices[token.categoryId];
@@ -538,45 +543,30 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
         setTimeout(() => setFlipping(false), 300);
     };
 
-    const isBchToken = (t: Token) => (!t.chain || t.chain === 'bch') && (t.symbol === 'BCH' || t.type === 'native');
-    const isCrossChainToken = (t: Token) => !!t.chain && t.chain !== 'bch' && t.chain !== 'movement' && t.chain !== 'xmr';
-
-    // A bridge-only USDC row needs USDC on another chain opposite it, and cross-chain tokens pair with BCH.
-    const pairAcross = (picked: Token, other: Token, setOther: (t: Token) => void) => {
+    // Preserve the chosen pair; only bridge-only rows need a default counterpart.
+    const pairAcross = (picked: Token, other: Token, setOther: (t: Token) => void, mode?: SwapTokenMode, pickedIsSell = true) => {
         if (anchorToken) return;
-
-        // Allow Solana same-chain swaps in mainnet mode
-        if (isMainnet && picked.chain === 'solana' && other.chain === 'solana') {
-            return;
-        }
-
-        // Cross-chain tokens require one leg to be BCH for 1Click Intent routing
-        if (isCrossChainToken(picked) && !isBchToken(other)) {
-            setOther(BCH_TOKENS[0]);
-            return;
-        }
-
-        const fix = ss.pair(picked, other, availableTokens);
+        const fix = ss.pair(picked, other, availableTokens, mode, pickedIsSell);
         if (fix.other) setOther(fix.other);
         else if (fix.reset) setOther(picked.chain === 'bch' && picked.type === 'native' ? pusdToken(isMainnet) : BCH_TOKENS[0]);
     };
 
     // Wrapped token selectors that fire onAnchorTokenChange when the anchor side is changed
-    const handleSellTokenSelect = (token: Token) => {
+    const handleSellTokenSelect = (token: Token, mode?: SwapTokenMode) => {
         if (anchorToken && anchorSide === 'sell' && onAnchorTokenChange) {
             onAnchorTokenChange(token);
         } else {
             setSellToken(token);
-            pairAcross(token, buyToken, setBuyToken);
+            pairAcross(token, buyToken, setBuyToken, mode, true);
         }
     };
 
-    const handleBuyTokenSelect = (token: Token) => {
+    const handleBuyTokenSelect = (token: Token, mode?: SwapTokenMode) => {
         if (anchorToken && anchorSide === 'buy' && onAnchorTokenChange) {
             onAnchorTokenChange(token);
         } else {
             setBuyToken(token);
-            pairAcross(token, sellToken, setSellToken);
+            pairAcross(token, sellToken, setSellToken, mode, false);
         }
     };
 
@@ -614,7 +604,11 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
         if (!canSubmit) return;
         if (ssHandled) {
             // The swap server's flow: its own executor, dialog and history (src/swap-server).
-            if (await ss.execute()) { setSellAmount(''); setBuyAmount(''); }
+            if (await ss.execute()) {
+                setSellAmount('');
+                setBuyAmount('');
+                triggerBalanceRefresh();
+            }
             return;
         }
         const params: BCHSwapParams = {
@@ -647,6 +641,7 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
             await executeSwap(params, recipientAddress || '');
             setSellAmount('');
             setBuyAmount('');
+            triggerBalanceRefresh();
         } catch { /* toast handled in context */ }
     };
 
@@ -1034,7 +1029,7 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                             inputMode="decimal"
                             className="border-none bg-transparent text-2xl sm:text-3xl font-bold p-0 h-auto focus-visible:ring-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none flex-1 min-w-0 text-white placeholder:text-white/20"
                         />
-                        <BCHTokenSelector value={sellToken} onSelect={handleSellTokenSelect} tokens={availableTokens} evmNetworkLabel={activeEvmLabel} isMainnet={isMainnet} searchTokens={ss.searchTokens} />
+                        <BCHTokenSelector value={sellToken} onSelect={handleSellTokenSelect} supportsMode={ss.supportsMode} canSelect={(t, mode) => ss.canPair?.(t, buyToken, availableTokens, true, mode) ?? true} tokens={availableTokens} evmNetworkLabel={activeEvmLabel} isMainnet={isMainnet} searchTokens={ss.searchTokens} />
                     </div>
                     <div className="text-sm text-white/40 font-mono">
                         ≈ ${sellUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -1077,7 +1072,7 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                             inputMode="decimal"
                             className="border-none bg-transparent text-2xl sm:text-3xl font-bold p-0 h-auto focus-visible:ring-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none flex-1 min-w-0 text-white placeholder:text-white/20"
                         />
-                        <BCHTokenSelector value={buyToken} onSelect={handleBuyTokenSelect} tokens={availableTokens} evmNetworkLabel={activeEvmLabel} isMainnet={isMainnet} searchTokens={ss.searchTokens} />
+                        <BCHTokenSelector value={buyToken} onSelect={handleBuyTokenSelect} supportsMode={ss.supportsMode} canSelect={(t, mode) => ss.canPair?.(t, sellToken, availableTokens, false, mode) ?? true} tokens={availableTokens} evmNetworkLabel={activeEvmLabel} isMainnet={isMainnet} searchTokens={ss.searchTokens} />
                     </div>
                     <div className="flex items-center justify-between text-sm">
                         <span className="text-white/40 font-mono">

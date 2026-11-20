@@ -18,10 +18,12 @@ import { saveAppSettings, useAppSettings } from '@/lib/appSettings';
 import { setNotifNetwork, markNotificationsSeen, readNotifications, clearNotifications } from '@/lib/notifications';
 import type { StoredNotification } from '@/lib/notifications';
 import { usePortfolio } from '@/hooks/usePortfolio';
+import { triggerBalanceRefresh } from '@/lib/balanceRefresh';
 import { useWallets } from '@/hooks/useWallets';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { walletUi, useWalletUi, type WalletSubTab } from '@/lib/walletUi';
 import { Drawer, DrawerContent, DrawerTitle, DrawerDescription } from '@/components/ui/drawer';
+import { toast } from 'sonner';
 
 // ============================================================================
 // Wallet Popup — the wallet frame
@@ -183,14 +185,20 @@ export function WalletPopup() {
 
     // Refresh immediately when popup opens
     useEffect(() => {
-        if (open) refetchPortfolio();
+        if (open) {
+            triggerBalanceRefresh();
+            void refetchPortfolio().catch(() => undefined);
+        }
     }, [open, refetchPortfolio]);
 
     const setBalanceVisible = (visible: boolean) => saveAppSettings({ hideBalances: !visible });
 
     const handleRefresh = useCallback(async () => {
         setRefreshing(true);
-        try { await refetchPortfolio(); } finally { setTimeout(() => setRefreshing(false), 600); }
+        triggerBalanceRefresh();
+        try { await refetchPortfolio(); }
+        catch { toast.error('Could not refresh balances. Check your network connection and try again.'); }
+        finally { setRefreshing(false); }
     }, [refetchPortfolio]);
 
     if (!open) return null;
