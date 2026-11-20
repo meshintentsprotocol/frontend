@@ -89,7 +89,9 @@ export function useBchBalances(refetchMs?: number) {
     });
 
     const refetch = useCallback(async () => {
-        await Promise.all([balanceQuery.refetch(), tokensQuery.refetch()]);
+        const results = await Promise.all([balanceQuery.refetch(), tokensQuery.refetch()]);
+        const error = results.find(result => result.error)?.error;
+        if (error) throw error;
     }, [balanceQuery.refetch, tokensQuery.refetch]);
 
     // Stable reference — only changes when the balance or tokens actually

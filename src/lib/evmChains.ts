@@ -43,7 +43,7 @@ export const EVM_CHAINS_TESTNET: Record<string, EVMChainConfig> = {
         nativeCurrency:  'ETH',
         friVerifierHTLC: import.meta.env.VITE_BASE_FRI_VERIFIER_HTLC || '',
         usdtAddress:     '',
-        usdcAddress:     '',
+        usdcAddress:     '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
         deployed:        false,
     },
     arbitrum: {
@@ -54,7 +54,7 @@ export const EVM_CHAINS_TESTNET: Record<string, EVMChainConfig> = {
         nativeCurrency:  'ETH',
         friVerifierHTLC: import.meta.env.VITE_ARB_FRI_VERIFIER_HTLC || '',
         usdtAddress:     '',
-        usdcAddress:     '',
+        usdcAddress:     '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d',
         deployed:        false,
     },
     optimism: {
@@ -65,8 +65,19 @@ export const EVM_CHAINS_TESTNET: Record<string, EVMChainConfig> = {
         nativeCurrency:  'ETH',
         friVerifierHTLC: import.meta.env.VITE_OP_FRI_VERIFIER_HTLC || '',
         usdtAddress:     '',
-        usdcAddress:     '',
+        usdcAddress:     '0x5fd84259d66Cd46123540766Be93DFE6D43130D7',
         deployed:        false,
+    },
+    arc: {
+        chainId:         5042002,
+        name:            'Arc Testnet',
+        rpc:             import.meta.env.VITE_ARC_TESTNET_RPC || 'https://rpc.testnet.arc.io',
+        explorer:        'https://explorer.testnet.arc.io',
+        nativeCurrency:  'USDC',
+        friVerifierHTLC: '',
+        usdtAddress:     '',
+        usdcAddress:     '0x3600000000000000000000000000000000000000',
+        deployed:        true,
     },
 };
 
@@ -125,6 +136,17 @@ export const EVM_CHAINS_MAINNET: Record<string, EVMChainConfig> = {
         usdtAddress:     '0x94b008aA00579c1307B0EF2c499aD98a8ce58e58',
         usdcAddress:     '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85',
         deployed:        false,
+    },
+    arc: {
+        chainId:         5042,
+        name:            'Arc',
+        rpc:             import.meta.env.VITE_ARC_MAINNET_RPC || 'https://rpc.mainnet.arc.io',
+        explorer:        'https://explorer.arc.io',
+        nativeCurrency:  'USDC',
+        friVerifierHTLC: '',
+        usdtAddress:     '',
+        usdcAddress:     '0x3600000000000000000000000000000000000000',
+        deployed:        true,
     },
 };
 

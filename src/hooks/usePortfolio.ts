@@ -16,8 +16,8 @@
  * and send modal de-duplicate onto one set of requests and one cache.
  */
 
-import { useMemo, useCallback, useRef, useEffect } from 'react';
-import { useQuery, keepPreviousData } from '@tanstack/react-query';
+import { useMemo, useCallback, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { PublicKey } from '@solana/web3.js';
 import { swapServerApiFor } from '@/swap-server/api';
 import { useWDK } from '@/context/WDKProvider';
@@ -278,18 +278,18 @@ export function usePortfolio(options?: { pollingMs?: number; scope?: 'main' | 'a
         enabled: !!bchOwner,
         staleTime: 60_000,
         refetchInterval: refetchInterval ? Math.max(Number(refetchInterval), 60_000) : (false as const),
-        placeholderData: keepPreviousData,
+        placeholderData: (prev, query) => query?.queryKey[1] === isMainnet ? prev : undefined,
         queryFn: () => CauldronService.getTopCashTokens(50, isMainnet),
     });
 
     // ── BCMR metadata for held CashTokens Cauldron doesn't list ───────────────
-    // Without it an unlisted token falls back to decimals=0 and its balance is
+    // Resolve every held category: a listed token can still have missing or stale metadata.
+    // Without metadata a token falls back to decimals=0 and its balance is
     // shown in raw base units (e.g. 10^8× too large for an 8-decimal token).
-    const unlistedHeldCategories = useMemo(() => {
-        const listed = new Set((cauldronQuery.data ?? []).map(t => t.token_id.toLowerCase()));
-        return Object.keys(bchHeld.tokens ?? {}).filter(c => !listed.has(c.toLowerCase()));
-    }, [cauldronQuery.data, bchHeld.tokens]);
-    const bcmrQuery = useTokenMetadataMany(unlistedHeldCategories, isMainnet);
+    const heldMetadataCategories = useMemo(() => {
+        return Object.keys(bchHeld.tokens ?? {});
+    }, [bchHeld.tokens]);
+    const bcmrQuery = useTokenMetadataMany(heldMetadataCategories, isMainnet);
 
     // ── Compose tokens ────────────────────────────────────────────────────────
     // USDC on the swap server's chains and, in Mainnet mode, every Solana token the wallet holds.
@@ -469,12 +469,12 @@ export function usePortfolio(options?: { pollingMs?: number; scope?: 'main' | 'a
             const bcmrByCategory = bcmrQuery.data ?? {};
             for (const [category, amountStr] of Object.entries(bchHeld.tokens)) {
                 const bcmr = bcmrByCategory[category.toLowerCase()];
-                const meta = metaByCategory.get(category) ?? (bcmr ? {
+                const meta = bcmr ? {
                     symbol: bcmr.symbol,
                     name: bcmr.name,
                     decimals: bcmr.decimals,
-                    icon: resolveTokenIconUri(bcmr.icon, category),
-                } : undefined);
+                    icon: bcmr.icon || resolveTokenIconUri(null, category),
+                } : metaByCategory.get(category);
                 const raw = rawByCategory.get(category);
                 const decimals = meta?.decimals ?? 0;
                 const balance = Number(amountStr) / Math.pow(10, decimals);
@@ -485,9 +485,10 @@ export function usePortfolio(options?: { pollingMs?: number; scope?: 'main' | 'a
                     tokenPriceUsd = raw?.price_now ? (raw.price_now / 1e8) * bchPrice : 0;
                 }
 
+                if (raw && bcmr) tokenPriceUsd *= 10 ** (bcmr.decimals - CauldronService.metadataOf(raw).decimals);
                 list.push({
                     symbol: meta?.symbol ?? `${category.slice(0, 6)}…`,
-                    name: meta?.name ?? 'CashToken',
+                    name: meta?.name ?? 'Unnamed CashToken',
                     chain: 'Bitcoin Cash',
                     icon: meta?.icon ?? `https://api.dicebear.com/7.x/identicon/svg?seed=${category}`,
                     balance,
@@ -572,17 +573,21 @@ export function usePortfolio(options?: { pollingMs?: number; scope?: 'main' | 'a
         }));
     }, [history]);
 
-    const refetch = useCallback(() => {
-        if (currentEvmAddress) evmQuery.refetch();
-        if (currentSolanaAddress) solQuery.refetch();
-        if (movementAddress) movementQuery.refetch();
+    const refetch = useCallback(async () => {
+        const requests: Promise<{ error: Error | null }>[] = [];
+        if (currentEvmAddress) requests.push(evmQuery.refetch());
+        if (currentSolanaAddress) requests.push(solQuery.refetch());
+        if (movementAddress) requests.push(movementQuery.refetch());
         if (bchOwner) {
-            bchQuery.refetch();
-            cauldronQuery.refetch();
+            if (extBchActive) requests.push(extQuery.refetch().then(() => ({ error: null })));
+            else requests.push(bchQuery.refetch().then(() => ({ error: null })));
+            requests.push(cauldronQuery.refetch());
         }
-        if (extBchActive) extQuery.refetch();
-        if (currentBtcAddress) btcQuery.refetch();
+        if (currentBtcAddress) requests.push(btcQuery.refetch());
         if (currentEvmAddress || currentSolanaAddress) swapServer.refetch();
+        const results = await Promise.all(requests);
+        const error = results.find(result => result.error)?.error;
+        if (error) throw error;
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentEvmAddress, currentSolanaAddress, movementAddress, bchOwner, extBchActive, currentBtcAddress, evmQuery.refetch, solQuery.refetch, movementQuery.refetch, bchQuery.refetch, extQuery.refetch, btcQuery.refetch, cauldronQuery.refetch, swapServer.refetch]);
 

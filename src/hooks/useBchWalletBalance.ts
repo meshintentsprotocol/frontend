@@ -92,7 +92,10 @@ export function useBchWalletBalance({ wallet, isMainnet, refetchMs }: UseWalletB
     });
 
     const data = useMemo<AddressBalance>(() => query.data ?? EMPTY, [query.data]);
-    const refetch = useCallback(async () => { await query.refetch(); }, [query.refetch]);
+    const refetch = useCallback(async () => {
+        const result = await query.refetch();
+        if (result.error) throw result.error;
+    }, [query.refetch]);
 
     return {
         data,

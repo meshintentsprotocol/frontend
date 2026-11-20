@@ -179,8 +179,8 @@ export async function startPairing(network: AppNetwork): Promise<{
 }> {
     const id = `wiz-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const iconUrl = typeof window !== 'undefined'
-        ? `${window.location.origin}/assets/bchintentslogo_edited.png`
-        : 'https://bchintents.com/assets/bchintentslogo_edited.png';
+        ? `${window.location.origin}/assets/pwa-512x512.png`
+        : 'https://bchintents.com/assets/pwa-512x512.png';
 
     const manager = new DappConnectionManager('BCH Intents', iconUrl, {
         session: { key: `wizardconnect-${id}` },
@@ -321,8 +321,8 @@ export function restore(id: string, network: AppNetwork): WizSession | null {
     if (existing?.session) return existing.session;
 
     const iconUrl = typeof window !== 'undefined'
-        ? `${window.location.origin}/assets/bchintentslogo_edited.png`
-        : 'https://bchintents.com/assets/bchintentslogo_edited.png';
+        ? `${window.location.origin}/assets/pwa-512x512.png`
+        : 'https://bchintents.com/assets/pwa-512x512.png';
 
     const manager = new DappConnectionManager('BCH Intents', iconUrl, {
         session: { key: `wizardconnect-${id}` },

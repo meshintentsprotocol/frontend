@@ -74,7 +74,7 @@ const CHAIN_ALIASES: Record<string, string> = {
 /** Resolve chain metadata from any label spelling. Returns null if unknown. */
 export function getChainMeta(label?: string | null): ChainMeta | null {
     if (!label) return null;
-    const norm = label.toLowerCase().trim();
+    const norm = label.toLowerCase().trim().replace(/[-\s]+(mainnet|testnet|chipnet|sepolia|devnet)$/, '');
     const id = CHAIN_ALIASES[norm] ?? norm;
     return CHAINS[id] ?? null;
 }

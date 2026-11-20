@@ -92,7 +92,7 @@ export async function getAppKit(): Promise<any> {
                     name: 'Cham',
                     description: 'Bitcoin Cash intents and cross-chain swaps',
                     url: isLocalhost ? 'https://intentsprotocol.xyz' : location.origin,
-                    icons: [`${typeof location !== 'undefined' ? location.origin : ''}/assets/bchintentslogo_edited.png`],
+                    icons: [`${typeof location !== 'undefined' ? location.origin : ''}/assets/pwa-512x512.png`],
                 },
                 themeMode: 'dark',
                 themeVariables: {

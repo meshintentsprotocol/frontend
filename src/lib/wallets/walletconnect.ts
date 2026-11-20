@@ -151,7 +151,7 @@ export async function getWCBchClient(): Promise<any> {
             name: 'BCH Intents Protocol',
             description: 'Intent-based cross-chain swaps on Bitcoin Cash',
             url: safeUrl,
-            icons: [`${window.location.origin}/assets/bchintentslogo_edited.png`],
+            icons: [`${window.location.origin}/assets/pwa-512x512.png`],
         },
     }).then((client: any) => {
         window.__wcBchClient = client;

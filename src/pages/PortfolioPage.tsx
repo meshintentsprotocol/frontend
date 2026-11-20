@@ -1,6 +1,5 @@
 import { usePortfolio } from '@/hooks/usePortfolio';
-import { useWDK } from '@/context/WDKProvider';
-import { useWallets, shortAddress } from '@/hooks/useWallets';
+import { shortAddress } from '@/hooks/useWallets';
 import { useActiveAccounts, type ActiveAccount } from '@/hooks/useActiveAccounts';
 import { PortfolioChart } from '@/components/portfolio/PortfolioChart';
 import { PortfolioTokens } from '@/components/portfolio/PortfolioTokens';
@@ -56,7 +55,7 @@ export default function PortfolioPage() {
     };
 
     return (
-        <div className="container mx-auto p-4 md:p-8 max-w-[1000px] mt-6 relative">
+        <div className="container mx-auto p-4 md:p-8 w-full min-w-0 max-w-[1000px] mt-6 relative">
             {isRefetching && !loading && (
                 <div className="absolute top-0 left-0 right-0 h-0.5 overflow-hidden z-10">
                     <div className="h-full w-1/3 bg-gradient-to-r from-transparent via-emerald-400/60 to-transparent animate-loading-bar" />
@@ -116,10 +115,10 @@ export default function PortfolioPage() {
             </div>
 
             {/* Layout Grid: Left (Chart + Tabs) & Right (Quick Actions) */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="grid min-w-0 grid-cols-1 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] gap-6 lg:gap-8">
 
                 {/* Left Column: Main Content */}
-                <div className="lg:col-span-2 flex flex-col space-y-8">
+                <div className="min-w-0 flex flex-col space-y-8">
                     {/* Chart */}
                     {loading ? (
                         <div className="flex flex-col w-full">
@@ -208,7 +207,7 @@ export default function PortfolioPage() {
                 </div>
 
                 {/* Right Column: Quick Actions Widget */}
-                <div className="lg:col-span-1">
+                <div className="min-w-0">
                     <div className="grid grid-cols-1 gap-4 lg:sticky lg:top-28">
                         {/* Actions — a fixed grid that stays tidy from phone to sidebar */}
                         <div className="grid grid-cols-4 gap-2 lg:grid-cols-3">
