@@ -23,7 +23,17 @@ export const PUBLIC_GATEWAY_HOSTS = /(^|\.)(cloudflare-ipfs\.com|nftstorage\.lin
 const CID_RE = /^(Qm[1-9A-HJ-NP-Za-km-z]{44}|baf[0-9a-z]{56,})/i;
 
 function identicon(seed: string): string {
-    return `https://api.dicebear.com/7.x/identicon/svg?seed=${encodeURIComponent(seed)}`;
+    let hash = 2166136261;
+    for (const character of seed) hash = Math.imul(hash ^ character.charCodeAt(0), 16777619) >>> 0;
+    const color = 'hsl(' + (hash % 360) + ',65%,58%)';
+    const cells: string[] = [];
+    for (let y = 0; y < 5; y++) for (let x = 0; x < 3; x++) {
+        const bit = (hash >>> ((y * 3 + x) % 32)) & 1;
+        if (!bit) continue;
+        for (const column of new Set([x, 4 - x])) cells.push('<rect x="' + (column * 6 + 5) + '" y="' + (y * 6 + 5) + '" width="6" height="6"/>');
+    }
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" rx="20" fill="#142127"/><g fill="' + color + '">' + cells.join('') + '</g></svg>';
+    return 'data:image/svg+xml,' + encodeURIComponent(svg);
 }
 
 /**
@@ -109,12 +119,16 @@ export function resolveTokenIconUri(uri?: string | null, seed?: string): string 
 // URLs that already failed to load this session — shared across every
 // TokenChainIcon so a remount (e.g. list → detail page) skips dead gateways
 // instead of flickering through them again.
-const failedIconUrls = new Set<string>();
+export const ICON_FAILURE_RETRY_MS = 2 * 60_000;
+const failedIconUrls = new Map<string, number>();
 
 export function markIconUrlFailed(url: string): void {
-    failedIconUrls.add(url);
+    failedIconUrls.set(url, Date.now());
 }
 
 export function isIconUrlFailed(url: string): boolean {
-    return failedIconUrls.has(url);
+    const failedAt = failedIconUrls.get(url);
+    if (failedAt === undefined) return false;
+    if (Date.now() - failedAt >= ICON_FAILURE_RETRY_MS) { failedIconUrls.delete(url); return false; }
+    return true;
 }

@@ -12,6 +12,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { Twitter, Github, BookOpen, ArrowUpRight, Mail } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { motion } from 'framer-motion';
+import { BCHLogo } from '@/components/common/BCHLogo';
 
 const footerLinks = {
     app: [
@@ -124,11 +125,7 @@ export function Footer() {
                         <div>
                             <Link to="/" className="flex items-center gap-3 mb-4 group w-fit">
                                 <div className="p-2 rounded-xl bg-white/5 border border-white/10 group-hover:border-emerald-500/30 transition-colors">
-                                    <img
-                                        src="/assets/bchintentslogo.png"
-                                        alt="BCH Intents Logo"
-                                        className="w-10 h-10 object-contain group-hover:scale-110 transition-transform duration-500"
-                                    />
+                                    <BCHLogo className="w-7 h-7 group-hover:scale-110 transition-transform duration-500" />
                                 </div>
                                 <span className="font-heading font-black text-2xl tracking-tight text-white flex items-baseline">
                                     BCH <span className="text-emerald-500 ml-1">INTENTS</span>

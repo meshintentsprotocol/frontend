@@ -6,6 +6,7 @@ import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 import type { NavSection } from '../nav';
 import { useDocs } from '../lib/store';
 import { DocsSidebar } from './DocsSidebar';
+import { BCHLogo } from '@/components/common/BCHLogo';
 
 export function DocsHeader({ activeSection, activeSlug, onSearch }: { activeSection?: NavSection; activeSlug?: string; onSearch: () => void }) {
     const [mobileOpen, setMobileOpen] = useState(false);
@@ -23,9 +24,9 @@ export function DocsHeader({ activeSection, activeSlug, onSearch }: { activeSect
                     <Menu className="h-4 w-4" />
                 </button>
 
-                <Link to="/docs" className="group flex shrink-0 items-center">
-                    <img src="/assets/bchintentslogo.png" alt="" className="-my-2 -ml-2 h-14 w-14 object-contain" />
-                    <span className="-ml-1 flex items-baseline text-[17px] font-black tracking-tighter text-white">
+                <Link to="/docs" className="group flex shrink-0 items-center gap-2">
+                    <BCHLogo className="h-7 w-7 transition-transform group-hover:scale-105" />
+                    <span className="flex items-baseline text-[17px] font-black tracking-tighter text-white">
                         BCH <span className="ml-1 text-emerald-500 transition-colors group-hover:text-emerald-400">Intents</span>
                     </span>
                     <span className="ml-2.5 rounded-md border border-white/10 bg-white/[0.03] px-1.5 py-0.5 text-[11px] font-semibold text-zinc-300">Docs</span>

@@ -1,19 +1,22 @@
 export const INTENT_SWAP_ADDRESS = "0xbd128d4f1dbb87783658bed4a4046f3811015952110f321863c34f161eb07611";
 export const SOLANA_PROGRAM_ID = "5JAWumq5L4B8WrpF3CFox36SZ2bJF4xQvskLksmHRgs2";
-export const INTENT_RELAYER_URL = import.meta.env.VITE_RELAYER_URL || import.meta.env.VITE_MESH_SERVER_URL || "https://meshserver.onrender.com";
+/** Mesh is deployed once per BCH network. All Mesh-backed features use these URLs. */
+export const BCH_MESH_SERVER_URL = (import.meta.env.VITE_MESH_SERVER_URL || "https://meshserver-production-9ed93ac9.up.railway.app").replace(/\/+$/, '');
+export const BCH_MESH_SERVER_MAINNET_URL = (import.meta.env.VITE_MESH_SERVER_MAINNET_URL || '').replace(/\/+$/, '');
+export const meshServerUrlFor = (isMainnet: boolean) => isMainnet ? BCH_MESH_SERVER_MAINNET_URL : BCH_MESH_SERVER_URL;
+export const INTENT_RELAYER_URL = BCH_MESH_SERVER_URL;
 export const CROSS_CHAIN_RELAYER_URL = import.meta.env.VITE_CROSS_CHAIN_RELAYER_URL || "https://cross-chain-relayer-production-a93e.up.railway.app";
-export const BCH_SOLANA_RELAYER_URL = import.meta.env.VITE_BCH_SOLANA_RELAYER_URL || "https://meshserver.onrender.com";
-export const CASHTOKEN_RELAYER_URL = import.meta.env.VITE_CASHTOKEN_RELAYER_URL || import.meta.env.VITE_MESH_SERVER_URL || "https://meshserver.onrender.com";
-export const CASHTOKEN_RELAYER_MAINNET_URL = import.meta.env.VITE_CASHTOKEN_RELAYER_MAINNET_URL || import.meta.env.VITE_MESH_SERVER_URL || "https://meshserver.onrender.com";
-export const SOL_BCH_ZK_SERVER_URL         = import.meta.env.VITE_SOL_BCH_ZK_SERVER_URL          || "https://meshserver.onrender.com";
-export const SOL_BCH_ZK_SERVER_MAINNET_URL = import.meta.env.VITE_SOL_BCH_ZK_SERVER_MAINNET_URL  || "https://meshserver.onrender.com";
-export const EVM_RELAYER_URL               = import.meta.env.VITE_EVM_RELAYER_URL                || "https://meshserver.onrender.com";
-export const EVM_RELAYER_MAINNET_URL       = import.meta.env.VITE_EVM_RELAYER_MAINNET_URL        || "https://meshserver.onrender.com";
+export const BCH_SOLANA_RELAYER_URL = import.meta.env.VITE_BCH_SOLANA_RELAYER_URL || "https://meshserver-production-9ed93ac9.up.railway.app";
+export const CASHTOKEN_RELAYER_URL = BCH_MESH_SERVER_URL;
+export const CASHTOKEN_RELAYER_MAINNET_URL = BCH_MESH_SERVER_MAINNET_URL;
+export const SOL_BCH_ZK_SERVER_URL         = import.meta.env.VITE_SOL_BCH_ZK_SERVER_URL          || "https://meshserver-production-9ed93ac9.up.railway.app";
+export const SOL_BCH_ZK_SERVER_MAINNET_URL = import.meta.env.VITE_SOL_BCH_ZK_SERVER_MAINNET_URL  || "https://meshserver-production-9ed93ac9.up.railway.app";
+export const EVM_RELAYER_URL               = import.meta.env.VITE_EVM_RELAYER_URL                || "https://meshserver-production-9ed93ac9.up.railway.app";
+export const EVM_RELAYER_MAINNET_URL       = import.meta.env.VITE_EVM_RELAYER_MAINNET_URL        || "https://meshserver-production-9ed93ac9.up.railway.app";
 /** cctp-swap-server: cross-chain USDC (Circle CCTP) and Solana swaps (Jupiter). */
-export const CCTP_SWAP_SERVER_URL: string  = import.meta.env.VITE_CCTP_SWAP_SERVER_URL           || "https://cctp-swap-server.onrender.com";
+export const CCTP_SWAP_SERVER_URL: string  = import.meta.env.VITE_CCTP_SWAP_SERVER_URL           || "https://cctp-swap-server-production-7cb54caf.up.railway.app";
 // The swap server instance that runs with CCTP_NETWORK=mainnet.
-export const CCTP_SWAP_SERVER_MAINNET_URL: string = import.meta.env.VITE_CCTP_SWAP_SERVER_MAINNET_URL || "https://cctp-swap-server.onrender.com";
-export const BCH_MESH_SERVER_URL           = import.meta.env.VITE_MESH_SERVER_URL                || import.meta.env.VITE_MESH_API_URL || "https://meshserver.onrender.com";
+export const CCTP_SWAP_SERVER_MAINNET_URL: string = import.meta.env.VITE_CCTP_SWAP_SERVER_MAINNET_URL || "https://cctp-swap-server-production-7cb54caf.up.railway.app";
 /** The MCP server AI agents connect to (bch-intents-mcp). Unset: the local dev server, and /mcp says so. */
 export const MCP_SERVER_URL: string        = import.meta.env.VITE_MCP_URL                        || "http://localhost:8787/mcp";
 export const MCP_SERVER_IS_HOSTED: boolean = Boolean(import.meta.env.VITE_MCP_URL);

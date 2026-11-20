@@ -142,7 +142,7 @@ function mapParyonLoanToView(raw: RawParyonLoan): LoanView {
 }
 
 export function createParyonProvider(
-    baseUrl: string = CCTP_SWAP_SERVER_MAINNET_URL || CCTP_SWAP_SERVER_URL || 'http://localhost:3012',
+    baseUrl: string = CCTP_SWAP_SERVER_MAINNET_URL || CCTP_SWAP_SERVER_URL || 'https://cctp-swap-server-production-7cb54caf.up.railway.app',
     fetchImpl: typeof fetch = (...a) => fetch(...a)
 ): LendProvider {
     async function request<T>(path: string, body?: unknown, timeoutMs = 25_000): Promise<T> {

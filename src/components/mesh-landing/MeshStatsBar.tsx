@@ -9,6 +9,7 @@ import {
   BarChart2,
 } from 'lucide-react';
 import { useMeshHealth, useMeshStats } from '@/hooks/useMesh';
+import { formatSatsCompact } from '@/lib/mesh/format';
 
 interface TickerItem {
   icon: React.ReactNode;
@@ -41,9 +42,9 @@ export function MeshStatsBar() {
   const { data } = useMeshStats();
 
   const stats = {
-    tvl: data?.totalTvlBch != null ? `${data.totalTvlBch.toFixed(1)} BCH` : '—',
-    activePools: data?.activePoolCount ?? '—',
-    totalVolume: data?.volume24hBch != null ? `${data.volume24hBch.toFixed(1)} BCH` : '—',
+    tvl: data?.tvlSats != null ? formatSatsCompact(data.tvlSats) : '—',
+    activePools: data?.activePools ?? '—',
+    totalVolume: data?.volume24hSats != null ? formatSatsCompact(data.volume24hSats) : '—',
     avgLatency: data?.avgFillLatencySec != null ? `${data.avgFillLatencySec}s` : '—',
     feeRange: '1–1000 bps (DLMM & V3)',
     settlement: health.data ? `BCH ${health.data.network}` : '—',

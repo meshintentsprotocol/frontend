@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { cn } from '@/lib/utils';
 import { getChainMeta } from '@/lib/chains';
-import { getIconFallbackUrls, isIconUrlFailed, markIconUrlFailed } from '@/lib/tokenIcons';
+import { getIconFallbackUrls, isIconUrlFailed, markIconUrlFailed, ICON_FAILURE_RETRY_MS } from '@/lib/tokenIcons';
 
 type IconSize = 'xs' | 'sm' | 'md' | 'lg';
 
@@ -29,13 +29,15 @@ export function TokenChainIcon({ tokenIcon, tokenName, chain, size = 'md', class
     const s = SIZES[size];
     const chainMeta = getChainMeta(chain);
 
+    const [retryEpoch, setRetryEpoch] = useState(0);
+
     // Skip candidates that already failed elsewhere this session; keep at least
     // the last one (identicon) so there is always something to try.
     const fallbackUrls = useMemo(() => {
         const all = getIconFallbackUrls(tokenIcon, tokenName || 'token');
         const live = all.filter(u => !isIconUrlFailed(u));
         return live.length > 0 ? live : all.slice(-1);
-    }, [tokenIcon, tokenName]);
+    }, [tokenIcon, tokenName, retryEpoch]);
 
     const [urlIndex, setUrlIndex] = useState(0);
     const [loaded, setLoaded] = useState(false);
@@ -64,6 +66,14 @@ export function TokenChainIcon({ tokenIcon, tokenName, chain, size = 'md', class
         return () => clearTimeout(timer);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [currentSrc, loaded, allFailed, isLastCandidate]);
+
+    // Retry published logos after temporary gateway failures, without retrying
+    // tokens that genuinely have no published icon.
+    useEffect(() => {
+        if (!loaded || !isLastCandidate || !currentSrc?.startsWith('data:image/') || !tokenIcon || tokenIcon.startsWith('data:image/')) return;
+        const timer = setTimeout(() => setRetryEpoch(value => value + 1), ICON_FAILURE_RETRY_MS + 250);
+        return () => clearTimeout(timer);
+    }, [loaded, isLastCandidate, currentSrc, tokenIcon, retryEpoch]);
 
     const initialLetter = (tokenName || '?').trim().slice(0, 2).toUpperCase();
 

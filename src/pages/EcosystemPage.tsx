@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Link, useParams, useNavigate } from 'react-router-dom';
+import { TryBetaBanner } from '@/components/landing/TryBetaBanner';
 
 // ─── Types & Product Data ──────────────────────────────────────────────────────
 
@@ -759,37 +760,15 @@ export default function EcosystemPage() {
               </div>
             </section>
 
-            {/* ─── Protocol Banner ───────────────────────────────────── */}
-            <section className="relative py-24 border-t border-white/5">
-              <div className="container mx-auto px-4 text-center max-w-3xl relative z-10">
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  className="space-y-6"
-                >
-                  <h2 className="text-3xl md:text-5xl font-black tracking-tight">
-                    One protocol.{' '}
-                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-violet-400">
-                      Infinite composability.
-                    </span>
-                  </h2>
-                  <p className="text-zinc-400 text-lg">
-                    Every product shares the same trustless settlement layer, solver network, and on-chain contract infrastructure.
-                  </p>
-                  <div className="flex items-center justify-center gap-4 flex-wrap pt-2">
-                    <Button asChild className="rounded-full gap-2 bg-emerald-500 hover:bg-emerald-400 text-black font-bold h-12 px-6">
-                      <Link to="/trade">Launch App <ArrowRight className="w-4 h-4" /></Link>
-                    </Button>
-                    <Button asChild variant="outline" className="rounded-full gap-2 border-white/15 hover:bg-white/5 h-12 px-6 text-white font-bold">
-                      <a href="https://docs.intentsprotocol.xyz/" target="_blank" rel="noopener noreferrer">
-                        Read Docs <ExternalLink className="w-4 h-4" />
-                      </a>
-                    </Button>
-                  </div>
-                </motion.div>
-              </div>
-            </section>
+            {/* ─── Protocol Banner (Home Page Vibrant Green Banner Design) ───────────────── */}
+            <TryBetaBanner
+              title="One protocol. Infinite composability."
+              subtitle="Every product shares the same trustless settlement layer, solver network, and on-chain contract infrastructure."
+              primaryCtaText="Launch Beta"
+              primaryCtaHref="/trade"
+              secondaryCtaText="Read Docs"
+              secondaryCtaHref="https://docs.intentsprotocol.xyz/"
+            />
           </>
         )}
       </main>

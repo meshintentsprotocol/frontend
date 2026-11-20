@@ -5,7 +5,8 @@ export interface Token {
     icon: string;
     decimals: number;
     type: string;
-    chain?: 'bch' | 'solana' | 'ethereum' | 'bsc' | 'base' | 'arbitrum' | 'optimism' | 'arc' | 'movement' | 'xmr';
+    chain?: 'bch' | 'solana' | 'ethereum' | 'bsc' | 'base' | 'arbitrum' | 'optimism' | 'arc' | 'movement' | 'xmr' | 'near' | 'polygon' | 'avalanche';
+    network?: 'mainnet' | 'testnet';
     categoryId?: string;  // BCH CashToken category ID (hex)
     address?: string;     // Token mint or smart contract address
     priceUsd?: number;    // Cauldron price in USD (for CashTokens)

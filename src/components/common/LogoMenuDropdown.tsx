@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bot, ChevronDown, Zap, Globe, Puzzle, Sparkles, FileText, ExternalLink, Wallet, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { BCHLogo } from '@/components/common/BCHLogo';
 
 // ── Social Icons ──────────────────────────────────────────────────────────────
 const XIcon = () => (
@@ -81,13 +82,9 @@ export function LogoMenuDropdown() {
                 <Link
                     to="/"
                     onClick={() => setIsOpen(false)}
-                    className="flex items-center shrink-0"
+                    className="flex items-center shrink-0 gap-2.5"
                 >
-                    <img
-                        src="/assets/bchintentslogo.png"
-                        alt="BCH Intents Logo"
-                        className="w-20 h-20 -ml-2 md:-ml-2 md:-mr-4 object-contain transition-transform group-hover:scale-105 duration-300"
-                    />
+                    <BCHLogo className="w-8 h-8 group-hover:scale-105 group-hover:drop-shadow-[0_0_10px_rgba(0,245,155,0.5)] transition-all duration-300" />
                     <span className="font-heading font-black text-2xl tracking-tighter text-white drop-shadow-sm group-hover:drop-shadow-[0_0_8px_rgba(255,255,255,0.3)] transition-all flex items-baseline">
                         BCH <span className="text-emerald-500 group-hover:text-emerald-400 transition-colors ml-1">Intents</span>
                         <span className="relative -top-2.5 ml-1 px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 rounded-[4px] shadow-[0_0_8px_rgba(16,185,129,0.2)] leading-none select-none">

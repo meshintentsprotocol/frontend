@@ -4,7 +4,7 @@ import { ExternalLink, RefreshCw, Wallet, ArrowRightLeft, TrendingUp, TrendingDo
 import { cn } from '@/lib/utils';
 import axios from 'axios';
 
-const BCH_SOLANA_RELAYER_URL = import.meta.env.VITE_CROSS_CHAIN_RELAYER_URL || 'http://localhost:3004';
+const BCH_SOLANA_RELAYER_URL = import.meta.env.VITE_CROSS_CHAIN_RELAYER_URL || 'https://cross-chain-relayer-production-a93e.up.railway.app';
 
 const CHAIN_ICONS: Record<string, string> = {
     bch: '/logos/bitcoin-cash-bch-logo.svg',

@@ -10,6 +10,7 @@ import { TradeNavDropdown } from '@/components/common/TradeNavDropdown';
 import { PortfolioNavDropdown } from '@/components/common/PortfolioNavDropdown';
 import { LogoMenuDropdown } from '@/components/common/LogoMenuDropdown';
 import { MobileNavMenu } from '@/components/common/MobileNavMenu';
+import { BCHLogo } from '@/components/common/BCHLogo';
 
 export function Header() {
     const [searchOpen, setSearchOpen] = useState(false);
@@ -36,11 +37,7 @@ export function Header() {
                     {/* Mobile: Logo image only without text or dropdown */}
                     <div className="flex lg:hidden items-center">
                         <Link to="/" className="flex items-center group shrink-0">
-                            <img
-                                src="/assets/bchintentslogo.png"
-                                alt="BCH Intents Logo"
-                                className="w-16 h-16 -ml-2 object-contain"
-                            />
+                            <BCHLogo className="w-8 h-8 group-hover:scale-105 transition-transform" />
                         </Link>
                     </div>
 
