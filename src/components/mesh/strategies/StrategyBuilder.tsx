@@ -45,13 +45,13 @@ import {
   type MeshToken,
 } from '@/components/mesh/TokenSelectModal';
 import {
-  useMarketRef,
   useMeshSigner,
   useSignerBalances,
   useStrategy,
   useStrategySuggest,
   useStrategyTemplates,
 } from '@/hooks/useMesh';
+import { useCauldronPrice } from '@/hooks/useCauldronPrice';
 import {
   amountText,
   formFor,
@@ -71,7 +71,7 @@ import {
   formatUnits,
   shortHex,
 } from '@/lib/mesh/format';
-import { tokenPerBchFromSatsPerUnit } from '@/lib/mesh/pool';
+
 import { Panel, TokenAvatar, useTokenInfo, type TokenInfo } from '@/components/mesh/pools/shared';
 import { PriceLadder } from './PriceLadder';
 import { RangeDistribution } from './RangeDistribution';
@@ -167,8 +167,8 @@ export function StrategyBuilder({
     return i.known
       ? i
       : f
-      ? { ...i, symbol: f.symbol, decimals: f.decimals, icon: f.icon ?? null, known: true }
-      : i;
+        ? { ...i, symbol: f.symbol, decimals: f.decimals, icon: f.icon ?? null, known: true }
+        : i;
   };
   /**
    * Prices convert with each token's decimals, so nothing is converted while
@@ -180,20 +180,15 @@ export function StrategyBuilder({
   const decimalsKey = `${decimalsReady}|` + tokenCats.map(c => `${c}:${infoOf(c).decimals}`).join(',');
   const mainToken = values.token ?? values.token1 ?? values.tokenA ?? '';
   const main = infoOf(mainToken);
-  const market = useMarketRef(mainToken || undefined);
+  const cauldron = useCauldronPrice(mainToken || undefined, main.decimals);
 
-  // Market mid per token from /suggest (Cauldron, else Mesh); Cauldron ref as fallback
+  // Market mid per token from Cauldron AMM exclusively (no mesh fallback)
   const suggest = useStrategySuggest(form ? suggestQuery(templateId, values) : null);
-  const ctxOf = (cat: string) => suggest.data?.market?.[cat] ?? null;
+  const ctxOf = (cat: string) => (cat === mainToken && cauldron.hasCauldron ? cauldron.marketContext : null);
   const midOf = (cat: string): number | null =>
-    ctxOf(cat)?.midSatsPerToken ??
-    (cat === mainToken && market.data?.cauldron
-      ? Number(market.data.cauldron.satsPerToken)
-      : null);
+    (cat === mainToken && cauldron.hasCauldron ? cauldron.satsPerUnit : null);
   const mainMid = midOf(mainToken);
-  const marketPrice = mainMid
-    ? Number(tokenPerBchFromSatsPerUnit(String(mainMid), main.decimals))
-    : null;
+  const marketPrice = cauldron.hasCauldron ? cauldron.tokensPerBch : null;
 
   const applySuggestion = (onlyEmpty: boolean) => {
     const p = suggest.data?.params;
@@ -483,14 +478,14 @@ export function StrategyBuilder({
       f.kind === 'price'
         ? tokenOf?.symbol
         : f.kind === 'bch'
-        ? 'BCH'
-        : f.kind === 'tokenAmount'
-        ? tokenOf?.symbol
-        : f.kind === 'bps'
-        ? 'bps'
-        : f.kind === 'rate'
-        ? (values.tokenB ? infoOf(values.tokenB).symbol : 'token B')
-        : '';
+          ? 'BCH'
+          : f.kind === 'tokenAmount'
+            ? tokenOf?.symbol
+            : f.kind === 'bps'
+              ? 'bps'
+              : f.kind === 'rate'
+                ? (values.tokenB ? infoOf(values.tokenB).symbol : 'token B')
+                : '';
 
     // Rungs / steps: a stepper within the template's limits
     if (f.kind === 'count') {
@@ -565,8 +560,8 @@ export function StrategyBuilder({
                 {f.kind === 'bch'
                   ? formatSatsCompact(bal.sats)
                   : tokenOf
-                  ? `${formatUnits(bal.tokens[tokenOf.category] ?? 0n, tokenOf.decimals)} ${tokenOf.symbol}`
-                  : '—'}
+                    ? `${formatUnits(bal.tokens[tokenOf.category] ?? 0n, tokenOf.decimals)} ${tokenOf.symbol}`
+                    : '—'}
               </span>
             </span>
             <div className="flex items-center gap-1">
@@ -683,7 +678,7 @@ export function StrategyBuilder({
                 ctx={ctxOf(mainToken)}
                 symbol={main.symbol}
                 decimals={main.decimals}
-                loading={suggest.isLoading && !market.data}
+                loading={suggest.isLoading && !cauldron.hasCauldron}
               />
               {suggest.data?.params && (
                 <button
@@ -770,145 +765,145 @@ export function StrategyBuilder({
               onUseV3={() => setEngine('v3')}
             />
           ) : (
-          <Panel
-            title="Position Preview & Price Ladder"
-            action={
-              market.data?.cauldron && marketPrice ? (
-                <span className="text-[11px] text-neutral-500">
-                  Cauldron: 1 BCH ≈{' '}
-                  <span className="font-mono text-neutral-300">
-                    {formatNumber(marketPrice, 2)}
-                  </span>{' '}
-                  {main.symbol}
-                </span>
-              ) : undefined
-            }
-          >
-            {levels.length > 0 && (
-              <PriceLadder levels={levels} market={marketPrice} symbol={main.symbol} />
-            )}
-
-            {preview.data && ['grid', 'range', 'take-profit', 'accumulate'].includes(templateId) && (
-              <div className="mt-3">
-                <RangeDistribution pools={preview.data.pools} token={mainToken} decimals={main.decimals} symbol={main.symbol} market={marketPrice} />
-              </div>
-            )}
-
-            {preview.data?.warnings?.length ? (
-              <div className="mt-3 p-3 rounded-xl bg-rose-500/10 border border-rose-500/25 text-[11px] text-rose-200 space-y-1.5">
-                <div className="flex gap-2 font-semibold"><TriangleAlert className="w-4 h-4 shrink-0" />Priced through the market</div>
-                {preview.data.warnings.map(w => <p key={w}>{w}</p>)}
-                <label className="flex items-center gap-2 pt-1 text-rose-100 cursor-pointer">
-                  <input type="checkbox" checked={acceptCross} onChange={e => setAcceptCross(e.target.checked)} />
-                  Deploy anyway: I want these pools filled at these prices
-                </label>
-              </div>
-            ) : null}
-
-            {preview.data?.notes?.length ? (
-              <div className="mt-3 p-3 rounded-xl bg-neutral-900/60 border border-neutral-800 text-[11px] text-neutral-400 space-y-1">
-                {preview.data.notes.map(n => <p key={n}>{n}</p>)}
-              </div>
-            ) : null}
-
-            {preview.isFetching && (
-              <div className="flex items-center gap-2 text-xs text-neutral-400 py-2">
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
-                Computing covenant pools…
-              </div>
-            )}
-
-            {preview.data && (
-              <div className="space-y-2 mt-3">
-                <div className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider">
-                  Covenant Pools to Open ({preview.data.pools.length})
-                </div>
-
-                {preview.data.pools.map(p => {
-                  const reserve = p.v3.reserve === '0x' ? 'BCH' : infoOf(p.v3.reserve).symbol;
-                  const accepts = p.v3.slots
-                    .map(s => (s.cat === '0x' ? 'BCH' : infoOf(s.cat).symbol))
-                    .join(', ');
-                  return (
-                    <div
-                      key={p.address}
-                      className="p-3 rounded-xl bg-black/40 border border-neutral-800 text-xs space-y-1.5 hover:border-neutral-700 transition-colors"
-                    >
-                      <div className="flex justify-between gap-2">
-                        <span className="font-semibold text-white capitalize">
-                          {p.role.replace('-', ' ')}
-                        </span>
-                        <span className="font-mono text-neutral-200">
-                          {p.deposit.token
-                            ? `${formatUnits(p.deposit.token.amount, infoOf(p.deposit.token.category).decimals)} ${infoOf(p.deposit.token.category).symbol}`
-                            : formatSatsCompact(p.deposit.sats)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between gap-2 text-neutral-500 font-mono text-[11px]">
-                        <span>Gives {reserve} for {accepts}</span>
-                        <span>{shortHex(p.address, 6, 4)}</span>
-                      </div>
-                      {(p.market?.length || p.v3.modeName === 'mirror') && (
-                        <div className="flex flex-wrap items-center gap-2 pt-1">
-                          {p.market?.[0] && <VsMid bps={p.market[0].vsMidBps} />}
-                          {p.v3.modeName === 'mirror' && <RecyclePill />}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-
-                <div className="flex justify-between text-xs text-neutral-300 px-1 pt-2 border-t border-neutral-800 font-mono">
-                  <span>Required Deposit:</span>
-                  <span className="text-white font-bold">
-                    {formatSatsCompact(preview.data.totals.sats)}
-                    {Object.entries(preview.data.totals.tokens).map(
-                      ([c, a]) =>
-                        ` + ${formatUnits(a, infoOf(c).decimals)} ${infoOf(c).symbol}`
-                    )}
-                  </span>
-                </div>
-                {preview.data.deployBytes ? (
-                  <div className="flex justify-between text-[11px] text-neutral-500 px-1 font-mono">
-                    <span>Deploy transaction (estimate):</span>
-                    <span>~{formatNumber(preview.data.deployBytes, 0)} bytes</span>
-                  </div>
-                ) : null}
-              </div>
-            )}
-
-            {verified?.ok && (
-              <div className="flex items-center gap-2 text-[11px] text-emerald-400 p-2 rounded-lg bg-emerald-950/20 border border-emerald-800/40">
-                <ShieldCheck className="w-4 h-4 shrink-0" />
-                <span>All covenant outputs verified locally: matching contract bytecode and owned by your wallet</span>
-              </div>
-            )}
-
-            {(validation || formError) && (
-              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 text-[11px] text-amber-200 flex gap-2">
-                <TriangleAlert className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>{formError ?? validation}</span>
-              </div>
-            )}
-
-            <Button
-              className="w-full h-12 rounded-xl font-bold bg-white text-neutral-900 hover:bg-neutral-200 dark:bg-white dark:text-neutral-900 transition-all shadow-md mt-2"
-              disabled={!!validation || !verified?.ok || !!busy}
-              onClick={onReview}
+            <Panel
+              title="Position Preview & Price Ladder"
+              action={
+                  cauldron.hasCauldron && marketPrice ? (
+                    <span className="text-[11px] text-neutral-500">
+                      Cauldron: 1 BCH ≈{' '}
+                      <span className="font-mono text-neutral-300">
+                        {formatNumber(marketPrice, 2)}
+                      </span>{' '}
+                      {main.symbol}
+                    </span>
+                  ) : undefined
+              }
             >
-              {busy && !review ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                  {busy}
-                </>
-              ) : (
-                <>
-                  Review Strategy Deployment
-                  <ArrowRight className="w-4 h-4 ml-1.5" />
-                </>
+              {levels.length > 0 && (
+                <PriceLadder levels={levels} market={marketPrice} symbol={main.symbol} />
               )}
-            </Button>
-          </Panel>
+
+              {preview.data && ['grid', 'range', 'take-profit', 'accumulate'].includes(templateId) && (
+                <div className="mt-3">
+                  <RangeDistribution pools={preview.data.pools} token={mainToken} decimals={main.decimals} symbol={main.symbol} market={marketPrice} />
+                </div>
+              )}
+
+              {preview.data?.warnings?.length ? (
+                <div className="mt-3 p-3 rounded-xl bg-rose-500/10 border border-rose-500/25 text-[11px] text-rose-200 space-y-1.5">
+                  <div className="flex gap-2 font-semibold"><TriangleAlert className="w-4 h-4 shrink-0" />Priced through the market</div>
+                  {preview.data.warnings.map(w => <p key={w}>{w}</p>)}
+                  <label className="flex items-center gap-2 pt-1 text-rose-100 cursor-pointer">
+                    <input type="checkbox" checked={acceptCross} onChange={e => setAcceptCross(e.target.checked)} />
+                    Deploy anyway: I want these pools filled at these prices
+                  </label>
+                </div>
+              ) : null}
+
+              {preview.data?.notes?.length ? (
+                <div className="mt-3 p-3 rounded-xl bg-neutral-900/60 border border-neutral-800 text-[11px] text-neutral-400 space-y-1">
+                  {preview.data.notes.map(n => <p key={n}>{n}</p>)}
+                </div>
+              ) : null}
+
+              {preview.isFetching && (
+                <div className="flex items-center gap-2 text-xs text-neutral-400 py-2">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+                  Computing covenant pools…
+                </div>
+              )}
+
+              {preview.data && (
+                <div className="space-y-2 mt-3">
+                  <div className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider">
+                    Covenant Pools to Open ({preview.data.pools.length})
+                  </div>
+
+                  {preview.data.pools.map(p => {
+                    const reserve = p.v3.reserve === '0x' ? 'BCH' : infoOf(p.v3.reserve).symbol;
+                    const accepts = p.v3.slots
+                      .map(s => (s.cat === '0x' ? 'BCH' : infoOf(s.cat).symbol))
+                      .join(', ');
+                    return (
+                      <div
+                        key={p.address}
+                        className="p-3 rounded-xl bg-black/40 border border-neutral-800 text-xs space-y-1.5 hover:border-neutral-700 transition-colors"
+                      >
+                        <div className="flex justify-between gap-2">
+                          <span className="font-semibold text-white capitalize">
+                            {p.role.replace('-', ' ')}
+                          </span>
+                          <span className="font-mono text-neutral-200">
+                            {p.deposit.token
+                              ? `${formatUnits(p.deposit.token.amount, infoOf(p.deposit.token.category).decimals)} ${infoOf(p.deposit.token.category).symbol}`
+                              : formatSatsCompact(p.deposit.sats)}
+                          </span>
+                        </div>
+                        <div className="flex justify-between gap-2 text-neutral-500 font-mono text-[11px]">
+                          <span>Gives {reserve} for {accepts}</span>
+                          <span>{shortHex(p.address, 6, 4)}</span>
+                        </div>
+                        {(p.market?.length || p.v3.modeName === 'mirror') && (
+                          <div className="flex flex-wrap items-center gap-2 pt-1">
+                            {p.market?.[0] && <VsMid bps={p.market[0].vsMidBps} />}
+                            {p.v3.modeName === 'mirror' && <RecyclePill />}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  <div className="flex justify-between text-xs text-neutral-300 px-1 pt-2 border-t border-neutral-800 font-mono">
+                    <span>Required Deposit:</span>
+                    <span className="text-white font-bold">
+                      {formatSatsCompact(preview.data.totals.sats)}
+                      {Object.entries(preview.data.totals.tokens).map(
+                        ([c, a]) =>
+                          ` + ${formatUnits(a, infoOf(c).decimals)} ${infoOf(c).symbol}`
+                      )}
+                    </span>
+                  </div>
+                  {preview.data.deployBytes ? (
+                    <div className="flex justify-between text-[11px] text-neutral-500 px-1 font-mono">
+                      <span>Deploy transaction (estimate):</span>
+                      <span>~{formatNumber(preview.data.deployBytes, 0)} bytes</span>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
+              {verified?.ok && (
+                <div className="flex items-center gap-2 text-[11px] text-emerald-400 p-2 rounded-lg bg-emerald-950/20 border border-emerald-800/40">
+                  <ShieldCheck className="w-4 h-4 shrink-0" />
+                  <span>All covenant outputs verified locally: matching contract bytecode and owned by your wallet</span>
+                </div>
+              )}
+
+              {(validation || formError) && (
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 text-[11px] text-amber-200 flex gap-2">
+                  <TriangleAlert className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{formError ?? validation}</span>
+                </div>
+              )}
+
+              <Button
+                className="w-full h-12 rounded-xl font-bold bg-white text-neutral-900 hover:bg-neutral-200 dark:bg-white dark:text-neutral-900 transition-all shadow-md mt-2"
+                disabled={!!validation || !verified?.ok || !!busy}
+                onClick={onReview}
+              >
+                {busy && !review ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                    {busy}
+                  </>
+                ) : (
+                  <>
+                    Review Strategy Deployment
+                    <ArrowRight className="w-4 h-4 ml-1.5" />
+                  </>
+                )}
+              </Button>
+            </Panel>
           )}
         </div>
       </div>

@@ -1,11 +1,12 @@
+import { cashTokenDisplay } from './cashTokenDisplay';
 // ============================================================================
 // CauldronService — Fetch CashTokens with Server-First & Direct Indexer Fallback
 // ============================================================================
 // API Docs: https://docs.riftenlabs.com/cauldron/API/cauldron/
 
-import { BCH_MESH_SERVER_URL } from './config';
+import { meshServerUrlFor } from './config';
 import { resolveTokenIconUri } from './tokenIcons';
-import type { TokenMetadata } from './bcmr';
+import { normalizeCategory, type TokenMetadata, BcmrClient } from './bcmr';
 
 export interface CauldronTokenData {
     token_id: string;
@@ -36,6 +37,7 @@ export interface CauldronTokenData {
         };
         uris?: {
             icon?: string;
+            image?: string;
             web?: string;
         };
     };
@@ -53,22 +55,25 @@ export const CauldronService = {
      */
     async getTopCashTokens(limit = 50, isMainnet = false): Promise<CauldronTokenData[]> {
         const network = isMainnet ? 'mainnet' : 'chipnet';
+        const meshUrl = meshServerUrlFor(isMainnet);
 
         // 1. Try local BCHMesh aggregator server first
         try {
+            if (!meshUrl) throw new Error('Mesh server is not configured for this network');
             const controller = new AbortController();
             const timer = setTimeout(() => controller.abort(), 3500);
             const res = await fetch(
-                `${BCH_MESH_SERVER_URL}/tokens?network=${network}&limit=${limit}`,
+                `${meshUrl}/tokens?network=${network}&limit=${limit}`,
                 { signal: controller.signal }
             );
             clearTimeout(timer);
 
             if (res.ok) {
                 const data = await res.json();
+                if (data?.network !== network) throw new Error('Token list network mismatch');
                 const tokensList = Array.isArray(data.tokens) ? data.tokens : (Array.isArray(data) ? data : []);
                 if (tokensList.length > 0) {
-                    return tokensList.map((t: any): CauldronTokenData => {
+                    return tokensList.filter((t: any) => normalizeCategory(t.categoryId || t.token_id) && (!t.network || t.network === network) && Number.isInteger(t.decimals) && t.decimals >= 0 && t.decimals <= 18).map((t: any): CauldronTokenData => {
                         // Prefer the indexer's float price — priceSats is an integer
                         // (BigInt-derived) and truncates sub-sat tokens to 0.
                         const priceSats = Number(t.price_now || t.priceSats || 0);
@@ -144,8 +149,59 @@ export const CauldronService = {
      * Fetch a single token's full detail by token_id.
      */
     async getTokenDetail(tokenId: string, isMainnet = false): Promise<CauldronTokenData | null> {
+        if (!tokenId || tokenId === '0x') return null;
+        const cleanId = tokenId.toLowerCase();
         const list = await this.getTopCashTokens(200, isMainnet);
-        return list.find(t => t.token_id.toLowerCase() === tokenId.toLowerCase()) ?? null;
+        const found = list.find(t => t.token_id.toLowerCase() === cleanId);
+        if (found) return found;
+
+        // Fallback: direct active pool query from Riften Indexer if token is outside top 200
+        const apiUrl = isMainnet ? this.MAINNET_API_URL : this.CHIPNET_API_URL;
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 6000);
+        try {
+            const res = await fetch(`${apiUrl}/pool/active?token=${cleanId}`, { signal: controller.signal });
+            if (res.ok) {
+                const data = await res.json();
+                const active = data?.active ?? [];
+                if (active.length > 0) {
+                    const pool = active[0];
+                    const sats = Number(pool.sats || pool.output?.amount || 0);
+                    const tokens = Number(pool.tokens || pool.output?.token?.amount || 0);
+                    const bcmr = await BcmrClient.get(cleanId, isMainnet).catch(() => null);
+                    const dec = bcmr?.decimals ?? 0;
+                    const price_now = tokens > 0 ? (sats / tokens) * (10 ** dec) : 0;
+                    return {
+                        token_id: cleanId,
+                        display_name: bcmr?.name || cleanId.slice(0, 8),
+                        display_symbol: (bcmr?.symbol || 'UNKNOWN').toUpperCase(),
+                        score_rank: 0,
+                        trade_volume: 0,
+                        tvl_sats: sats,
+                        tvl_tokens: tokens,
+                        price_now,
+                        price_now_usd: 0,
+                        price_24h: 0,
+                        price_24h_usd: 0,
+                        change_24h_bp: 0,
+                        change_7d_bp: 0,
+                        metadata_source: bcmr ? 'bcmr-indexer' : 'cauldron',
+                        bcmr: bcmr ? {
+                            name: bcmr.name,
+                            description: bcmr.description,
+                            token: { category: cleanId, decimals: dec, symbol: bcmr.symbol },
+                            uris: bcmr.uris,
+                        } : undefined,
+                    };
+                }
+            }
+        } catch {
+            // Ignore
+        } finally {
+            clearTimeout(timer);
+        }
+
+        return null;
     },
 
     /**
@@ -164,15 +220,29 @@ export const CauldronService = {
     } {
         const symbol = (bcmr?.symbol || t.bcmr?.token?.symbol || t.display_symbol || 'UNKNOWN').toUpperCase();
         const rawDecimals = bcmr?.decimals ?? t.bcmr?.token?.decimals ?? 0;
-        const decimals = Number.isInteger(Number(rawDecimals)) ? Number(rawDecimals) : 0;
+        const decimals = typeof rawDecimals === 'number' && Number.isInteger(rawDecimals) && rawDecimals >= 0 && rawDecimals <= 18 ? rawDecimals : 0;
+        const display = cashTokenDisplay(t.token_id, bcmr?.name || t.bcmr?.name || t.display_name, symbol);
         return {
-            symbol,
-            name: bcmr?.name || t.bcmr?.name || t.display_name || symbol,
+            symbol: display.symbol,
+            name: display.name,
             decimals,
-            iconRaw: bcmr?.icon ?? t.bcmr?.uris?.icon,
+            iconRaw: bcmr?.icon ?? bcmr?.uris?.image ?? t.bcmr?.uris?.icon ?? t.bcmr?.uris?.image,
             description: bcmr?.description || t.bcmr?.description || '',
-            website: bcmr?.uris.web ?? t.bcmr?.uris?.web ?? null,
+            website: bcmr?.uris?.web ?? t.bcmr?.uris?.web ?? null,
         };
+    },
+
+    /** Correct all per-token metrics together when BCMR supplies newer decimals. */
+    applyMetadata(t: CauldronTokenData, metadata: TokenMetadata | null | undefined): CauldronTokenData {
+        if (!metadata || normalizeCategory(t.token_id) !== metadata.category) return t;
+        const scale = 10 ** (metadata.decimals - this.metadataOf(t).decimals);
+        return { ...t, display_name: metadata.name, display_symbol: metadata.symbol,
+            price_now: t.price_now * scale, price_now_usd: t.price_now_usd * scale,
+            price_24h: t.price_24h * scale, price_24h_usd: t.price_24h_usd * scale,
+            tvl_tokens: t.tvl_tokens / scale, metadata_source: metadata.source,
+            bcmr: { name: metadata.name, description: metadata.description,
+                token: { category: metadata.category, decimals: metadata.decimals, symbol: metadata.symbol },
+                uris: { ...metadata.uris, icon: metadata.icon ?? metadata.uris.icon } } };
     },
 
     /**
@@ -191,7 +261,7 @@ export const CauldronService = {
     }> {
         return data.map(t => {
             const { symbol, name, iconRaw, decimals } = this.metadataOf(t);
-            const icon = resolveTokenIconUri(iconRaw, t.token_id);
+            const icon = iconRaw || resolveTokenIconUri(undefined, t.token_id);
 
             return {
                 symbol,

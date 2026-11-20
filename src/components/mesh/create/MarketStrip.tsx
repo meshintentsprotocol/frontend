@@ -39,7 +39,7 @@ export function MarketStrip({ ctx, symbol, decimals, loading, className, compact
   if (!ctx || !ctx.midSatsPerToken) {
     return (
       <NoteBox tone="warn" className={className} title={`No market price for ${symbol}`}>
-        There is no Cauldron pool and no Mesh price for this token yet. You can still set your prices by hand.
+        There is no Cauldron pool for this token yet. You can still set your prices by hand.
       </NoteBox>
     );
   }

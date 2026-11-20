@@ -152,3 +152,4 @@ export function stablePairSummary(flow: CreateFlow): string {
   const b = flow.symbolOfKey('tokenB');
   return r > 0 ? `1 ${a} = ${r} ${b} (±${((Number(flow.values.spreadBps || 20)) / 100).toFixed(2)}%)` : flow.def.settingsHint;
 }
+

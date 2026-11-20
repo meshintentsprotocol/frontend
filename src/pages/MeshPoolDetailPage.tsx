@@ -19,6 +19,7 @@ import { V2MigrationPanel } from '@/components/mesh/v3/V2MigrationPanel';
 import { PoolActivityTable, PoolValueChart } from '@/components/mesh/pools/PoolActivity';
 import { useSmallScreen } from '@/components/mesh/ui/ManageDock';
 import { POOL_INFO_TABS, V3PoolDetail } from '@/components/mesh/v3/V3PoolDetail';
+import { useCauldronPrice } from '@/hooks/useCauldronPrice';
 
 export function MeshPoolDetailPage() {
   const { address: raw } = useParams();
@@ -66,8 +67,9 @@ export function MeshPoolDetailPage() {
     return <V3PoolDetail pool={p} bundle={pool.data?.bundle ?? []} onSync={syncV3} syncing={syncing} />;
   }
 
+  const cauldron = useCauldronPrice(p?.tokenCategory, token.decimals);
   const trader = token.known ? traderTokenPerBch(p, token.decimals) : null;
-  const market = token.known && p.priceSource === 'cauldron' ? tokenPerBchFromSatsPerUnit(p.marketSatsPerToken, token.decimals) : null;
+  const market = token.known && cauldron.hasCauldron ? cauldron.tokensPerBch : null;
   const vsMarket = trader && market ? (trader / market - 1) * 100 : null;
   const pnl = BigInt(p.stats.pnlSats);
   const tab = info === 'activity' && !small ? 'position' : info;
@@ -114,7 +116,7 @@ export function MeshPoolDetailPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatTile label="Pool value" value={formatSatsCompact(p.valueSats)} sub={bchUsd ? formatUsd(satsToUsd(p.valueSats, bchUsd)) : `tokens at ${p.priceSource} price`} />
         <StatTile label={`Trader price (1 BCH =)`} value={trader ? `${formatNumber(trader, 4)} ${token.symbol}` : '—'}
-          sub={vsMarket === null ? 'no market reference' : `${vsMarket >= 0 ? '+' : ''}${vsMarket.toFixed(2)}% vs Cauldron`} />
+          sub={vsMarket === null ? 'no Cauldron reference' : `${vsMarket >= 0 ? '+' : ''}${vsMarket.toFixed(2)}% vs Cauldron`} />
         <StatTile label="Volume 7d" value={formatSatsCompact(p.stats.volume7dSats)} sub={`all time ${formatSatsCompact(p.stats.volumeAllSats)} · ${p.stats.fillCount} fills`} />
         <StatTile label="LP fees 7d" value={formatSatsCompact(p.stats.fees7dSats)} accent="text-emerald-400"
           sub={`all time ${formatSatsCompact(p.stats.feesAllSats)} · APR est. ${formatPct(p.stats.feeApr7dPct)}`} />

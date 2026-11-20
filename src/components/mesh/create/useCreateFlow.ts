@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { meshApi, useMarketRef, useMeshSigner, usePairDepth, useSignerBalances, useStrategy, useStrategySuggest } from '@/hooks/useMesh';
+import { meshApi, useMeshSigner, usePairDepth, useSignerBalances, useStrategy, useStrategySuggest } from '@/hooks/useMesh';
 import { useDebounced } from '@/hooks/mesh/useDebounced';
 import { useV3Deploy } from '@/hooks/mesh/useV3Deploy';
 import { PREVIEW_SEED, useV4Deploy, v4RequestOf } from '@/hooks/mesh/useV4Deploy';
@@ -25,13 +25,14 @@ import { clearDraft, draftKey, loadDraft, saveDraft } from '@/lib/mesh/create/dr
 import { depositCards, oneSidedNote, type DepositCard } from '@/lib/mesh/create/deposits';
 import { settingsCheck } from '@/lib/mesh/create/checks';
 import { amountText, fromServerParams, satsPerUnitFromTokenPerBch, shareOf, toBaseUnits, toServerParams } from '@/lib/mesh/v3/strategyForms';
-import { formatPrice, tokensPerBchFromSats } from '@/lib/mesh/create/price';
+import { formatPrice, formatPriceEdge, formatPriceInput, parsePrice, priceAtPct, tokensPerBchFromSats } from '@/lib/mesh/create/price';
 import {
-  depthBins, sideWeights, v3PreviewBins, v3RangeLayout, v4RangeLayout,
+  depthBins, sideWeights, snapToGrid, v3PreviewBins, v3RangeLayout, v4RangeLayout,
   type ChartBin, type RangeLayout, type ShapeName, type StrengthName,
 } from '@/lib/mesh/create/layout';
 import { bchMaxReserve, linkedSats, linkedTokens } from '@/lib/mesh/create/linked';
 import { meshPaths } from '@/lib/mesh/routes';
+import { useCauldronPrice } from '@/hooks/useCauldronPrice';
 
 /** an owner for step-2 trial previews when no wallet is connected (the preview is a pure calculation) */
 const TRIAL_OWNER = '00'.repeat(20);
@@ -131,18 +132,67 @@ export function useCreateFlow({ strategy, token, tokenB, replaces, simple = fals
     });
   }, [template]);
 
-  // ── market ───────────────────────────────────────────────────────────────
+  // ── market (exclusively Cauldron AMM, no mesh fallback) ───────────────────
+  const cauldron = useCauldronPrice(mainToken || undefined, main.decimals);
   const suggest = useStrategySuggest(def.template ? suggestQueryFor(template, values) : null);
-  const marketRef = useMarketRef(mainToken || undefined);
-  const ctxOf = useCallback((cat: string) => suggest.data?.market?.[cat] ?? null, [suggest.data]);
-  const midOf = useCallback((cat: string): number | null =>
-    ctxOf(cat)?.midSatsPerToken ?? (cat === mainToken && marketRef.data?.cauldron ? Number(marketRef.data.cauldron.satsPerToken) : null),
-  [ctxOf, mainToken, marketRef.data]);
+  const ctxOf = useCallback((cat: string) => (cat === mainToken && cauldron.hasCauldron ? cauldron.marketContext : null), [cauldron, mainToken]);
+  const midOf = useCallback((cat: string): number | null => {
+    if (cat === mainToken && cauldron.hasCauldron) {
+      return cauldron.satsPerUnit;
+    }
+    return null;
+  }, [cauldron, mainToken]);
   const mainMid = midOf(mainToken);
-  const marketP = mainMid ? tokensPerBchFromSats(mainMid, main.decimals) : null;
-  const marketCtx = ctxOf(mainToken);
+  const marketP = cauldron.hasCauldron ? cauldron.tokensPerBch : null;
+  const marketCtx = cauldron.hasCauldron ? cauldron.marketContext : null;
+
+  const applyCauldronPrice = useCallback((onlyEmpty: boolean) => {
+    if (!cauldron.hasCauldron || !cauldron.tokensPerBch || !cauldron.satsPerUnit || !decimalsReady) return;
+    const cp = cauldron.tokensPerBch;
+    const su = cauldron.satsPerUnit;
+    const dec = main.decimals;
+    const step = Number(values.binStepBps || 100);
+
+    setValues(prev => {
+      const merged = { ...prev };
+      const setIf = (k: string, v: string) => {
+        if (!onlyEmpty || !prev[k]) merged[k] = v;
+      };
+
+      if (strategy === 'range') {
+        setIf('center', formatPriceInput(cp));
+        setIf('low', formatPriceEdge(snapToGrid(cp * 1.05, step, dec), 'up'));
+        setIf('high', formatPriceEdge(snapToGrid(cp * 0.95, step, dec), 'down'));
+        setIf('binStepBps', prev.binStepBps || '100');
+        setIf('shape', prev.shape || 'spot');
+      } else if (strategy === 'grid') {
+        setIf('center', formatPriceInput(cp));
+        setIf('low', formatPriceInput(priceAtPct(su, dec, -10)));
+        setIf('high', formatPriceInput(priceAtPct(su, dec, 10)));
+        setIf('rungs', prev.rungs || '4');
+      } else if (strategy === 'take-profit') {
+        setIf('from', formatPriceInput(priceAtPct(su, dec, 2)));
+        setIf('to', formatPriceInput(priceAtPct(su, dec, 15)));
+        setIf('steps', prev.steps || '4');
+      } else if (strategy === 'accumulate') {
+        setIf('from', formatPriceInput(priceAtPct(su, dec, -2)));
+        setIf('to', formatPriceInput(priceAtPct(su, dec, -15)));
+        setIf('steps', prev.steps || '4');
+      } else if (strategy === 'fixed') {
+        setIf('price', formatPriceInput(cp));
+      } else if (strategy === 'recycling-pair' || strategy === 'spread') {
+        setIf('buy', formatPriceInput(priceAtPct(su, dec, -2)));
+        setIf('sell', formatPriceInput(priceAtPct(su, dec, 2)));
+      }
+      return merged;
+    });
+  }, [cauldron, decimalsReady, main.decimals, strategy, values.binStepBps]);
 
   const applySuggestion = useCallback((onlyEmpty: boolean) => {
+    if (cauldron.hasCauldron) {
+      applyCauldronPrice(onlyEmpty);
+      return;
+    }
     const p = suggest.data?.params;
     if (!p || !decimalsReady) return;
     setValues(prev => {
@@ -151,9 +201,14 @@ export function useCreateFlow({ strategy, token, tokenB, replaces, simple = fals
       for (const [k, v] of Object.entries(next)) if (!onlyEmpty || !prev[k]) merged[k] = v;
       return merged;
     });
-  }, [suggest.data, decimalsReady, template, decimalsOf]);
-  // fill empty prices from the market once the suggestion and the token details are in
-  useEffect(() => { if (!replaces) applySuggestion(true); }, [suggest.data, decimalsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [cauldron.hasCauldron, applyCauldronPrice, suggest.data, decimalsReady, template, decimalsOf]);
+
+  // fill empty prices from Cauldron once the token details and Cauldron price are in
+  useEffect(() => {
+    if (!replaces && cauldron.hasCauldron) {
+      applyCauldronPrice(true);
+    }
+  }, [cauldron.hasCauldron, cauldron.tokensPerBch, decimalsKey, replaces, applyCauldronPrice]);
 
   // ── rebalance: start from the strategy being replaced ────────────────────
   const current = useStrategy(replaces);
@@ -175,6 +230,67 @@ export function useCreateFlow({ strategy, token, tokenB, replaces, simple = fals
     pendingParams.current = null;
     setValues(prev => ({ ...prev, ...fromServerParams(template, p, decimalsOf, prev) }));
   }, [decimalsKey, current.data?.strategy.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── rebalance: recenter to live Cauldron price ───────────────────────────
+  const recenterToCauldron = useCallback(() => {
+    if (!cauldron.hasCauldron || !cauldron.tokensPerBch || !cauldron.satsPerUnit || !decimalsReady) return;
+    const cp = cauldron.tokensPerBch;
+    const su = cauldron.satsPerUnit;
+    const dec = main.decimals;
+    const step = Number(values.binStepBps || 100);
+
+    if (strategy === 'range') {
+      const oldCenter = parsePrice(values.center);
+      const oldLow = parsePrice(values.low);
+      const oldHigh = parsePrice(values.high);
+
+      let lowP = cp * 1.05;
+      let highP = cp * 0.95;
+      if (oldCenter > 0 && oldLow > 0 && oldHigh > 0) {
+        const lowRatio = oldLow / oldCenter;
+        const highRatio = oldHigh / oldCenter;
+        lowP = cp * lowRatio;
+        highP = cp * highRatio;
+      }
+      patch({
+        center: formatPriceInput(cp),
+        low: formatPriceEdge(snapToGrid(lowP, step, dec), 'up'),
+        high: formatPriceEdge(snapToGrid(highP, step, dec), 'down'),
+      });
+    } else if (strategy === 'grid') {
+      patch({
+        center: formatPriceInput(cp),
+        low: formatPriceInput(priceAtPct(su, dec, -10)),
+        high: formatPriceInput(priceAtPct(su, dec, 10)),
+      });
+    } else if (strategy === 'take-profit') {
+      patch({
+        from: formatPriceInput(priceAtPct(su, dec, 2)),
+        to: formatPriceInput(priceAtPct(su, dec, 15)),
+      });
+    } else if (strategy === 'accumulate') {
+      patch({
+        from: formatPriceInput(priceAtPct(su, dec, -2)),
+        to: formatPriceInput(priceAtPct(su, dec, -15)),
+      });
+    } else if (strategy === 'fixed') {
+      patch({
+        price: formatPriceInput(cp),
+      });
+    } else if (strategy === 'recycling-pair' || strategy === 'spread') {
+      patch({
+        buy: formatPriceInput(priceAtPct(su, dec, -2)),
+        sell: formatPriceInput(priceAtPct(su, dec, 2)),
+      });
+    }
+  }, [cauldron, decimalsReady, main.decimals, strategy, values, patch]);
+
+  const cauldronDriftPct = useMemo(() => {
+    if (!replaces || !cauldron.hasCauldron || !cauldron.tokensPerBch) return null;
+    const centerVal = parsePrice(values.center || values.price || values.buy);
+    if (!(centerVal > 0)) return null;
+    return ((cauldron.tokensPerBch / centerVal) - 1) * 100;
+  }, [replaces, cauldron.hasCauldron, cauldron.tokensPerBch, values.center, values.price, values.buy]);
 
   // ── range layout, computed here so the chart follows every change ────────
   const shape = (values.shape || 'spot') as ShapeName;
@@ -415,6 +531,7 @@ export function useCreateFlow({ strategy, token, tokenB, replaces, simple = fals
     values, set, patch, setToken, applySuggestion,
     tokenCats, infoOf, decimalsOf, decimalsReady, mainToken, main,
     suggest, marketCtx, ctxOf, midOf, mainMid, marketP, marketText, pairLabel, symbolOfKey,
+    cauldron, recenterToCauldron, cauldronDriftPct,
     rangeLayout, depthChart, layoutPreview, previewBins, ladderCounts, v4Probe, trial, settingsError, settingsChecking, settingsWarnings, settingsNotes,
     cards, oneSided, twoSided, linked, setLinked, setDeposit, setFraction, decOfCard,
     input, v3, v4, deploy, canReview,

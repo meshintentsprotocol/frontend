@@ -7,12 +7,13 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, ExternalLink, Loader2, PlusCircle, TrendingUp, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useMarketRef, useMeshPairs, usePairDepth, useRecentPoolFills, useMeshStats } from '@/hooks/useMesh';
+import { useMeshPairs, usePairDepth, useRecentPoolFills, useMeshStats } from '@/hooks/useMesh';
+import { useCauldronPrice } from '@/hooks/useCauldronPrice';
 import { TokenAvatar, useTokenInfo } from '@/components/mesh/pools/shared';
 import { DepthChart } from '@/components/mesh/pools/DepthChart';
 import { meshPaths, tokenParam } from '@/lib/mesh/routes';
 import { formatNumber, formatSatsCompact, formatUsd, satsToUsd, shortHex, timeAgo } from '@/lib/mesh/format';
-import { tokenPerBchFromSatsPerUnit } from '@/lib/mesh/pool';
+
 import { bchPerToken, formatPrice } from '@/lib/mesh/create/price';
 import { explorerTx } from '@/lib/mesh/format';
 import { useNetwork } from '@/components/mesh/create/usePairInfo';
@@ -33,17 +34,13 @@ export function MeshPairPage() {
   const pairsQ = useMeshPairs();
   const depthQ = usePairDepth(token);
   const fillsQ = useRecentPoolFills(50);
-  const marketQ = useMarketRef(token);
 
   const pairData = useMemo(() => {
     return (pairsQ.data?.pairs ?? []).find(p => p.tokenCategory.toLowerCase() === token.toLowerCase());
   }, [pairsQ.data, token]);
 
-  const marketTpb = marketQ.data?.cauldron
-    ? Number(tokenPerBchFromSatsPerUnit(marketQ.data.cauldron.satsPerToken, info.decimals))
-    : pairData?.bestBid?.satsPerToken
-      ? Number(tokenPerBchFromSatsPerUnit(pairData.bestBid.satsPerToken, info.decimals))
-      : null;
+  const cauldron = useCauldronPrice(token, info.decimals);
+  const marketTpb = cauldron.tokensPerBch;
 
   const pairFills = useMemo(() => {
     return (fillsQ.data?.events ?? []).filter(

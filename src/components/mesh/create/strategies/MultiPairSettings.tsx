@@ -173,3 +173,4 @@ export function multiPairSummary(flow: CreateFlow): string {
   const count = [flow.values.token1, flow.values.token2, flow.values.token3].filter(Boolean).length;
   return count >= 2 ? `${count} tokens on 1 BCH reserve` : flow.def.settingsHint;
 }
+

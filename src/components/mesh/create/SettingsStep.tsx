@@ -4,9 +4,11 @@
  * warnings, dropped pools), then Continue.
  */
 import type { ComponentType } from 'react';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, RefreshCw } from 'lucide-react';
 import type { StrategyId } from '@/lib/mesh/create/registry';
 import { ActionButton, NoteBox, StickyActionBar } from '@/components/mesh/kit';
+import { Button } from '@/components/ui/button';
+import { formatPrice } from '@/lib/mesh/create/price';
 import type { CreateFlow } from './useCreateFlow';
 import { RangeSettings } from './strategies/RangeSettings';
 import { FixedSettings, fixedSummary } from './strategies/FixedSettings';
@@ -68,6 +70,31 @@ export function SettingsStep({ flow }: { flow: CreateFlow }) {
   const label = err ? (err.length <= 42 ? err : 'Fix the settings above') : 'Continue';
   return (
     <>
+      {flow.replaces && flow.cauldron.hasCauldron && flow.marketP && (
+        <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-emerald-300">Live Cauldron Price</span>
+              <span className="font-mono text-xs font-bold text-white">1 BCH = {formatPrice(flow.marketP)} {flow.main.symbol}</span>
+            </div>
+            {flow.cauldronDriftPct !== null && (
+              <p className="text-[11px] text-zinc-400">
+                Current Cauldron price is {flow.cauldronDriftPct >= 0 ? '+' : ''}{flow.cauldronDriftPct.toFixed(2)}% vs previous position center.
+              </p>
+            )}
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            onClick={flow.recenterToCauldron}
+            className="rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-semibold text-xs h-8 shrink-0 shadow"
+          >
+            <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+            Recenter to Cauldron
+          </Button>
+        </div>
+      )}
+
       {Settings ? <Settings flow={flow} /> : null}
 
       {err && !flow.rangeLayout?.error && (
