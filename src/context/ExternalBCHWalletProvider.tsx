@@ -217,6 +217,7 @@ function convertBchAddressNetwork(address: string, targetNetwork: 'mainnet' | 'c
 // ── Provider ─────────────────────────────────────────────────────────────────
 
 export function ExternalBCHWalletProvider({ children }: { children: ReactNode }) {
+    const wdk = useWDK();
     const {
         bchNetwork,
         bchChipnetAddress,
@@ -227,7 +228,7 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
         btcMainnetAddress,
         btcTestnetAddress,
         isInitialized,
-    } = useWDK();
+    } = wdk;
     const appNetwork: AppNetwork = appNetworkOf(bchNetwork);
 
     const allWallets = useExternalWallets();
