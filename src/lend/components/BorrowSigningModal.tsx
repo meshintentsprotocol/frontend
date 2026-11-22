@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
-import { CheckCircle2, ExternalLink, Loader2, ShieldCheck, AlertCircle } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { CheckCircle2, ExternalLink, Loader2, ShieldCheck, AlertCircle, Sparkles, RefreshCw, Copy, Check } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useWDK } from '@/context/WDKProvider';
 import { useActiveWallet } from '@/hooks/useActiveWallet';
 import { useExternalBCHWallet } from '@/context/ExternalBCHWalletProvider';
 import { useBCHWallet } from '@/context/BCHWalletProvider';
+import { useMeshSigner } from '@/hooks/useMesh';
+import { buildAndSendBch } from '@/lib/bchSend';
 import { useLend } from '../LendProvider';
 import { signParyonTx } from '../signBch';
 import type { LoanView } from '../types';
@@ -32,9 +34,12 @@ export function BorrowSigningModal({
     const { isMainActive, activeExtWallet } = useActiveWallet();
     const bchWallet = useBCHWallet();
     const extBCH = useExternalBCHWallet();
+    const { signer } = useMeshSigner();
 
     const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4>(1); // 1 = tx1, 2 = tx2, 3 = submitting, 4 = success
     const [loading, setLoading] = useState(false);
+    const [preparingUtxo, setPreparingUtxo] = useState(false);
+    const [copiedAddress, setCopiedAddress] = useState(false);
     const [error, setError] = useState('');
     const [steps, setSteps] = useState<ParyonStep[]>([]);
     const [loanTokenId, setLoanTokenId] = useState('');
@@ -48,11 +53,38 @@ export function BorrowSigningModal({
 
     const walletLabel = isMainActive ? 'In-App Wallet' : (activeExtWallet?.label || 'BCH Wallet');
 
+    const isGenesisError = error.toLowerCase().includes('outpoint index 0') ||
+        error.toLowerCase().includes('vout: 0') ||
+        error.toLowerCase().includes('genesis a new cashtoken category');
+
+    const loadPrepareBorrow = useCallback(async () => {
+        if (!provider.paryon || !userAddress) return;
+        setLoading(true);
+        setError('');
+        try {
+            const res = await provider.paryon.prepareBorrow({
+                userAddress,
+                userTokenAddress,
+                borrowCents,
+                collateralSats,
+                startingRate,
+            });
+            setLoanTokenId(res.loanTokenId);
+            setSteps(res.steps);
+            setCurrentStep(1);
+        } catch (err: any) {
+            setError(err?.message || 'Failed to prepare borrow transactions.');
+        } finally {
+            setLoading(false);
+        }
+    }, [provider.paryon, userAddress, userTokenAddress, borrowCents, collateralSats, startingRate]);
+
     // Prepare transactions when modal opens
     useEffect(() => {
         if (!open) {
             setCurrentStep(1);
             setLoading(false);
+            setPreparingUtxo(false);
             setError('');
             setSteps([]);
             setLoanTokenId('');
@@ -72,33 +104,43 @@ export function BorrowSigningModal({
             return;
         }
 
-        let active = true;
-        setLoading(true);
+        loadPrepareBorrow();
+    }, [open, provider.paryon, userAddress, loadPrepareBorrow]);
+
+    const handleSelfSendGenesisUtxo = async () => {
+        if (!userAddress) return;
+        setPreparingUtxo(true);
         setError('');
+        try {
+            if (signer) {
+                await buildAndSendBch(
+                    signer,
+                    userAddress,
+                    { sats: 10000n },
+                    'Self-send 10,000 sats to create genesis UTXO'
+                );
+            } else if (isMainActive && wdk.bchWallet) {
+                await (wdk.bchWallet as any).send([{ cashaddr: userAddress, value: 10000, unit: 'sat' }]);
+            } else {
+                throw new Error('Please send 0.0001 BCH to your wallet address to create a genesis UTXO.');
+            }
+            // Wait 2.5s for mempool / Electrum indexing
+            await new Promise(r => setTimeout(r, 2500));
+            await loadPrepareBorrow();
+        } catch (e: any) {
+            setError(e?.message || 'Failed to create genesis UTXO. Please send a small amount to your own address.');
+        } finally {
+            setPreparingUtxo(false);
+        }
+    };
 
-        provider.paryon.prepareBorrow({
-            userAddress,
-            userTokenAddress,
-            borrowCents,
-            collateralSats,
-            startingRate,
-        })
-            .then(res => {
-                if (!active) return;
-                setLoanTokenId(res.loanTokenId);
-                setSteps(res.steps);
-                setCurrentStep(1);
-            })
-            .catch(err => {
-                if (!active) return;
-                setError((err as Error).message || 'Failed to prepare borrow transactions.');
-            })
-            .finally(() => {
-                if (active) setLoading(false);
-            });
-
-        return () => { active = false; };
-    }, [open, provider, userAddress, userTokenAddress, borrowCents, collateralSats, startingRate]);
+    const handleCopyAddress = () => {
+        if (!userAddress) return;
+        navigator.clipboard.writeText(userAddress).then(() => {
+            setCopiedAddress(true);
+            setTimeout(() => setCopiedAddress(false), 2000);
+        });
+    };
 
     const handleSignStep1 = async () => {
         if (!steps[0]) return;
@@ -173,7 +215,7 @@ export function BorrowSigningModal({
             : `https://chipnet.imaginary.cash/tx/${txid}`;
 
     return (
-        <Dialog open={open} onOpenChange={o => { if (!o && !loading) onClose(); }}>
+        <Dialog open={open} onOpenChange={o => { if (!o && !loading && !preparingUtxo) onClose(); }}>
             <DialogContent className="max-h-[92vh] max-w-md overflow-y-auto border-white/10 bg-zinc-950 text-white">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
@@ -211,12 +253,54 @@ export function BorrowSigningModal({
                         </div>
                     </div>
 
-                    {error && (
+                    {isGenesisError ? (
+                        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-200 space-y-3">
+                            <div className="flex items-start gap-2">
+                                <Sparkles className="h-4 w-4 shrink-0 text-amber-400 mt-0.5" />
+                                <div className="space-y-1">
+                                    <div className="font-semibold text-amber-300">Paryon Genesis UTXO Required</div>
+                                    <p className="text-zinc-300 leading-relaxed text-[11px]">
+                                        The on-chain smart contract requires input 0 to spend an output with index 0 (vout: 0) to deterministically derive your non-custodial Loan Key NFT category.
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex flex-col gap-2 pt-1">
+                                <button
+                                    type="button"
+                                    onClick={handleSelfSendGenesisUtxo}
+                                    disabled={preparingUtxo || loading}
+                                    className="w-full h-10 rounded-xl bg-amber-400 text-zinc-950 font-semibold hover:bg-amber-300 transition flex items-center justify-center gap-2 text-xs disabled:opacity-50"
+                                >
+                                    {preparingUtxo ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                                    {preparingUtxo ? 'Creating UTXO on-chain...' : 'Self-Send 10,000 sats (Create vout:0)'}
+                                </button>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={handleCopyAddress}
+                                        className="flex-1 h-8 rounded-lg border border-white/10 hover:bg-white/5 text-zinc-300 transition flex items-center justify-center gap-1.5 text-[11px]"
+                                    >
+                                        {copiedAddress ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+                                        {copiedAddress ? 'Address Copied' : 'Copy My Address'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => loadPrepareBorrow()}
+                                        disabled={preparingUtxo || loading}
+                                        className="h-8 px-3 rounded-lg border border-white/10 hover:bg-white/5 text-zinc-300 transition flex items-center justify-center gap-1.5 text-[11px] disabled:opacity-50"
+                                    >
+                                        <RefreshCw className={`h-3 w-3 ${loading ? 'animate-spin' : ''}`} />
+                                        Retry
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    ) : error ? (
                         <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-xs text-red-300 flex items-start gap-2">
                             <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
                             <span>{error}</span>
                         </div>
-                    )}
+                    ) : null}
 
                     {currentStep === 1 && (
                         <div className="space-y-3">
@@ -226,7 +310,7 @@ export function BorrowSigningModal({
                             <button
                                 type="button"
                                 onClick={handleSignStep1}
-                                disabled={loading || !steps.length}
+                                disabled={loading || !steps.length || preparingUtxo}
                                 className="w-full h-12 rounded-full bg-emerald-400 text-zinc-950 font-semibold hover:bg-emerald-300 transition flex items-center justify-center gap-2 disabled:opacity-40"
                             >
                                 {loading && <Loader2 className="h-4 w-4 animate-spin" />}
