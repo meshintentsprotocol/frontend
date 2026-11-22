@@ -39,6 +39,7 @@ import {
     clearAllWallets,
     useExternalWallets,
     registerSessionCloser,
+    normalizeAddress,
 } from '@/lib/wallets/registry';
 export { useExternalWallets };
 import { resolveActive } from '@/lib/wallets/resolveActive';
@@ -573,7 +574,9 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
             }
 
             const address = addresses[0];
-            const walletId = `ext-${Date.now()}`;
+            const existingExt = getAllWallets().find(w => w.source === 'extension' && w.network === appNetwork)
+                || allWallets.find(w => w.source === 'extension' && w.network === appNetwork);
+            const walletId = existingExt ? existingExt.id : `ext-${Date.now()}`;
             const newWallet: ExternalWallet = {
                 id: walletId,
                 source: 'extension',
@@ -581,7 +584,7 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
                 network: appNetwork,
                 label: EXTENSION_WALLET_LABEL,
                 address,
-                connectedAt: Date.now(),
+                connectedAt: existingExt?.connectedAt ?? Date.now(),
             };
 
             addWallet(newWallet);
@@ -632,7 +635,17 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
     // ── Transaction Signing with Runner ──────────────────────────────────────
 
     const signTransaction = useCallback(async (id: string, payload: WC2SignPayload): Promise<WC2SignResult> => {
-        const wallet = allWallets.find(w => w.id === id);
+        const freshWallets = getAllWallets();
+        let wallet = freshWallets.find(w => w.id === id) || allWallets.find(w => w.id === id);
+
+        // Robust fallback for extension wallets: match by source or bch family
+        if (!wallet && (id.startsWith('ext-') || id === 'extension')) {
+            wallet = freshWallets.find(w => w.source === 'extension' && w.network === appNetwork)
+                || allWallets.find(w => w.source === 'extension' && w.network === appNetwork)
+                || freshWallets.find(w => w.source === 'extension')
+                || allWallets.find(w => w.source === 'extension');
+        }
+
         if (!wallet) throw new Error(`Wallet ${id} not found.`);
 
         if (wallet.network !== appNetwork) {
@@ -678,7 +691,7 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
                     if (signal.aborted) throw new WalletSignError('cancelled', wallet.label);
 
                     const [address] = await provider.request({ method: 'bch_accounts' }) as string[];
-                    if (address !== wallet.address) {
+                    if (address && normalizeAddress(address, 'bch') !== normalizeAddress(wallet.address, 'bch')) {
                         throw new Error('The account in the Cham Wallet extension changed. Reconnect the extension and try again.');
                     }
 
