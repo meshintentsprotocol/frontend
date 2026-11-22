@@ -53,26 +53,67 @@ export function describePending(p: PendingRegistration): string {
 
 /** Register a pending entry; resolves to the first pool address or the strategy id. */
 export async function registerPending(api: MeshApi, p: PendingRegistration): Promise<{ address?: string; strategyId?: string }> {
+  // Check if strategy or pool is already registered on the server
+  if (p.strategy) {
+    const strategyId = `stg-${p.txid.slice(0, 24)}`;
+    try {
+      const existing = await api.strategy(strategyId);
+      if (existing?.strategy) {
+        return { strategyId: existing.strategy.id, address: existing.pools?.[0]?.address };
+      }
+    } catch {
+      // not yet indexed on server, proceed with registration
+    }
+    try {
+      const r = await api.registerStrategy({ ...p.strategy, txid: p.txid });
+      return { strategyId: r.strategy.id, address: r.strategy.pools[0]?.address };
+    } catch (e: any) {
+      if (e?.status === 409 || e?.message?.includes('already registered')) {
+        return { strategyId };
+      }
+      throw e;
+    }
+  }
+
   if (p.strategies?.length) {
-    // several strategies from one transaction (a recycle); ones already registered are fine
     let first: string | undefined;
     for (const s of p.strategies) {
       try {
         const r = await api.registerStrategy({ ...s, txid: p.txid });
         first ??= r.strategy.id;
       } catch (e: any) {
-        if (e?.status !== 409) throw e;
+        if (e?.status !== 409 && !e?.message?.includes('already registered')) throw e;
       }
     }
     return { strategyId: first };
   }
-  if (p.strategy) {
-    const r = await api.registerStrategy({ ...p.strategy, txid: p.txid });
-    return { strategyId: r.strategy.id, address: r.strategy.pools[0]?.address };
+
+  // Check if already registered on the server by outpoint
+  try {
+    const outpointVout = p.v3Items?.[0]?.vout ?? p.items?.[0]?.vout ?? 0;
+    const existing = await api.byOutpoint(p.txid, outpointVout);
+    if (existing?.address) {
+      return { address: existing.address };
+    }
+  } catch {
+    // not yet registered by outpoint, proceed
   }
-  const r = p.v3Items?.length ? await api.registerV3(p.v3Items) : await api.register(p.items ?? []);
-  if (!r.success) throw new Error(r.error ?? 'registration failed');
-  return { address: r.pools[0]?.address };
+
+  try {
+    const r = p.v3Items?.length ? await api.registerV3(p.v3Items) : await api.register(p.items ?? []);
+    if (!r.success) {
+      if (r.error?.includes('already registered') || r.results?.some(res => res.status === 409)) {
+        return { address: r.pools[0]?.address };
+      }
+      throw new Error(r.error ?? 'registration failed');
+    }
+    return { address: r.pools[0]?.address };
+  } catch (e: any) {
+    if (e?.status === 409 || e?.message?.includes('already registered')) {
+      return {};
+    }
+    throw e;
+  }
 }
 
 /** Register with retries: the server may not see a fresh transaction for a few seconds. */

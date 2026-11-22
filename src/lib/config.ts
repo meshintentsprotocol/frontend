@@ -2,8 +2,8 @@ export const INTENT_SWAP_ADDRESS = "0xbd128d4f1dbb87783658bed4a4046f381101595211
 export const SOLANA_PROGRAM_ID = "5JAWumq5L4B8WrpF3CFox36SZ2bJF4xQvskLksmHRgs2";
 /** Mesh is deployed once per BCH network. All Mesh-backed features use these URLs. */
 export const BCH_MESH_SERVER_URL = (import.meta.env.VITE_MESH_SERVER_URL || "https://meshserver-production-9ed93ac9.up.railway.app").replace(/\/+$/, '');
-export const BCH_MESH_SERVER_MAINNET_URL = (import.meta.env.VITE_MESH_SERVER_MAINNET_URL || '').replace(/\/+$/, '');
-export const meshServerUrlFor = (isMainnet: boolean) => isMainnet ? BCH_MESH_SERVER_MAINNET_URL : BCH_MESH_SERVER_URL;
+export const BCH_MESH_SERVER_MAINNET_URL = (import.meta.env.VITE_MESH_SERVER_MAINNET_URL || import.meta.env.VITE_MESH_SERVER_URL || "https://meshserver-production-9ed93ac9.up.railway.app").replace(/\/+$/, '');
+export const meshServerUrlFor = (isMainnet: boolean) => isMainnet ? (BCH_MESH_SERVER_MAINNET_URL || BCH_MESH_SERVER_URL) : BCH_MESH_SERVER_URL;
 export const INTENT_RELAYER_URL = BCH_MESH_SERVER_URL;
 export const CROSS_CHAIN_RELAYER_URL = import.meta.env.VITE_CROSS_CHAIN_RELAYER_URL || "https://cross-chain-relayer-production-a93e.up.railway.app";
 export const BCH_SOLANA_RELAYER_URL = import.meta.env.VITE_BCH_SOLANA_RELAYER_URL || "https://meshserver-production-9ed93ac9.up.railway.app";
