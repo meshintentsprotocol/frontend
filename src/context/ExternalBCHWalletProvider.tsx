@@ -308,7 +308,7 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
                 provider.removeListener?.('networkChanged', handleNetworkChanged);
                 provider.removeListener?.('accountsChanged', handleAccountsChanged);
             };
-        }).catch(() => {});
+        }).catch(() => { });
         return () => cleanup?.();
     }, [bchNetwork, wdk, appNetwork]);
 
