@@ -690,12 +690,48 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
                     const provider = await getExtensionProvider();
                     if (signal.aborted) throw new WalletSignError('cancelled', wallet.label);
 
-                    const [address] = await provider.request({ method: 'bch_accounts' }) as string[];
-                    if (address && normalizeAddress(address, 'bch') !== normalizeAddress(wallet.address, 'bch')) {
+                    // Check if site is already authorized
+                    let accounts: string[] = [];
+                    try {
+                        accounts = (await provider.request({ method: 'bch_accounts' })) as string[];
+                    } catch {
+                        // ignore
+                    }
+
+                    let currentAddress = accounts?.[0];
+                    if (!currentAddress) {
+                        // Site is not connected yet or session was reset.
+                        // Calling bch_requestAccounts triggers the extension connection prompt.
+                        const requested = (await provider.request({ method: 'bch_requestAccounts' })) as string[];
+                        currentAddress = requested?.[0];
+                    }
+
+                    if (!currentAddress) {
+                        throw new WalletSignError('session-gone', wallet.label, 'Cham Wallet extension is not connected. Please connect your wallet.');
+                    }
+
+                    if (normalizeAddress(currentAddress, 'bch') !== normalizeAddress(wallet.address, 'bch')) {
                         throw new Error('The account in the Cham Wallet extension changed. Reconnect the extension and try again.');
                     }
 
-                    const response = await provider.request({ method: 'bch_signTransaction', params: [payload] });
+                    let response: any;
+                    try {
+                        response = await provider.request({ method: 'bch_signTransaction', params: [payload] });
+                    } catch (err: any) {
+                        const msg = (err instanceof Error ? err.message : String(err || '')).toLowerCase();
+                        if (msg.includes('bch_requestaccounts') || msg.includes('not connected')) {
+                            // If unauthorized, request accounts to connect site and retry signing once
+                            const requested = (await provider.request({ method: 'bch_requestAccounts' })) as string[];
+                            if (requested?.[0]) {
+                                response = await provider.request({ method: 'bch_signTransaction', params: [payload] });
+                            } else {
+                                throw err;
+                            }
+                        } else {
+                            throw err;
+                        }
+                    }
+
                     if (signal.aborted) throw new WalletSignError('cancelled', wallet.label);
 
                     if (response?.signedTransactionHash) {

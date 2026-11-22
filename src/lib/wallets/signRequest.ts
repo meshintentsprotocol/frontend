@@ -109,7 +109,8 @@ export function classifyError(err: unknown, walletLabel: string): WalletSignErro
 
     if (
         code === 6000 ||
-        /no matching key|session topic doesn't exist|missing or invalid|record was recently deleted|session is not active|not active|no longer connected/i.test(msg)
+        code === 4100 ||
+        /no matching key|session topic doesn't exist|missing or invalid|record was recently deleted|session is not active|not active|no longer connected|not connected|bch_requestaccounts/i.test(msg)
     ) {
         return new WalletSignError('session-gone', walletLabel, undefined, err);
     }
