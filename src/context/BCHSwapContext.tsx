@@ -786,8 +786,21 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                     await addSelectedInputs();
                     builder.addOutput({ to: data.tokenAddress, amount: 1000n, token: { category: sellCategoryId, amount: BigInt(sellBaseUnits) } });
                     if (tokenChange > 0n) {
+                        const { cashAddressToLockingBytecode, lockingBytecodeToCashAddress } = await import('@bitauth/libauth');
+                        const decoded = cashAddressToLockingBytecode(makerAddress);
+                        let makerTokenAddress = makerAddress;
+                        if (typeof decoded !== 'string') {
+                            const tokenAddrObj = lockingBytecodeToCashAddress({
+                                bytecode: decoded.bytecode,
+                                prefix: (isMainnet ? 'bitcoincash' : 'bchtest') as any,
+                                tokenSupport: true,
+                            });
+                            if (typeof tokenAddrObj !== 'string') {
+                                makerTokenAddress = tokenAddrObj.address;
+                            }
+                        }
                         const tSats = satRem > 1000n ? 1000n : satRem;
-                        builder.addOutput({ to: makerAddress, amount: tSats, token: { category: sellCategoryId, amount: tokenChange } });
+                        builder.addOutput({ to: makerTokenAddress, amount: tSats, token: { category: sellCategoryId, amount: tokenChange } });
                         satRem -= tSats;
                     }
                     if (satRem >= 546n) builder.addOutput({ to: makerAddress, amount: satRem });
