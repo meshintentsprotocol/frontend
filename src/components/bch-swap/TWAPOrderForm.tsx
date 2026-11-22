@@ -112,7 +112,7 @@ export function TWAPOrderForm({
   const handlePlaceTwap = async () => {
     const pkh = userPkh || pkhOfAddress(userAddress);
     if (!userAddress || !pkh) { toast.error('Connect your BCH wallet first'); return; }
-    if (!quote) { toast.error('No route for this pair right now'); return; }
+    if (!quote) { toast.error('No quote available for this pair right now'); return; }
     const res = await submitOrder({
       creatorAddress: userAddress,
       creatorPkh: pkh,
@@ -141,29 +141,37 @@ export function TWAPOrderForm({
   const unsupported = !tokenIn || !tokenOut;
 
   const chip = (selected: boolean) => cn(
-    'px-2.5 py-0.5 rounded-md text-xs font-semibold transition-colors border',
-    selected ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' : 'text-white/50 hover:text-white border-transparent',
+    'px-3 py-1 rounded-full text-xs font-semibold transition-all border',
+    selected
+      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-sm'
+      : 'bg-white/[0.04] text-white/60 border-white/[0.06] hover:bg-emerald-500/10 hover:text-emerald-300 hover:border-emerald-500/20',
   );
   const intervalLabel = intervalSec >= 3600 ? `${intervalSec / 3600}h` : `${intervalSec / 60}m`;
 
   return (
     <div className="space-y-3">
-      {/* ── Schedule and price protection: one card, in the swap card's own style ── */}
-      <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/[0.06] space-y-3">
-        <Setting icon={<Layers className="h-3.5 w-3.5" />} label="Slices">
-          {SLICE_PRESETS.map(n => (
-            <button key={n} type="button" aria-pressed={numSlices === n} onClick={() => setNumSlices(n)} className={chip(numSlices === n)}>{n}</button>
-          ))}
+      {/* ── Schedule and price protection: packaged cleanly ── */}
+      <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/[0.07] space-y-3.5 shadow-sm">
+        <Setting icon={<Layers className="h-3.5 w-3.5 text-emerald-400/80" />} label="Slices">
+          <div className="flex items-center gap-1.5">
+            {SLICE_PRESETS.map(n => (
+              <button key={n} type="button" aria-pressed={numSlices === n} onClick={() => setNumSlices(n)} className={chip(numSlices === n)}>{n}</button>
+            ))}
+          </div>
         </Setting>
-        <Setting icon={<Clock className="h-3.5 w-3.5" />} label="Every" divided>
-          {INTERVAL_PRESETS.map(p => (
-            <button key={p.value} type="button" aria-pressed={intervalSec === p.value} onClick={() => setIntervalSec(p.value)} className={chip(intervalSec === p.value)}>{p.label}</button>
-          ))}
+        <Setting icon={<Clock className="h-3.5 w-3.5 text-blue-400/80" />} label="Every" divided>
+          <div className="flex items-center gap-1.5">
+            {INTERVAL_PRESETS.map(p => (
+              <button key={p.value} type="button" aria-pressed={intervalSec === p.value} onClick={() => setIntervalSec(p.value)} className={chip(intervalSec === p.value)}>{p.label}</button>
+            ))}
+          </div>
         </Setting>
-        <Setting icon={<ShieldCheck className="h-3.5 w-3.5" />} label="Max slippage" divided>
-          {SLIPPAGE_PRESETS.map(b => (
-            <button key={b} type="button" aria-pressed={slippageBps === b} onClick={() => setSlippageBps(b)} className={chip(slippageBps === b)}>{(b / 100).toFixed(1)}%</button>
-          ))}
+        <Setting icon={<ShieldCheck className="h-3.5 w-3.5 text-purple-400/80" />} label="Max slippage" divided>
+          <div className="flex items-center gap-1.5">
+            {SLIPPAGE_PRESETS.map(b => (
+              <button key={b} type="button" aria-pressed={slippageBps === b} onClick={() => setSlippageBps(b)} className={chip(slippageBps === b)}>{(b / 100).toFixed(1)}%</button>
+            ))}
+          </div>
         </Setting>
       </div>
 
@@ -177,19 +185,19 @@ export function TWAPOrderForm({
       >
         <QuoteRow label="You send" value={totalIn > 0 ? `${fromBase(totalIn, sellDecimals).toLocaleString(undefined, { maximumFractionDigits: Math.min(sellDecimals, 8) })} ${sellToken.symbol}` : '—'} hint={sellPrice > 0 && totalIn > 0 ? `~$${(fromBase(totalIn, sellDecimals) * sellPrice).toFixed(2)}` : undefined} />
         <QuoteRow label="Each slice" value={sliceIn > 0 ? `${fromBase(sliceIn, sellDecimals).toLocaleString(undefined, { maximumFractionDigits: Math.min(sellDecimals, 8) })} ${sellToken.symbol}` : '—'} />
-        <QuoteRow label="Expected per slice" value={quoting ? <Loader2 className="inline h-3 w-3 animate-spin" /> : quote ? `≈ ${fmtOut(startOut)}` : '—'} hint={quote?.routeName} />
+        <QuoteRow label="Expected per slice" value={quoting ? <Loader2 className="inline h-3 w-3 animate-spin" /> : quote ? `≈ ${fmtOut(startOut)}` : '—'} />
         <QuoteRow label="At least per slice" value={quote ? fmtOut(minOut) : '—'} hint={`${(slippageBps / 100).toFixed(1)}% slippage`} />
         <QuoteRow label="You receive" strong value={quote ? `≈ ${fmtOut(startOut * BigInt(numSlices))}` : '—'} />
         <p className="pt-1 text-xs text-white/40">All slices are funded in one transaction. A slice that is not filled in its window is refunded.</p>
       </QuoteCard>
 
       {(quoteError || sliceTooSmall || unsupported) && (
-        <div className="flex items-start gap-2 text-xs text-amber-200/80 bg-amber-500/[0.06] border border-amber-500/20 rounded-lg px-2.5 py-2">
+        <div className="flex items-start gap-2 text-xs text-amber-200/80 bg-amber-500/[0.06] border border-amber-500/20 rounded-xl px-3 py-2">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
           <span>
             {unsupported ? 'This token has no category id; TWAP needs a CashToken or BCH on both sides.'
               : sliceTooSmall ? `Each slice must be worth at least ${MIN_SLICE_SATS.toLocaleString()} sats — use fewer slices or a larger amount.`
-              : `No route: ${quoteError}`}
+                : `Quote unavailable: ${quoteError}`}
           </span>
         </div>
       )}

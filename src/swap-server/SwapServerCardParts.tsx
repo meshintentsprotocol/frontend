@@ -109,7 +109,6 @@ function JupiterDetails({ state }: { state: SwapServerCardState }) {
                         <Row label="Price impact" value={<span className={cn(impact <= -3 ? 'text-red-400' : impact <= -1 ? 'text-amber-300' : undefined)}>{impact.toFixed(2)}%</span>} />
                     )}
                     <Row label="Service fee" value={q.referralFeeBps > 0 ? `${q.referralFeeBps / 100}%` : 'None'} />
-                    {venues.length > 0 && <Row label="Route" value={<span className="text-xs">{venues.slice(0, 3).join(', ')}{venues.length > 3 ? ` +${venues.length - 3}` : ''}</span>} />}
                     {q.warnings.map(w => (
                         <div key={w} className="flex items-start gap-1.5 text-xs text-yellow-400/80 pt-1">
                             <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5" />

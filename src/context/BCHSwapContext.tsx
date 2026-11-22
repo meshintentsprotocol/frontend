@@ -883,13 +883,13 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
             setSwapStep('');
             const modeDescription = params.orderType === 'limit'
                 ? `Mode: 📋 Limit Order Covenant • Contract: ${data.contractAddress?.slice(0, 16)}...`
-                : `Mode: ⚡ Dutch Auction Intent (BCHMesh / Cauldron AMM) • Contract: ${data.contractAddress?.slice(0, 16)}...`;
+                : `Mode: ⚡ Dutch Auction Intent • Contract: ${data.contractAddress?.slice(0, 16)}...`;
 
             toast.success(
                 params.orderType === 'limit' ? 'Limit order placed' : 'Swap submitted',
                 {
                     description: params.orderType === 'limit'
-                        ? `${params.sellAmount} ${params.sellToken.symbol} → at least ${params.buyAmount} ${params.buyToken.symbol}. It fills when a route pays your price.`
+                        ? `${params.sellAmount} ${params.sellToken.symbol} → at least ${params.buyAmount} ${params.buyToken.symbol}. It fills when matched at your price or better.`
                         : modeDescription,
                     action: explorerUrl ? {
                         label: 'View on Explorer',
@@ -2709,13 +2709,13 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
                 ? '🔒 Adaptor Signature'
                 : '⚡ Atomic Settlement';
 
-            const label = order.status === 'filled' ? `Order Filled (${modeBadge})`
+            const label = order.status === 'filled' ? 'Order Filled'
                 : order.status === 'refunded' ? 'Order Refunded'
                 : order.status === 'cancelled' ? 'Order Cancelled'
                 : order.status === 'abandoned' ? 'Order not funded'
                 : 'Order Closed';
             toast.success(label, {
-                description: `${order.sellAmount} ${order.sellToken?.symbol} → ${order.buyAmount} ${order.buyToken?.symbol} • Mode: ${modeBadge}`,
+                description: `${order.sellAmount} ${order.sellToken?.symbol} → ${order.buyAmount} ${order.buyToken?.symbol}`,
             });
 
             // Trigger immediate refresh of wallet balances

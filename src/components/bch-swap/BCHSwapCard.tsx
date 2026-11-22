@@ -914,96 +914,6 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                 </div>
             </div>
 
-            {/* ─── Limit price card (limit mode only) ─── */}
-            {orderType === 'limit' && (
-                <div className="mx-4 mb-3 p-4 rounded-2xl bg-white/[0.03] border border-white/[0.06] space-y-3 animate-in fade-in-50 slide-in-from-top-1 duration-200" data-limit-card>
-                    <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm text-white/50">When 1 {sellToken.symbol} is worth</span>
-                        {/* The price a solver fills at right now, when there is a quote; else USD mid, labelled as such. */}
-                        {referenceIsFillable ? (
-                            <span className="text-xs text-emerald-400/70 font-mono truncate" title="Best price a solver fills at right now, from the Mesh server's quote">
-                                fills at {fillsNowPrice} {buyToken.symbol}
-                            </span>
-                        ) : currentMarketRatio > 0 ? (
-                            <span className="text-xs text-white/30 font-mono truncate" title="Indicative USD mid. A solver needs a route at least this good, so an order here may not fill">
-                                mkt {priceString(currentMarketRatio)} {buyToken.symbol}
-                            </span>
-                        ) : sameChain && meshQuote.loading ? (
-                            <span className="text-xs text-white/30">fetching price…</span>
-                        ) : null}
-                    </div>
-                    <div className="flex items-baseline gap-2">
-                        <Input
-                            type="text"
-                            placeholder="0.00"
-                            value={limitPrice}
-                            onChange={e => {
-                                const v = e.target.value.replace(',', '.');
-                                if (!/^\d*\.?\d*$/.test(v)) return;   // digits and one point only
-                                setLimitPrice(v);
-                                setPriceTouched(true);
-                            }}
-                            inputMode="decimal"
-                            autoComplete="off"
-                            aria-label={`Limit price in ${buyToken.symbol} per ${sellToken.symbol}`}
-                            className="border-none bg-transparent text-xl sm:text-2xl font-bold p-0 h-auto focus-visible:ring-0 flex-1 min-w-0"
-                        />
-                        <span className="text-sm font-semibold text-white/70 shrink-0">{buyToken.symbol}</span>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                        {PRICE_PRESETS.map(preset => {
-                            const base = Number(fillsNowPrice);
-                            const target = preset.mult === 1 ? fillsNowPrice : priceString(base * preset.mult);
-                            const active = !!limitPrice && limitPrice === target;
-                            return (
-                                <button
-                                    key={preset.label}
-                                    type="button"
-                                    disabled={!(base > 0)}
-                                    onClick={() => {
-                                        if (!(base > 0)) return;
-                                        setLimitPrice(target);
-                                        // A preset is a deliberate choice; stop re-seeding over it.
-                                        setPriceTouched(true);
-                                    }}
-                                    title={preset.mult === 1
-                                        ? 'Price this at the current best quote, so it fills on the next solver cycle'
-                                        : `Ask ${Math.round((preset.mult - 1) * 100)}% more than the current quote. It rests until the market gets there`}
-                                    className={cn(
-                                        'px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors disabled:opacity-40 disabled:cursor-not-allowed',
-                                        active
-                                            ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
-                                            : 'bg-white/[0.04] hover:bg-emerald-500/15 hover:text-emerald-300 text-white/60 border-white/[0.06] hover:border-emerald-500/30',
-                                    )}
-                                >
-                                    {preset.label}
-                                </button>
-                            );
-                        })}
-                    </div>
-
-                    {/* Still submittable: resting above the market is a normal limit order. */}
-                    {priceAboveFillable && (
-                        <div className="flex items-start gap-2 text-xs text-amber-400/90 bg-amber-500/[0.07] border border-amber-500/20 rounded-lg px-2.5 py-2">
-                            <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
-                            <span>
-                                Above the current price ({fillsNowPrice} {buyToken.symbol}).
-                                The order stays open and fills if the market reaches your price before it expires.
-                            </span>
-                        </div>
-                    )}
-                    {quoteUnavailable && (
-                        <div className="flex items-start gap-2 text-xs text-white/40 bg-white/[0.03] border border-white/[0.06] rounded-lg px-2.5 py-2">
-                            <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
-                            <span>{meshQuote.error ?? 'No quote right now'}. You can still place the order; it fills once a route pays your price.</span>
-                        </div>
-                    )}
-                    <div className="pt-2 border-t border-white/[0.04]">
-                        <ExpiryPicker value={expirySeconds} onChange={setExpirySeconds} />
-                    </div>
-                </div>
-            )}
-
             {/* ─── Sell input ─── */}
             <div className="mx-4 mb-1">
                 <div className={cn(
@@ -1090,6 +1000,101 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                     </div>
                 </div>
             </div>
+
+            {/* ─── Limit price card (limit mode only: placed cleanly below the two inputs) ─── */}
+            {orderType === 'limit' && (
+                <div className="mx-4 mt-3 p-4 rounded-2xl bg-white/[0.03] border border-white/[0.07] space-y-3.5 shadow-sm animate-in fade-in-50 slide-in-from-top-1 duration-200" data-limit-card>
+                    {/* Header: Label and reference price badge */}
+                    <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs uppercase tracking-wider font-semibold text-white/50">When 1 {sellToken.symbol} is worth</span>
+                        {referenceIsFillable ? (
+                            <span className="text-xs text-emerald-400 font-mono font-medium truncate bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full" title="Best fillable price right now">
+                                fills at {fillsNowPrice} {buyToken.symbol}
+                            </span>
+                        ) : currentMarketRatio > 0 ? (
+                            <span className="text-xs text-white/40 font-mono truncate bg-white/[0.04] px-2.5 py-0.5 rounded-full" title="Indicative market mid">
+                                mkt {priceString(currentMarketRatio)} {buyToken.symbol}
+                            </span>
+                        ) : sameChain && meshQuote.loading ? (
+                            <span className="text-xs text-white/30">fetching price…</span>
+                        ) : null}
+                    </div>
+
+                    {/* Target Price input row */}
+                    <div className="flex items-center justify-between gap-3 bg-black/30 border border-white/[0.06] rounded-xl px-3.5 py-2.5">
+                        <Input
+                            type="text"
+                            placeholder="0.00"
+                            value={limitPrice}
+                            onChange={e => {
+                                const v = e.target.value.replace(',', '.');
+                                if (!/^\d*\.?\d*$/.test(v)) return;
+                                setLimitPrice(v);
+                                setPriceTouched(true);
+                            }}
+                            inputMode="decimal"
+                            autoComplete="off"
+                            aria-label={`Limit price in ${buyToken.symbol} per ${sellToken.symbol}`}
+                            className="border-none bg-transparent text-xl sm:text-2xl font-bold p-0 h-auto focus-visible:ring-0 flex-1 min-w-0 text-white placeholder:text-white/20"
+                        />
+                        <span className="text-xs font-semibold px-2 py-1 rounded-md bg-white/[0.08] text-white/80 shrink-0">{buyToken.symbol}</span>
+                    </div>
+
+                    {/* Quick percentage adjustment presets */}
+                    <div className="flex flex-wrap items-center gap-1.5">
+                        {PRICE_PRESETS.map(preset => {
+                            const base = Number(fillsNowPrice);
+                            const target = preset.mult === 1 ? fillsNowPrice : priceString(base * preset.mult);
+                            const active = !!limitPrice && limitPrice === target;
+                            return (
+                                <button
+                                    key={preset.label}
+                                    type="button"
+                                    disabled={!(base > 0)}
+                                    onClick={() => {
+                                        if (!(base > 0)) return;
+                                        setLimitPrice(target);
+                                        setPriceTouched(true);
+                                    }}
+                                    title={preset.mult === 1
+                                        ? 'Match current best quote for immediate execution'
+                                        : `Target ${Math.round((preset.mult - 1) * 100)}% above current quote`}
+                                    className={cn(
+                                        'px-3 py-1 rounded-full text-xs font-semibold border transition-all disabled:opacity-40 disabled:cursor-not-allowed',
+                                        active
+                                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-sm'
+                                            : 'bg-white/[0.04] hover:bg-emerald-500/15 hover:text-emerald-300 text-white/60 border-white/[0.06] hover:border-emerald-500/30',
+                                    )}
+                                >
+                                    {preset.label}
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    {/* Price warnings */}
+                    {priceAboveFillable && (
+                        <div className="flex items-start gap-2 text-xs text-amber-400/90 bg-amber-500/[0.07] border border-amber-500/20 rounded-xl px-3 py-2">
+                            <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                            <span>
+                                Above current price ({fillsNowPrice} {buyToken.symbol}).
+                                The order will rest on-chain and execute once the market reaches your target.
+                            </span>
+                        </div>
+                    )}
+                    {quoteUnavailable && (
+                        <div className="flex items-start gap-2 text-xs text-white/50 bg-white/[0.03] border border-white/[0.06] rounded-xl px-3 py-2">
+                            <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                            <span>{meshQuote.error ?? 'No quote right now'}. You can still place the order; it fills once the market reaches your price.</span>
+                        </div>
+                    )}
+
+                    {/* Expiration picker */}
+                    <div className="pt-2.5 border-t border-white/[0.05]">
+                        <ExpiryPicker value={expirySeconds} onChange={setExpirySeconds} />
+                    </div>
+                </div>
+            )}
 
             {/* ─── XMR params ─── */}
             {swapType === 'bch-to-xmr' && (
@@ -1178,9 +1183,6 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                                     hint={sameChain ? (meshQuote.loading ? 'updating…' : quoteUnits ? 'live quote' : undefined) : referenceIsFillable ? 'solver quote' : undefined}
                                 />
                             )}
-                            {sameChain && orderType === 'market' && meshQuote.current?.route?.name && (
-                                <QuoteRow label="Route" value={meshQuote.current.route.name} />
-                            )}
                             <QuoteRow
                                 label="You receive"
                                 strong
@@ -1202,7 +1204,7 @@ export function BCHSwapCard({ orderType, onOrderTypeChange, ordersVisible, onTog
                                 <QuoteRow label="To" value={<span className="font-mono text-xs" title={userAddress}>{formatAddress(userAddress.includes(':') ? userAddress.split(':')[1] : userAddress)}</span>} hint="your wallet" />
                             )}
                             {swapType !== 'same-chain' && <QuoteWarning>Cross-chain: it relies on a solver or relayer filling the other side.</QuoteWarning>}
-                            {orderType === 'limit' && quoteUnavailable && <QuoteWarning>No quote right now. The order still fills once a route pays your price.</QuoteWarning>}
+                            {orderType === 'limit' && quoteUnavailable && <QuoteWarning>No quote right now. The order still fills once the market reaches your price.</QuoteWarning>}
                         </QuoteCard>
                     )}
 

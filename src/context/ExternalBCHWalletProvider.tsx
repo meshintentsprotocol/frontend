@@ -60,6 +60,7 @@ import {
     type WizSession,
 } from '@/lib/wallets/wizardconnect';
 import { setWalletContext } from '@/lib/wallets/ambient';
+import { cashAddressToLockingBytecode, lockingBytecodeToCashAddress } from '@bitauth/libauth';
 import {
     hasAppKitMarker,
     restoreAppKitConnections,
@@ -201,6 +202,18 @@ function disconnectExtension() {
     } catch { /* ignore */ }
 }
 
+function convertBchAddressNetwork(address: string, targetNetwork: 'mainnet' | 'chipnet'): string {
+    try {
+        const decoded = cashAddressToLockingBytecode(address);
+        if (typeof decoded === 'string') return address;
+        const prefix = targetNetwork === 'mainnet' ? 'bitcoincash' : 'bchtest';
+        const res = lockingBytecodeToCashAddress({ bytecode: decoded.bytecode, prefix: prefix as any });
+        return typeof res === 'string' ? address : res.address;
+    } catch {
+        return address;
+    }
+}
+
 // ── Provider ─────────────────────────────────────────────────────────────────
 
 export function ExternalBCHWalletProvider({ children }: { children: ReactNode }) {
@@ -267,6 +280,61 @@ export function ExternalBCHWalletProvider({ children }: { children: ReactNode })
         btcMainnetAddress,
         btcTestnetAddress,
     ]);
+
+    // ── Listen to Cham Wallet extension events (networkChanged & accountsChanged) ──
+    useEffect(() => {
+        let cleanup: (() => void) | undefined;
+        getExtensionProvider(1000).then(provider => {
+            const handleNetworkChanged = (net: string) => {
+                const targetNet: 'chipnet' | 'mainnet' = net === 'mainnet' ? 'mainnet' : 'chipnet';
+                if (bchNetwork !== targetNet) {
+                    wdk.setBchNetwork(targetNet);
+                }
+            };
+            const handleAccountsChanged = (accounts: string[]) => {
+                const addr = accounts?.[0];
+                if (addr) {
+                    const currentWallets = getAllWallets();
+                    const existing = currentWallets.find(w => w.source === 'extension' && w.network === appNetwork);
+                    if (existing && normalizeAddress(existing.address, 'bch') !== normalizeAddress(addr, 'bch')) {
+                        addWallet({ ...existing, address: addr });
+                    }
+                }
+            };
+            provider.on?.('networkChanged', handleNetworkChanged);
+            provider.on?.('accountsChanged', handleAccountsChanged);
+            cleanup = () => {
+                provider.removeListener?.('networkChanged', handleNetworkChanged);
+                provider.removeListener?.('accountsChanged', handleAccountsChanged);
+            };
+        }).catch(() => {});
+        return () => cleanup?.();
+    }, [bchNetwork, wdk, appNetwork]);
+
+    // ── Smooth external wallet network transition when appNetwork changes ──
+    useEffect(() => {
+        const currentWallets = getAllWallets();
+        const activeExt = currentWallets.find(w => w.id === activeBchId);
+        if (activeExt && activeExt.source === 'extension') {
+            if (activeExt.network !== appNetwork) {
+                const targetAddress = convertBchAddressNetwork(activeExt.address, appNetwork === 'mainnet' ? 'mainnet' : 'chipnet');
+                let matching = currentWallets.find(w => w.source === 'extension' && w.network === appNetwork);
+                if (!matching) {
+                    matching = {
+                        id: `ext-${appNetwork}-${Date.now()}`,
+                        source: 'extension',
+                        family: 'bch',
+                        network: appNetwork,
+                        label: EXTENSION_WALLET_LABEL,
+                        address: targetAddress,
+                        connectedAt: Date.now(),
+                    };
+                    addWallet(matching);
+                }
+                setActiveWalletId(matching.id, 'bch');
+            }
+        }
+    }, [appNetwork, activeBchId]);
 
     // Filter to visible BCH wallets and map to ExternalBCHWallet shape
     const bchWallets: ExternalBCHWallet[] = useMemo(() => allWallets
