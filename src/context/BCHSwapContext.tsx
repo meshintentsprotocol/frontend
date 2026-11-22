@@ -905,18 +905,18 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
     // Dutch Auctions are intentionally NOT supported here — only cancel()
     // (post-auction-end) exists for that contract.
     //
-    // Currently WDK-wallet only. Covenant unlocking needs a real signature
-    // over a custom redeem script, which generic external wallets (Cashonize/
-    // WalletConnect) aren't set up to produce the way they handle plain
-    // P2PKH funding transactions — see getDummyUnlocker in wc2Serialize.ts.
+    // Supports both the built-in WDK wallet (local CashScript signing) and
+    // external wallets (Cham Wallet extension via bch_signTransaction with
+    // 65-byte zero SIG_PLACEHOLDER and 33-byte zero KEY_PLACEHOLDER that the
+    // wallet's bch-sign.ts replaces with real Schnorr signatures).
     // =========================================================================
     const cancelSameChainOrder = useCallback(async (orderId: string) => {
         setIsLoading(true);
         setSwapStep('Cancelling order...');
         try {
-            const { isMainActive } = activeWalletRef.current;
-            if (!isMainActive) {
-                throw new Error('Early cancellation currently requires Cham Wallet — external wallets (Cashonize/WalletConnect) are not yet supported for this action.');
+            const { isMainActive, activeExtWallet } = activeWalletRef.current;
+            if (!isMainActive && !activeExtWallet) {
+                throw new Error('Please connect your BCH wallet (Cham Wallet or extension) to cancel.');
             }
 
             const key = getOrdersKey(wdkRef.current.bchNetwork);
@@ -937,16 +937,24 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
 
             const isMainnet = wdkRef.current.bchNetwork === 'mainnet';
             const relayerUrl = isMainnet ? CASHTOKEN_RELAYER_MAINNET_URL : CASHTOKEN_RELAYER_URL;
-            const currentBchWallet = bchWalletRef.current;
-            const wif = currentBchWallet.getWIF();
-            if (!wif) throw new Error('WIF not available — please reconnect your BCH wallet');
-            const makerAddress = normalizeBchAddress(currentBchWallet.address!, isMainnet);
-            const makerPk: Uint8Array | undefined =
-                (wdkRef.current.bchWallet as any)?.publicKeyCompressed || (wdkRef.current.bchWallet as any)?.publicKey;
-            if (!makerPk) throw new Error('Could not read wallet public key — please reconnect your BCH wallet');
+
+            const rawMakerAddress = isMainActive
+                ? bchWalletRef.current?.address
+                : activeExtWallet?.address;
+            if (!rawMakerAddress) {
+                throw new Error('Wallet address not available — please reconnect your BCH wallet');
+            }
+            const makerAddress = normalizeBchAddress(rawMakerAddress, isMainnet);
 
             const { Contract, ElectrumNetworkProvider, SignatureTemplate, TransactionBuilder } = await getCashScript();
-            const { cashAddressToLockingBytecode } = await import('@bitauth/libauth');
+            const {
+                cashAddressToLockingBytecode,
+                lockingBytecodeToCashAddress,
+                hexToBin,
+                binToHex,
+                stringify,
+                encodeTransaction,
+            } = await import('@bitauth/libauth');
             // V2 intents: rebuild from the exact constructor args the server deployed
             // (covenant expiry is chain time, not the wall-clock expiry shown in the UI).
             const isV2 = order.contractName === 'LimitOrderSwapV2' && Array.isArray(order.constructorArgs);
@@ -1009,55 +1017,211 @@ export function BCHSwapProvider({ children }: { children: ReactNode }) {
             if (!bchUtxos.length) throw new Error('No plain BCH UTXOs in your wallet to pay the cancellation network fee.');
             const feeUtxo = [...bchUtxos].sort((a: any, b: any) => Number(BigInt(b.satoshis) - BigInt(a.satoshis)))[0];
 
-            const sigTemplate = new SignatureTemplate(wif);
-            const builder = new TransactionBuilder({ provider });
-            builder.addInput(
-                {
-                    txid: covenantUtxo.txid,
-                    vout: covenantUtxo.vout,
-                    satoshis: BigInt(covenantUtxo.satoshis),
-                    token: covenantUtxo.token
-                        ? { amount: BigInt(covenantUtxo.token.amount), category: stripHex(covenantUtxo.token.category) }
-                        : undefined,
-                },
-                contract.unlock.cancelEarly(makerPk, sigTemplate),
-            );
-            builder.addInput(
-                { txid: feeUtxo.txid, vout: feeUtxo.vout, satoshis: BigInt(feeUtxo.satoshis) },
-                sigTemplate.unlockP2PKH(),
-            );
-
             const FEE = 1500n;
             const isBchSell = !sellCategoryId;
-            if (isBchSell) {
-                const totalIn = BigInt(covenantUtxo.satoshis) + BigInt(feeUtxo.satoshis);
-                const change = totalIn - sellBaseUnits - FEE;
-                builder.addOutput({ to: makerAddress, amount: sellBaseUnits });
-                if (change >= 546n) builder.addOutput({ to: makerAddress, amount: change });
+            let cancelTxid: string;
+
+            if (isMainActive) {
+                const currentBchWallet = bchWalletRef.current;
+                const wif = currentBchWallet.getWIF();
+                if (!wif) throw new Error('WIF not available — please reconnect your BCH wallet');
+                const makerPk: Uint8Array | undefined =
+                    (wdkRef.current.bchWallet as any)?.publicKeyCompressed || (wdkRef.current.bchWallet as any)?.publicKey;
+                if (!makerPk) throw new Error('Could not read wallet public key — please reconnect your BCH wallet');
+
+                const sigTemplate = new SignatureTemplate(wif);
+                const builder = new TransactionBuilder({ provider });
+                builder.addInput(
+                    {
+                        txid: covenantUtxo.txid,
+                        vout: covenantUtxo.vout,
+                        satoshis: BigInt(covenantUtxo.satoshis),
+                        token: covenantUtxo.token
+                            ? { amount: BigInt(covenantUtxo.token.amount), category: stripHex(covenantUtxo.token.category) }
+                            : undefined,
+                    },
+                    contract.unlock.cancelEarly(makerPk, sigTemplate),
+                );
+                builder.addInput(
+                    { txid: feeUtxo.txid, vout: feeUtxo.vout, satoshis: BigInt(feeUtxo.satoshis) },
+                    sigTemplate.unlockP2PKH(),
+                );
+
+                if (isBchSell) {
+                    const totalIn = BigInt(covenantUtxo.satoshis) + BigInt(feeUtxo.satoshis);
+                    const change = totalIn - sellBaseUnits - FEE;
+                    builder.addOutput({ to: makerAddress, amount: sellBaseUnits });
+                    if (change >= 546n) builder.addOutput({ to: makerAddress, amount: change });
+                } else {
+                    const makerDecoded = cashAddressToLockingBytecode(makerAddress);
+                    if (typeof makerDecoded === 'string') throw new Error(`Invalid address: ${makerDecoded}`);
+                    const makerTokenAddr = lockingBytecodeToCashAddress({
+                        bytecode: makerDecoded.bytecode,
+                        prefix: (isMainnet ? 'bitcoincash' : 'bchtest') as any,
+                        tokenSupport: true,
+                    });
+                    if (typeof makerTokenAddr === 'string') throw new Error(`Cannot derive token address: ${makerTokenAddr}`);
+
+                    const change = BigInt(feeUtxo.satoshis) - 1000n - FEE;
+                    builder.addOutput({
+                        to: makerTokenAddr.address,
+                        amount: 1000n,
+                        token: { amount: sellBaseUnits, category: stripHex(sellCategoryId!) },
+                    });
+                    if (change >= 546n) builder.addOutput({ to: makerAddress, amount: change });
+                }
+
+                setSwapStep('Broadcasting cancellation...');
+                const tx = await builder.send();
+                cancelTxid = tx.txid;
+                console.log('[Cancel] cancelEarly() broadcast:', cancelTxid);
             } else {
-                const { cashAddressToLockingBytecode, lockingBytecodeToCashAddress } = await import('@bitauth/libauth');
-                const makerDecoded = cashAddressToLockingBytecode(makerAddress);
-                if (typeof makerDecoded === 'string') throw new Error(`Invalid address: ${makerDecoded}`);
-                const makerTokenAddr = lockingBytecodeToCashAddress({
-                    bytecode: makerDecoded.bytecode,
-                    prefix: (isMainnet ? 'bitcoincash' : 'bchtest') as any,
-                    tokenSupport: true,
-                });
-                if (typeof makerTokenAddr === 'string') throw new Error(`Cannot derive token address: ${makerTokenAddr}`);
+                if (!activeExtWallet) throw new Error('No external BCH wallet connected');
 
-                const change = BigInt(feeUtxo.satoshis) - 1000n - FEE;
-                builder.addOutput({
-                    to: makerTokenAddr.address,
-                    amount: 1000n,
-                    token: { amount: sellBaseUnits, category: stripHex(sellCategoryId!) },
-                });
-                if (change >= 546n) builder.addOutput({ to: makerAddress, amount: change });
+                const encodePush = (bytes: Uint8Array): Uint8Array => {
+                    const len = bytes.length;
+                    if (len === 0) return new Uint8Array([0x00]);
+                    if (len === 1 && bytes[0] >= 1 && bytes[0] <= 16) {
+                        return new Uint8Array([0x50 + bytes[0]]);
+                    }
+                    if (len === 1 && bytes[0] === 0x81) {
+                        return new Uint8Array([0x4f]);
+                    }
+                    if (len <= 75) {
+                        return new Uint8Array([len, ...bytes]);
+                    }
+                    if (len <= 255) {
+                        return new Uint8Array([0x4c, len, ...bytes]);
+                    }
+                    if (len <= 65535) {
+                        return new Uint8Array([0x4d, len & 0xff, (len >> 8) & 0xff, ...bytes]);
+                    }
+                    throw new Error(`Push size ${len} exceeds supported length`);
+                };
+
+                const redeemScript = hexToBin(contract.bytecode.replace(/^0x/, ''));
+
+                // Construct unlocking script with placeholders for Cham Wallet:
+                // Stack: [push(SIG_PLACEHOLDER 65b), push(KEY_PLACEHOLDER 33b), OP_2, push(redeemScript)]
+                const pushSig = encodePush(new Uint8Array(65));
+                const pushPk = encodePush(new Uint8Array(33));
+                const pushFunc = encodePush(new Uint8Array([0x02]));
+                const pushRedeem = encodePush(redeemScript);
+
+                const covenantUnlockingBytecode = new Uint8Array(
+                    pushSig.length + pushPk.length + pushFunc.length + pushRedeem.length
+                );
+                let off = 0;
+                covenantUnlockingBytecode.set(pushSig, off); off += pushSig.length;
+                covenantUnlockingBytecode.set(pushPk, off); off += pushPk.length;
+                covenantUnlockingBytecode.set(pushFunc, off); off += pushFunc.length;
+                covenantUnlockingBytecode.set(pushRedeem, off);
+
+                const makerLocking = cashAddressToLockingBytecode(makerAddress);
+                if (typeof makerLocking === 'string') throw new Error(makerLocking);
+                const makerLockingBytecode = makerLocking.bytecode;
+
+                const covenantLocking = cashAddressToLockingBytecode(contract.address);
+                if (typeof covenantLocking === 'string') throw new Error(covenantLocking);
+                const covenantLockingBytecode = covenantLocking.bytecode;
+
+                const outputs: any[] = [];
+                if (isBchSell) {
+                    const totalIn = BigInt(covenantUtxo.satoshis) + BigInt(feeUtxo.satoshis);
+                    const change = totalIn - sellBaseUnits - FEE;
+                    outputs.push({
+                        lockingBytecode: makerLockingBytecode,
+                        valueSatoshis: sellBaseUnits,
+                    });
+                    if (change >= 546n) {
+                        outputs.push({
+                            lockingBytecode: makerLockingBytecode,
+                            valueSatoshis: change,
+                        });
+                    }
+                } else {
+                    const change = BigInt(feeUtxo.satoshis) - 1000n - FEE;
+                    outputs.push({
+                        lockingBytecode: makerLockingBytecode,
+                        valueSatoshis: 1000n,
+                        token: {
+                            amount: sellBaseUnits,
+                            category: hexToBin(stripHex(sellCategoryId!)),
+                        },
+                    });
+                    if (change >= 546n) {
+                        outputs.push({
+                            lockingBytecode: makerLockingBytecode,
+                            valueSatoshis: change,
+                        });
+                    }
+                }
+
+                const cancelTransaction = {
+                    version: 2,
+                    locktime: 0,
+                    inputs: [
+                        {
+                            outpointIndex: covenantUtxo.vout,
+                            outpointTransactionHash: hexToBin(covenantUtxo.txid),
+                            sequenceNumber: 0xfffffffe,
+                            unlockingBytecode: covenantUnlockingBytecode,
+                        },
+                        {
+                            outpointIndex: feeUtxo.vout,
+                            outpointTransactionHash: hexToBin(feeUtxo.txid),
+                            sequenceNumber: 0xfffffffe,
+                            unlockingBytecode: new Uint8Array(0),
+                        },
+                    ],
+                    outputs,
+                };
+
+                const sourceOutputs = [
+                    {
+                        outpointIndex: covenantUtxo.vout,
+                        outpointTransactionHash: hexToBin(covenantUtxo.txid),
+                        lockingBytecode: covenantLockingBytecode,
+                        valueSatoshis: BigInt(covenantUtxo.satoshis),
+                        token: covenantUtxo.token ? {
+                            amount: BigInt(covenantUtxo.token.amount),
+                            category: hexToBin(stripHex(covenantUtxo.token.category)),
+                        } : undefined,
+                        contract: {
+                            name: isV2 ? 'LimitOrderSwapV2' : 'LimitOrderSwap',
+                            redeemScript,
+                        },
+                    },
+                    {
+                        outpointIndex: feeUtxo.vout,
+                        outpointTransactionHash: hexToBin(feeUtxo.txid),
+                        lockingBytecode: makerLockingBytecode,
+                        valueSatoshis: BigInt(feeUtxo.satoshis),
+                    },
+                ];
+
+                const payload = JSON.parse(stringify({
+                    transaction: cancelTransaction,
+                    sourceOutputs,
+                    broadcast: true,
+                    userPrompt: `Cancel Limit Order: Return ${order.sellAmount} ${order.sellToken.symbol} to Maker`,
+                }));
+
+                setSwapStep(`Waiting for wallet approval in ${activeExtWallet.label}...`);
+                toast.info(`Check your ${activeExtWallet.label} wallet to approve the order cancellation.`, { duration: 8000 });
+
+                const result = await extBCHCtx.signTransaction(activeExtWallet.id, payload);
+                cancelTxid = result.signedTransactionHash;
+                console.log('[Cancel] cancelEarly() signed via external wallet:', cancelTxid);
+
+                if (result.signedTransaction) {
+                    try {
+                        await provider.sendRawTransaction(result.signedTransaction);
+                    } catch (broadcastErr: any) {
+                        console.log('[Cancel] Broadcast via provider note:', broadcastErr?.message || broadcastErr);
+                    }
+                }
             }
-
-            setSwapStep('Broadcasting cancellation...');
-            const tx = await builder.send();
-            const cancelTxid = tx.txid;
-            console.log('[Cancel] cancelEarly() broadcast:', cancelTxid);
 
             // Best-effort: tell the relayer so it stops watching this address and the
             // order book reflects reality. If this fails, the funds are already safely
